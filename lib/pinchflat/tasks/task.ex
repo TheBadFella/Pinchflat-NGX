@@ -13,6 +13,9 @@ defmodule Pinchflat.Tasks.Task do
     belongs_to :job, Oban.Job
     belongs_to :source, Source
     belongs_to :media_item, MediaItem
+    field :progress_percent, :float
+    field :progress_status, :string
+    field :progress_updated_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
   end
@@ -20,7 +23,7 @@ defmodule Pinchflat.Tasks.Task do
   @doc false
   def changeset(task, attrs) do
     task
-    |> cast(attrs, [:job_id, :source_id, :media_item_id])
+    |> cast(attrs, [:job_id, :source_id, :media_item_id, :progress_percent, :progress_status, :progress_updated_at])
     |> validate_required([:job_id])
   end
 end

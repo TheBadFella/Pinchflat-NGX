@@ -69,12 +69,30 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       refute html =~ pending_media_item.title
     end
 
-    test "shows 'Manually Ignored' column when other", %{conn: conn, source: source} do
+    test "shows 'Prevent Download' column when other", %{conn: conn, source: source} do
       _media_item = media_item_fixture(source_id: source.id, prevent_download: true, media_filepath: nil)
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
 
-      assert html =~ "Manually Ignored?"
+      assert html =~ "Prevent Download?"
+      assert html =~ "Excluded Reason"
+      assert html =~ "Prevented"
+    end
+
+    test "shows cutoff reason for excluded media", %{conn: conn} do
+      source = source_fixture(download_cutoff_date: ~D[2024-01-01])
+
+      excluded_media_item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2023-01-01 00:00:00Z]
+        )
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
+
+      assert html =~ excluded_media_item.title
+      assert html =~ "Before cutoff"
     end
   end
 

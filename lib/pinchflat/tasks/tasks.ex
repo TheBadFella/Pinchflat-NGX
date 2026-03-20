@@ -61,6 +61,15 @@ defmodule Pinchflat.Tasks do
   def get_task!(id), do: Repo.get!(Task, id)
 
   @doc """
+  Gets a single task by job_id.
+
+  Returns %Task{} | nil.
+  """
+  def get_task_by_job_id(job_id) do
+    Repo.get_by(Task, job_id: job_id)
+  end
+
+  @doc """
   Creates a task.
 
   Accepts map() | %Oban.Job{}, %Source{} | %Oban.Job{}, %MediaItem{}.
@@ -135,6 +144,29 @@ defmodule Pinchflat.Tasks do
     job_states = if include_executing, do: base_job_states ++ [:executing], else: base_job_states
 
     delete_tasks_for(record, worker_name, job_states)
+  end
+
+  @doc """
+  Updates persisted progress fields for a task and notifies LiveViews.
+
+  Returns {:ok, %Task{}} | {:error, %Ecto.Changeset{}}.
+  """
+  def update_task_progress(%Task{} = task, attrs) do
+    attrs =
+      attrs
+      |> Enum.into(%{})
+      |> Map.put(:progress_updated_at, DateTime.utc_now())
+
+    task
+    |> Task.changeset(attrs)
+    |> Repo.update()
+    |> tap(fn
+      {:ok, updated_task} ->
+        PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: updated_task.job_id})
+
+      _ ->
+        :ok
+    end)
   end
 
   @doc """

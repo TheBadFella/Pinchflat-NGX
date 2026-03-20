@@ -192,7 +192,7 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     test "adds the update arg" do
       assert {:ok, output} = Runner.update()
 
-      assert String.contains?(output, "--update")
+      assert String.contains?(output, "--update-to nightly")
     end
   end
 

@@ -70,13 +70,16 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
   defp default_options(override_opts) do
     overwrite_behaviour = Keyword.get(override_opts, :overwrite_behaviour, :force_overwrites)
+    emit_progress = Keyword.get(override_opts, :emit_progress, false)
 
-    [
-      :no_progress,
-      overwrite_behaviour,
-      # This makes the date metadata conform to what jellyfin expects
-      parse_metadata: "%(upload_date>%Y-%m-%d)s:(?P<meta_date>.+)"
-    ]
+    progress_opts = if emit_progress, do: [], else: [:no_progress]
+
+    progress_opts ++
+      [
+        overwrite_behaviour,
+        # This makes the date metadata conform to what jellyfin expects
+        parse_metadata: "%(upload_date>%Y-%m-%d)s:(?P<meta_date>.+)"
+      ]
   end
 
   defp subtitle_options(media_profile) do

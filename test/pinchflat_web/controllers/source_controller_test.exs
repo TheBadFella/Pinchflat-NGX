@@ -182,6 +182,16 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "show source" do
+    test "renders the excluded tab label", %{conn: conn} do
+      source = source_fixture()
+
+      conn = get(conn, ~p"/sources/#{source}")
+
+      assert html_response(conn, 200) =~ "Excluded"
+    end
+  end
+
   describe "force_redownload" do
     test "enqueues re-download tasks", %{conn: conn} do
       source = source_fixture()

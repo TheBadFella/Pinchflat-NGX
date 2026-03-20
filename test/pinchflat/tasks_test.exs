@@ -267,4 +267,30 @@ defmodule Pinchflat.TasksTest do
       assert %Ecto.Changeset{} = Tasks.change_task(task)
     end
   end
+
+  describe "update_task_progress/2" do
+    test "updates persisted progress fields" do
+      task = task_fixture()
+
+      assert {:ok, task} = Tasks.update_task_progress(task, %{progress_percent: 42.5, progress_status: "Downloading"})
+
+      assert task.progress_percent == 42.5
+      assert task.progress_status == "Downloading"
+      assert task.progress_updated_at
+    end
+
+    test "broadcasts progress updates" do
+      task = task_fixture()
+
+      PinchflatWeb.Endpoint.subscribe("job:progress")
+
+      assert {:ok, _task} = Tasks.update_task_progress(task, %{progress_percent: 10.0, progress_status: "Downloading"})
+
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: "job:progress",
+        event: "update",
+        payload: %{job_id: ^task.job_id}
+      }
+    end
+  end
 end

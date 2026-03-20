@@ -155,12 +155,18 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   end
 
   defp download_with_options(url, item_with_preloads, output_filepath, override_opts) do
-    {:ok, options} = DownloadOptionBuilder.build(item_with_preloads, override_opts)
+    emit_progress = Keyword.has_key?(override_opts, :progress_handler)
+    build_opts = Keyword.put(override_opts, :emit_progress, emit_progress)
+    {:ok, options} = DownloadOptionBuilder.build(item_with_preloads, build_opts)
     force_use_cookies = Keyword.get(override_opts, :force_use_cookies, false)
     source_uses_cookies = Sources.use_cookies?(item_with_preloads.source, :downloading)
     should_use_cookies = force_use_cookies || source_uses_cookies
 
-    runner_opts = [output_filepath: output_filepath, use_cookies: should_use_cookies]
+    runner_opts =
+      [
+        output_filepath: output_filepath,
+        use_cookies: should_use_cookies
+      ] ++ if emit_progress, do: [progress_handler: Keyword.fetch!(override_opts, :progress_handler)], else: []
 
     case {YtDlpMedia.get_downloadable_status(url, use_cookies: should_use_cookies), should_use_cookies} do
       {{:ok, :downloadable}, _} ->

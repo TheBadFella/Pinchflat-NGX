@@ -52,7 +52,7 @@
           session: %{"source_id" => @source.id, "media_state" => "downloaded"}
         )}
       </:tab>
-      <:tab title="Other" id="other">
+      <:tab title="Excluded" id="other">
         {live_render(
           @conn,
           PinchflatWeb.Sources.MediaItemTableLive,

@@ -44,14 +44,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   Returns :ok | {:error, any, ...any}
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"id" => media_item_id} = args}) do
+  def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args}) do
     should_force = Map.get(args, "force", false)
     is_quality_upgrade = Map.get(args, "quality_upgrade?", false)
 
     media_item = fetch_and_run_prevent_download_user_script(media_item_id)
 
     if should_download_media?(media_item, should_force, is_quality_upgrade) do
-      download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force)
+      download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, job_id)
     else
       :ok
     end
@@ -88,12 +88,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     Repo.preload(media_item, :source)
   end
 
-  defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force) do
+  defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, job_id) do
     overwrite_behaviour = if should_force || is_quality_upgrade, do: :force_overwrites, else: :no_force_overwrites
-    override_opts = [overwrite_behaviour: overwrite_behaviour]
+    override_opts = [overwrite_behaviour: overwrite_behaviour, progress_handler: build_progress_handler(job_id)]
 
     case MediaDownloader.download_for_media_item(media_item, override_opts) do
       {:ok, downloaded_media_item} ->
+        maybe_update_progress(job_id, %{progress_percent: 100.0, progress_status: "Finishing"})
+
         {:ok, updated_media_item} =
           Media.update_media_item(downloaded_media_item, %{
             media_size_bytes: compute_media_filesize(downloaded_media_item),
@@ -114,6 +116,53 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
       {:error, _error_atom, message} ->
         action_on_error(message)
     end
+  end
+
+  defp build_progress_handler(job_id) do
+    maybe_update_progress(job_id, %{progress_percent: 0.0, progress_status: "Preparing"})
+
+    fn attrs ->
+      maybe_update_progress(job_id, attrs)
+    end
+  end
+
+  defp maybe_update_progress(job_id, attrs) do
+    case Tasks.get_task_by_job_id(job_id) do
+      nil ->
+        :ok
+
+      task ->
+        percent = Map.get(attrs, :progress_percent)
+        status = Map.get(attrs, :progress_status)
+        now_ms = System.monotonic_time(:millisecond)
+        last_ms = Process.get({:progress_updated_ms, job_id}, 0)
+        last_percent = Process.get({:progress_percent, job_id})
+        last_status = Process.get({:progress_status, job_id})
+
+        should_update =
+          is_nil(last_percent) ||
+            percent == 100.0 ||
+            status != last_status ||
+            now_ms - last_ms >= 1_000 ||
+            percent_change_exceeds_threshold?(percent, last_percent)
+
+        if should_update do
+          Process.put({:progress_updated_ms, job_id}, now_ms)
+          Process.put({:progress_percent, job_id}, percent)
+          Process.put({:progress_status, job_id}, status)
+
+          Tasks.update_task_progress(task, attrs)
+        else
+          :ok
+        end
+    end
+  end
+
+  defp percent_change_exceeds_threshold?(nil, _last_percent), do: false
+  defp percent_change_exceeds_threshold?(_percent, nil), do: true
+
+  defp percent_change_exceeds_threshold?(percent, last_percent) do
+    abs(percent - last_percent) >= 2.0
   end
 
   defp compute_media_filesize(media_item) do

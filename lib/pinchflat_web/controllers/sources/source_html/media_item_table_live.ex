@@ -63,8 +63,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             </span>
           </section>
         </:col>
-        <:col :let={media_item} :if={@media_state == "other"} label="Manually Ignored?">
+        <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
           <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
+        </:col>
+        <:col :let={media_item} :if={@media_state == "other"} label="Excluded Reason">
+          {excluded_reason(media_item, @source)}
         </:col>
         <:col :let={media_item} label="Upload Date">
           {DateTime.to_date(media_item.uploaded_at)}
@@ -85,7 +88,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
     page = 1
     media_state = session["media_state"]
-    source = Sources.get_source!(session["source_id"])
+    source =
+      session["source_id"]
+      |> Sources.get_source!()
+      |> Repo.preload(:media_profile)
+
     base_query = generate_base_query(source, media_state)
     pagination_attrs = fetch_pagination_attributes(base_query, page, nil)
 
@@ -217,6 +224,61 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   # Selecting only what we need GREATLY speeds up queries on large tables
   defp select_fields do
-    [:id, :title, :uploaded_at, :prevent_download, :last_error]
+    [:id, :title, :uploaded_at, :prevent_download, :last_error, :duration_seconds, :livestream, :short_form_content]
   end
+
+  defp excluded_reason(media_item, source) do
+    cond do
+      media_item.prevent_download ->
+        "Prevented"
+
+      before_cutoff?(media_item, source) ->
+        "Before cutoff"
+
+      too_short?(media_item, source) ->
+        "Too short"
+
+      too_long?(media_item, source) ->
+        "Too long"
+
+      source.media_profile.shorts_behaviour == :exclude and media_item.short_form_content ->
+        "Shorts excluded"
+
+      source.media_profile.shorts_behaviour == :only and not media_item.short_form_content ->
+        "Only shorts"
+
+      source.media_profile.livestream_behaviour == :exclude and media_item.livestream ->
+        "Livestreams excluded"
+
+      source.media_profile.livestream_behaviour == :only and not media_item.livestream ->
+        "Only livestreams"
+
+      is_binary(source.title_filter_regex) ->
+        "Filtered by title"
+
+      true ->
+        "Filtered by source rules"
+    end
+  end
+
+  defp before_cutoff?(media_item, %{download_cutoff_date: cutoff_date})
+       when not is_nil(cutoff_date) and not is_nil(media_item.uploaded_at) do
+    DateTime.to_date(media_item.uploaded_at) < cutoff_date
+  end
+
+  defp before_cutoff?(_media_item, _source), do: false
+
+  defp too_short?(media_item, %{min_duration_seconds: min_duration})
+       when not is_nil(min_duration) and not is_nil(media_item.duration_seconds) do
+    media_item.duration_seconds < min_duration
+  end
+
+  defp too_short?(_media_item, _source), do: false
+
+  defp too_long?(media_item, %{max_duration_seconds: max_duration})
+       when not is_nil(max_duration) and not is_nil(media_item.duration_seconds) do
+    media_item.duration_seconds > max_duration
+  end
+
+  defp too_long?(_media_item, _source), do: false
 end

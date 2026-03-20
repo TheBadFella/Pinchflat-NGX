@@ -9,6 +9,7 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
   alias Pinchflat.Pages.JobTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.FastIndexing.FastIndexingWorker
+  alias Pinchflat.Tasks
 
   describe "initial rendering" do
     test "shows message when no records", %{conn: conn} do
@@ -78,6 +79,25 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       PinchflatWeb.Endpoint.broadcast("job:state", "change", nil)
 
       assert_receive %Phoenix.Socket.Broadcast{topic: "job:state", event: "change", payload: nil}
+    end
+
+    test "shows download progress for media download jobs", %{conn: conn} do
+      {_source, _media_item, task, _job} = create_media_item_job()
+      {:ok, _task} = Tasks.update_task_progress(task, %{progress_percent: 37.5, progress_status: "Downloading"})
+
+      {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})
+
+      assert html =~ "37.5%"
+      assert html =~ "Downloading"
+    end
+
+    test "listens for job:progress change events", %{conn: conn} do
+      {_source, _media_item, _task, _job} = create_media_item_job()
+      {:ok, _view, _html} = live_isolated(conn, JobTableLive, session: %{})
+
+      PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: 123})
+
+      assert_receive %Phoenix.Socket.Broadcast{topic: "job:progress", event: "update", payload: %{job_id: 123}}
     end
   end
 

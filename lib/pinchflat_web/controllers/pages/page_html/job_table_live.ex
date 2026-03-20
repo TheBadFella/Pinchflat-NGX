@@ -29,6 +29,9 @@ defmodule Pinchflat.Pages.JobTableLive do
         <:col :let={task} label="Attempt No.">
           {task.job.attempt}
         </:col>
+        <:col :let={task} label="Progress">
+          <.task_progress task={task} />
+        </:col>
         <:col :let={task} label="Started At">
           {format_datetime(task.job.attempted_at)}
         </:col>
@@ -39,11 +42,16 @@ defmodule Pinchflat.Pages.JobTableLive do
 
   def mount(_params, _session, socket) do
     PinchflatWeb.Endpoint.subscribe("job:state")
+    PinchflatWeb.Endpoint.subscribe("job:progress")
 
     {:ok, assign(socket, tasks: get_tasks())}
   end
 
   def handle_info(%{topic: "job:state", event: "change"}, socket) do
+    {:noreply, assign(socket, tasks: get_tasks())}
+  end
+
+  def handle_info(%{topic: "job:progress", event: "update"}, socket) do
     {:noreply, assign(socket, tasks: get_tasks())}
   end
 
@@ -93,5 +101,47 @@ defmodule Pinchflat.Pages.JobTableLive do
 
   defp format_datetime(datetime) do
     TextComponents.datetime_in_zone(%{datetime: datetime, format: "%Y-%m-%d %H:%M"})
+  end
+
+  attr :task, :map, required: true
+
+  defp task_progress(assigns) do
+    if String.ends_with?(assigns.task.job.worker, "MediaDownloadWorker") do
+      percent = assigns.task.progress_percent || 0.0
+
+      label =
+        cond do
+          is_binary(assigns.task.progress_status) -> assigns.task.progress_status
+          percent > 0 -> "Downloading"
+          true -> "Preparing"
+        end
+
+      assigns =
+        assign(assigns,
+          percent: percent,
+          width_percent: trunc(percent),
+          label: label
+        )
+
+      ~H"""
+      <div class="min-w-36">
+        <div class="mb-1 flex items-center justify-between text-xs text-gray-300">
+          <span>{@label}</span>
+          <span>{Float.round(@percent, 1)}%</span>
+        </div>
+        <div class="h-2 overflow-hidden rounded-full bg-slate-700">
+          <div
+            class="h-full rounded-full bg-blue-500 transition-all duration-300"
+            style={"width: #{@width_percent}%"}
+          >
+          </div>
+        </div>
+      </div>
+      """
+    else
+      ~H"""
+      <span class="text-gray-400">-</span>
+      """
+    end
   end
 end
