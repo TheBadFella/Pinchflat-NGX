@@ -235,6 +235,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # only create an archive for channels that are being indexed as part of their regular
   # indexing schedule. The first indexing pass should also not create an archive.
   defp build_download_archive_options(%Source{collection_type: :playlist}, _was_forced), do: []
+  defp build_download_archive_options(%Source{collection_type: :video}, _was_forced), do: []
   defp build_download_archive_options(%Source{last_indexed_at: nil}, _was_forced), do: []
   defp build_download_archive_options(_source, true), do: []
 

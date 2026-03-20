@@ -222,24 +222,48 @@ defmodule Pinchflat.Sources do
     %Ecto.Changeset{changes: changes} = changeset
 
     collection_changes =
-      if source_details.playlist_id == source_details.channel_id do
+      if source_details.source_type == :video do
         %{
-          collection_type: :channel,
-          collection_id: source_details.channel_id,
-          collection_name: source_details.channel_name
+          collection_type: :video,
+          collection_id: source_details.video_id,
+          collection_name: source_details.video_title
         }
       else
-        %{
-          collection_type: :playlist,
-          collection_id: source_details.playlist_id,
-          collection_name: source_details.playlist_name
-        }
+        if source_details.playlist_id == source_details.channel_id do
+          %{
+            collection_type: :channel,
+            collection_id: source_details.channel_id,
+            collection_name: source_details.channel_name
+          }
+        else
+          %{
+            collection_type: :playlist,
+            collection_id: source_details.playlist_id,
+            collection_name: source_details.playlist_name
+          }
+        end
       end
 
     change_source(source, Map.merge(changes, collection_changes))
   end
 
   defp maybe_change_indexing_frequency(changeset) do
+    changeset
+    |> maybe_disable_recurring_indexing_for_single_video()
+    |> maybe_change_fast_index_frequency()
+  end
+
+  defp maybe_disable_recurring_indexing_for_single_video(changeset) do
+    if Ecto.Changeset.get_field(changeset, :collection_type) == :video do
+      changeset
+      |> Ecto.Changeset.put_change(:fast_index, false)
+      |> Ecto.Changeset.put_change(:index_frequency_minutes, 0)
+    else
+      changeset
+    end
+  end
+
+  defp maybe_change_fast_index_frequency(changeset) do
     fast_index = Ecto.Changeset.get_field(changeset, :fast_index)
 
     if fast_index do

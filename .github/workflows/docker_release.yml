@@ -165,9 +165,8 @@ jobs:
           tags: |
             type=ref,event=tag
             type=raw,value=dev,enable=${{ github.event_name != 'release' && github.event_name != 'workflow_dispatch' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
             type=raw,value=${{ inputs.docker_tags }},enable=${{ github.event_name == 'workflow_dispatch' }}
-          flavor: |
-            latest=auto
 
       - name: Create manifest list and push
         working-directory: /tmp/digests

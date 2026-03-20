@@ -24,7 +24,7 @@
       field={f[:original_url]}
       type="text"
       label="Source URL"
-      help="URL of a channel or playlist (required)"
+      help="URL of a channel, playlist, or single video (required). Single video sources are indexed once and fast indexing is disabled automatically"
       x-init="$el.focus()"
     />
 
@@ -65,7 +65,7 @@
           type="toggle"
           label="Use Fast Indexing"
           label_suffix="(pro)"
-          help="Not recommended for playlists. Overrides 'Index Frequency'. See below for more details (seriously, there's a TL;DR that's worth reading)"
+          help="Not recommended for playlists. Single video sources always disable this option. Overrides 'Index Frequency'. See below for more details (seriously, there's a TL;DR that's worth reading)"
           x-init="
           // `enabled` is the data attribute that the toggle uses internally
           fastIndexingEnabled = enabled
@@ -186,6 +186,12 @@
           x-model.fill="inputValue"
         />
       </section>
+
+      <p class="text-sm mt-4">
+        Need custom yt-dlp arguments for this source? After saving, add them to
+        <code>extras/yt-dlp-configs/source-123-config.txt</code> using the saved source ID. Pinchflat already loads
+        per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
+      </p>
     </section>
 
     <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Source</.button>

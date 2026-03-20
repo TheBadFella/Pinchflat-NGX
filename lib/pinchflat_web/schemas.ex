@@ -99,14 +99,14 @@ defmodule PinchflatWeb.Schemas do
 
   defmodule Source do
     @moduledoc """
-    Schema for a source (channel or playlist).
+    Schema for a source (channel, playlist, or single video).
     """
 
     require OpenApiSpex
 
     OpenApiSpex.schema(%{
       title: "Source",
-      description: "A media source (YouTube channel or playlist)",
+      description: "A media source (YouTube channel, playlist, or single video)",
       type: :object,
       properties: %{
         id: %Schema{type: :integer, description: "Internal database ID", example: 1},
@@ -139,7 +139,7 @@ defmodule PinchflatWeb.Schemas do
         collection_type: %Schema{
           type: :string,
           nullable: true,
-          enum: [:channel, :playlist],
+          enum: [:channel, :playlist, :video],
           description: "Type of collection",
           example: :channel
         },
@@ -326,7 +326,7 @@ defmodule PinchflatWeb.Schemas do
           properties: %{
             original_url: %Schema{
               type: :string,
-              description: "YouTube channel or playlist URL (required for creation)",
+              description: "YouTube channel, playlist, or single video URL (required for creation)",
               example: "https://www.youtube.com/channel/UCxxx"
             },
             media_profile_id: %Schema{

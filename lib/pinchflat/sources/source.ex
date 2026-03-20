@@ -75,7 +75,7 @@ defmodule Pinchflat.Sources.Source do
     field :description, :string
     field :collection_name, :string
     field :collection_id, :string
-    field :collection_type, Ecto.Enum, values: [:channel, :playlist]
+    field :collection_type, Ecto.Enum, values: [:channel, :playlist, :video]
     field :index_frequency_minutes, :integer, default: 60 * 24
     field :fast_index, :boolean, default: false
     field :cookie_behaviour, Ecto.Enum, values: [:disabled, :when_needed, :all_operations], default: :disabled
@@ -124,12 +124,12 @@ defmodule Pinchflat.Sources.Source do
     |> dynamic_default(:custom_name, fn cs -> get_field(cs, :collection_name) end)
     |> dynamic_default(:uuid, fn _ -> Ecto.UUID.generate() end)
     |> validate_required(required_fields)
+    |> validate_original_url()
     |> validate_title_regex()
     |> validate_min_and_max_durations()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
-    |> validate_format(:original_url, youtube_channel_or_playlist_regex(), message: "must be a channel or playlist URL")
     |> cast_assoc(:metadata, with: &SourceMetadata.changeset/2, required: false)
     |> unique_constraint([:collection_id, :media_profile_id, :title_filter_regex], error_key: :original_url)
   end
@@ -156,12 +156,43 @@ defmodule Pinchflat.Sources.Source do
     ~w(__meta__ __struct__ metadata tasks media_items)a
   end
 
-  def youtube_channel_or_playlist_regex do
-    # Validate that the original URL is not a video URL
-    # Also matches if the string does NOT contain youtube.com or youtu.be. This preserves my tenuous support
-    # for non-youtube sources.
-    ~r<^(?:(?!youtube\.com/(watch|shorts|embed)|youtu\.be).)*$>
+  def youtube_video_url?(url) when is_binary(url) do
+    youtube_patterns = [
+      ~r<^https?://(?:www\.)?youtube\.com/watch\?[^#]*\bv=[^&]+>,
+      ~r<^https?://(?:www\.)?youtube\.com/shorts/[^/?#]+>,
+      ~r<^https?://(?:www\.)?youtube\.com/embed/[^/?#]+>,
+      ~r<^https?://youtu\.be/[^/?#]+>
+    ]
+
+    Enum.any?(youtube_patterns, &Regex.match?(&1, url))
   end
+
+  def youtube_video_url?(_url), do: false
+
+  def supported_youtube_url?(url) when is_binary(url) do
+    supported_patterns = [
+      ~r<^https?://(?:www\.)?youtube\.com/channel/[^/?#]+(?:/(?:featured|videos))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/@[^/?#]+(?:/(?:featured|videos))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/c/[^/?#]+(?:/(?:featured|videos))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/user/[^/?#]+(?:/(?:featured|videos))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/playlist\?list=[^&]+>,
+      ~r<^https?://(?:www\.)?youtube\.com/[^/?#]+(?:/(?:featured|videos))?$>
+    ]
+
+    youtube_video_url?(url) || Enum.any?(supported_patterns, &Regex.match?(&1, url))
+  end
+
+  def supported_youtube_url?(_url), do: false
+
+  defp validate_original_url(%{changes: %{original_url: url}} = changeset) when is_binary(url) do
+    if String.contains?(url, ["youtube.com", "youtu.be"]) && !supported_youtube_url?(url) do
+      add_error(changeset, :original_url, "must be a channel, playlist, or single video URL")
+    else
+      changeset
+    end
+  end
+
+  defp validate_original_url(changeset), do: changeset
 
   defp validate_title_regex(%{changes: %{title_filter_regex: regex}} = changeset) when is_binary(regex) do
     case Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [regex]) do
