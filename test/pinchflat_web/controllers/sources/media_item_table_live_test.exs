@@ -7,6 +7,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
   import Pinchflat.ProfilesFixtures
 
   alias PinchflatWeb.Sources.MediaItemTableLive
+  alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Tasks
 
   setup do
     source = source_fixture()
@@ -93,6 +95,35 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
       assert html =~ excluded_media_item.title
       assert html =~ "Before cutoff"
+    end
+
+    test "shows phase text for active downloads before total size is known", %{conn: conn, source: source} do
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      {:ok, _task} =
+        Tasks.update_task_progress(task, %{
+          progress_percent: 0.0,
+          progress_status: "Waiting for transfer to start"
+        })
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+
+      assert html =~ "Waiting for transfer to start"
+    end
+
+    test "shows wrapped full errors inline", %{conn: conn, source: source} do
+      media_item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "ERROR: unable to download video data: HTTP Error 429: Too Many Requests"
+        )
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+
+      assert html =~ media_item.title
+      assert html =~ media_item.last_error
     end
   end
 

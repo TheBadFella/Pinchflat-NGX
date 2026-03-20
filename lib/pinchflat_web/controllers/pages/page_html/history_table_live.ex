@@ -31,36 +31,34 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
         </span>
       </span>
-      
+
       <div class="max-w-full overflow-x-auto">
         <.table rows={@records} table_class="text-white">
           <:col :let={media_item} label="Title" class="max-w-xs">
-            <section class="flex items-center space-x-1 gap-2">
-              <.tooltip
-                :if={media_item.last_error}
-                tooltip={media_item.last_error}
-                position="bottom-right"
-                tooltip_class="w-64"
-              >
-                <.icon name="hero-exclamation-circle-solid" class="text-red-500" />
-              </.tooltip>
-              <.icon_button
-                :if={is_nil(media_item.media_downloaded_at)}
-                icon_name="hero-arrow-down-tray"
-                class="h-10 w-10"
-                phx-click="force_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Are you sure you want to force a download of this media?"
-                tooltip="Force Download"
-              />
-              <span class="truncate">
-                <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                  {media_item.title}
-                </.subtle_link>
-              </span>
+            <section class="space-y-2">
+              <div class="flex items-center space-x-1 gap-2">
+                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
+                <.icon_button
+                  :if={is_nil(media_item.media_downloaded_at)}
+                  icon_name="hero-arrow-down-tray"
+                  class="h-10 w-10"
+                  phx-click="force_download"
+                  phx-value-media-id={media_item.id}
+                  data-confirm="Are you sure you want to force a download of this media?"
+                  tooltip="Force Download"
+                />
+                <span class="truncate">
+                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                    {media_item.title}
+                  </.subtle_link>
+                </span>
+              </div>
+              <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
+                {media_item.last_error}
+              </div>
             </section>
           </:col>
-          
+
           <:col :let={media_item} label="Upload Date">
             {DateTime.to_date(media_item.uploaded_at)}
           </:col>

@@ -23,12 +23,23 @@ defmodule Pinchflat.Pages.JobTableLive do
         <:col :let={task} label="Task">
           {worker_to_task_name(task.job.worker)}
         </:col>
-        <:col :let={task} label="Subject" class="truncate max-w-xs">
+        <:col :let={task} label="Subject" class="max-w-sm">
           <.subtle_link href={task_to_link(task)}>
-            {task_to_record_name(task)}
+            <div class="whitespace-normal break-words">
+              <div class="font-medium">{task_to_record_label(task)}</div>
+              <div class="text-xs text-gray-400">{task_to_record_name(task)}</div>
+            </div>
           </.subtle_link>
         </:col>
-
+        <:col :let={task} label="Source" class="max-w-sm">
+          <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
+            <div class="whitespace-normal break-words">
+              <div class="font-medium">{task_source_label(task)}</div>
+              <div class="text-xs text-gray-400">{task_source_name(task)}</div>
+            </div>
+          </.subtle_link>
+          <span :if={!task_source_link(task)} class="text-gray-400">-</span>
+        </:col>
         <:col :let={task} label="Attempt No.">
           {task.job.attempt}
         </:col>
@@ -87,10 +98,11 @@ defmodule Pinchflat.Pages.JobTableLive do
       from(t in Task,
         join: j in assoc(t, :job),
         left_join: mi in assoc(t, :media_item),
+        left_join: mi_source in assoc(mi, :source),
         left_join: source in assoc(t, :source),
         where: j.state == "executing",
         where: ^"show_in_dashboard" in j.tags,
-        preload: [job: j, media_item: mi, source: source],
+        preload: [job: j, media_item: {mi, source: mi_source}, source: source],
         order_by: [desc: j.attempted_at]
       )
 
@@ -131,11 +143,44 @@ defmodule Pinchflat.Pages.JobTableLive do
     end
   end
 
+  defp task_to_record_label(%Task{} = task) do
+    case task do
+      %Task{source: source} when source != nil -> "Source ##{source.id}"
+      %Task{media_item: mi} when mi != nil -> "Media ##{mi.id}"
+      _ -> "Unknown Record"
+    end
+  end
+
   defp task_to_link(%Task{} = task) do
     case task do
       %Task{source: source} when source != nil -> ~p"/sources/#{source.id}"
       %Task{media_item: mi} when mi != nil -> ~p"/sources/#{mi.source_id}/media/#{mi}"
       _ -> "#"
+    end
+  end
+
+  defp task_source(%Task{source: source}) when source != nil, do: source
+  defp task_source(%Task{media_item: %{source: source}}) when source != nil, do: source
+  defp task_source(_task), do: nil
+
+  defp task_source_label(task) do
+    case task_source(task) do
+      nil -> "-"
+      source -> "Source ##{source.id}"
+    end
+  end
+
+  defp task_source_name(task) do
+    case task_source(task) do
+      nil -> nil
+      source -> source.custom_name
+    end
+  end
+
+  defp task_source_link(task) do
+    case task_source(task) do
+      nil -> nil
+      source -> ~p"/sources/#{source.id}"
     end
   end
 
@@ -165,7 +210,7 @@ defmodule Pinchflat.Pages.JobTableLive do
           percent: percent,
           width_percent: trunc(percent),
           label: label,
-          summary: format_progress_summary(downloaded_bytes, total_bytes),
+          summary: format_progress_summary(assigns.task.progress_status, downloaded_bytes, total_bytes),
           eta: format_eta(assigns.task.progress_eta_seconds)
         )
 
@@ -195,13 +240,22 @@ defmodule Pinchflat.Pages.JobTableLive do
     if String.ends_with?(task.job.worker, "MediaDownloadWorker"), do: "Stop", else: "Cancel"
   end
 
-  defp format_progress_summary(nil, nil), do: "Size pending"
+  defp format_progress_summary(status, nil, nil) do
+    case status do
+      "Queued" -> "Queued"
+      "Prechecking media" -> "Checking the media before starting the download"
+      "Waiting for transfer to start" -> "Waiting for yt-dlp to begin transferring data"
+      "Downloading without known total" -> "Downloading, but the remote source has not provided a total size yet"
+      nil -> "Queued"
+      other -> other
+    end
+  end
 
-  defp format_progress_summary(downloaded_bytes, nil) do
+  defp format_progress_summary(_status, downloaded_bytes, nil) do
     "#{readable_byte_size(downloaded_bytes)} downloaded"
   end
 
-  defp format_progress_summary(downloaded_bytes, total_bytes) do
+  defp format_progress_summary(_status, downloaded_bytes, total_bytes) do
     remaining_bytes = max(total_bytes - (downloaded_bytes || 0), 0)
 
     "#{readable_byte_size(downloaded_bytes)} of #{readable_byte_size(total_bytes)} done, #{readable_byte_size(remaining_bytes)} remaining"

@@ -72,6 +72,16 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       assert html =~ ~p"/sources/#{source.id}"
     end
 
+    test "shows subject and source ids alongside names", %{conn: conn} do
+      {source, media_item, _task, _job} = create_media_item_job()
+      {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})
+
+      assert html =~ "Media ##{media_item.id}"
+      assert html =~ media_item.title
+      assert html =~ "Source ##{source.id}"
+      assert html =~ source.custom_name
+    end
+
     test "listens for job:state change events", %{conn: conn} do
       {_source, _media_item, _task, _job} = create_media_item_job()
       {:ok, _view, _html} = live_isolated(conn, JobTableLive, session: %{})
@@ -100,6 +110,36 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       assert html =~ "512.0 B of 1.0 KB done, 512.0 B remaining"
       assert html =~ "ETA 30s"
       assert html =~ "Stop"
+    end
+
+    test "shows a clearer waiting message while prechecking media", %{conn: conn} do
+      {_source, _media_item, task, _job} = create_media_item_job()
+
+      {:ok, _task} =
+        Tasks.update_task_progress(task, %{
+          progress_percent: 0.0,
+          progress_status: "Prechecking media"
+        })
+
+      {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})
+
+      assert html =~ "Checking the media before starting the download"
+    end
+
+    test "shows a clearer waiting message when total size is unknown", %{conn: conn} do
+      {_source, _media_item, task, _job} = create_media_item_job()
+
+      {:ok, _task} =
+        Tasks.update_task_progress(task, %{
+          progress_percent: 12.5,
+          progress_status: "Downloading without known total",
+          progress_downloaded_bytes: 2048
+        })
+
+      {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})
+
+      assert html =~ "Downloading without known total"
+      assert html =~ "2.0 KB downloaded"
     end
 
     test "listens for job:progress change events", %{conn: conn} do

@@ -90,6 +90,31 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert redirected_to(conn) == ~p"/?onboarding=1"
     end
 
+    test "redirects to show for a single video URL", %{conn: conn} do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           id: "72maj9FLQZI",
+           title: "One-Off Video",
+           channel: "PinchflatTestChannel",
+           channel_id: "UCQH2",
+           playlist_id: nil,
+           playlist_title: nil,
+           filename: "/tmp/test/media/one-off.mp4"
+         })}
+      end)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: %{
+            media_profile_id: media_profile_fixture().id,
+            original_url: "https://www.youtube.com/watch?v=72maj9FLQZI"
+          }
+        )
+
+      assert %{id: _id} = redirected_params(conn)
+    end
+
     test "renders correct layout on error when onboarding", %{conn: conn, invalid_attrs: invalid_attrs} do
       Settings.set(onboarding: true)
       conn = post(conn, ~p"/sources", source: invalid_attrs)
@@ -197,6 +222,14 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/#{source}")
 
       assert html_response(conn, 200) =~ "Active Tasks"
+    end
+
+    test "renders the job queue tab label", %{conn: conn} do
+      source = source_fixture()
+
+      conn = get(conn, ~p"/sources/#{source}")
+
+      assert html_response(conn, 200) =~ "Job Queue"
     end
   end
 

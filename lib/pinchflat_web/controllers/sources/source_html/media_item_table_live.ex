@@ -32,13 +32,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             Showing <.localized_number number={length(@records)} /> of <.localized_number number={@filtered_record_count} />
           </span>
         </span>
-        
+
         <div class="bg-meta-4 rounded-md">
           <div class="relative">
             <span class="absolute left-2 top-1/2 -translate-y-1/2 flex">
               <.icon name="hero-magnifying-glass" />
             </span>
-            
+
             <form phx-change="search_term" phx-submit="search_term">
               <input
                 type="text"
@@ -54,32 +54,30 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       </header>
       <.table rows={@records} table_class="text-white">
         <:col :let={media_item} label="Title" class="max-w-xs">
-          <section class="flex items-center space-x-1 gap-2">
-            <.tooltip
-              :if={media_item.last_error}
-              tooltip={media_item.last_error}
-              position="bottom-right"
-              tooltip_class="w-64"
-            >
-              <.icon name="hero-exclamation-circle-solid" class="text-red-500" />
-            </.tooltip>
-            <.icon_button
-              :if={@media_state != "downloaded"}
-              icon_name="hero-arrow-down-tray"
-              class="h-10 w-10"
-              phx-click="force_download"
-              phx-value-media-id={media_item.id}
-              data-confirm="Are you sure you want to force a download of this media?"
-              tooltip="Force Download"
-            />
-            <span class="truncate">
-              <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
-                {media_item.title}
-              </.subtle_link>
-            </span>
+          <section class="space-y-2">
+            <div class="flex items-center space-x-1 gap-2">
+              <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
+              <.icon_button
+                :if={@media_state != "downloaded"}
+                icon_name="hero-arrow-down-tray"
+                class="h-10 w-10"
+                phx-click="force_download"
+                phx-value-media-id={media_item.id}
+                data-confirm="Are you sure you want to force a download of this media?"
+                tooltip="Force Download"
+              />
+              <span class="truncate">
+                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                  {media_item.title}
+                </.subtle_link>
+              </span>
+            </div>
+            <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
+              {media_item.last_error}
+            </div>
           </section>
         </:col>
-        
+
         <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
           <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
         </:col>
@@ -409,9 +407,16 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         "#{readable_byte_size(downloaded_bytes)} downloaded"
 
       true ->
-        task.progress_status || "Queued"
+        waiting_size_label(task.progress_status)
     end
   end
+
+  defp waiting_size_label("Queued"), do: "Queued"
+  defp waiting_size_label("Prechecking media"), do: "Prechecking media"
+  defp waiting_size_label("Waiting for transfer to start"), do: "Waiting for transfer to start"
+  defp waiting_size_label("Downloading without known total"), do: "Downloading without known total"
+  defp waiting_size_label(nil), do: "Queued"
+  defp waiting_size_label(status), do: status
 
   defp readable_byte_size(bytes) do
     {num, suffix} = NumberUtils.human_byte_size(bytes, precision: 1)

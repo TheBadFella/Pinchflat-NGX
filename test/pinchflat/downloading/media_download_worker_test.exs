@@ -147,6 +147,27 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       end)
     end
 
+    test "does not set the job to retryable if the remote source rate limits the download", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, "{}"}
+
+        _url, :download, _opts, _ot, _addl ->
+          {:error, "ERROR: unable to download video data: HTTP Error 429: Too Many Requests", 1}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert {:ok, :non_retry} = MediaDownloadWorker.perform(job)
+
+      task = Repo.reload!(task)
+      media_item = Repo.reload!(media_item)
+
+      assert task.progress_status == "Stopped: rate limited by remote source"
+      assert media_item.last_error =~ "HTTP Error 429"
+    end
+
     test "does not set the job to retryable you aren't a member", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :get_downloadable_status, _opts, _ot, _addl ->

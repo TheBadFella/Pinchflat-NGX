@@ -106,7 +106,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     default_opts = [
       :simulate,
       :skip_download,
-      :ignore_no_formats_error
+      :ignore_no_formats_error,
+      :no_playlist
     ]
 
     all_command_opts = default_opts ++ command_opts

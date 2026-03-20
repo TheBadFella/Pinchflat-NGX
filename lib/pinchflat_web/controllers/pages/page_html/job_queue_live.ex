@@ -10,6 +10,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
   import Ecto.Query, warn: false
 
   alias Pinchflat.Repo
+  alias Pinchflat.Tasks.Task
   alias PinchflatWeb.CustomComponents.TextComponents
 
   @refresh_interval_ms 5_000
@@ -41,7 +42,6 @@ defmodule Pinchflat.Pages.JobQueueLive do
           state="executing"
           show_cancel={true}
         />
-
         <.job_section
           :if={@available_jobs != []}
           title="Available Jobs (waiting to run)"
@@ -49,7 +49,6 @@ defmodule Pinchflat.Pages.JobQueueLive do
           state="available"
           show_cancel={true}
         />
-
         <.job_section
           :if={@scheduled_jobs != []}
           title="Scheduled Jobs"
@@ -57,7 +56,6 @@ defmodule Pinchflat.Pages.JobQueueLive do
           state="scheduled"
           show_cancel={true}
         />
-
         <.job_section
           :if={@retryable_jobs != []}
           title="Retryable Jobs (will retry)"
@@ -65,7 +63,6 @@ defmodule Pinchflat.Pages.JobQueueLive do
           state="retryable"
           show_cancel={true}
         />
-
         <.job_section
           :if={@failed_jobs != []}
           title="Recently Failed Jobs"
@@ -73,7 +70,6 @@ defmodule Pinchflat.Pages.JobQueueLive do
           state="discarded"
           show_cancel={false}
         />
-
         <div
           :if={
             @executing_jobs == [] && @available_jobs == [] && @scheduled_jobs == [] && @retryable_jobs == [] &&
@@ -107,6 +103,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
     ~H"""
     <div class={"rounded-lg border-l-4 bg-boxdark p-4 #{@color_classes}"}>
       <div class="text-2xl font-bold">{@count}</div>
+
       <div class="text-sm text-gray-400">{@label}</div>
     </div>
     """
@@ -123,27 +120,36 @@ defmodule Pinchflat.Pages.JobQueueLive do
       <h3 class="text-lg font-semibold mb-3">{@title}</h3>
       <div class="max-w-full overflow-x-auto">
         <.table rows={@jobs} table_class="text-white text-sm">
-          <:col :let={job} label="Worker">
-            {worker_to_short_name(job.worker)}
+          <:col :let={row} label="Worker">
+            {worker_to_short_name(row.job.worker)}
           </:col>
-          <:col :let={job} label="Subject" class="truncate max-w-xs">
-            {job_to_subject(job)}
+          <:col :let={row} label="Subject" class="max-w-sm">
+            <div class="whitespace-normal break-words">
+              <div class="font-medium">{row_to_subject_label(row)}</div>
+              <div class="text-xs text-gray-400">{row_to_subject_name(row)}</div>
+            </div>
           </:col>
-          <:col :let={job} label="Attempt">
-            {job.attempt}/{job.max_attempts}
+          <:col :let={row} label="Source" class="max-w-sm">
+            <div class="whitespace-normal break-words">
+              <div class="font-medium">{row_to_source_label(row)}</div>
+              <div class="text-xs text-gray-400">{row_to_source_name(row)}</div>
+            </div>
           </:col>
-          <:col :let={job} label="Scheduled">
-            {format_datetime(job.scheduled_at)}
+          <:col :let={row} label="Attempt">
+            {row.job.attempt}/{row.job.max_attempts}
           </:col>
-          <:col :let={job} :if={@state == "discarded"} label="Error" class="truncate max-w-xs">
-            <.tooltip :if={job.errors != []} tooltip={format_errors(job.errors)} position="left" tooltip_class="w-96">
-              <span class="text-red-400 cursor-help">{truncate_error(job.errors)}</span>
-            </.tooltip>
+          <:col :let={row} label="Scheduled">
+            {format_datetime(row.job.scheduled_at)}
           </:col>
-          <:col :let={job} :if={@show_cancel} label="">
+          <:col :let={row} :if={@state == "discarded"} label="Error" class="max-w-md">
+            <div class="whitespace-pre-wrap break-words text-xs text-red-300">
+              {format_errors(row.job.errors)}
+            </div>
+          </:col>
+          <:col :let={row} :if={@show_cancel} label="">
             <button
               phx-click="cancel_job"
-              phx-value-job-id={job.id}
+              phx-value-job-id={row.job.id}
               class="text-red-400 hover:text-red-300 text-xs"
               data-confirm="Are you sure you want to cancel this job?"
             >
@@ -156,13 +162,16 @@ defmodule Pinchflat.Pages.JobQueueLive do
     """
   end
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
+    source_id = Map.get(session, "source_id")
+    source_id = if is_binary(source_id), do: String.to_integer(source_id), else: source_id
+
     if connected?(socket) do
       PinchflatWeb.Endpoint.subscribe("job:state")
       Process.send_after(self(), :tick, @refresh_interval_ms)
     end
 
-    {:ok, assign(socket, refresh_interval: @refresh_interval_ms) |> fetch_job_data()}
+    {:ok, assign(socket, refresh_interval: @refresh_interval_ms, source_id: source_id) |> fetch_job_data()}
   end
 
   def handle_event("refresh", _params, socket) do
@@ -186,25 +195,24 @@ defmodule Pinchflat.Pages.JobQueueLive do
   end
 
   defp fetch_job_data(socket) do
-    stats = fetch_job_stats()
+    stats = fetch_job_stats(socket.assigns.source_id)
 
     assign(socket,
       stats: stats,
-      executing_jobs: fetch_jobs_by_state("executing", 10),
-      available_jobs: fetch_jobs_by_state("available", 10),
-      scheduled_jobs: fetch_jobs_by_state("scheduled", 10),
-      retryable_jobs: fetch_jobs_by_state("retryable", 10),
-      failed_jobs: fetch_failed_jobs(10)
+      executing_jobs: fetch_jobs_by_state("executing", 10, socket.assigns.source_id),
+      available_jobs: fetch_jobs_by_state("available", 10, socket.assigns.source_id),
+      scheduled_jobs: fetch_jobs_by_state("scheduled", 10, socket.assigns.source_id),
+      retryable_jobs: fetch_jobs_by_state("retryable", 10, socket.assigns.source_id),
+      failed_jobs: fetch_failed_jobs(10, socket.assigns.source_id)
     )
   end
 
-  defp fetch_job_stats do
+  defp fetch_job_stats(source_id) do
     query =
-      from(j in Oban.Job,
-        where: j.state in ["executing", "available", "scheduled", "retryable"],
-        group_by: j.state,
-        select: {j.state, count(j.id)}
-      )
+      base_job_scope(source_id)
+      |> where([_t, j], j.state in ["executing", "available", "scheduled", "retryable"])
+      |> group_by([_t, j], j.state)
+      |> select([_t, j], {j.state, count(j.id)})
 
     stats_map = query |> Repo.all() |> Enum.into(%{})
 
@@ -216,33 +224,54 @@ defmodule Pinchflat.Pages.JobQueueLive do
     }
   end
 
-  defp fetch_jobs_by_state(state, limit) do
-    order_by_clause =
+  defp fetch_jobs_by_state(state, limit, source_id) do
+    query =
+      base_job_query(source_id)
+      |> where([_t, j], j.state == ^state)
+
+    query =
       case state do
-        "executing" -> [desc: :attempted_at]
-        "scheduled" -> [asc: :scheduled_at]
-        _ -> [asc: :id]
+        "executing" -> order_by(query, [_t, j], desc: j.attempted_at)
+        "scheduled" -> order_by(query, [_t, j], asc: j.scheduled_at)
+        _ -> order_by(query, [_t, j], asc: j.id)
       end
 
-    from(j in Oban.Job,
-      where: j.state == ^state,
-      order_by: ^order_by_clause,
-      limit: ^limit
-    )
+    query
+    |> limit(^limit)
     |> Repo.all()
   end
 
-  defp fetch_failed_jobs(limit) do
+  defp fetch_failed_jobs(limit, source_id) do
     # Show recently failed jobs from the last 24 hours
     cutoff = DateTime.utc_now() |> DateTime.add(-24, :hour)
 
-    from(j in Oban.Job,
-      where: j.state in ["discarded", "cancelled"],
-      where: j.inserted_at > ^cutoff,
-      order_by: [desc: :inserted_at],
-      limit: ^limit
-    )
+    base_job_query(source_id)
+    |> where([_t, j], j.state in ["discarded", "cancelled"])
+    |> where([_t, j], j.inserted_at > ^cutoff)
+    |> order_by([_t, j], desc: j.inserted_at)
+    |> limit(^limit)
     |> Repo.all()
+  end
+
+  defp base_job_scope(nil) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      left_join: mi in assoc(t, :media_item),
+      left_join: mi_source in assoc(mi, :source),
+      left_join: source in assoc(t, :source)
+    )
+  end
+
+  defp base_job_scope(source_id) do
+    from([t, j, mi, mi_source, source] in base_job_scope(nil),
+      where: source.id == ^source_id or mi_source.id == ^source_id
+    )
+  end
+
+  defp base_job_query(source_id) do
+    from([t, j, mi, mi_source, source] in base_job_scope(source_id),
+      preload: [job: j, media_item: {mi, source: mi_source}, source: source]
+    )
   end
 
   defp worker_to_short_name(worker) do
@@ -253,10 +282,29 @@ defmodule Pinchflat.Pages.JobQueueLive do
     |> String.replace(~r/([a-z])([A-Z])/, "\\1 \\2")
   end
 
-  defp job_to_subject(job) do
-    case job.args do
-      %{"id" => id} -> "ID: #{id}"
-      _ -> "N/A"
+  defp row_to_subject_label(%{source: source}) when not is_nil(source), do: "Source ##{source.id}"
+  defp row_to_subject_label(%{media_item: media_item}) when not is_nil(media_item), do: "Media ##{media_item.id}"
+  defp row_to_subject_label(_row), do: "Unknown"
+
+  defp row_to_subject_name(%{source: source}) when not is_nil(source), do: source.custom_name
+  defp row_to_subject_name(%{media_item: media_item}) when not is_nil(media_item), do: media_item.title
+  defp row_to_subject_name(_row), do: "Unknown"
+
+  defp row_to_source(%{source: source}) when not is_nil(source), do: source
+  defp row_to_source(%{media_item: %{source: source}}) when not is_nil(source), do: source
+  defp row_to_source(_row), do: nil
+
+  defp row_to_source_label(row) do
+    case row_to_source(row) do
+      nil -> "-"
+      source -> "Source ##{source.id}"
+    end
+  end
+
+  defp row_to_source_name(row) do
+    case row_to_source(row) do
+      nil -> "-"
+      source -> source.custom_name
     end
   end
 
@@ -279,22 +327,5 @@ defmodule Pinchflat.Pages.JobQueueLive do
         other -> inspect(other)
       end
     end)
-  end
-
-  defp truncate_error([]), do: "No error"
-
-  defp truncate_error([error | _]) do
-    msg =
-      case error do
-        %{"error" => msg} -> msg
-        msg when is_binary(msg) -> msg
-        other -> inspect(other)
-      end
-
-    if String.length(msg) > 50 do
-      String.slice(msg, 0, 50) <> "..."
-    else
-      msg
-    end
   end
 end

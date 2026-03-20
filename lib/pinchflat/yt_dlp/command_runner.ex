@@ -251,11 +251,14 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   defp parse_progress_line("pinchflat-progress:" <> progress_payload) do
     case String.split(progress_payload, "|") do
       [percent, downloaded_bytes, total_bytes, estimated_total_bytes, eta, _speed] ->
+        downloaded_bytes = parse_integer(downloaded_bytes)
+        total_bytes = parse_integer(total_bytes) || parse_integer(estimated_total_bytes)
+
         %{
           progress_percent: parse_percent(percent),
-          progress_status: "Downloading",
-          progress_downloaded_bytes: parse_integer(downloaded_bytes),
-          progress_total_bytes: parse_integer(total_bytes) || parse_integer(estimated_total_bytes),
+          progress_status: progress_status_for(downloaded_bytes, total_bytes),
+          progress_downloaded_bytes: downloaded_bytes,
+          progress_total_bytes: total_bytes,
           progress_eta_seconds: parse_integer(eta)
         }
 
@@ -276,6 +279,10 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       :error -> nil
     end
   end
+
+  defp progress_status_for(nil, nil), do: "Waiting for transfer to start"
+  defp progress_status_for(_downloaded_bytes, nil), do: "Downloading without known total"
+  defp progress_status_for(_downloaded_bytes, _total_bytes), do: "Downloading"
 
   defp parse_integer(""), do: nil
   defp parse_integer("NA"), do: nil
