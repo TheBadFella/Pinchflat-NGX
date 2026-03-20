@@ -23,10 +23,10 @@ defmodule PinchflatWeb.SourceControllerTest do
         create_attrs: %{
           media_profile_id: media_profile.id,
           collection_type: "channel",
-          original_url: "https://www.youtube.com/source/abc123"
+          original_url: "https://www.youtube.com/@pinchflattest"
         },
         update_attrs: %{
-          original_url: "https://www.youtube.com/source/321xyz"
+          original_url: "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
         },
         invalid_attrs: %{original_url: nil, media_profile_id: nil}
       }
@@ -142,7 +142,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert redirected_to(conn) == ~p"/sources/#{source}"
 
       conn = get(conn, ~p"/sources/#{source}")
-      assert html_response(conn, 200) =~ "https://www.youtube.com/source/321xyz"
+      assert html_response(conn, 200) =~ "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
     end
 
     test "renders errors when data is invalid", %{

@@ -49,19 +49,19 @@
         )}
       </:tab>
 
+      <:tab title="Active Tasks" id="active-tasks">
+        {live_render(
+          @conn,
+          Pinchflat.Pages.JobTableLive,
+          session: %{"source_id" => @source.id}
+        )}
+      </:tab>
+
       <:tab title="Downloaded" id="downloaded">
         {live_render(
           @conn,
           PinchflatWeb.Sources.MediaItemTableLive,
           session: %{"source_id" => @source.id, "media_state" => "downloaded"}
-        )}
-      </:tab>
-
-      <:tab title="Excluded" id="other">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "other"}
         )}
       </:tab>
 
@@ -73,11 +73,11 @@
         )}
       </:tab>
 
-      <:tab title="Active Tasks" id="active-tasks">
+      <:tab title="Excluded" id="other">
         {live_render(
           @conn,
-          Pinchflat.Pages.JobTableLive,
-          session: %{"source_id" => @source.id}
+          PinchflatWeb.Sources.MediaItemTableLive,
+          session: %{"source_id" => @source.id, "media_state" => "other"}
         )}
       </:tab>
     </.tabbed_layout>
