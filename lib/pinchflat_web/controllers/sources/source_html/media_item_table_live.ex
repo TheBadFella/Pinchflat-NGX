@@ -3,8 +3,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   use Pinchflat.Media.MediaQuery
 
   alias Pinchflat.Repo
-  alias Pinchflat.Sources
   alias Pinchflat.Utils.NumberUtils
+  alias Pinchflat.Media
+  alias Pinchflat.Sources
+  alias Pinchflat.Downloading.MediaDownloadWorker
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
 
@@ -47,7 +49,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       </header>
       <.table rows={@records} table_class="text-white">
         <:col :let={media_item} label="Title" class="max-w-xs">
-          <section class="flex items-center space-x-1">
+          <section class="flex items-center space-x-1 gap-2">
             <.tooltip
               :if={media_item.last_error}
               tooltip={media_item.last_error}
@@ -56,6 +58,15 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             >
               <.icon name="hero-exclamation-circle-solid" class="text-red-500" />
             </.tooltip>
+            <.icon_button
+              :if={@media_state != "downloaded"}
+              icon_name="hero-arrow-down-tray"
+              class="h-10 w-10"
+              phx-click="force_download"
+              phx-value-media-id={media_item.id}
+              data-confirm="Are you sure you want to force a download of this media?"
+              tooltip="Force Download"
+            />
             <span class="truncate">
               <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
                 {media_item.title}
@@ -123,6 +134,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     new_assigns = fetch_pagination_attributes(socket.assigns.base_query, 1, search_term)
 
     {:noreply, assign(socket, new_assigns)}
+  end
+
+  def handle_event("force_download", %{"media-id" => media_id}, socket) do
+    media_item = Media.get_media_item!(media_id)
+    MediaDownloadWorker.kickoff_with_task(media_item, %{force: true})
+    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+
+    {:noreply, socket}
   end
 
   # This, along with the handle_info below, is a pattern to reload _all_

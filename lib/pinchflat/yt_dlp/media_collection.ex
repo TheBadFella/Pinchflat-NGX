@@ -6,6 +6,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
 
   require Logger
 
+  alias Pinchflat.Sources.Source
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
@@ -70,6 +71,14 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   Returns {:ok, map()} | {:error, any, ...}.
   """
   def get_source_details(source_url, command_opts \\ [], addl_opts \\ []) do
+    if Source.youtube_video_url?(source_url) do
+      get_single_video_source_details(source_url, command_opts, addl_opts)
+    else
+      get_collection_source_details(source_url, command_opts, addl_opts)
+    end
+  end
+
+  defp get_collection_source_details(source_url, command_opts, addl_opts) do
     # `ignore_no_formats_error` is necessary because yt-dlp will error out if
     # the first video has not released yet (ie: is a premier). We don't care about
     # available formats since we're just getting the source details
@@ -87,6 +96,26 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
          {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
       {:ok, format_source_details(parsed_json)}
+    else
+      {:error, %Jason.DecodeError{}} -> {:error, "Error decoding JSON response"}
+      err -> err
+    end
+  end
+
+  defp get_single_video_source_details(source_url, command_opts, addl_opts) do
+    default_opts = [
+      :simulate,
+      :skip_download,
+      :ignore_no_formats_error
+    ]
+
+    all_command_opts = default_opts ++ command_opts
+    output_template = "%(.{id,title,channel,channel_id,playlist_id,playlist_title,filename})j"
+    action = :get_source_details
+
+    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
+         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
+      {:ok, format_single_video_source_details(parsed_json)}
     else
       {:error, %Jason.DecodeError{}} -> {:error, "Error decoding JSON response"}
       err -> err
@@ -135,6 +164,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   defp format_source_details(response) do
     # NOTE: I should probably make this a struct some day
     %{
+      source_type: :collection,
       channel_id: response["channel_id"],
       channel_name: response["channel"],
       playlist_id: response["playlist_id"],
@@ -142,6 +172,19 @@ defmodule Pinchflat.YtDlp.MediaCollection do
       # It's not a name, it's a path dammit!
       # This actually isn't used for the inital response - it's
       # used later to update a source's metadata
+      filepath: response["filename"]
+    }
+  end
+
+  defp format_single_video_source_details(response) do
+    %{
+      source_type: :video,
+      video_id: response["id"],
+      video_title: response["title"],
+      channel_id: response["channel_id"],
+      channel_name: response["channel"],
+      playlist_id: response["playlist_id"],
+      playlist_name: response["playlist_title"],
       filepath: response["filename"]
     }
   end

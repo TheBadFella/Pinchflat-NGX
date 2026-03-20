@@ -71,7 +71,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   operation(:create,
     operation_id: "Sources.SourceController.create",
     summary: "Create source",
-    description: "Creates a new source from a YouTube channel or playlist URL",
+    description: "Creates a new source from a YouTube channel, playlist, or single video URL",
     request_body: {"Source creation parameters", "application/json", Schemas.CreateSourceRequest},
     responses: [
       created: {"Source created successfully", "application/json", Schemas.Source},

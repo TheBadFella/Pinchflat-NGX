@@ -7,6 +7,7 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
   alias Pinchflat.YtDlp.MediaCollection
 
   @channel_url "https://www.youtube.com/c/PinchflatTestChannel"
+  @video_url "https://www.youtube.com/watch?v=72maj9FLQZI"
 
   describe "get_media_attributes_for_collection/2" do
     test "returns a list of video attributes with no blank elements" do
@@ -149,6 +150,33 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl_opts -> {:ok, "Not JSON"} end)
 
       assert {:error, "Error decoding JSON response"} = MediaCollection.get_source_details(@channel_url)
+    end
+
+    test "returns video details for direct video URLs" do
+      expect(YtDlpRunnerMock, :run, fn @video_url, :get_source_details, _opts, ot, _addl_opts ->
+        assert ot == "%(.{id,title,channel,channel_id,playlist_id,playlist_title,filename})j"
+
+        Phoenix.json_library().encode(%{
+          id: "72maj9FLQZI",
+          title: "One-Off Video",
+          channel: "PinchflatTestChannel",
+          channel_id: "UCQH2",
+          playlist_id: nil,
+          playlist_title: nil,
+          filename: "/tmp/test/media/one-off.mp4"
+        })
+      end)
+
+      assert {:ok, res} = MediaCollection.get_source_details(@video_url)
+
+      assert %{
+               source_type: :video,
+               video_id: "72maj9FLQZI",
+               video_title: "One-Off Video",
+               channel_id: "UCQH2",
+               channel_name: "PinchflatTestChannel",
+               filepath: "/tmp/test/media/one-off.mp4"
+             } = res
     end
   end
 

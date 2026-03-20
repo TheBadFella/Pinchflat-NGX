@@ -162,6 +162,24 @@ defmodule Pinchflat.SourcesTest do
       assert String.starts_with?(source.collection_id, "some_playlist_id_")
     end
 
+    test "creates a source and adds name + ID for single videos" do
+      expect(YtDlpRunnerMock, :run, &video_mock/5)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/watch?v=72maj9FLQZI",
+        fast_index: true,
+        index_frequency_minutes: 123
+      }
+
+      assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs)
+      assert source.collection_type == :video
+      assert source.collection_name == "some one-off video"
+      assert source.collection_id == "72maj9FLQZI"
+      refute source.fast_index
+      assert source.index_frequency_minutes == 0
+    end
+
     test "adds an error if the runner fails" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl -> {:error, "some error", 1} end)
 
@@ -342,6 +360,20 @@ defmodule Pinchflat.SourcesTest do
         media_profile_id: media_profile_fixture().id,
         original_url: "https://www.youtube.com/channel/abc123",
         fast_index: false
+      }
+
+      assert {:ok, %Source{}} = Sources.create_source(valid_attrs)
+
+      refute_enqueued(worker: FastIndexingWorker)
+    end
+
+    test "creation will not schedule a fast indexing job for single video sources" do
+      expect(YtDlpRunnerMock, :run, &video_mock/5)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/watch?v=72maj9FLQZI",
+        fast_index: true
       }
 
       assert {:ok, %Source{}} = Sources.create_source(valid_attrs)
@@ -989,7 +1021,11 @@ defmodule Pinchflat.SourcesTest do
         "https://www.youtube.com/user/YouTubeCreators",
         "https://www.youtube.com/YouTubeCreators",
         "https://www.youtube.com/playlist?list=PLpjK416fmKwRtq-9-O_NbZlkW0k6zu2Wn",
-        "https://www.youtube.com/playlist?list=UUkRfArvrzheW2E7b6SVT7vQ"
+        "https://www.youtube.com/playlist?list=UUkRfArvrzheW2E7b6SVT7vQ",
+        "https://www.youtube.com/watch?v=72maj9FLQZI",
+        "https://youtu.be/72maj9FLQZI",
+        "https://www.youtube.com/shorts/Dq0eH-ZhQTU",
+        "https://www.youtube.com/embed/X64LHlfx4qg"
       ]
 
       Enum.each(valid_urls, fn url ->
@@ -997,15 +1033,14 @@ defmodule Pinchflat.SourcesTest do
       end)
     end
 
-    test "fails when an original URL points to a video" do
+    test "fails when a YouTube URL is not a supported channel, playlist, or single video URL" do
       source = source_fixture()
 
       invalid_urls = [
-        "https://www.youtube.com/watch?v=72maj9FLQZI",
-        "https://youtu.be/72maj9FLQZI",
-        "https://www.youtube.com/watch?v=1FwGFhMAmBo&list=PLpjK416fmKwRtq-9-O_NbZlkW0k6zu2Wn",
-        "https://www.youtube.com/shorts/Dq0eH-ZhQTU",
-        "https://www.youtube.com/embed/X64LHlfx4qg"
+        "https://www.youtube.com/feed/subscriptions",
+        "https://www.youtube.com/results?search_query=pinchflat",
+        "https://www.youtube.com/watch",
+        "https://youtu.be/"
       ]
 
       Enum.each(invalid_urls, fn url ->
@@ -1039,6 +1074,10 @@ defmodule Pinchflat.SourcesTest do
     {:ok, channel_return()}
   end
 
+  defp video_mock(_url, :get_source_details, _opts, _ot, _addl) do
+    {:ok, video_return()}
+  end
+
   defp playlist_return do
     Phoenix.json_library().encode!(%{
       channel: nil,
@@ -1056,6 +1095,18 @@ defmodule Pinchflat.SourcesTest do
       channel_id: channel_id,
       playlist_id: channel_id,
       playlist_title: "some channel name - videos"
+    })
+  end
+
+  defp video_return do
+    Phoenix.json_library().encode!(%{
+      id: "72maj9FLQZI",
+      title: "some one-off video",
+      channel: "some channel name",
+      channel_id: "some_channel_id_12345678",
+      playlist_id: nil,
+      playlist_title: nil,
+      filename: "/tmp/test/media/some-one-off-video.mp4"
     })
   end
 end
