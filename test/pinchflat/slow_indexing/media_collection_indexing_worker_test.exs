@@ -131,6 +131,42 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
       assert length(all_enqueued(worker: MediaDownloadWorker)) == 3
     end
 
+    test "does not enqueue duplicate downloads for single video sources" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, addl_opts ->
+        assert :no_playlist in opts
+
+        output =
+          Phoenix.json_library().encode!(%{
+            id: "single-video-1",
+            title: "One-Off Video",
+            original_url: "https://example.com/video1",
+            live_status: "not_live",
+            description: "desc1",
+            aspect_ratio: 1.67,
+            duration: 12.34,
+            upload_date: Date.utc_today() |> Calendar.strftime("%Y%m%d")
+          })
+
+        output_filepath = Keyword.fetch!(addl_opts, :output_filepath)
+        File.write!(output_filepath, output <> "\n")
+        Process.sleep(50)
+
+        {:ok, output}
+      end)
+
+      source =
+        source_fixture(
+          collection_type: :video,
+          original_url: "https://www.youtube.com/watch?v=72maj9FLQZI",
+          index_frequency_minutes: 0,
+          last_indexed_at: nil
+        )
+
+      perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+
+      assert length(all_enqueued(worker: MediaDownloadWorker)) == 1
+    end
+
     test "starts a job for any pending media item even if it's from another run" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}

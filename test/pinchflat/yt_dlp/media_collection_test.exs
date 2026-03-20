@@ -153,7 +153,8 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
     end
 
     test "returns video details for direct video URLs" do
-      expect(YtDlpRunnerMock, :run, fn @video_url, :get_source_details, _opts, ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, fn @video_url, :get_source_details, opts, ot, _addl_opts ->
+        assert :no_playlist in opts
         assert ot == "%(.{id,title,channel,channel_id,playlist_id,playlist_title,filename})j"
 
         Phoenix.json_library().encode(%{

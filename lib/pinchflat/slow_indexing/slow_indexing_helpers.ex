@@ -137,6 +137,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
     command_opts =
       [output: DownloadOptionBuilder.build_output_path_for(source)] ++
+        build_single_video_options(source) ++
         DownloadOptionBuilder.build_quality_options_for(source) ++
         build_download_archive_options(source, was_forced) ++
         build_dateafter_options(source)
@@ -173,7 +174,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
     case Media.create_media_item_from_backend_attrs(source, media_attrs) do
       {:ok, %MediaItem{} = media_item} ->
-        DownloadingHelpers.kickoff_download_if_pending(media_item)
+        maybe_kickoff_download_if_pending(source, media_item)
 
       {:error, changeset} ->
         changeset
@@ -244,6 +245,9 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
     [:break_on_existing, download_archive: archive_file]
   end
+
+  defp build_single_video_options(%Source{collection_type: :video}), do: [:no_playlist]
+  defp build_single_video_options(_source), do: []
 
   # Builds the --dateafter option for yt-dlp to skip videos older than a calculated
   # effective scan date. This is determined by taking the most recent of:
@@ -327,6 +331,16 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     else
       attrs
     end
+  end
+
+  defp maybe_kickoff_download_if_pending(%Source{collection_type: :video}, _media_item) do
+    # Single-video indexing completes quickly and does a final pending-download sweep.
+    # Skipping the early kickoff avoids racing that sweep and enqueueing a duplicate download.
+    :ok
+  end
+
+  defp maybe_kickoff_download_if_pending(_source, media_item) do
+    DownloadingHelpers.kickoff_download_if_pending(media_item)
   end
 
   # Kicks off metadata storage if source images should be downloaded but are missing.

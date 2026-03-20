@@ -168,8 +168,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         use_cookies: should_use_cookies
       ] ++ if emit_progress, do: [progress_handler: Keyword.fetch!(override_opts, :progress_handler)], else: []
 
+    maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Prechecking media"})
+
     case {YtDlpMedia.get_downloadable_status(url, use_cookies: should_use_cookies), should_use_cookies} do
       {{:ok, :downloadable}, _} ->
+        maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Waiting for transfer to start"})
         YtDlpMedia.download(url, options, runner_opts)
 
       {{:ok, :ignorable}, _} ->
@@ -218,5 +221,12 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       "Sign in to confirm",
       "This video is available to this channel's members"
     ]
+  end
+
+  defp maybe_report_progress(override_opts, attrs) do
+    case Keyword.get(override_opts, :progress_handler) do
+      nil -> :ok
+      progress_handler -> progress_handler.(attrs)
+    end
   end
 end
