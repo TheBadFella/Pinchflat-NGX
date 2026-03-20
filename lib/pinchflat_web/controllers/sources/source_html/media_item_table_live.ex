@@ -88,6 +88,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
     page = 1
     media_state = session["media_state"]
+
     source =
       session["source_id"]
       |> Sources.get_source!()
@@ -263,7 +264,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp before_cutoff?(media_item, %{download_cutoff_date: cutoff_date})
        when not is_nil(cutoff_date) and not is_nil(media_item.uploaded_at) do
-    DateTime.to_date(media_item.uploaded_at) < cutoff_date
+    Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
   end
 
   defp before_cutoff?(_media_item, _source), do: false

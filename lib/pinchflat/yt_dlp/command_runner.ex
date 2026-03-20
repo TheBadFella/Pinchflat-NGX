@@ -35,6 +35,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
     output_filepath = generate_output_filepath(addl_opts)
     print_to_file_opts = [{:print_to_file, output_template}, output_filepath]
+
     user_configured_opts =
       cookie_file_options(addl_opts) ++
         rate_limit_options(addl_opts) ++

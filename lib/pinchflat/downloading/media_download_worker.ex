@@ -126,6 +126,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     end
   end
 
+  defp maybe_update_progress(nil, _attrs), do: :ok
+
   defp maybe_update_progress(job_id, attrs) do
     case Tasks.get_task_by_job_id(job_id) do
       nil ->

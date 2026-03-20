@@ -36,11 +36,12 @@ defmodule PinchflatWeb.ApiSpec do
     |> Enum.reject(&html_only_action?/1)
     |> Enum.reduce(%{}, fn route, acc ->
       path = route_to_path(route.path)
-      method = String.downcase(to_string(route.verb)) |> String.to_atom()
+      method = verb_to_operation_key(route.verb)
 
-      case get_operation(route.plug, route.plug_opts) do
-        nil -> acc
-        operation -> Map.update(acc, path, %{method => operation}, &Map.put(&1, method, operation))
+      case {method, get_operation(route.plug, route.plug_opts)} do
+        {nil, _operation} -> acc
+        {_method, nil} -> acc
+        {method, operation} -> Map.update(acc, path, %{method => operation}, &Map.put(&1, method, operation))
       end
     end)
     |> Enum.into(%{}, fn {path, operations} ->
@@ -52,6 +53,20 @@ defmodule PinchflatWeb.ApiSpec do
   defp route_to_path(path) do
     path
     |> String.replace(~r/:([^\/]+)/, "{\\1}")
+  end
+
+  defp verb_to_operation_key(verb) do
+    case String.downcase(to_string(verb)) do
+      "delete" -> :delete
+      "get" -> :get
+      "head" -> :head
+      "options" -> :options
+      "patch" -> :patch
+      "post" -> :post
+      "put" -> :put
+      "trace" -> :trace
+      _ -> nil
+    end
   end
 
   defp html_only_action?(route) do

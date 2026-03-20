@@ -281,6 +281,7 @@ defmodule Pinchflat.TasksTest do
 
     test "broadcasts progress updates" do
       task = task_fixture()
+      job_id = task.job_id
 
       PinchflatWeb.Endpoint.subscribe("job:progress")
 
@@ -289,8 +290,10 @@ defmodule Pinchflat.TasksTest do
       assert_receive %Phoenix.Socket.Broadcast{
         topic: "job:progress",
         event: "update",
-        payload: %{job_id: ^task.job_id}
+        payload: %{job_id: received_job_id}
       }
+
+      assert received_job_id == job_id
     end
   end
 end

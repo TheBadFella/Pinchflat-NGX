@@ -130,11 +130,7 @@ defmodule Pinchflat.Pages.JobTableLive do
           <span>{Float.round(@percent, 1)}%</span>
         </div>
         <div class="h-2 overflow-hidden rounded-full bg-slate-700">
-          <div
-            class="h-full rounded-full bg-blue-500 transition-all duration-300"
-            style={"width: #{@width_percent}%"}
-          >
-          </div>
+          <div class="h-full rounded-full bg-blue-500 transition-all duration-300" style={"width: #{@width_percent}%"}></div>
         </div>
       </div>
       """
