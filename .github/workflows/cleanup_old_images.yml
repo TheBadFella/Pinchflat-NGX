@@ -1,0 +1,61 @@
+name: Cleanup Old Images
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 0"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PACKAGE_NAME: ${{ github.repository }}
+      RETAIN_COUNT: "5"
+    steps:
+      - name: Delete old GHCR image versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          OWNER_TYPE: ${{ github.event.repository.owner.type }}
+        run: |
+          set -euo pipefail
+
+          package_endpoint_prefix="users"
+          if [[ "$OWNER_TYPE" == "Organization" ]]; then
+            package_endpoint_prefix="orgs"
+          fi
+
+          encoded_package_name="${PACKAGE_NAME,,}"
+          encoded_package_name="${encoded_package_name/\//%2F}"
+
+          versions_json=$(gh api \
+            --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "/${package_endpoint_prefix}/${OWNER}/packages/container/${encoded_package_name}/versions?per_page=100" \
+            --jq '.[]')
+
+          mapfile -t version_ids < <(
+            jq -sr 'sort_by(.created_at) | reverse | .[].id' <<<"$versions_json"
+          )
+
+          if (( ${#version_ids[@]} <= RETAIN_COUNT )); then
+            echo "Found ${#version_ids[@]} image versions. Nothing to delete."
+            exit 0
+          fi
+
+          for version_id in "${version_ids[@]:$RETAIN_COUNT}"; do
+            echo "Deleting package version ${version_id}"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "/${package_endpoint_prefix}/${OWNER}/packages/container/${encoded_package_name}/versions/${version_id}"
+          done

@@ -49,7 +49,7 @@
           href="https://github.com/kieraneglin/pinchflat/wiki"
           icon_class="scale-110"
         />
-        <.sidebar_item icon="si-github" text="Github" target="_blank" href="https://github.com/kieraneglin/pinchflat" />
+        <.sidebar_item icon="si-github" text="Github" target="_blank" href="https://github.com/TheBadFella/PinchYT" />
         <.sidebar_item icon="si-discord" text="Discord" target="_blank" href="https://discord.gg/j7T6dCuwU4" />
         <li>
           <span
@@ -69,16 +69,7 @@
             class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm"
             x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
           >
-            <span>Pinchflat {Application.spec(:pinchflat)[:vsn]}</span>
-            <a
-              href="https://github.com/kieraneglin/pinchflat/releases"
-              target="_blank"
-              class="bg-meta-2 text-boxdark px-1.5 rounded-full text-xs"
-              x-cloak
-              x-show={"!isVersionSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
-            >
-              NEW
-            </a>
+            <span>PinchYT 🤏 2026.3.20</span>
           </span>
           <span class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm">
             yt-dlp {Settings.get!(:yt_dlp_version)}
