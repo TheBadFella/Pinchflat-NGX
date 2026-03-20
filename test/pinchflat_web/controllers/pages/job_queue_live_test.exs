@@ -3,10 +3,12 @@ defmodule PinchflatWeb.Pages.JobQueueLiveTest do
 
   import Ecto.Query, warn: false
   import Phoenix.LiveViewTest
+  import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Pages.JobQueueLive
   alias Pinchflat.FastIndexing.FastIndexingWorker
+  alias Pinchflat.Downloading.MediaDownloadWorker
 
   describe "initial rendering" do
     test "shows stats cards", %{conn: conn} do
@@ -45,6 +47,40 @@ defmodule PinchflatWeb.Pages.JobQueueLiveTest do
       {:ok, _view, html} = live_isolated(conn, JobQueueLive, session: %{})
 
       assert html =~ "Executing Jobs"
+    end
+
+    test "shows subject and source ids alongside names", %{conn: conn} do
+      source = source_fixture()
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      Oban.Job
+      |> where([j], j.id == ^task.job_id)
+      |> Repo.update_all(set: [state: "executing"])
+
+      {:ok, _view, html} = live_isolated(conn, JobQueueLive, session: %{})
+
+      assert html =~ "Media ##{media_item.id}"
+      assert html =~ media_item.title
+      assert html =~ "Source ##{source.id}"
+      assert html =~ source.custom_name
+    end
+
+    test "filters jobs to a single source when source_id is provided", %{conn: conn} do
+      source = source_fixture()
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      other_source = source_fixture()
+      other_media_item = media_item_fixture(source_id: other_source.id, media_filepath: nil)
+      {:ok, other_task} = MediaDownloadWorker.kickoff_with_task(other_media_item)
+
+      Oban.Job |> where([j], j.id in ^[task.job_id, other_task.job_id]) |> Repo.update_all(set: [state: "executing"])
+
+      {:ok, _view, html} = live_isolated(conn, JobQueueLive, session: %{"source_id" => source.id})
+
+      assert html =~ media_item.title
+      refute html =~ other_media_item.title
     end
   end
 

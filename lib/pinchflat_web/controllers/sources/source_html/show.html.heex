@@ -3,6 +3,7 @@
     <.link href={~p"/sources"}>
       <.icon name="hero-arrow-left" class="w-10 h-10 hover:dark:text-white" />
     </.link>
+
     <h2 class="text-title-md2 font-bold text-black dark:text-white ml-4 truncate">
       {@source.custom_name}
     </h2>
@@ -16,6 +17,7 @@
     </.link>
   </nav>
 </div>
+
 <div class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5">
   <div class="max-w-full">
     <.tabbed_layout>
@@ -27,17 +29,18 @@
         <div class="flex flex-col text-white gap-10">
           <section>
             <h3 class="font-bold text-xl mb-2 mt-6">Raw Attributes</h3>
+
             <section>
               <strong>Media Profile:</strong>
               <.subtle_link href={~p"/media_profiles/#{@source.media_profile_id}"}>
                 {@source.media_profile.name}
               </.subtle_link>
             </section>
-
             <.list_items_from_map map={Map.from_struct(@source)} />
           </section>
         </div>
       </:tab>
+
       <:tab title="Pending" id="pending">
         {live_render(
           @conn,
@@ -45,6 +48,15 @@
           session: %{"source_id" => @source.id, "media_state" => "pending"}
         )}
       </:tab>
+
+      <:tab title="Active Tasks" id="active-tasks">
+        {live_render(
+          @conn,
+          Pinchflat.Pages.JobTableLive,
+          session: %{"source_id" => @source.id}
+        )}
+      </:tab>
+
       <:tab title="Downloaded" id="downloaded">
         {live_render(
           @conn,
@@ -52,29 +64,21 @@
           session: %{"source_id" => @source.id, "media_state" => "downloaded"}
         )}
       </:tab>
+
+      <:tab title="Job Queue" id="job-queue">
+        {live_render(
+          @conn,
+          Pinchflat.Pages.JobQueueLive,
+          session: %{"source_id" => @source.id}
+        )}
+      </:tab>
+
       <:tab title="Excluded" id="other">
         {live_render(
           @conn,
           PinchflatWeb.Sources.MediaItemTableLive,
           session: %{"source_id" => @source.id, "media_state" => "other"}
         )}
-      </:tab>
-      <:tab title="Tasks" id="tasks">
-        <%= if match?([_|_], @pending_tasks) do %>
-          <.table rows={@pending_tasks} table_class="text-black dark:text-white">
-            <:col :let={task} label="Worker">
-              {task.job.worker}
-            </:col>
-            <:col :let={task} label="State">
-              {task.job.state}
-            </:col>
-            <:col :let={task} label="Scheduled At">
-              <.datetime_in_zone datetime={task.job.scheduled_at} />
-            </:col>
-          </.table>
-        <% else %>
-          <p>Nothing Here!</p>
-        <% end %>
       </:tab>
     </.tabbed_layout>
   </div>

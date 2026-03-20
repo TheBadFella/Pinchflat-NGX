@@ -42,13 +42,6 @@
 <div class="rounded-sm border shadow-default border-strokedark bg-boxdark mt-4 p-5">
   <span class="text-2xl font-medium mb-4">Media History</span>
   <.tabbed_layout>
-    <:tab title="Downloaded" id="downloaded">
-      {live_render(
-        @conn,
-        Pinchflat.Pages.HistoryTableLive,
-        session: %{"media_state" => "downloaded"}
-      )}
-    </:tab>
     <:tab title="Pending" id="pending">
       {live_render(
         @conn,
@@ -58,6 +51,13 @@
     </:tab>
     <:tab title="Active Tasks" id="active-tasks">
       {live_render(@conn, Pinchflat.Pages.JobTableLive)}
+    </:tab>
+    <:tab title="Downloaded" id="downloaded">
+      {live_render(
+        @conn,
+        Pinchflat.Pages.HistoryTableLive,
+        session: %{"media_state" => "downloaded"}
+      )}
     </:tab>
     <:tab title="Job Queue" id="job-queue">
       {live_render(@conn, Pinchflat.Pages.JobQueueLive)}

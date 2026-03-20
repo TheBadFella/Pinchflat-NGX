@@ -114,12 +114,12 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         {:ok, :non_retry}
 
       {:error, _error_atom, message} ->
-        action_on_error(message)
+        action_on_error(job_id, message)
     end
   end
 
   defp build_progress_handler(job_id) do
-    maybe_update_progress(job_id, %{progress_percent: 0.0, progress_status: "Preparing"})
+    maybe_update_progress(job_id, %{progress_percent: 0.0, progress_status: "Queued"})
 
     fn attrs ->
       maybe_update_progress(job_id, attrs)
@@ -177,22 +177,51 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   defp get_redownloaded_at(true), do: DateTime.utc_now()
   defp get_redownloaded_at(_), do: nil
 
-  defp action_on_error(message) do
-    # This will attempt re-download at the next indexing, but it won't be retried
-    # immediately as part of job failure logic
-    non_retryable_errors = [
+  defp action_on_error(job_id, message) do
+    case classify_non_retryable_error(message) do
+      {:ok, progress_status} ->
+        maybe_update_progress(job_id, %{progress_status: progress_status})
+        Logger.error("yt-dlp download will not be retried: #{inspect(message)}")
+        {:ok, :non_retry}
+
+      :error ->
+        {:error, :download_failed}
+    end
+  end
+
+  defp classify_non_retryable_error(message) do
+    message = to_string(message)
+
+    cond do
+      String.contains?(message, rate_limited_errors()) ->
+        {:ok, "Stopped: rate limited by remote source"}
+
+      String.contains?(message, permanent_download_errors()) ->
+        {:ok, "Stopped: download unavailable"}
+
+      true ->
+        :error
+    end
+  end
+
+  defp rate_limited_errors do
+    [
+      "HTTP Error 429",
+      "Too Many Requests",
+      "rate limit",
+      "rate-limit",
+      "requested too many",
+      "confirm you're not a bot",
+      "confirm you’re not a bot"
+    ]
+  end
+
+  defp permanent_download_errors do
+    [
       "Video unavailable",
       "Sign in to confirm",
       "This video is available to this channel's members"
     ]
-
-    if String.contains?(to_string(message), non_retryable_errors) do
-      Logger.error("yt-dlp download will not be retried: #{inspect(message)}")
-
-      {:ok, :non_retry}
-    else
-      {:error, :download_failed}
-    end
   end
 
   # NOTE: I like this pattern of using the default value so that I don't have to
