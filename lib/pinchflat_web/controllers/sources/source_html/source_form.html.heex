@@ -9,17 +9,18 @@
   <.error :if={@changeset.action}>
     Oops, something went wrong! Please check the errors below.
   </.error>
-
+  
   <section x-data="{ mediaProfileId: null }">
     <section class="flex justify-between items-center mt-4">
       <h3 class="text-2xl text-white">
         General Options
       </h3>
+      
       <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
       </span>
     </section>
-
+    
     <.input
       field={f[:original_url]}
       type="text"
@@ -27,14 +28,12 @@
       help="URL of a channel, playlist, or single video (required). Single video sources are indexed once and fast indexing is disabled automatically"
       x-init="$el.focus()"
     />
-
     <.input
       field={f[:custom_name]}
       type="text"
       label="Custom Name"
       help="Does not impact indexing or downloading. Will be inferred from the source if left blank"
     />
-
     <.input
       field={f[:media_profile_id]}
       options={Enum.map(@media_profiles, &{&1.name, &1.id})}
@@ -43,11 +42,10 @@
       help="Sets your preferences for what media to look for and how to store it"
       x-model.fill="mediaProfileId"
     />
-
     <h3 class="mt-8 text-2xl text-black dark:text-white">
       Indexing Options
     </h3>
-
+    
     <section x-data="{ fastIndexingEnabled: null }">
       <.input
         field={f[:index_frequency_minutes]}
@@ -58,7 +56,6 @@
         x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60))"
         help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
       />
-
       <div phx-click={show_modal("upgrade-modal")}>
         <.input
           field={f[:fast_index]}
@@ -74,18 +71,17 @@
         />
       </div>
     </section>
-
+    
     <h3 class="mt-8 text-2xl text-black dark:text-white">
       Downloading Options
     </h3>
-
+    
     <.input
       field={f[:download_media]}
       type="toggle"
       label="Download Media"
       help="Unchecking still indexes media but it won't be downloaded until you enable this option"
     />
-
     <.input
       field={f[:cookie_behaviour]}
       options={friendly_cookie_behaviours()}
@@ -93,7 +89,6 @@
       label="Cookie Behaviour"
       help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
     />
-
     <section x-show="advancedMode">
       <.input
         field={f[:min_duration_seconds]}
@@ -102,7 +97,6 @@
         min="0"
         help="Minimum duration of the media to be downloaded. Can be blank"
       />
-
       <.input
         field={f[:max_duration_seconds]}
         type="number"
@@ -111,7 +105,7 @@
         help="Maximum duration of the media to be downloaded. Can be blank"
       />
     </section>
-
+    
     <section x-data={"{ cutoffDate: '#{f[:download_cutoff_date].value}' }"}>
       <.input
         field={f[:download_cutoff_date]}
@@ -137,7 +131,7 @@
         </:input_append>
       </.input>
     </section>
-
+    
     <.input
       field={f[:retention_period_days]}
       type="number"
@@ -146,15 +140,15 @@
       help="Days between when media is <em>downloaded</em> and when it's deleted. Leave blank to keep media indefinitely"
       html_help={true}
     />
-
     <section x-show="advancedMode">
       <h3 class="mt-8 text-2xl text-black dark:text-white">
         Advanced Options
       </h3>
+      
       <p class="text-sm mt-2">
         Tread carefully
       </p>
-
+      
       <.input
         field={f[:title_filter_regex]}
         type="text"
@@ -163,7 +157,6 @@
         help={title_filter_regex_help()}
         html_help={true}
       />
-
       <section
         x-data={
           """
@@ -189,13 +182,14 @@
 
       <p class="text-sm mt-4">
         Need custom yt-dlp arguments for this source? After saving, add them to
-        <code>extras/yt-dlp-configs/source-123-config.txt</code> using the saved source ID. Pinchflat already loads
+        <code>extras/yt-dlp-configs/source-123-config.txt</code>
+        using the saved source ID. Pinchflat already loads
         per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
       </p>
     </section>
-
+    
     <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Source</.button>
-
+    
     <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mb-5">
       <.fast_indexing_help />
     </div>

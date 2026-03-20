@@ -26,7 +26,7 @@ defmodule Pinchflat.SourcesFixtures do
             collection_type: "channel",
             custom_name: "Cool and good internal name!",
             description: "This is a description",
-            original_url: "https://www.youtube.com/@#{Faker.String.base64(12)}",
+            original_url: "https://www.youtube.com/@#{youtube_handle_fixture()}",
             media_profile_id: ProfilesFixtures.media_profile_fixture().id,
             index_frequency_minutes: 60
           }
@@ -133,5 +133,9 @@ defmodule Pinchflat.SourcesFixtures do
     }
     |> Map.merge(attrs)
     |> Phoenix.json_library().encode!()
+  end
+
+  defp youtube_handle_fixture do
+    "fixture-#{System.unique_integer([:positive])}"
   end
 end

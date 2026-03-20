@@ -175,11 +175,12 @@ defmodule Pinchflat.Sources.Source do
       ~r<^https?://(?:www\.)?youtube\.com/@[^/?#]+(?:/(?:featured|videos))?$>,
       ~r<^https?://(?:www\.)?youtube\.com/c/[^/?#]+(?:/(?:featured|videos))?$>,
       ~r<^https?://(?:www\.)?youtube\.com/user/[^/?#]+(?:/(?:featured|videos))?$>,
-      ~r<^https?://(?:www\.)?youtube\.com/playlist\?list=[^&]+>,
-      ~r<^https?://(?:www\.)?youtube\.com/[^/?#]+(?:/(?:featured|videos))?$>
+      ~r<^https?://(?:www\.)?youtube\.com/playlist\?list=[^&]+>
     ]
 
-    youtube_video_url?(url) || Enum.any?(supported_patterns, &Regex.match?(&1, url))
+    youtube_video_url?(url) ||
+      Enum.any?(supported_patterns, &Regex.match?(&1, url)) ||
+      supported_youtube_custom_path?(url)
   end
 
   def supported_youtube_url?(_url), do: false
@@ -193,6 +194,32 @@ defmodule Pinchflat.Sources.Source do
   end
 
   defp validate_original_url(changeset), do: changeset
+
+  defp supported_youtube_custom_path?(url) do
+    case URI.parse(url) do
+      %URI{host: host, path: path}
+      when host in ["youtube.com", "www.youtube.com"] and is_binary(path) ->
+        case String.split(path, "/", trim: true) do
+          [segment] ->
+            valid_youtube_custom_path_segment?(segment)
+
+          [segment, suffix] when suffix in ["featured", "videos"] ->
+            valid_youtube_custom_path_segment?(segment)
+
+          _ ->
+            false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_youtube_custom_path_segment?(segment) do
+    segment != "" &&
+      segment not in ~w(channel user c watch watch_videos playlist feed results shorts embed live clip) &&
+      !String.starts_with?(segment, "@")
+  end
 
   defp validate_title_regex(%{changes: %{title_filter_regex: regex}} = changeset) when is_binary(regex) do
     case Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [regex]) do

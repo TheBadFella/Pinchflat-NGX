@@ -49,3 +49,9 @@ scratchpad.md
 .direnv/
 
 pinchflat.db.backup-*
+
+.idea
+
+build.log
+/.codex-local-build-pr/
+/.gitattributes
