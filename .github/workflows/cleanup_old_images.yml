@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PACKAGE_NAME: ${{ github.repository }}
+      PACKAGE_NAME: ${{ github.event.repository.name }}
       RETAIN_COUNT: "5"
     steps:
       - name: Delete old GHCR image versions
@@ -35,13 +35,20 @@ jobs:
           fi
 
           encoded_package_name="${PACKAGE_NAME,,}"
-          encoded_package_name="${encoded_package_name/\//%2F}"
 
+          set +e
           versions_json=$(gh api \
             --paginate \
             -H "Accept: application/vnd.github+json" \
             "/${package_endpoint_prefix}/${OWNER}/packages/container/${encoded_package_name}/versions?per_page=100" \
             --jq '.[]')
+          status=$?
+          set -e
+
+          if (( status != 0 )); then
+            echo "Container package ${OWNER}/${encoded_package_name} was not found. Nothing to clean up."
+            exit 0
+          fi
 
           mapfile -t version_ids < <(
             jq -sr 'sort_by(.created_at) | reverse | .[].id' <<<"$versions_json"
