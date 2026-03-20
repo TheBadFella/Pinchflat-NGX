@@ -209,6 +209,40 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.media_size_bytes > 0
     end
 
+    test "persists detailed progress metrics while downloading", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 3, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, "{}"}
+
+        _url, :download, _opts, _ot, addl_opts ->
+          progress_handler = Keyword.fetch!(addl_opts, :progress_handler)
+
+          progress_handler.(%{
+            progress_percent: 50.0,
+            progress_status: "Downloading",
+            progress_downloaded_bytes: 512,
+            progress_total_bytes: 1024,
+            progress_eta_seconds: 4
+          })
+
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert :ok = MediaDownloadWorker.perform(job)
+
+      task = Repo.reload!(task)
+
+      assert task.progress_downloaded_bytes == 512
+      assert task.progress_total_bytes == 1024
+      assert task.progress_eta_seconds == 4
+    end
+
     test "does not set redownloaded_at by default", %{media_item: media_item} do
       perform_job(MediaDownloadWorker, %{id: media_item.id})
       media_item = Repo.reload(media_item)

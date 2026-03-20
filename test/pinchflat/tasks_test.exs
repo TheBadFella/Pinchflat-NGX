@@ -272,10 +272,20 @@ defmodule Pinchflat.TasksTest do
     test "updates persisted progress fields" do
       task = task_fixture()
 
-      assert {:ok, task} = Tasks.update_task_progress(task, %{progress_percent: 42.5, progress_status: "Downloading"})
+      assert {:ok, task} =
+               Tasks.update_task_progress(task, %{
+                 progress_percent: 42.5,
+                 progress_status: "Downloading",
+                 progress_downloaded_bytes: 512,
+                 progress_total_bytes: 1024,
+                 progress_eta_seconds: 9
+               })
 
       assert task.progress_percent == 42.5
       assert task.progress_status == "Downloading"
+      assert task.progress_downloaded_bytes == 512
+      assert task.progress_total_bytes == 1024
+      assert task.progress_eta_seconds == 9
       assert task.progress_updated_at
     end
 

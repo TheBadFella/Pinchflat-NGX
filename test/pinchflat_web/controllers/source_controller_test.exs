@@ -190,6 +190,14 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       assert html_response(conn, 200) =~ "Excluded"
     end
+
+    test "renders the active tasks tab label", %{conn: conn} do
+      source = source_fixture()
+
+      conn = get(conn, ~p"/sources/#{source}")
+
+      assert html_response(conn, 200) =~ "Active Tasks"
+    end
   end
 
   describe "force_redownload" do

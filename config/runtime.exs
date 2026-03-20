@@ -42,7 +42,7 @@ config :pinchflat, Pinchflat.Repo,
 
 # Some users may want to increase the number of workers that use yt-dlp to improve speeds
 # Others may want to decrease the number of these workers to lessen the chance of an IP ban
-{yt_dlp_worker_count, _} = Integer.parse(System.get_env("YT_DLP_WORKER_CONCURRENCY", "2"))
+{yt_dlp_worker_count, _} = Integer.parse(System.get_env("YT_DLP_WORKER_CONCURRENCY", "5"))
 # Used to set the cron for the yt-dlp update worker. The reason for this is
 # to avoid all instances of PF updating yt-dlp at the same time, which 1)
 # could result in rate limiting and 2) gives me time to react if an update

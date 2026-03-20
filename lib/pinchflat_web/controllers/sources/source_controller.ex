@@ -5,7 +5,6 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   alias OpenApiSpex.Schema
   alias Pinchflat.Repo
-  alias Pinchflat.Tasks
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
@@ -134,12 +133,7 @@ defmodule PinchflatWeb.Sources.SourceController do
         conn |> put_status(:ok) |> json(source)
 
       _ ->
-        pending_tasks =
-          source
-          |> Tasks.list_tasks_for(nil, [:executing, :available, :scheduled, :retryable])
-          |> Repo.preload(:job)
-
-        render(conn, :show, source: source, pending_tasks: pending_tasks)
+        render(conn, :show, source: source)
     end
   end
 

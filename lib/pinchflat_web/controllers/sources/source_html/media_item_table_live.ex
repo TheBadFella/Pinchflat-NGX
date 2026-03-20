@@ -1,12 +1,15 @@
 defmodule PinchflatWeb.Sources.MediaItemTableLive do
   use PinchflatWeb, :live_view
   use Pinchflat.Media.MediaQuery
+  import Ecto.Query, warn: false
 
   alias Pinchflat.Repo
   alias Pinchflat.Utils.NumberUtils
   alias Pinchflat.Media
   alias Pinchflat.Sources
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Tasks
+  alias Pinchflat.Tasks.Task
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
 
@@ -29,11 +32,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             Showing <.localized_number number={length(@records)} /> of <.localized_number number={@filtered_record_count} />
           </span>
         </span>
+        
         <div class="bg-meta-4 rounded-md">
           <div class="relative">
             <span class="absolute left-2 top-1/2 -translate-y-1/2 flex">
               <.icon name="hero-magnifying-glass" />
             </span>
+            
             <form phx-change="search_term" phx-submit="search_term">
               <input
                 type="text"
@@ -74,6 +79,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             </span>
           </section>
         </:col>
+        
         <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
           <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
         </:col>
@@ -82,6 +88,23 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         </:col>
         <:col :let={media_item} label="Upload Date">
           {DateTime.to_date(media_item.uploaded_at)}
+        </:col>
+        <:col :let={media_item} label="Size / Progress">
+          {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
+        </:col>
+        <:col :let={media_item} label="Action">
+          <button
+            :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+            type="button"
+            phx-click="stop_download"
+            phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+            phx-value-media-id={media_item.id}
+            data-confirm="Are you sure you want to stop this download?"
+            class="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
+          >
+            Stop
+          </button>
+          <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-gray-400">-</span>
         </:col>
         <:col :let={media_item} label="" class="flex justify-end">
           <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" class="mr-4" />
@@ -96,6 +119,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def mount(_params, session, socket) do
     PinchflatWeb.Endpoint.subscribe("media_table")
+    PinchflatWeb.Endpoint.subscribe("job:state")
+    PinchflatWeb.Endpoint.subscribe("job:progress")
 
     page = 1
     media_state = session["media_state"]
@@ -144,6 +169,17 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     {:noreply, socket}
   end
 
+  def handle_event("stop_download", %{"task-id" => task_id}, socket) do
+    task = Repo.get(Task, task_id)
+
+    if task do
+      {:ok, _task} = Tasks.delete_task(task)
+      PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    end
+
+    {:noreply, socket}
+  end
+
   # This, along with the handle_info below, is a pattern to reload _all_
   # tables on page rather than just the one that triggered the reload.
   def handle_event("reload_page", _params, socket) do
@@ -153,6 +189,18 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   end
 
   def handle_info(%{topic: "media_table", event: "reload"}, %{assigns: assigns} = socket) do
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term)
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
+  def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term)
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
+  def handle_info(%{topic: "job:progress", event: "update"}, %{assigns: assigns} = socket) do
     new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term)
 
     {:noreply, assign(socket, new_assigns)}
@@ -170,14 +218,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> order_by(desc: :uploaded_at)
       |> Repo.all()
 
-    %{
+    build_pagination_attrs(%{
       page: page,
       total_pages: total_pages,
       records: records,
       search_term: nil,
       total_record_count: total_record_count,
       filtered_record_count: total_record_count
-    }
+    })
   end
 
   defp fetch_pagination_attributes(base_query, page, search_term) do
@@ -193,14 +241,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> order_by(desc: fragment("rank"), desc: :uploaded_at)
       |> Repo.all()
 
-    %{
+    build_pagination_attrs(%{
       page: page,
       total_pages: total_pages,
       records: records,
       search_term: search_term,
       total_record_count: total_record_count,
       filtered_record_count: filtered_record_count
-    }
+    })
   end
 
   defp fetch_records(base_query, page) do
@@ -244,7 +292,17 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   # Selecting only what we need GREATLY speeds up queries on large tables
   defp select_fields do
-    [:id, :title, :uploaded_at, :prevent_download, :last_error, :duration_seconds, :livestream, :short_form_content]
+    [
+      :id,
+      :title,
+      :uploaded_at,
+      :prevent_download,
+      :last_error,
+      :duration_seconds,
+      :livestream,
+      :short_form_content,
+      :media_size_bytes
+    ]
   end
 
   defp excluded_reason(media_item, source) do
@@ -301,4 +359,62 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   end
 
   defp too_long?(_media_item, _source), do: false
+
+  defp build_pagination_attrs(attrs) do
+    Map.put(attrs, :tasks_by_media_item_id, fetch_download_tasks(attrs.records))
+  end
+
+  defp fetch_download_tasks(records) do
+    media_item_ids = Enum.map(records, & &1.id)
+
+    if media_item_ids == [] do
+      %{}
+    else
+      from(t in Task,
+        join: j in assoc(t, :job),
+        where: t.media_item_id in ^media_item_ids,
+        where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+        where: j.state in ^["available", "scheduled", "retryable", "executing"],
+        preload: [job: j],
+        order_by: [desc: t.inserted_at]
+      )
+      |> Repo.all()
+      |> Enum.reduce(%{}, fn task, acc ->
+        Map.put_new(acc, task.media_item_id, task)
+      end)
+    end
+  end
+
+  defp size_or_progress_label(media_item, nil) do
+    case media_item.media_size_bytes do
+      nil -> "Unknown"
+      size -> readable_byte_size(size)
+    end
+  end
+
+  defp size_or_progress_label(_media_item, task) do
+    downloaded_bytes = task.progress_downloaded_bytes
+    total_bytes = task.progress_total_bytes
+
+    cond do
+      total_bytes && downloaded_bytes ->
+        remaining_bytes = max(total_bytes - downloaded_bytes, 0)
+
+        "#{readable_byte_size(downloaded_bytes)} / #{readable_byte_size(total_bytes)} (#{readable_byte_size(remaining_bytes)} left)"
+
+      total_bytes ->
+        readable_byte_size(total_bytes)
+
+      downloaded_bytes ->
+        "#{readable_byte_size(downloaded_bytes)} downloaded"
+
+      true ->
+        task.progress_status || "Queued"
+    end
+  end
+
+  defp readable_byte_size(bytes) do
+    {num, suffix} = NumberUtils.human_byte_size(bytes, precision: 1)
+    "#{num} #{suffix}"
+  end
 end

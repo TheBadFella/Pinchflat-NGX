@@ -250,10 +250,13 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
   defp parse_progress_line("pinchflat-progress:" <> progress_payload) do
     case String.split(progress_payload, "|") do
-      [percent, _downloaded_bytes, _total_bytes, _estimated_total_bytes, _eta, _speed] ->
+      [percent, downloaded_bytes, total_bytes, estimated_total_bytes, eta, _speed] ->
         %{
           progress_percent: parse_percent(percent),
-          progress_status: "Downloading"
+          progress_status: "Downloading",
+          progress_downloaded_bytes: parse_integer(downloaded_bytes),
+          progress_total_bytes: parse_integer(total_bytes) || parse_integer(estimated_total_bytes),
+          progress_eta_seconds: parse_integer(eta)
         }
 
       _ ->
@@ -274,11 +277,57 @@ defmodule Pinchflat.YtDlp.CommandRunner do
     end
   end
 
+  defp parse_integer(""), do: nil
+  defp parse_integer("NA"), do: nil
+  defp parse_integer(nil), do: nil
+
+  defp parse_integer(value) do
+    case Integer.parse(to_string(value)) do
+      {parsed, _rest} -> parsed
+      :error -> nil
+    end
+  end
+
   defp log_cmd_result(command, logging_arg_override, status, output) do
-    log_message = "[command_wrapper]: #{command} called with: #{logging_arg_override} exited: #{status} with: #{output}"
+    summarized_output = summarize_log_output(output)
+
+    log_message =
+      if summarized_output == "" do
+        "[command_wrapper]: #{command} called with: #{logging_arg_override} exited: #{status}"
+      else
+        "[command_wrapper]: #{command} called with: #{logging_arg_override} exited: #{status} with: #{summarized_output}"
+      end
+
     log_level = if status == 0, do: :debug, else: :error
 
     Logger.log(log_level, log_message)
+  end
+
+  defp summarize_log_output(output) do
+    output
+    |> String.split("\n")
+    |> Enum.reject(&String.contains?(&1, "pinchflat-progress:"))
+    |> Enum.join("\n")
+    |> String.trim()
+    |> truncate_output()
+  end
+
+  defp truncate_output(""), do: ""
+
+  defp truncate_output(output) do
+    max_length = 4000
+
+    if String.length(output) <= max_length do
+      output
+    else
+      head_length = 2000
+      tail_length = 1500
+      omitted_count = String.length(output) - head_length - tail_length
+
+      String.slice(output, 0, head_length) <>
+        "\n...[#{omitted_count} chars omitted]...\n" <>
+        String.slice(output, -tail_length, tail_length)
+    end
   end
 
   defp backend_executable do

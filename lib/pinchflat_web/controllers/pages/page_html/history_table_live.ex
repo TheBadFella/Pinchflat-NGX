@@ -1,11 +1,14 @@
 defmodule Pinchflat.Pages.HistoryTableLive do
   use PinchflatWeb, :live_view
   use Pinchflat.Media.MediaQuery
+  import Ecto.Query, warn: false
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Utils.NumberUtils
+  alias Pinchflat.Tasks
+  alias Pinchflat.Tasks.Task
   alias PinchflatWeb.CustomComponents.TextComponents
 
   @limit System.get_env("PAGINATION_HISTORY_LIMIT", System.get_env("PAGINATION_LIMIT", "10")) |> String.to_integer()
@@ -28,6 +31,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
         </span>
       </span>
+      
       <div class="max-w-full overflow-x-auto">
         <.table rows={@records} table_class="text-white">
           <:col :let={media_item} label="Title" class="max-w-xs">
@@ -56,8 +60,12 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               </span>
             </section>
           </:col>
+          
           <:col :let={media_item} label="Upload Date">
             {DateTime.to_date(media_item.uploaded_at)}
+          </:col>
+          <:col :let={media_item} label="Size / Progress">
+            {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
           </:col>
           <:col :let={media_item} label="Indexed At">
             {format_datetime(media_item.inserted_at)}
@@ -70,6 +78,19 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               {media_item.source.custom_name}
             </.subtle_link>
           </:col>
+          <:col :let={media_item} label="Action">
+            <button
+              :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+              type="button"
+              phx-click="stop_download"
+              phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+              data-confirm="Are you sure you want to stop this download?"
+              class="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
+            >
+              Stop
+            </button>
+            <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-gray-400">-</span>
+          </:col>
         </.table>
       </div>
       <section class="flex justify-center mt-5">
@@ -80,6 +101,9 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   def mount(_params, session, socket) do
+    PinchflatWeb.Endpoint.subscribe("job:state")
+    PinchflatWeb.Endpoint.subscribe("job:progress")
+
     page = 1
     base_query = generate_base_query(session["media_state"])
     pagination_attrs = fetch_pagination_attributes(base_query, page)
@@ -110,13 +134,43 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     {:noreply, assign(socket, new_assigns)}
   end
 
+  def handle_event("stop_download", %{"task-id" => task_id}, %{assigns: assigns} = socket) do
+    task = Repo.get(Task, task_id)
+
+    if task do
+      {:ok, _task} = Tasks.delete_task(task)
+    end
+
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
+  def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
+  def handle_info(%{topic: "job:progress", event: "update"}, %{assigns: assigns} = socket) do
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
   defp fetch_pagination_attributes(base_query, page) do
     total_record_count = Repo.aggregate(base_query, :count, :id)
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
     records = fetch_records(base_query, page)
 
-    %{page: page, total_pages: total_pages, records: records, total_record_count: total_record_count}
+    %{
+      page: page,
+      total_pages: total_pages,
+      records: records,
+      total_record_count: total_record_count,
+      tasks_by_media_item_id: fetch_download_tasks(records)
+    }
   end
 
   defp fetch_records(base_query, page) do
@@ -133,6 +187,19 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.pending()))
+    |> select(
+      [m],
+      struct(m, [
+        :id,
+        :title,
+        :uploaded_at,
+        :inserted_at,
+        :media_downloaded_at,
+        :source_id,
+        :last_error,
+        :media_size_bytes
+      ])
+    )
     |> order_by(desc: :id)
   end
 
@@ -140,6 +207,19 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.downloaded()))
+    |> select(
+      [m],
+      struct(m, [
+        :id,
+        :title,
+        :uploaded_at,
+        :inserted_at,
+        :media_downloaded_at,
+        :source_id,
+        :last_error,
+        :media_size_bytes
+      ])
+    )
     |> order_by(desc: :id)
   end
 
@@ -147,5 +227,59 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
   defp format_datetime(datetime) do
     TextComponents.datetime_in_zone(%{datetime: datetime, format: "%Y-%m-%d %H:%M"})
+  end
+
+  defp fetch_download_tasks(records) do
+    media_item_ids = Enum.map(records, & &1.id)
+
+    if media_item_ids == [] do
+      %{}
+    else
+      from(t in Task,
+        join: j in assoc(t, :job),
+        where: t.media_item_id in ^media_item_ids,
+        where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+        where: j.state in ^["available", "scheduled", "retryable", "executing"],
+        preload: [job: j],
+        order_by: [desc: t.inserted_at]
+      )
+      |> Repo.all()
+      |> Enum.reduce(%{}, fn task, acc ->
+        Map.put_new(acc, task.media_item_id, task)
+      end)
+    end
+  end
+
+  defp size_or_progress_label(media_item, nil) do
+    case media_item.media_size_bytes do
+      nil -> "Unknown"
+      size -> readable_byte_size(size)
+    end
+  end
+
+  defp size_or_progress_label(_media_item, task) do
+    downloaded_bytes = task.progress_downloaded_bytes
+    total_bytes = task.progress_total_bytes
+
+    cond do
+      total_bytes && downloaded_bytes ->
+        remaining_bytes = max(total_bytes - downloaded_bytes, 0)
+
+        "#{readable_byte_size(downloaded_bytes)} / #{readable_byte_size(total_bytes)} (#{readable_byte_size(remaining_bytes)} left)"
+
+      total_bytes ->
+        readable_byte_size(total_bytes)
+
+      downloaded_bytes ->
+        "#{readable_byte_size(downloaded_bytes)} downloaded"
+
+      true ->
+        task.progress_status || "Queued"
+    end
+  end
+
+  defp readable_byte_size(bytes) do
+    {num, suffix} = NumberUtils.human_byte_size(bytes, precision: 1)
+    "#{num} #{suffix}"
   end
 end
