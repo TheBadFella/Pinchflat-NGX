@@ -89,6 +89,51 @@
       label="Cookie Behaviour"
       help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
     />
+    <section class="rounded-lg border border-strokedark bg-black/10 px-5 py-4">
+      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div class="space-y-2">
+          <p class="text-sm font-medium text-white">Shared `cookies.txt` file</p>
+          <p class="text-sm text-bodydark2">
+            <%= cond do %>
+              <% @cookie_file_configured -> %>
+                Cookie file is configured and ready to use.
+              <% @cookie_file_exists -> %>
+                Cookie file exists but is currently blank.
+              <% true -> %>
+                Cookie file does not exist yet.
+            <% end %>
+          </p>
+          <p class="text-xs break-all text-bodydark">
+            {@cookie_file_path}
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            phx-click={show_modal("cookie-upload-modal")}
+          >
+            Upload cookies.txt
+          </button>
+          <button
+            type="button"
+            class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+            phx-click={show_modal("cookie-paste-modal")}
+          >
+            Paste Cookie Contents
+          </button>
+          <button
+            :if={@cookie_file_exists}
+            type="button"
+            class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+            phx-click={show_modal("cookie-inspect-modal")}
+          >
+            Inspect Cookie File
+          </button>
+        </div>
+      </div>
+    </section>
     <section x-show="advancedMode">
       <.input
         field={f[:min_duration_seconds]}
@@ -195,3 +240,86 @@
     </div>
   </section>
 </.simple_form>
+
+<.modal id="cookie-upload-modal">
+  <h3 class="text-2xl text-white">Upload cookies.txt</h3>
+  <p class="mt-2 text-sm text-bodydark2">
+    Upload a Netscape-format cookie file exported from your browser extension or account tools.
+  </p>
+
+  <.form for={%{}} as={:cookies} action={~p"/sources/cookies/upload"} method="post" multipart class="mt-6 space-y-4">
+    <input type="hidden" name="return_to" value={@current_path} />
+    <.input
+      name="cookies[file]"
+      type="file"
+      value={nil}
+      accept=".txt,text/plain"
+      label="Cookie file"
+      help="Choose the file to store as the shared cookies.txt file."
+    />
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+        phx-click={hide_modal("cookie-upload-modal")}
+      >
+        Cancel
+      </button>
+      <.button class="w-auto" rounding="rounded-lg">Upload</.button>
+    </div>
+  </.form>
+</.modal>
+
+<.modal id="cookie-paste-modal">
+  <h3 class="text-2xl text-white">Paste Cookie Contents</h3>
+  <p class="mt-2 text-sm text-bodydark2">
+    Paste the full contents of the file and Pinchflat will create or replace `cookies.txt`.
+  </p>
+
+  <.form for={%{}} as={:cookies} action={~p"/sources/cookies/save"} method="post" class="mt-6 space-y-4">
+    <input type="hidden" name="return_to" value={@current_path} />
+    <.input
+      name="cookies[contents]"
+      type="textarea"
+      label="Cookie file contents"
+      value={@cookie_file_contents}
+      inputclass="min-h-[18rem] bg-form-input font-mono text-white"
+    />
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+        phx-click={hide_modal("cookie-paste-modal")}
+      >
+        Cancel
+      </button>
+      <.button class="w-auto" rounding="rounded-lg">Save Cookie File</.button>
+    </div>
+  </.form>
+</.modal>
+
+<.modal :if={@cookie_file_exists} id="cookie-inspect-modal">
+  <h3 class="text-2xl text-white">Inspect Cookie File</h3>
+  <p class="mt-2 text-sm text-bodydark2">
+    This is the current shared `cookies.txt` content used for sources that enable cookie behavior.
+  </p>
+
+  <.input
+    name="cookie_file_contents_preview"
+    type="textarea"
+    label="Current contents"
+    value={@cookie_file_contents || ""}
+    readonly
+    inputclass="mt-4 min-h-[20rem] border-form-strokedark bg-form-input !text-white font-mono"
+  />
+
+  <div class="mt-6 flex justify-end">
+    <button
+      type="button"
+      class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+      phx-click={hide_modal("cookie-inspect-modal")}
+    >
+      Close
+    </button>
+  </div>
+</.modal>

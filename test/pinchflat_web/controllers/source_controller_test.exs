@@ -16,21 +16,30 @@ defmodule PinchflatWeb.SourceControllerTest do
   setup do
     media_profile = media_profile_fixture()
     Settings.set(onboarding: false)
+    extras_directory = Path.join(System.tmp_dir!(), "pinchflat-source-controller-cookie-tests-#{System.unique_integer([:positive])}")
+    original_directory = Application.get_env(:pinchflat, :extras_directory)
 
-    {
-      :ok,
-      %{
-        create_attrs: %{
-          media_profile_id: media_profile.id,
-          collection_type: "channel",
-          original_url: "https://www.youtube.com/@pinchflattest"
-        },
-        update_attrs: %{
-          original_url: "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
-        },
-        invalid_attrs: %{original_url: nil, media_profile_id: nil}
-      }
-    }
+    Application.put_env(:pinchflat, :extras_directory, extras_directory)
+    File.mkdir_p!(extras_directory)
+
+    on_exit(fn ->
+      Application.put_env(:pinchflat, :extras_directory, original_directory)
+      File.rm_rf!(extras_directory)
+    end)
+
+    {:ok,
+     %{
+       create_attrs: %{
+         media_profile_id: media_profile.id,
+         collection_type: "channel",
+         original_url: "https://www.youtube.com/@pinchflattest"
+       },
+       update_attrs: %{
+         original_url: "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
+       },
+       invalid_attrs: %{original_url: nil, media_profile_id: nil},
+       extras_directory: extras_directory
+     }}
   end
 
   describe "index" do
@@ -45,6 +54,27 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/sources/new")
       assert html_response(conn, 200) =~ "New Source"
+    end
+
+    test "renders cookie management controls", %{conn: conn} do
+      File.write!(Path.join(Application.get_env(:pinchflat, :extras_directory), "cookies.txt"), "youtube-cookie-data")
+
+      conn = get(conn, ~p"/sources/new")
+      response = html_response(conn, 200)
+
+      assert response =~ "Upload cookies.txt"
+      assert response =~ "Paste Cookie Contents"
+      assert response =~ "Inspect Cookie File"
+      assert response =~ "Cookie file is configured and ready to use."
+    end
+
+    test "defaults cookie behaviour to all operations when cookies.txt exists", %{conn: conn} do
+      File.write!(Path.join(Application.get_env(:pinchflat, :extras_directory), "cookies.txt"), "youtube-cookie-data")
+
+      conn = get(conn, ~p"/sources/new")
+      response = html_response(conn, 200)
+
+      assert response =~ ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
     end
 
     test "renders correct layout when onboarding", %{conn: conn} do
@@ -129,6 +159,42 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders form for editing chosen source", %{conn: conn, source: source} do
       conn = get(conn, ~p"/sources/#{source}/edit")
       assert html_response(conn, 200) =~ "Editing \"#{source.custom_name}\""
+    end
+
+    test "does not override saved cookie behaviour on edit when cookies.txt exists", %{conn: conn, source: source} do
+      File.write!(Path.join(Application.get_env(:pinchflat, :extras_directory), "cookies.txt"), "youtube-cookie-data")
+      source = Repo.reload!(source)
+
+      conn = get(conn, ~p"/sources/#{source}/edit")
+      response = html_response(conn, 200)
+
+      assert response =~ ~r/<option[^>]*value="disabled"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="disabled"/
+      refute response =~ ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
+    end
+  end
+
+  describe "cookie file actions" do
+    test "save_cookies writes cookie contents and redirects back", %{conn: conn, extras_directory: extras_directory} do
+      conn = post(conn, ~p"/sources/cookies/save", %{"cookies" => %{"contents" => "youtube-cookie-data"}, "return_to" => "/sources/new"})
+
+      assert redirected_to(conn) == "/sources/new"
+      assert File.read!(Path.join(extras_directory, "cookies.txt")) == "youtube-cookie-data"
+    end
+
+    test "upload_cookies copies the uploaded file and redirects back", %{conn: conn, extras_directory: extras_directory} do
+      upload_path = Path.join(extras_directory, "uploaded-cookies.txt")
+      File.write!(upload_path, "uploaded-youtube-cookie-data")
+
+      upload = %Plug.Upload{
+        path: upload_path,
+        filename: "cookies.txt",
+        content_type: "text/plain"
+      }
+
+      conn = post(conn, ~p"/sources/cookies/upload", %{"cookies" => %{"file" => upload}, "return_to" => "/sources/new"})
+
+      assert redirected_to(conn) == "/sources/new"
+      assert File.read!(Path.join(extras_directory, "cookies.txt")) == "uploaded-youtube-cookie-data"
     end
   end
 

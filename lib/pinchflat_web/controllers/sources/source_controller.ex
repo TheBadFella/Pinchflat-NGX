@@ -47,23 +47,31 @@ defmodule PinchflatWeb.Sources.SourceController do
       end
 
     render(conn, :new,
-      media_profiles: media_profiles(),
-      layout: get_onboarding_layout(),
-      # Most of these don't actually _need_ to be nullified at this point,
-      # but if I don't do it now I know it'll bite me
-      changeset:
-        Sources.change_source(%Source{
-          cs_struct
-          | id: nil,
-            uuid: nil,
-            custom_name: nil,
-            description: nil,
-            collection_name: nil,
-            collection_id: nil,
-            collection_type: nil,
-            original_url: nil,
-            marked_for_deletion_at: nil
-        })
+      Keyword.merge(
+        [
+          media_profiles: media_profiles(),
+          current_path: ~p"/sources/new",
+          layout: get_onboarding_layout(),
+          # Most of these don't actually _need_ to be nullified at this point,
+          # but if I don't do it now I know it'll bite me
+          changeset:
+            %Source{
+              cs_struct
+              | id: nil,
+                uuid: nil,
+                custom_name: nil,
+                description: nil,
+                collection_name: nil,
+                collection_id: nil,
+                collection_type: nil,
+                original_url: nil,
+                marked_for_deletion_at: nil
+            }
+            |> Sources.change_source()
+            |> maybe_default_cookie_behaviour()
+        ],
+        cookie_file_assigns()
+      )
     )
   end
 
@@ -104,9 +112,15 @@ defmodule PinchflatWeb.Sources.SourceController do
 
           _ ->
             render(conn, :new,
-              changeset: changeset,
-              media_profiles: media_profiles(),
-              layout: get_onboarding_layout()
+              Keyword.merge(
+                [
+                  changeset: changeset,
+                  media_profiles: media_profiles(),
+                  current_path: ~p"/sources/new",
+                  layout: get_onboarding_layout()
+                ],
+                cookie_file_assigns()
+              )
             )
         end
     end
@@ -141,7 +155,17 @@ defmodule PinchflatWeb.Sources.SourceController do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)
 
-    render(conn, :edit, source: source, changeset: changeset, media_profiles: media_profiles())
+    render(conn, :edit,
+      Keyword.merge(
+        [
+          source: source,
+          changeset: changeset,
+          media_profiles: media_profiles(),
+          current_path: ~p"/sources/#{source}/edit"
+        ],
+        cookie_file_assigns()
+      )
+    )
   end
 
   operation(:update,
@@ -184,11 +208,51 @@ defmodule PinchflatWeb.Sources.SourceController do
 
           _ ->
             render(conn, :edit,
-              source: source,
-              changeset: changeset,
-              media_profiles: media_profiles()
+              Keyword.merge(
+                [
+                  source: source,
+                  changeset: changeset,
+                  media_profiles: media_profiles(),
+                  current_path: ~p"/sources/#{source}/edit"
+                ],
+                cookie_file_assigns()
+              )
             )
         end
+    end
+  end
+
+  def upload_cookies(conn, %{"cookies" => %{"file" => %Plug.Upload{} = upload}, "return_to" => return_to}) do
+    case Sources.save_uploaded_cookie_file(upload) do
+      :ok ->
+        conn
+        |> put_flash(:info, "Cookie file uploaded successfully.")
+        |> redirect(to: return_to)
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Cookie file upload failed.")
+        |> redirect(to: return_to)
+    end
+  end
+
+  def upload_cookies(conn, %{"return_to" => return_to}) do
+    conn
+    |> put_flash(:error, "Please choose a cookie file to upload.")
+    |> redirect(to: return_to)
+  end
+
+  def save_cookies(conn, %{"cookies" => %{"contents" => contents}, "return_to" => return_to}) do
+    case Sources.write_cookie_file(contents) do
+      :ok ->
+        conn
+        |> put_flash(:info, "Cookie file saved successfully.")
+        |> redirect(to: return_to)
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Cookie file save failed.")
+        |> redirect(to: return_to)
     end
   end
 
@@ -312,5 +376,30 @@ defmodule PinchflatWeb.Sources.SourceController do
         opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
+  end
+
+  defp cookie_file_assigns do
+    cookie_file_contents =
+      case Sources.read_cookie_file() do
+        {:ok, contents} -> contents
+        {:error, _reason} -> nil
+      end
+
+    [
+      cookie_file_path: Sources.cookie_file_path(),
+      cookie_file_exists: Sources.cookie_file_exists?(),
+      cookie_file_configured: Sources.cookie_file_configured?(),
+      cookie_file_contents: cookie_file_contents
+    ]
+  end
+
+  defp maybe_default_cookie_behaviour(%Ecto.Changeset{} = changeset) do
+    current_value = Ecto.Changeset.get_field(changeset, :cookie_behaviour)
+
+    if Sources.cookie_file_configured?() && current_value == :disabled do
+      Ecto.Changeset.put_change(changeset, :cookie_behaviour, :all_operations)
+    else
+      changeset
+    end
   end
 end
