@@ -20,6 +20,63 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
 
   @doc """
+  Returns the configured path to the shared cookie file.
+
+  Returns binary()
+  """
+  def cookie_file_path do
+    Path.join(Application.get_env(:pinchflat, :extras_directory), "cookies.txt")
+  end
+
+  @doc """
+  Returns whether the shared cookie file exists on disk.
+
+  Returns boolean()
+  """
+  def cookie_file_exists? do
+    File.exists?(cookie_file_path())
+  end
+
+  @doc """
+  Returns whether the shared cookie file exists and has non-whitespace contents.
+
+  Returns boolean()
+  """
+  def cookie_file_configured? do
+    FilesystemUtils.exists_and_nonempty?(cookie_file_path())
+  end
+
+  @doc """
+  Reads the shared cookie file.
+
+  Returns {:ok, binary()} | {:error, any()}
+  """
+  def read_cookie_file do
+    File.read(cookie_file_path())
+  end
+
+  @doc """
+  Writes contents to the shared cookie file, creating parent directories as needed.
+
+  Returns :ok | {:error, any()}
+  """
+  def write_cookie_file(contents) when is_binary(contents) do
+    FilesystemUtils.write_p(cookie_file_path(), contents)
+  end
+
+  @doc """
+  Copies an uploaded file into the shared cookie file path, creating parent directories as needed.
+
+  Returns :ok | {:error, any()}
+  """
+  def save_uploaded_cookie_file(%Plug.Upload{path: source_path}) do
+    case File.read(source_path) do
+      {:ok, contents} -> write_cookie_file(contents)
+      {:error, _reason} = err -> err
+    end
+  end
+
+  @doc """
   Returns the relevant output path template for a source.
   Pulls from the source's override if present, otherwise uses the media profile's.
 

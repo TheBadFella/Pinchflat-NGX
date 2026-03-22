@@ -87,6 +87,39 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "cookie file helpers" do
+    setup do
+      extras_directory = Path.join(System.tmp_dir!(), "pinchflat-source-cookie-tests-#{System.unique_integer([:positive])}")
+      original_directory = Application.get_env(:pinchflat, :extras_directory)
+
+      Application.put_env(:pinchflat, :extras_directory, extras_directory)
+      File.mkdir_p!(extras_directory)
+
+      on_exit(fn ->
+        Application.put_env(:pinchflat, :extras_directory, original_directory)
+        File.rm_rf!(extras_directory)
+      end)
+
+      %{extras_directory: extras_directory}
+    end
+
+    test "write_cookie_file/1 creates the cookie file and stores the contents", %{extras_directory: extras_directory} do
+      assert :ok = Sources.write_cookie_file("youtube-cookie-data")
+      assert File.read!(Path.join(extras_directory, "cookies.txt")) == "youtube-cookie-data"
+    end
+
+    test "cookie_file_configured?/0 returns true only when the cookie file has content" do
+      refute Sources.cookie_file_configured?()
+      assert :ok = Sources.write_cookie_file("youtube-cookie-data")
+      assert Sources.cookie_file_configured?()
+    end
+
+    test "read_cookie_file/0 returns the current cookie file contents" do
+      assert :ok = Sources.write_cookie_file("youtube-cookie-data")
+      assert {:ok, "youtube-cookie-data"} = Sources.read_cookie_file()
+    end
+  end
+
   describe "list_sources/0" do
     test "it returns all sources" do
       source = source_fixture()

@@ -10,6 +10,11 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :action, :string, required: true
   attr :media_profiles, :list, required: true
   attr :method, :string, required: true
+  attr :current_path, :string, required: true
+  attr :cookie_file_path, :string, required: true
+  attr :cookie_file_exists, :boolean, required: true
+  attr :cookie_file_configured, :boolean, required: true
+  attr :cookie_file_contents, :string, default: nil
 
   def source_form(assigns)
 
