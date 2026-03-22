@@ -36,6 +36,14 @@ window.isVersionSeen = (versionString) => {
   return localStorage.getItem('seenVersion') === versionString
 }
 
+window.getSidebarCollapsed = () => {
+  return localStorage.getItem('sidebarCollapsed') === 'true'
+}
+
+window.setSidebarCollapsed = (collapsed) => {
+  localStorage.setItem('sidebarCollapsed', collapsed ? 'true' : 'false')
+}
+
 window.dispatchFor = (elementOrId, eventName, detail = {}) => {
   const element =
     typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId
