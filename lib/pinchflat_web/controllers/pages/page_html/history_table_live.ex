@@ -144,16 +144,31 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     {:noreply, assign(socket, new_assigns)}
   end
 
+  def handle_info(%{topic: "job:state", event: "change", payload: payload}, %{assigns: assigns} = socket)
+      when is_map(payload) do
+    if refresh_required?(payload) do
+      new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+      {:noreply, assign(socket, new_assigns)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
     new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
 
     {:noreply, assign(socket, new_assigns)}
   end
 
-  def handle_info(%{topic: "job:progress", event: "update"}, %{assigns: assigns} = socket) do
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+  def handle_info(%{topic: "job:progress", event: "update", payload: payload}, socket) when is_map(payload) do
+    updated_tasks =
+      update_task_progress(socket.assigns.tasks_by_media_item_id, socket.assigns.records, payload)
 
-    {:noreply, assign(socket, new_assigns)}
+    {:noreply, assign(socket, :tasks_by_media_item_id, updated_tasks)}
+  end
+
+  def handle_info(%{topic: "job:progress", event: "update"}, socket) do
+    {:noreply, socket}
   end
 
   defp fetch_pagination_attributes(base_query, page) do
@@ -279,5 +294,42 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   defp readable_byte_size(bytes) do
     {num, suffix} = NumberUtils.human_byte_size(bytes, precision: 1)
     "#{num} #{suffix}"
+  end
+
+  defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
+       when is_integer(media_item_id) do
+    if Enum.any?(records, &(&1.id == media_item_id)) do
+      task = Map.get(tasks_by_media_item_id, media_item_id, %Task{id: payload[:task_id], job_id: payload.job_id})
+      Map.put(tasks_by_media_item_id, media_item_id, struct(task, Map.take(payload, progress_fields())))
+    else
+      tasks_by_media_item_id
+    end
+  end
+
+  defp update_task_progress(tasks_by_media_item_id, _records, _payload), do: tasks_by_media_item_id
+
+  defp refresh_required?(payload) do
+    payload[:media_item_id] ||
+      indexing_worker?(payload[:worker]) ||
+      media_download_worker?(payload[:worker])
+  end
+
+  defp media_download_worker?(worker), do: is_binary(worker) and String.ends_with?(worker, "MediaDownloadWorker")
+
+  defp indexing_worker?(worker),
+    do: worker in ["Pinchflat.FastIndexing.FastIndexingWorker", "Pinchflat.SlowIndexing.MediaCollectionIndexingWorker"]
+
+  defp progress_fields do
+    [
+      :id,
+      :job_id,
+      :media_item_id,
+      :progress_percent,
+      :progress_status,
+      :progress_downloaded_bytes,
+      :progress_total_bytes,
+      :progress_eta_seconds,
+      :progress_updated_at
+    ]
   end
 end

@@ -19,7 +19,13 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
       |> Media.get_media_item!()
       |> Repo.preload([:source, tasks: [:job]])
 
-    render(conn, :show, media_item: media_item)
+    active_tab = tab_param(conn.params, ~w(media tasks), "media")
+
+    render(conn, :show,
+      media_item: media_item,
+      active_tab: active_tab,
+      tab_href: fn tab -> ~p"/sources/#{media_item.source_id}/media/#{media_item}?#{[tab: tab]}" end
+    )
   end
 
   def edit(conn, %{"id" => id}) do
@@ -164,6 +170,16 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
 
       {{start_pos, _}, {end_pos, _}} ->
         {:ok, {start_pos, end_pos}}
+    end
+  end
+
+  defp tab_param(params, allowed_tabs, default_tab) do
+    tab = params["tab"]
+
+    if tab in allowed_tabs do
+      tab
+    else
+      default_tab
     end
   end
 end

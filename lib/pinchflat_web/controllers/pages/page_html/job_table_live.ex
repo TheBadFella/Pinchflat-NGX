@@ -75,12 +75,20 @@ defmodule Pinchflat.Pages.JobTableLive do
     {:ok, assign(socket, tasks: get_tasks(source_id), source_id: source_id)}
   end
 
+  def handle_info(%{topic: "job:state", event: "change", payload: %{job_id: job_id} = payload}, socket) do
+    {:noreply, apply_task_state_change(socket, job_id, payload)}
+  end
+
   def handle_info(%{topic: "job:state", event: "change"}, socket) do
     {:noreply, assign(socket, tasks: get_tasks(socket.assigns.source_id))}
   end
 
+  def handle_info(%{topic: "job:progress", event: "update", payload: %{job_id: job_id} = payload}, socket) do
+    {:noreply, assign(socket, tasks: update_task_progress(socket.assigns.tasks, job_id, payload))}
+  end
+
   def handle_info(%{topic: "job:progress", event: "update"}, socket) do
-    {:noreply, assign(socket, tasks: get_tasks(socket.assigns.source_id))}
+    {:noreply, socket}
   end
 
   def handle_event("cancel_task", %{"task-id" => task_id}, socket) do
@@ -108,7 +116,7 @@ defmodule Pinchflat.Pages.JobTableLive do
 
     base_query =
       if source_id do
-        from([t, j, mi, source] in base_query,
+        from([_t, _j, mi, _mi_source, source] in base_query,
           where: source.id == ^source_id or mi.source_id == ^source_id
         )
       else
@@ -117,6 +125,77 @@ defmodule Pinchflat.Pages.JobTableLive do
 
     base_query
     |> Repo.all()
+  end
+
+  defp get_task(job_id) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      left_join: mi in assoc(t, :media_item),
+      left_join: mi_source in assoc(mi, :source),
+      left_join: source in assoc(t, :source),
+      where: t.job_id == ^job_id,
+      where: j.state == "executing",
+      where: ^"show_in_dashboard" in j.tags,
+      preload: [job: j, media_item: {mi, source: mi_source}, source: source]
+    )
+    |> Repo.one()
+  end
+
+  defp apply_task_state_change(socket, job_id, payload) do
+    if track_job?(socket.assigns, job_id, payload) do
+      case get_task(job_id) do
+        nil -> assign(socket, tasks: remove_task(socket.assigns.tasks, job_id))
+        task -> assign(socket, tasks: upsert_task(socket.assigns.tasks, task))
+      end
+    else
+      socket
+    end
+  end
+
+  defp track_job?(assigns, job_id, payload) do
+    Enum.any?(assigns.tasks, &(&1.job_id == job_id)) ||
+      (payload[:show_in_dashboard] && source_matches?(assigns.source_id, payload[:source_id]))
+  end
+
+  defp source_matches?(nil, _source_id), do: true
+  defp source_matches?(_source_id, nil), do: false
+  defp source_matches?(source_id, payload_source_id), do: source_id == payload_source_id
+
+  defp update_task_progress(tasks, job_id, payload) do
+    Enum.map(tasks, fn
+      %{job_id: ^job_id} = task -> merge_task_progress(task, payload)
+      task -> task
+    end)
+  end
+
+  defp merge_task_progress(task, payload) do
+    struct(task, Map.take(payload, progress_fields()))
+  end
+
+  defp upsert_task(tasks, new_task) do
+    if Enum.any?(tasks, &(&1.job_id == new_task.job_id)) do
+      Enum.map(tasks, fn
+        %{job_id: job_id} when job_id == new_task.job_id -> new_task
+        task -> task
+      end)
+    else
+      [new_task | tasks]
+    end
+  end
+
+  defp remove_task(tasks, job_id) do
+    Enum.reject(tasks, &(&1.job_id == job_id))
+  end
+
+  defp progress_fields do
+    [
+      :progress_percent,
+      :progress_status,
+      :progress_downloaded_bytes,
+      :progress_total_bytes,
+      :progress_eta_seconds,
+      :progress_updated_at
+    ]
   end
 
   defp worker_to_task_name(worker) do

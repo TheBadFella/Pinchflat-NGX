@@ -2,6 +2,8 @@ defmodule PinchflatWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
+  alias Pinchflat.Tasks
+
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
@@ -20,8 +22,19 @@ defmodule PinchflatWeb.Telemetry do
   end
 
   @doc false
-  def job_state_change_broadcast(_event, _measure, _meta, _config) do
-    PinchflatWeb.Endpoint.broadcast("job:state", "change", nil)
+  def job_state_change_broadcast(event, _measure, %{job: job} = meta, _config) do
+    payload =
+      %{
+        event: job_event(event),
+        job_id: job.id,
+        state: job_state(event, meta),
+        worker: job.worker,
+        tags: job.tags || [],
+        show_in_dashboard: "show_in_dashboard" in (job.tags || [])
+      }
+      |> Map.merge(Tasks.get_task_event_payload(job.id) || %{})
+
+    PinchflatWeb.Endpoint.broadcast("job:state", "change", payload)
   end
 
   def metrics do
@@ -93,4 +106,8 @@ defmodule PinchflatWeb.Telemetry do
       # {PinchflatWeb, :count_users, []}
     ]
   end
+
+  defp job_event([:oban, :job, event]), do: event
+  defp job_state([:oban, :job, :start], _meta), do: :executing
+  defp job_state(_event, meta), do: meta[:state]
 end

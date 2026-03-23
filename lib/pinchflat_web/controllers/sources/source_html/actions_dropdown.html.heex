@@ -12,6 +12,7 @@
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </.link>
   </:option>
+
   <:option>
     <span x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
@@ -24,14 +25,13 @@
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </span>
   </:option>
-  <:option>
-    <.link href={~p"/sources/new?template_id=#{@source}"} method="get">
-      Use as Template
-    </.link>
-  </:option>
+
+  <:option><.link href={~p"/sources/new?template_id=#{@source}"} method="get">Use as Template</.link></:option>
+
   <:option>
     <div class="h-px w-full bg-bodydark2"></div>
   </:option>
+
   <:option :if={@source.download_media}>
     <.link
       href={~p"/sources/#{@source}/force_download_pending"}
@@ -41,6 +41,7 @@
       Download Pending
     </.link>
   </:option>
+
   <:option :if={@source.download_media}>
     <.link
       href={~p"/sources/#{@source}/force_redownload"}
@@ -50,6 +51,7 @@
       Redownload Existing
     </.link>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@source}/force_index"}
@@ -59,6 +61,7 @@
       Force Index
     </.link>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@source}/force_metadata_refresh"}
@@ -68,6 +71,7 @@
       Refresh Metadata
     </.link>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@source}/sync_files_on_disk"}
@@ -77,9 +81,11 @@
       Sync Files on Disk
     </.link>
   </:option>
+
   <:option>
     <div class="h-px w-full bg-bodydark2"></div>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@source}"}
@@ -89,6 +95,7 @@
       Delete Source
     </.link>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@source}?delete_files=true"}

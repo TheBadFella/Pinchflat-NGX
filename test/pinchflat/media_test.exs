@@ -693,6 +693,35 @@ defmodule Pinchflat.MediaTest do
 
       assert Repo.reload(media_item_2).playlist_index == media_attrs.playlist_index
     end
+
+    test "doesn't recalculate upload_date_index when updating an existing media item" do
+      source = source_fixture(%{collection_type: :channel})
+
+      media_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      different_media_attrs =
+        %YtDlpMedia{
+          media_attrs
+          | media_id: "different-media-id",
+            title: "Different media item"
+        }
+
+      assert {:ok, %MediaItem{} = media_item_1} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+
+      assert {:ok, %MediaItem{} = _media_item_2} =
+               Media.create_media_item_from_backend_attrs(source, different_media_attrs)
+
+      updated_media_attrs = %YtDlpMedia{media_attrs | title: "Updated title"}
+
+      assert {:ok, %MediaItem{} = updated_media_item} =
+               Media.create_media_item_from_backend_attrs(source, updated_media_attrs)
+
+      assert media_item_1.id == updated_media_item.id
+      assert Repo.reload!(updated_media_item).upload_date_index == 99
+    end
   end
 
   describe "update_media_item/2" do

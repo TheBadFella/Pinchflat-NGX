@@ -27,7 +27,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   )
 
   def index(conn, _params) do
-    sources = Sources.list_sources() |> Repo.preload(:media_profile)
+    sources = Sources.list_sources() |> Sources.preload_api_assocs()
 
     case get_format(conn) do
       "json" ->
@@ -46,7 +46,9 @@ defmodule PinchflatWeb.Sources.SourceController do
         template_id -> Repo.get(Source, template_id) || %Source{}
       end
 
-    render(conn, :new,
+    render(
+      conn,
+      :new,
       Keyword.merge(
         [
           media_profiles: media_profiles(),
@@ -91,7 +93,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       {:ok, source} ->
         case get_format(conn) do
           "json" ->
-            source = Repo.preload(source, :media_profile)
+            source = Sources.preload_api_assocs(source)
             conn |> put_status(:created) |> json(source)
 
           _ ->
@@ -111,7 +113,9 @@ defmodule PinchflatWeb.Sources.SourceController do
             |> json(%{errors: format_changeset_errors(changeset)})
 
           _ ->
-            render(conn, :new,
+            render(
+              conn,
+              :new,
               Keyword.merge(
                 [
                   changeset: changeset,
@@ -140,14 +144,19 @@ defmodule PinchflatWeb.Sources.SourceController do
   )
 
   def show(conn, %{"id" => id}) do
-    source = Repo.preload(Sources.get_source!(id), :media_profile)
+    source = Sources.get_source!(id) |> Sources.preload_api_assocs()
+    active_tab = tab_param(conn.params, ~w(source pending active-tasks downloaded job-queue other), "source")
 
     case get_format(conn) do
       "json" ->
         conn |> put_status(:ok) |> json(source)
 
       _ ->
-        render(conn, :show, source: source)
+        render(conn, :show,
+          source: source,
+          active_tab: active_tab,
+          tab_href: fn tab -> ~p"/sources/#{source}?#{[tab: tab]}" end
+        )
     end
   end
 
@@ -155,7 +164,9 @@ defmodule PinchflatWeb.Sources.SourceController do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)
 
-    render(conn, :edit,
+    render(
+      conn,
+      :edit,
       Keyword.merge(
         [
           source: source,
@@ -190,7 +201,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       {:ok, source} ->
         case get_format(conn) do
           "json" ->
-            source = Repo.preload(source, :media_profile)
+            source = Sources.preload_api_assocs(source)
             conn |> put_status(:ok) |> json(source)
 
           _ ->
@@ -207,7 +218,9 @@ defmodule PinchflatWeb.Sources.SourceController do
             |> json(%{errors: format_changeset_errors(changeset)})
 
           _ ->
-            render(conn, :edit,
+            render(
+              conn,
+              :edit,
               Keyword.merge(
                 [
                   source: source,
@@ -400,6 +413,16 @@ defmodule PinchflatWeb.Sources.SourceController do
       Ecto.Changeset.put_change(changeset, :cookie_behaviour, :all_operations)
     else
       changeset
+    end
+  end
+
+  defp tab_param(params, allowed_tabs, default_tab) do
+    tab = params["tab"]
+
+    if tab in allowed_tabs do
+      tab
+    else
+      default_tab
     end
   end
 end

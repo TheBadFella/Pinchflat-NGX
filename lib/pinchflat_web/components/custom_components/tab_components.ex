@@ -5,6 +5,9 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
   @doc """
   Takes a list of tabs and renders them in a tabbed layout.
   """
+  attr :active_tab, :string, default: nil
+  attr :tab_href, :any, default: nil
+
   slot :tab, required: true do
     attr :id, :string, required: true
     attr :title, :string, required: true
@@ -13,40 +16,46 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
   slot :tab_append, required: false
 
   def tabbed_layout(assigns) do
-    assigns = Map.put(assigns, :first_tab_id, hd(assigns.tab).id)
+    first_tab_id = hd(assigns.tab).id
+
+    active_tab_id =
+      if Enum.any?(assigns.tab, &(&1.id == assigns.active_tab)), do: assigns.active_tab, else: first_tab_id
+
+    active_tab = Enum.find(assigns.tab, &(&1.id == active_tab_id))
+
+    assigns =
+      assigns
+      |> assign(:active_tab, active_tab)
+      |> assign(:active_tab_id, active_tab_id)
 
     ~H"""
-    <div
-      x-data={"{
-        openTab: getTabFromHash('#{@first_tab_id}', '#{@first_tab_id}'),
-        activeClasses: 'text-meta-5 border-meta-5',
-        inactiveClasses: 'border-transparent'
-      }"}
-      @hashchange.window={"openTab = getTabFromHash(openTab, '#{@first_tab_id}')"}
-      class="w-full"
-    >
+    <div class="w-full">
       <header class="flex flex-col md:flex-row md:justify-between border-b border-strokedark">
         <div class="flex flex-wrap gap-5 sm:gap-10">
-          <a
+          <.link
             :for={tab <- @tab}
-            href="#"
-            @click.prevent={"openTab = setTabByName('#{tab.id}')"}
-            x-bind:class={"openTab === '#{tab.id}' ? activeClasses : inactiveClasses"}
-            class="border-b-2 py-4 w-full sm:w-fit text-sm font-medium hover:text-meta-5 md:text-base"
+            href={tab_href(@tab_href, tab.id)}
+            class={[
+              "border-b-2 py-4 w-full sm:w-fit text-sm font-medium hover:text-meta-5 md:text-base",
+              if(tab.id == @active_tab_id, do: "text-meta-5 border-meta-5", else: "border-transparent")
+            ]}
           >
             <span class="text-xl">{tab.title}</span>
-          </a>
+          </.link>
         </div>
         <div class="mx-4 my-4 lg:my-0 flex gap-5 sm:gap-10 items-center">
           {render_slot(@tab_append)}
         </div>
       </header>
       <div class="mt-4 min-h-60 overflow-x-auto">
-        <div :for={tab <- @tab} x-show={"openTab === '#{tab.id}'"} class="font-medium leading-relaxed">
-          {render_slot(tab)}
+        <div :if={@active_tab} class="font-medium leading-relaxed">
+          {render_slot(@active_tab)}
         </div>
       </div>
     </div>
     """
   end
+
+  defp tab_href(nil, _tab_id), do: "#"
+  defp tab_href(tab_href, tab_id) when is_function(tab_href, 1), do: tab_href.(tab_id)
 end

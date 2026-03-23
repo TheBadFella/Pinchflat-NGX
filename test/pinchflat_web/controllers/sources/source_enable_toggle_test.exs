@@ -11,8 +11,7 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
 
       html = render_component(SourceEnableToggle, %{id: :foo, source: source})
 
-      # This is checking the Alpine attrs which is a good-enough proxy for the toggle position
-      assert html =~ "{ enabled: true }"
+      assert html =~ ~s(<input type="checkbox" id="source_1_enabled_input" name="source[enabled]" value="true" checked)
     end
 
     test "renders a toggle in the off position if the source is disabled" do
@@ -20,7 +19,8 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
 
       html = render_component(SourceEnableToggle, %{id: :foo, source: source})
 
-      assert html =~ "{ enabled: false }"
+      assert html =~
+               ~s(<input type="checkbox" id="source_1_enabled_input" name="source[enabled]" value="true" class="peer sr-only")
     end
   end
 end

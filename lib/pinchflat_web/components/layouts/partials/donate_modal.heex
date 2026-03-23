@@ -1,7 +1,9 @@
 <.modal id="donate-modal" allow_close={true}>
   <section x-data="{ inputValue: '' }">
     <h3 class="text-2xl text-white">Donate</h3>
+
     <p class="text-sm">Thank you for your support :&rpar;</p>
+
     <p class="mt-4">
       If you find the project valuable and want to say thanks, a
       <.inline_link href="https://supporters.eff.org/donate">
@@ -11,17 +13,20 @@
       <.inline_link href="https://github.com/kieraneglin/pinchflat/issues/234">this issue</.inline_link>
       to hopefully inspire others to donate as well.
     </p>
+
     <p class="mt-4">
       The Electronic Frontier Foundation is a nonprofit organization who defend your online liberties and backed
       <.inline_code>youtube-dl</.inline_code>
       when Google took them down<.inline_link href="https://github.com/github/dmca/blob/9a85e0f021f7967af80e186b890776a50443f06c/2020/11/2020-11-16-RIAA-reversal-effletter.pdf">
-        <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" />
+        <.icon
+          name="hero-arrow-top-right-on-square"
+          class="h-3 w-3"
+        />
       </.inline_link>
     </p>
+
     <.link href="https://supporters.eff.org/donate" target="_blank">
-      <.button color="bg-primary" class="w-full mt-8">
-        Donate
-      </.button>
+      <.button color="bg-primary" class="w-full mt-8">Donate</.button>
     </.link>
   </section>
 </.modal>

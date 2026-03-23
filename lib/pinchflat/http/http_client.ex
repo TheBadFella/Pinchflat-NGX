@@ -6,6 +6,7 @@ defmodule Pinchflat.HTTP.HTTPClient do
   or security, check out HTTPoison or Mint.
   """
 
+  alias Finch.Response
   alias Pinchflat.HTTP.HTTPBehaviour
 
   @behaviour HTTPBehaviour
@@ -22,20 +23,24 @@ defmodule Pinchflat.HTTP.HTTPClient do
   @impl HTTPBehaviour
   def get(url, headers \\ [], opts \\ []) do
     headers = parse_headers(headers)
+    request = Finch.build(:get, url, headers)
 
-    case :httpc.request(:get, {url, headers}, [], opts) do
-      {:ok, {{_version, 200, _reason_phrase}, _headers, body}} ->
-        {:ok, to_string(body)}
+    case Finch.request(request, Pinchflat.Finch, opts) do
+      {:ok, %Response{status: 200, body: body}} ->
+        {:ok, body}
 
-      {:ok, {{_version, status_code, reason_phrase}, _headers, _body}} ->
-        {:error, "HTTP request failed with status code #{status_code}: #{reason_phrase}"}
+      {:ok, %Response{status: status_code}} ->
+        {:error, "HTTP request failed with status code #{status_code}"}
 
       {:error, reason} ->
-        {:error, "HTTP request failed: #{reason}"}
+        {:error, "HTTP request failed: #{error_message(reason)}"}
     end
   end
 
   defp parse_headers(headers) do
-    Enum.map(headers, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+    Enum.map(headers, fn {key, value} -> {to_string(key), to_string(value)} end)
   end
+
+  defp error_message(%{__exception__: true} = reason), do: Exception.message(reason)
+  defp error_message(reason), do: inspect(reason)
 end

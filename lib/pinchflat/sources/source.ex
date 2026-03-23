@@ -156,6 +156,18 @@ defmodule Pinchflat.Sources.Source do
     ~w(__meta__ __struct__ metadata tasks media_items)a
   end
 
+  @doc false
+  def to_json_map(%Source{} = source) do
+    excluded_fields = json_exluded_fields()
+
+    source
+    |> Map.from_struct()
+    |> Enum.reject(fn {key, value} ->
+      key in excluded_fields || match?(%Ecto.Association.NotLoaded{}, value)
+    end)
+    |> Enum.into(%{})
+  end
+
   def youtube_video_url?(url) when is_binary(url) do
     youtube_patterns = [
       ~r<^https?://(?:www\.)?youtube\.com/watch\?[^#]*\bv=[^&]+>,
@@ -244,8 +256,7 @@ defmodule Pinchflat.Sources.Source do
   defimpl Jason.Encoder, for: Source do
     def encode(value, opts) do
       value
-      |> Repo.preload(:media_profile)
-      |> Map.drop(Source.json_exluded_fields())
+      |> Source.to_json_map()
       |> Jason.Encode.map(opts)
     end
   end

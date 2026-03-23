@@ -80,9 +80,8 @@ defmodule PinchflatWeb.CoreComponents do
                   <.icon name="hero-x-mark-solid" class="h-5 w-5 text-white" />
                 </button>
               </div>
-              <div id={"#{@id}-content"}>
-                {render_slot(@inner_block)}
-              </div>
+
+              <div id={"#{@id}-content"}>{render_slot(@inner_block)}</div>
             </div>
           </div>
         </div>
@@ -124,11 +123,11 @@ defmodule PinchflatWeb.CoreComponents do
         @kind == :error && "border-[#F87171] bg-[#F87171]"
       ]}>
         <main>
-          <h5 :if={@title} class="mb-2 text-lg font-bold">
-            {@title}
-          </h5>
+          <h5 :if={@title} class="mb-2 text-lg font-bold">{@title}</h5>
+
           <p class="mt-2 text-md leading-5 opacity-80">{msg}</p>
         </main>
+
         <button
           type="button"
           aria-label={gettext("close")}
@@ -154,8 +153,7 @@ defmodule PinchflatWeb.CoreComponents do
   def flash_group(assigns) do
     ~H"""
     <div class="flex flex-col gap-7.5" id={@id}>
-      <.flash kind={:info} title="Success!" flash={@flash} />
-      <.flash kind={:error} title="Error!" flash={@flash} />
+      <.flash kind={:info} title="Success!" flash={@flash} /> <.flash kind={:error} title="Error!" flash={@flash} />
       <.flash
         id="client-error"
         kind={:error}
@@ -208,9 +206,7 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <.form :let={f} for={@for} as={@as} {@rest}>
       {render_slot(@inner_block, f)}
-      <div :for={action <- @actions} class="mt-2 flex items-center justify-between gap-6">
-        {render_slot(action, f)}
-      </div>
+      <div :for={action <- @actions} class="mt-2 flex items-center justify-between gap-6">{render_slot(action, f)}</div>
     </.form>
     """
   end
@@ -295,11 +291,10 @@ defmodule PinchflatWeb.CoreComponents do
           checked={@checked}
           class={["rounded focus:ring-0", @inputclass]}
           {@rest}
-        />
-        {@label}
-        <span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
+        /> {@label} <span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
       </label>
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -308,9 +303,8 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{type: "checkbox_group"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}>
-        {@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
-      </.label>
+      <.label for={@id}>{@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span></.label>
+
       <section class="grid grid-cols-1 gap-2 md:grid-cols-2 max-w-prose mb-4 ml-1">
         <div :for={{option_name, option_value} <- @options} class="flex items-center">
           <input
@@ -320,13 +314,12 @@ defmodule PinchflatWeb.CoreComponents do
             value={option_value}
             checked={option_value in @value}
             class={["rounded focus:ring-offset-0 ring-offset-0 focus:ring-0 h-5 w-5 ", @inputclass]}
-          />
-          <label for={"#{@id}-#{option_value}"} class="ml-2 cursor-pointer select-none">
-            {option_name}
-          </label>
+          /> <label for={"#{@id}-#{option_value}"} class="ml-2 cursor-pointer select-none">{option_name}</label>
         </div>
       </section>
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -339,25 +332,31 @@ defmodule PinchflatWeb.CoreComponents do
       end)
 
     ~H"""
-    <div x-data={"{ enabled: #{@checked} }"} class="" phx-update="ignore" id={"#{@id}-wrapper"}>
+    <div phx-feedback-for={@name} id={"#{@id}-wrapper"}>
       <.label :if={@label} for={@id}>
         {@label}
         <span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
       </.label>
-      <div class="relative flex flex-col">
-        <input type="hidden" id={@id} name={@name} x-bind:value="enabled" {@rest} />
-        <%!-- This triggers a `change` event on the hidden input when the toggle is clicked --%>
-        <div class="inline-block cursor-pointer" @click={"enabled = !enabled; dispatchFor('#{@id}', 'change')"}>
-          <div x-bind:class="enabled && '!bg-primary'" class="block h-8 w-14 rounded-full bg-black"></div>
-          <div
-            x-bind:class="enabled && '!right-1 !translate-x-full'"
-            class={[
-              "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white transition",
-              @inputclass
-            ]}
-          >
+      <div class="flex flex-col">
+        <label for={@id} class="relative inline-flex w-fit cursor-pointer items-center">
+          <input type="hidden" name={@name} value="false" />
+          <input
+            type="checkbox"
+            id={@id}
+            name={@name}
+            value="true"
+            checked={@checked}
+            class="peer sr-only"
+            {@rest}
+          />
+          <div class="block h-8 w-14 rounded-full bg-black transition peer-checked:bg-primary peer-disabled:opacity-50">
           </div>
-        </div>
+          <div class={[
+            "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white transition peer-checked:translate-x-6 peer-disabled:opacity-80",
+            @inputclass
+          ]}>
+          </div>
+        </label>
         <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
         <.error :for={msg <- @errors}>{msg}</.error>
       </div>
@@ -371,6 +370,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
       </.label>
+
       <div class="flex">
         <select
           id={@id}
@@ -387,9 +387,11 @@ defmodule PinchflatWeb.CoreComponents do
           <option :if={@prompt} value="">{@prompt}</option>
           {Phoenix.HTML.Form.options_for_select(@options, @value)}
         </select>
-        {render_slot(@inner_block)}
+         {render_slot(@inner_block)}
       </div>
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -398,9 +400,7 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}>
-        {@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
-      </.label>
+      <.label for={@id}>{@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span></.label>
       <textarea
         id={@id}
         name={@name}
@@ -414,6 +414,7 @@ defmodule PinchflatWeb.CoreComponents do
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -423,9 +424,8 @@ defmodule PinchflatWeb.CoreComponents do
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}>
-        {@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
-      </.label>
+      <.label for={@id}>{@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span></.label>
+
       <div class="flex items-center">
         <input
           type={@type}
@@ -440,10 +440,11 @@ defmodule PinchflatWeb.CoreComponents do
             @errors != [] && "border-rose-400 focus:border-rose-400"
           ]}
           {@rest}
-        />
-        {render_slot(@input_append)}
+        /> {render_slot(@input_append)}
       </div>
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -456,9 +457,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def help(assigns) do
     ~H"""
-    <p class="mt-1 text-sm leading-5">
-      {render_slot(@inner_block)}
-    </p>
+    <p class="mt-1 text-sm leading-5">{render_slot(@inner_block)}</p>
     """
   end
 
@@ -484,8 +483,7 @@ defmodule PinchflatWeb.CoreComponents do
   def error(assigns) do
     ~H"""
     <p class="mt-1 mb-5 flex gap-3 text-md leading-6 text-rose-600 phx-no-feedback:hidden">
-      <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
-      {render_slot(@inner_block)}
+      <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" /> {render_slot(@inner_block)}
     </p>
     """
   end
@@ -503,13 +501,11 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", @class]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8 text-zinc-800">
-          {render_slot(@inner_block)}
-        </h1>
-        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600">
-          {render_slot(@subtitle)}
-        </p>
+        <h1 class="text-lg font-semibold leading-8 text-zinc-800">{render_slot(@inner_block)}</h1>
+
+        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600">{render_slot(@subtitle)}</p>
       </div>
+
       <div class="flex-none">{render_slot(@actions)}</div>
     </header>
     """
@@ -551,11 +547,11 @@ defmodule PinchflatWeb.CoreComponents do
       <thead class="text-sm text-left leading-6 text-zinc-500">
         <tr>
           <th :for={col <- @col} class="p-0 pb-4 pr-6 font-normal">{col[:label]}</th>
-          <th :if={@action != []} class="relative p-0 pb-4">
-            <span class="sr-only">{gettext("Actions")}</span>
-          </th>
+
+          <th :if={@action != []} class="relative p-0 pb-4"><span class="sr-only">{gettext("Actions")}</span></th>
         </tr>
       </thead>
+
       <tbody
         id={@id}
         phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
@@ -569,11 +565,10 @@ defmodule PinchflatWeb.CoreComponents do
           >
             <div class="block py-4 pr-6">
               <span class="absolute -inset-y-px right-0 -left-4 group-hover:bg-zinc-50 sm:rounded-l-xl" />
-              <span class={["relative", i == 0 && "font-semibold text-zinc-900"]}>
-                {render_slot(col, @row_item.(row))}
-              </span>
+              <span class={["relative", i == 0 && "font-semibold text-zinc-900"]}>{render_slot(col, @row_item.(row))}</span>
             </div>
           </td>
+
           <td :if={@action != []} class="relative w-14 p-0">
             <div class="relative whitespace-nowrap py-4 text-right text-sm font-medium">
               <span class="absolute -inset-y-px -right-4 left-0 group-hover:bg-zinc-50 sm:rounded-r-xl" />
@@ -608,6 +603,7 @@ defmodule PinchflatWeb.CoreComponents do
       <dl class="-my-4 divide-y dark:divide-strokedark">
         <div :for={item <- @item} class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
           <dt class="w-1/4 flex-none dark:text-white">{item.title}</dt>
+
           <dd class="dark:text-white">{render_slot(item)}</dd>
         </div>
       </dl>
@@ -670,8 +666,7 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <div class="mt-16">
       <.link href={@href} class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700">
-        <.icon name="hero-arrow-left-solid" class="h-3 w-3" />
-        {render_slot(@inner_block)}
+        <.icon name="hero-arrow-left-solid" class="h-3 w-3" /> {render_slot(@inner_block)}
       </.link>
     </div>
     """

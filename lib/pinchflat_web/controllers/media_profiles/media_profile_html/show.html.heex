@@ -1,11 +1,7 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex items-center min-w-0">
-    <.link href={~p"/media_profiles"}>
-      <.icon name="hero-arrow-left" class="w-10 h-10 hover:dark:text-white" />
-    </.link>
-    <h2 class="text-title-md2 font-bold text-black dark:text-white ml-2 truncate">
-      {@media_profile.name}
-    </h2>
+    <.link href={~p"/media_profiles"}><.icon name="hero-arrow-left" class="w-10 h-10 hover:dark:text-white" /></.link>
+    <h2 class="text-title-md2 font-bold text-black dark:text-white ml-2 truncate">{@media_profile.name}</h2>
   </div>
 
   <nav>
@@ -16,9 +12,10 @@
     </.link>
   </nav>
 </div>
+
 <div class="rounded-sm border border-stroke bg-white px-5 pb-2.5 pt-6 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5 xl:pb-1">
   <div class="max-w-full">
-    <.tabbed_layout>
+    <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append>
         <.actions_dropdown media_profile={@media_profile} />
       </:tab_append>
@@ -31,17 +28,19 @@
           </section>
         </div>
       </:tab>
+
       <:tab title="Sources" id="sources">
         <.table rows={@sources} table_class="text-black dark:text-white">
           <:col :let={source} label="Name">
-            <.subtle_link href={~p"/sources/#{source.id}"}>
-              {source.custom_name || source.collection_name}
-            </.subtle_link>
+            <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name || source.collection_name}</.subtle_link>
           </:col>
+
           <:col :let={source} label="Type">{source.collection_type}</:col>
+
           <:col :let={source} label="Should Download?">
             <.icon name={if source.download_media, do: "hero-check", else: "hero-x-mark"} />
           </:col>
+
           <:col :let={source} label="" class="flex justify-end">
             <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mr-4" />
           </:col>

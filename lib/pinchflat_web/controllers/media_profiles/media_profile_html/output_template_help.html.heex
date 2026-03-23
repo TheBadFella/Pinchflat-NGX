@@ -1,8 +1,10 @@
 <%!-- The heex HTML formatter is really struggling with this file - I apologize in advance --%>
 <aside>
   <h2 class="text-xl font-bold mb-2">Output Template Syntax</h2>
+
   <section class="ml-2 md:ml-4 mb-4 max-w-prose overflow-auto">
     <p>When generating an output template, you have 3 options for syntax:</p>
+
     <ul class="list-disc list-inside ml-2 md:ml-5">
       <li>
         Liquid-style:
@@ -10,18 +12,23 @@
           {"/#{double_brace("channel")}/#{double_brace("title")} - #{double_brace("id")}.#{double_brace("ext")}"}
         </.inline_code>
       </li>
+
       <li>
-        <code class="text-sm">yt-dlp</code>-style
-        <.inline_link href="https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template">
-          <.icon name="hero-arrow-top-right-on-square" class="h-4 w-4" />
+        <code class="text-sm">yt-dlp</code>-style <.inline_link href="https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template">
+          <.icon
+            name="hero-arrow-top-right-on-square"
+            class="h-4 w-4"
+          />
         </.inline_link>:
         <.inline_code>/%(channel)s/%(duration>%H-%M-%S)s-%(id)s.%(ext)s</.inline_code>
       </li>
+
       <li>
         Any bare words:
         <.inline_code>{"/videos/1080p/#{double_brace("id")}.#{double_brace("ext")}"}</.inline_code>
       </li>
     </ul>
+
     <p class="my-2">
       Apart from custom aliases, the liquid-style syntax maps 1:1 to the <code class="text-sm">yt-dlp</code>-style syntax behind-the-scenes. This means that
       <em>any</em>
@@ -31,6 +38,7 @@
       option is translated to
       <.inline_code>%(duration)S</.inline_code>
     </p>
+
     <p class="my-2">
       <strong>Major 🔑:</strong>
       these syntaxes can be mixed and matched freely! I prefer to use liquid-style and bare words
@@ -39,17 +47,17 @@
         {"/1080p/#{double_brace("channel")}/#{double_brace("title")}-(%(subtitles.en.-1.ext)s).#{double_brace("ext")}"}
       </.inline_code>
     </p>
+
     <p class="my-2">
       <strong>NOTE:</strong>
       Your template <em>must</em>
-      end with an extension option (<.inline_code>.{double_brace("ext")}</.inline_code>
-      or
-      <.inline_code>.%(ext)S</.inline_code>).
+      end with an extension option (<.inline_code>.{double_brace("ext")}</.inline_code> or <.inline_code>.%(ext)S</.inline_code>).
       Downloading won't work as expected without it.
     </p>
   </section>
 
   <h2 class="text-xl font-bold mb-2">Template Options</h2>
+
   <section class="ml-2 md:ml-4 mb-4 overflow-auto">
     <p class="max-w-prose">
       Any single-word <code class="text-sm">yt-dlp</code>
@@ -60,21 +68,27 @@
       can be used with the curly braced liquid-style syntax.
       This is just a list of the most common options as well as some custom aliases
     </p>
+
     <h3 class="text-lg font-bold my-2">Media Center Custom Aliases</h3>
+
     <ul class="list-disc list-inside mb-4 ml-2 md:ml-5 max-w-prose">
       <li :for={{k, v} <- media_center_custom_output_template_options()} class="mt-1">
         <.inline_code>{double_brace(k)}</.inline_code>
         <span :if={v}>- {html_escape({:safe, v})}</span>
       </li>
     </ul>
+
     <h3 class="text-lg font-bold mb-2">Other Custom Aliases</h3>
+
     <ul class="list-disc list-inside mb-4 ml-2 md:ml-5 max-w-prose">
       <li :for={{k, v} <- other_custom_output_template_options()} class="mt-1">
         <.inline_code>{double_brace(k)}</.inline_code>
         <span :if={v}>- {html_escape({:safe, v})}</span>
       </li>
     </ul>
+
     <h3 class="text-lg font-bold mb-2">Common Options</h3>
+
     <ul class="list-disc list-inside ml-2 md:ml-5">
       <li :for={opt <- common_output_template_options()} class="mt-1">
         <.inline_code>{double_brace(opt)}</.inline_code>

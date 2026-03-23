@@ -6,7 +6,6 @@ defmodule Pinchflat.UpgradeButtonLive do
     <form id="upgradeForm" phx-change="check_matching_text" phx-hook="supress-enter-submission">
       <.input type="text" name="unlock-pro-textbox" value="" />
     </form>
-
     <%!-- The setTimeout is so the modal has time to disappear before it's removed --%>
     <.button
       class="w-full mt-4"

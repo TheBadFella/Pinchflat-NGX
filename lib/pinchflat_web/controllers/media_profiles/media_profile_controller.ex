@@ -65,6 +65,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
 
   def show(conn, %{"id" => id}) do
     media_profile = Profiles.get_media_profile!(id)
+    active_tab = tab_param(conn.params, ~w(media-profile sources), "media-profile")
 
     sources =
       SourcesQuery.new()
@@ -72,7 +73,12 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       |> order_by(asc: :custom_name)
       |> Repo.all()
 
-    render(conn, :show, media_profile: media_profile, sources: sources)
+    render(conn, :show,
+      media_profile: media_profile,
+      sources: sources,
+      active_tab: active_tab,
+      tab_href: fn tab -> ~p"/media_profiles/#{media_profile}?#{[tab: tab]}" end
+    )
   end
 
   def edit(conn, %{"id" => id}) do
@@ -114,6 +120,16 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       {Layouts, :onboarding}
     else
       {Layouts, :app}
+    end
+  end
+
+  defp tab_param(params, allowed_tabs, default_tab) do
+    tab = params["tab"]
+
+    if tab in allowed_tabs do
+      tab
+    else
+      default_tab
     end
   end
 end

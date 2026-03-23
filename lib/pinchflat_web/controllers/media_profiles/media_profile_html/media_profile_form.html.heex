@@ -6,14 +6,11 @@
   x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
   x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
 >
-  <.error :if={@changeset.action}>
-    Oops, something went wrong! Please check the errors below.
-  </.error>
+  <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
   <section x-data="{ selectedPreset: null }">
-    <h3 class="my-4 text-2xl text-black dark:text-white">
-      Use a Preset
-    </h3>
+    <h3 class="my-4 text-2xl text-black dark:text-white">Use a Preset</h3>
+
     <section x-data="{ selection: null }">
       <.input
         prompt="Select preset"
@@ -38,13 +35,13 @@
     </section>
 
     <section class="flex justify-between items-center mt-8">
-      <h3 class="text-2xl text-white">
-        General Options
-      </h3>
+      <h3 class="text-2xl text-white">General Options</h3>
+
       <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
       </span>
     </section>
+
     <section x-data="{ 
         presets: { 
           default: 'Default',
@@ -81,9 +78,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">
-      Subtitle Options
-    </h3>
+    <h3 class="mt-10 text-2xl text-black dark:text-white">Subtitle Options</h3>
 
     <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
       <.input
@@ -135,9 +130,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">
-      Thumbnail Options
-    </h3>
+    <h3 class="mt-10 text-2xl text-black dark:text-white">Thumbnail Options</h3>
 
     <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
       <.input
@@ -159,9 +152,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">
-      Metadata Options
-    </h3>
+    <h3 class="mt-10 text-2xl text-black dark:text-white">Metadata Options</h3>
 
     <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: true } }">
       <.input
@@ -183,9 +174,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">
-      Release Format Options
-    </h3>
+    <h3 class="mt-10 text-2xl text-black dark:text-white">Release Format Options</h3>
 
     <section x-data="{ presets: { default: 'include', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
       <.input
@@ -209,9 +198,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">
-      Quality Options
-    </h3>
+    <h3 class="mt-10 text-2xl text-black dark:text-white">Quality Options</h3>
 
     <section x-data="{ presets: { default: '1080p', media_center: '1080p', audio: 'audio', archiving: '2160p' } }">
       <.input
@@ -245,9 +232,8 @@
       />
     </section>
 
-    <h3 class="mt-8 text-2xl text-black dark:text-white">
-      Media Center Options
-    </h3>
+    <h3 class="mt-8 text-2xl text-black dark:text-white">Media Center Options</h3>
+
     <p class="text-sm mt-2 max-w-prose">
       Everything in this section is experimental - please open a GitHub issue if you see something odd.
       <strong>
@@ -280,9 +266,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">
-      SponsorBlock Options
-    </h3>
+    <h3 class="mt-10 text-2xl text-black dark:text-white">SponsorBlock Options</h3>
 
     <section x-data="{ sponsorblockBehaviour: null }">
       <section x-data="{ presets: { default: 'disabled', media_center: 'disabled', audio: 'disabled', archiving: 'disabled' } }">
@@ -309,11 +293,8 @@
         />
       </section>
     </section>
-
     <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Media profile</.button>
   </section>
 
-  <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mb-5">
-    <.output_template_help />
-  </div>
+  <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mb-5"><.output_template_help /></div>
 </.simple_form>
