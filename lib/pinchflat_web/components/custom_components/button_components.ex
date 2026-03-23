@@ -14,8 +14,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
         <span>Click me</span>
       </.button>
   """
-  attr :color, :string, default: "bg-primary"
-  attr :rounding, :string, default: "rounded-sm"
+  attr :color, :string, default: "bg-theme-primary text-theme-on-primary"
+  attr :rounding, :string, default: "rounded-m3-sm"
   attr :class, :string, default: ""
   attr :type, :string, default: "submit"
   attr :disabled, :boolean, default: false
@@ -27,11 +27,11 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
     ~H"""
     <button
       class={[
-        "text-center font-medium text-white whitespace-nowrap",
+        "text-center font-medium whitespace-nowrap transition shadow-m3-1",
         "#{@rounding} inline-flex items-center justify-center px-8 py-4",
         "#{@color}",
-        "hover:bg-opacity-90 lg:px-8 xl:px-10",
-        "disabled:bg-opacity-50 disabled:cursor-not-allowed disabled:text-grey-5",
+        "hover:brightness-110 lg:px-8 xl:px-10",
+        "disabled:cursor-not-allowed disabled:opacity-50",
         @class
       ]}
       type={@type}
@@ -63,8 +63,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       <span
         x-on:click.prevent="dropdownOpen = !dropdownOpen"
         class={[
-          "cursor-pointer inline-flex gap-2.5 rounded-md bg-primary px-5.5 py-3",
-          "font-medium text-white hover:bg-opacity-95"
+          "cursor-pointer inline-flex gap-2.5 rounded-m3-sm bg-theme-primary px-5.5 py-3",
+          "font-medium text-theme-on-primary shadow-m3-1 transition hover:brightness-110"
         ]}
       >
         {@text}
@@ -77,11 +77,11 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       <div
         x-show="dropdownOpen"
         x-on:click.outside="dropdownOpen = false"
-        class="absolute left-0 top-full z-40 mt-2 w-full rounded-md bg-black py-3 shadow-card"
+        class="absolute left-0 top-full z-40 mt-2 w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-3 text-theme-on-surface shadow-m3-2"
       >
         <ul class="flex flex-col">
           <li :for={option <- @option}>
-            <span class="flex px-5 py-2 font-medium text-bodydark2 hover:text-white cursor-pointer">
+            <span class="flex cursor-pointer px-5 py-2 font-medium text-theme-on-surface-muted transition hover:bg-theme-surface-3 hover:text-theme-on-surface">
               {render_slot(option)}
             </span>
           </li>
@@ -108,15 +108,14 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
     <TextComponents.tooltip position="bottom" tooltip={@tooltip} tooltip_class="text-nowrap">
       <button
         class={[
-          "flex justify-center items-center rounded-lg ",
-          "bg-form-input border-2 border-strokedark",
-          "hover:bg-meta-4 hover:border-form-strokedark",
+          "theme-outline-button flex items-center justify-center rounded-m3-sm border-2",
+          "hover:bg-theme-surface-3",
           @class
         ]}
         type="button"
         {@rest}
       >
-        <CoreComponents.icon name={@icon_name} class="text-stroke" />
+        <CoreComponents.icon name={@icon_name} class="text-theme-on-surface-muted" />
       </button>
     </TextComponents.tooltip>
     """

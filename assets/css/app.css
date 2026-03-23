@@ -2,20 +2,166 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
-@import './satoshi';
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
 
 /* This file is for your main application CSS */
 [x-cloak] {
   display: none !important;
 }
 
+:root {
+  color-scheme: dark;
+  --theme-bg: 0 0 0;
+  --theme-surface: 10 10 10;
+  --theme-surface-1: 16 16 16;
+  --theme-surface-2: 21 21 21;
+  --theme-surface-3: 27 27 27;
+  --theme-surface-4: 33 33 33;
+  --theme-surface-5: 40 40 40;
+  --theme-on-surface: 244 239 244;
+  --theme-on-surface-muted: 186 182 188;
+  --theme-outline: 74 69 78;
+  --theme-outline-strong: 147 143 153;
+  --theme-primary: 208 188 255;
+  --theme-on-primary: 56 30 114;
+  --theme-secondary: 204 194 220;
+  --theme-on-secondary: 51 45 65;
+  --theme-primary-container: 79 55 139;
+  --theme-on-primary-container: 234 221 255;
+  --theme-secondary-container: 74 68 88;
+  --theme-on-secondary-container: 232 222 248;
+  --theme-tertiary: 239 184 200;
+  --theme-on-tertiary: 73 37 50;
+  --theme-tertiary-container: 99 59 72;
+  --theme-on-tertiary-container: 255 216 228;
+  --theme-error: 242 184 181;
+  --theme-on-error: 96 20 16;
+  --theme-success: 125 214 157;
+  --theme-warning: 245 203 92;
+  --theme-scrim: 0 0 0;
+}
+
+@property --theme-perimeter-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @layer base {
+  html {
+    @apply bg-theme-bg text-theme-on-surface;
+  }
+
   body {
-    @apply relative z-1 bg-whiten font-satoshi text-base font-normal text-body;
+    @apply relative z-1 bg-theme-bg font-sans text-base font-normal text-theme-on-surface antialiased;
+  }
+
+  ::selection {
+    @apply bg-theme-primary/30 text-theme-on-surface;
+  }
+
+  * {
+    scrollbar-color: rgb(var(--theme-outline)) rgb(var(--theme-surface));
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-theme-primary/70 ring-offset-2 ring-offset-theme-bg;
   }
 }
 
 @layer components {
+  .theme-app-shell {
+    @apply bg-theme-bg text-theme-on-surface;
+  }
+
+  .theme-surface {
+    @apply rounded-m3-md border border-theme-outline/70 bg-theme-surface text-theme-on-surface shadow-m3-1;
+  }
+
+  .theme-surface-raised {
+    @apply rounded-m3-lg border border-theme-outline/80 bg-theme-surface-2 text-theme-on-surface shadow-m3-2;
+  }
+
+  .theme-surface-accent {
+    @apply rounded-m3-md border border-theme-outline/80 bg-theme-surface-3 text-theme-on-surface shadow-m3-1;
+  }
+
+  .theme-input {
+    @apply rounded-m3-sm border-0 bg-theme-surface-2 text-theme-on-surface placeholder:text-theme-on-surface-muted;
+  }
+
+  .theme-input:focus,
+  .theme-input:focus-visible {
+    @apply outline-none ring-0;
+  }
+
+  .theme-field-shell {
+    @apply relative w-full rounded-m3-sm;
+  }
+
+  .theme-field-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    background:
+      linear-gradient(
+        rgb(var(--theme-outline-strong) / 0.7),
+        rgb(var(--theme-outline-strong) / 0.7)
+      );
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  .theme-field-shell:focus-within::before,
+  .theme-field-shell-active::before {
+    background:
+      conic-gradient(
+        from var(--theme-perimeter-angle, 0deg),
+        rgb(var(--theme-primary) / 0.18) 0deg,
+        rgb(var(--theme-primary) / 1) 60deg,
+        rgb(var(--theme-primary) / 0.14) 96deg,
+        rgb(var(--theme-secondary) / 0.82) 188deg,
+        rgb(var(--theme-tertiary) / 0.92) 276deg,
+        rgb(var(--theme-primary) / 0.18) 360deg
+      );
+    animation: perimeter-spin 3.2s linear infinite;
+  }
+
+  .theme-select-menu {
+    @apply rounded-m3-md border-2 border-theme-outline-strong bg-theme-surface-1 text-theme-on-surface shadow-m3-3;
+  }
+
+  .theme-select-option {
+    @apply border border-transparent text-theme-on-surface;
+  }
+
+  .theme-select-option-muted {
+    @apply text-theme-on-surface-muted;
+  }
+
+  .theme-select {
+    color-scheme: dark;
+  }
+
+  .theme-select option,
+  .theme-select optgroup {
+    background-color: rgb(var(--theme-surface-2));
+    color: rgb(var(--theme-on-surface));
+  }
+
+  .theme-outline-button {
+    @apply rounded-m3-sm border border-theme-outline bg-theme-surface text-theme-on-surface transition hover:border-theme-outline-strong hover:bg-theme-surface-2;
+  }
+
+  .theme-primary-button {
+    @apply rounded-m3-sm bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
+  }
 }
 
 @layer utilities {
@@ -27,5 +173,15 @@
   .no-scrollbar {
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
+  }
+}
+
+@keyframes perimeter-spin {
+  from {
+    --theme-perimeter-angle: 0deg;
+  }
+
+  to {
+    --theme-perimeter-angle: 360deg;
   }
 }

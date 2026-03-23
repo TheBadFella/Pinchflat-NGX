@@ -1,26 +1,28 @@
-<header class="sticky top-0 z-999 flex min-h-20 w-full bg-white drop-shadow-1 dark:bg-boxdark dark:drop-shadow-none">
-  <div class="flex flex-grow items-center justify-between lg:justify-end px-4 py-4 shadow-2 md:px-6 2xl:px-11">
+<header class="sticky top-0 z-999 flex min-h-20 w-full border-b border-theme-outline/70 bg-theme-bg/95 backdrop-blur">
+  <div class="flex flex-grow items-center justify-between px-4 py-4 lg:justify-end md:px-6 2xl:px-11">
     <div class="flex items-center gap-2 sm:gap-4 lg:hidden w-2/6">
       <section class="pr-1"><img src={~p"/images/icon-2024-03-20.png"} alt="Pinchflat" class="w-10" /></section>
 
       <button
-        class="z-99999 block mx-2 rounded-sm border border-stroke bg-white p-1.5 shadow-sm dark:border-strokedark dark:bg-boxdark lg:hidden"
+        class="theme-outline-button z-99999 mx-2 block p-2 lg:hidden"
         @click.stop="sidebarVisible = !sidebarVisible"
       >
         <.icon name="hero-bars-3" />
       </button>
     </div>
 
-    <div class="bg-meta-4 rounded-md w-4/6 lg:w-3/6 xl:w-2/6">
+    <div class="theme-surface-accent w-4/6 rounded-m3-sm lg:w-3/6 xl:w-2/6">
       <div class="relative">
-        <span class="absolute left-2 top-1/2 -translate-y-1/2 flex"><.icon name="hero-magnifying-glass" /></span>
+        <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
+          <.icon name="hero-magnifying-glass" />
+        </span>
         <form action={~p"/search"}>
           <input
             type="text"
             name="q"
             value={@params["q"]}
             placeholder="Search all media..."
-            class="w-full bg-transparent pl-9 pr-4 border-0 focus:ring-0 focus:outline-none"
+            class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:ring-0 focus:outline-none"
           />
         </form>
       </div>

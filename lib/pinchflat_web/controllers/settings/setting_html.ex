@@ -35,6 +35,6 @@ defmodule PinchflatWeb.Settings.SettingHTML do
   end
 
   defp help_link_classes do
-    "underline decoration-bodydark decoration-1 hover:decoration-white"
+    "underline decoration-theme-on-surface-muted/70 decoration-1 hover:text-theme-on-surface hover:decoration-theme-on-surface"
   end
 end

@@ -31,12 +31,15 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
 
   def table(assigns) do
     ~H"""
-    <table class={["w-full table-auto bg-boxdark", @table_class]}>
+    <table class={[
+      "w-full table-auto overflow-hidden rounded-m3-lg bg-theme-surface-1 text-theme-on-surface shadow-m3-1",
+      @table_class
+    ]}>
       <thead>
-        <tr class="text-left bg-meta-4">
+        <tr class="border-b border-theme-outline/70 bg-theme-surface-3 text-left">
           <th
             :for={col <- @col}
-            class={["px-4 py-4 font-medium text-white", col[:sort_key] && "cursor-pointer"]}
+            class={["px-4 py-4 font-medium text-theme-on-surface", col[:sort_key] && "cursor-pointer"]}
             phx-click={col[:sort_key] && "sort_update"}
             phx-value-sort_key={col[:sort_key]}
           >
@@ -52,12 +55,12 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
         </tr>
       </thead>
 
-      <tbody>
-        <tr :for={row <- @rows} class="hover:bg-strokedark">
+      <tbody class="divide-y divide-theme-outline/60">
+        <tr :for={row <- @rows} class="transition hover:bg-theme-surface-2">
           <td
             :for={col <- @col}
             class={[
-              "px-4 py-5",
+              "px-4 py-5 text-theme-on-surface-muted",
               col[:class]
             ]}
           >
@@ -86,9 +89,10 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
         <li>
           <span
             class={[
-              "pagination-prev h-8 w-8 items-center justify-center rounded",
-              @page_number != 1 && "cursor-pointer hover:bg-primary hover:text-white",
-              @page_number <= 1 && "cursor-not-allowed"
+              "pagination-prev h-8 w-8 items-center justify-center rounded-m3-xs",
+              @page_number != 1 &&
+                "cursor-pointer bg-theme-surface text-theme-on-surface transition hover:bg-theme-primary hover:text-theme-on-primary",
+              @page_number <= 1 && "cursor-not-allowed opacity-50"
             ]}
             phx-click={@page_number != 1 && "page_change"}
             phx-value-direction="dec"
@@ -106,9 +110,10 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
         <li>
           <span
             class={[
-              "pagination-next flex h-8 w-8 items-center justify-center rounded",
-              @page_number != @total_pages && "cursor-pointer hover:bg-primary hover:text-white",
-              @page_number >= @total_pages && "cursor-not-allowed"
+              "pagination-next flex h-8 w-8 items-center justify-center rounded-m3-xs",
+              @page_number != @total_pages &&
+                "cursor-pointer bg-theme-surface text-theme-on-surface transition hover:bg-theme-primary hover:text-theme-on-primary",
+              @page_number >= @total_pages && "cursor-not-allowed opacity-50"
             ]}
             phx-click={@page_number != @total_pages && "page_change"}
             phx-value-direction="inc"

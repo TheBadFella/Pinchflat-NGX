@@ -30,27 +30,29 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
 
     ~H"""
     <div class="w-full">
-      <header class="flex flex-col md:flex-row md:justify-between border-b border-strokedark">
+      <header class="flex flex-col border-b border-theme-outline/70 md:flex-row md:justify-between">
         <div class="flex flex-wrap gap-5 sm:gap-10">
           <.link
             :for={tab <- @tab}
             href={tab_href(@tab_href, tab.id)}
             class={[
-              "border-b-2 py-4 w-full sm:w-fit text-sm font-medium hover:text-meta-5 md:text-base",
-              if(tab.id == @active_tab_id, do: "text-meta-5 border-meta-5", else: "border-transparent")
+              "w-full border-b-2 py-4 text-sm font-medium transition sm:w-fit md:text-base",
+              "text-theme-on-surface-muted hover:text-theme-on-surface",
+              if(tab.id == @active_tab_id,
+                do: "border-theme-primary text-theme-primary",
+                else: "border-transparent"
+              )
             ]}
           >
             <span class="text-xl">{tab.title}</span>
           </.link>
         </div>
-        <div class="mx-4 my-4 lg:my-0 flex gap-5 sm:gap-10 items-center">
-          {render_slot(@tab_append)}
-        </div>
+
+        <div class="mx-4 my-4 lg:my-0 flex gap-5 sm:gap-10 items-center">{render_slot(@tab_append)}</div>
       </header>
+
       <div class="mt-4 min-h-60 overflow-x-auto">
-        <div :if={@active_tab} class="font-medium leading-relaxed">
-          {render_slot(@active_tab)}
-        </div>
+        <div :if={@active_tab} class="font-medium leading-relaxed">{render_slot(@active_tab)}</div>
       </div>
     </div>
     """

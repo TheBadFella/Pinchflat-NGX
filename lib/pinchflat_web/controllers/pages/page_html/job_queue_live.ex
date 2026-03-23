@@ -21,7 +21,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center space-x-2">
           <.icon_button icon_name="hero-arrow-path" class="h-8 w-8" phx-click="refresh" tooltip="Refresh" />
-          <span class="text-sm text-gray-400">
+          <span class="text-sm text-theme-on-surface-muted">
             Auto-refreshes every {div(@refresh_interval, 1000)}s
           </span>
         </div>
@@ -75,7 +75,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
             @executing_jobs == [] && @available_jobs == [] && @scheduled_jobs == [] && @retryable_jobs == [] &&
               @failed_jobs == []
           }
-          class="text-center py-8 text-gray-400"
+          class="py-8 text-center text-theme-on-surface-muted"
         >
           <p>No active or pending jobs</p>
         </div>
@@ -101,10 +101,10 @@ defmodule Pinchflat.Pages.JobQueueLive do
     assigns = assign(assigns, :color_classes, color_classes)
 
     ~H"""
-    <div class={"rounded-lg border-l-4 bg-boxdark p-4 #{@color_classes}"}>
+    <div class={"theme-surface-accent border-l-4 p-4 #{@color_classes}"}>
       <div class="text-2xl font-bold">{@count}</div>
 
-      <div class="text-sm text-gray-400">{@label}</div>
+      <div class="text-sm text-theme-on-surface-muted">{@label}</div>
     </div>
     """
   end
@@ -116,23 +116,23 @@ defmodule Pinchflat.Pages.JobQueueLive do
 
   defp job_section(assigns) do
     ~H"""
-    <div class="rounded-lg bg-boxdark p-4">
-      <h3 class="text-lg font-semibold mb-3">{@title}</h3>
+    <div class="theme-surface-raised p-4">
+      <h3 class="mb-3 text-lg font-semibold text-theme-on-surface">{@title}</h3>
       <div class="max-w-full overflow-x-auto">
-        <.table rows={@jobs} table_class="text-white text-sm">
+        <.table rows={@jobs} table_class="text-sm">
           <:col :let={row} label="Worker">
             {worker_to_short_name(row.job.worker)}
           </:col>
           <:col :let={row} label="Subject" class="max-w-sm">
             <div class="whitespace-normal break-words">
               <div class="font-medium">{row_to_subject_label(row)}</div>
-              <div class="text-xs text-gray-400">{row_to_subject_name(row)}</div>
+              <div class="text-xs text-theme-on-surface-muted">{row_to_subject_name(row)}</div>
             </div>
           </:col>
           <:col :let={row} label="Source" class="max-w-sm">
             <div class="whitespace-normal break-words">
               <div class="font-medium">{row_to_source_label(row)}</div>
-              <div class="text-xs text-gray-400">{row_to_source_name(row)}</div>
+              <div class="text-xs text-theme-on-surface-muted">{row_to_source_name(row)}</div>
             </div>
           </:col>
           <:col :let={row} label="Attempt">
@@ -150,7 +150,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
             <button
               phx-click="cancel_job"
               phx-value-job-id={row.job.id}
-              class="text-red-400 hover:text-red-300 text-xs"
+              class="text-xs text-red-400 transition hover:text-red-300"
               data-confirm="Are you sure you want to cancel this job?"
             >
               Cancel

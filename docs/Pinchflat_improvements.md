@@ -311,28 +311,24 @@ sqlite3 pinchflat.db "SELECT id, args, attempt FROM oban_jobs WHERE state = 'exe
 **Suggested improvements:**
 
 1. **Active Tasks panel** - Show all currently running operations:
-
    - Source being indexed (with channel name, not just ID)
    - Number of videos scanned / estimated total
    - Time elapsed and estimated time remaining
    - Current yt-dlp command being executed
 
 2. **Job Queue view** - Display Oban queue status:
-
    - Jobs by state (available, executing, scheduled, completed, failed)
    - Ability to cancel stuck jobs from UI
    - Retry failed jobs with one click
    - View job error messages
 
 3. **Recent Activity log** - Scrollable log of recent operations:
-
    - Last N indexing completions with duration
    - Last N downloads with file sizes
    - Last N errors with stack traces
    - Filterable by source/worker type
 
 4. **yt-dlp output streaming** - Real-time output from yt-dlp:
-
    - Show current video being processed
    - Display any warnings or errors
    - Progress bar for downloads

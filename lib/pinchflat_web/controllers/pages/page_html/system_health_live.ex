@@ -20,7 +20,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center space-x-2">
           <.icon_button icon_name="hero-arrow-path" class="h-8 w-8" phx-click="refresh" tooltip="Refresh" />
-          <span class="text-sm text-gray-400">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
+          <span class="text-sm text-theme-on-surface-muted">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
         </div>
       </div>
 
@@ -56,17 +56,17 @@ defmodule Pinchflat.Pages.SystemHealthLive do
         </.health_card>
       </div>
 
-      <div :if={@stale_sources != []} class="rounded-lg bg-boxdark p-4">
-        <h3 class="text-lg font-semibold mb-3 flex items-center">
+      <div :if={@stale_sources != []} class="theme-surface-raised p-4">
+        <h3 class="mb-3 flex items-center text-lg font-semibold text-theme-on-surface">
           <.icon name="hero-exclamation-triangle" class="h-5 w-5 text-yellow-400 mr-2" /> Sources Not Indexed Recently
         </h3>
 
-        <p class="text-sm text-gray-400 mb-4">
+        <p class="mb-4 text-sm text-theme-on-surface-muted">
           These sources haven't been indexed in over 24 hours. They may be stuck or have configuration issues.
         </p>
 
         <div class="max-w-full overflow-x-auto">
-          <.table rows={@stale_sources} table_class="text-white text-sm">
+          <.table rows={@stale_sources} table_class="text-sm">
             <:col :let={source} label="Source">
               <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
             </:col>
@@ -77,14 +77,14 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
             <:col :let={source} label="Enabled">
               <span :if={source.enabled} class="text-green-400">Yes</span>
-              <span :if={!source.enabled} class="text-gray-400">No</span>
+              <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span>
             </:col>
 
             <:col :let={source} label="">
               <.link
                 href={~p"/sources/#{source.id}/force_index"}
                 method="post"
-                class="text-blue-400 hover:text-blue-300 text-xs"
+                class="text-xs text-theme-primary transition hover:text-theme-secondary"
               >
                 Force Index
               </.link>
@@ -101,8 +101,8 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
   defp health_card(assigns) do
     ~H"""
-    <div class="rounded-lg bg-boxdark p-4 border border-strokedark">
-      <h3 class="text-md font-semibold mb-3 text-gray-300">{@title}</h3>
+    <div class="theme-surface-raised p-4">
+      <h3 class="mb-3 text-md font-semibold text-theme-on-surface">{@title}</h3>
       {render_slot(@inner_block)}
     </div>
     """
@@ -117,14 +117,15 @@ defmodule Pinchflat.Pages.SystemHealthLive do
       case assigns.status do
         :warning -> "text-yellow-400"
         :error -> "text-red-400"
-        _ -> "text-white"
+        _ -> "text-theme-on-surface"
       end
 
     assigns = assign(assigns, :status_class, status_class)
 
     ~H"""
     <div class="flex justify-between items-center">
-      <span class="text-gray-400 text-sm">{@label}</span> <span class={"font-medium #{@status_class}"}>{@value}</span>
+      <span class="text-sm text-theme-on-surface-muted">{@label}</span>
+      <span class={"font-medium #{@status_class}"}>{@value}</span>
     </div>
     """
   end

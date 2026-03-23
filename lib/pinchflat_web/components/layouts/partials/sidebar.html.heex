@@ -2,7 +2,7 @@
   x-bind:class="`${sidebarVisible ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-65'}`"
   class={[
     "-translate-x-full absolute left-0 top-0 z-9999 flex h-screen w-65 flex-col justify-between transition-[width,transform]",
-    "bg-black duration-300 ease-linear shadow-lg sm:shadow-none dark:bg-boxdark lg:static lg:translate-x-0"
+    "border-r border-theme-outline/70 bg-theme-surface duration-300 ease-linear shadow-m3-2 sm:shadow-none lg:static lg:translate-x-0"
   ]}
   x-bind:style="sidebarCollapsed ? 'overflow: visible;' : 'overflow-y: hidden;'"
   @click.outside="sidebarVisible = false"
@@ -29,7 +29,7 @@
       </button>
       <button
         type="button"
-        class="hidden rounded-sm border border-strokedark p-1.5 text-bodydark1 transition hover:bg-meta-4 lg:block"
+        class="theme-outline-button hidden p-1.5 text-theme-on-surface lg:block"
         x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:mt-1 lg:flex lg:h-12 lg:w-12 lg:items-center lg:justify-center lg:rounded-xl lg:p-0' : 'lg:flex lg:h-12 lg:w-12 lg:items-center lg:justify-center lg:rounded-xl lg:p-0'"
         x-on:click="sidebarCollapsed = !sidebarCollapsed; window.setSidebarCollapsed(sidebarCollapsed)"
         x-bind:title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -47,7 +47,10 @@
       x-bind:class="sidebarCollapsed ? 'overflow-visible' : 'overflow-y-auto'"
     >
       <nav class="mt-3 px-4 py-4 lg:px-6" x-bind:class="sidebarCollapsed ? 'lg:mt-5 lg:px-2' : ''">
-        <h3 class="mb-4 ml-4 text-sm font-medium text-bodydark2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
+        <h3
+          class="mb-4 ml-4 text-sm font-medium tracking-[0.18em] text-theme-on-surface-muted"
+          x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
+        >
           <span>MENU</span>
         </h3>
 
@@ -87,10 +90,10 @@
         <li>
           <span
             class={[
-              "font-medium text-bodydark1",
-              "group relative flex min-h-11 items-center gap-2.5 rounded-sm px-4 py-2 duration-300 ease-in-out",
+              "font-medium text-theme-on-surface",
+              "group relative flex min-h-11 items-center gap-2.5 rounded-m3-sm px-4 py-2 duration-300 ease-in-out",
               "duration-300 ease-in-out cursor-pointer",
-              "hover:bg-graydark dark:hover:bg-meta-4"
+              "hover:bg-theme-surface-3"
             ]}
             x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
             phx-click={show_modal("donate-modal")}
@@ -103,7 +106,7 @@
             <span
               x-cloak
               x-show="sidebarCollapsed"
-              class="pointer-events-none absolute top-1/2 z-[1000] hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-sm text-white opacity-0 shadow-lg ring-1 ring-white/10 transition duration-150 group-hover:opacity-100 lg:block"
+              class="pointer-events-none absolute top-1/2 z-[1000] hidden -translate-y-1/2 whitespace-nowrap rounded-m3-xs border border-theme-outline/80 bg-theme-surface-3 px-2 py-1 text-sm text-theme-on-surface opacity-0 shadow-m3-2 transition duration-150 group-hover:opacity-100 lg:block"
               style="left: calc(100% + 0.75rem);"
             >
               Donate
@@ -122,7 +125,7 @@
           <.link
             href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
             target="_blank"
-            class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm underline decoration-bodydark decoration-1 hover:decoration-white"
+            class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
             x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
             <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">yt-dlp {Settings.get!(:yt_dlp_version)}</span>

@@ -1,7 +1,7 @@
 <section>
-  <h2 class="text-title-md2 font-bold text-white">Internal Server Error</h2>
+  <h2 class="text-title-md2 font-bold text-theme-on-surface">Internal Server Error</h2>
 
-  <p class="text-body-md text-white mt-2">
+  <p class="mt-2 text-body-md text-theme-on-surface">
     This shouldn't happen! Please make a
     <.inline_link href="https://github.com/kieraneglin/pinchflat/issues/new/choose">GitHub issue</.inline_link>
     with the following information:
@@ -14,7 +14,7 @@
 
     <li>All the information in the textarea below (use select all + copy)</li>
   </ul>
-  <textarea class="w-full min-h-96 font-mono inline-block rounded-lg" readonly>
+  <textarea class="theme-input inline-block min-h-96 w-full rounded-m3-sm font-mono" readonly>
 **Status**:
 `<%= if Map.has_key?(assigns, :status), do: @status, else: "" %>`
 

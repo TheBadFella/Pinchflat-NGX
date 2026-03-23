@@ -33,9 +33,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </span>
         </span>
 
-        <div class="bg-meta-4 rounded-md">
+        <div class="theme-surface-accent rounded-m3-sm">
           <div class="relative">
-            <span class="absolute left-2 top-1/2 -translate-y-1/2 flex">
+            <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
               <.icon name="hero-magnifying-glass" />
             </span>
 
@@ -45,14 +45,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 name="q"
                 value={@search_term}
                 placeholder="Search in table..."
-                class="w-full bg-transparent pl-9 pr-4 border-0 focus:ring-0 focus:outline-none"
+                class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:ring-0 focus:outline-none"
                 phx-debounce="200"
               />
             </form>
           </div>
         </div>
       </header>
-      <.table rows={@records} table_class="text-white">
+      <.table rows={@records}>
         <:col :let={media_item} label="Title" class="max-w-xs">
           <section class="space-y-2">
             <div class="flex items-center space-x-1 gap-2">
@@ -67,11 +67,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 tooltip="Force Download"
               />
               <span class="truncate">
-                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
-                  {media_item.title}
-                </.subtle_link>
+                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>{media_item.title}</.subtle_link>
               </span>
             </div>
+
             <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
               {media_item.last_error}
             </div>
@@ -81,15 +80,17 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
           <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
         </:col>
+
         <:col :let={media_item} :if={@media_state == "other"} label="Excluded Reason">
           {excluded_reason(media_item, @source)}
         </:col>
-        <:col :let={media_item} label="Upload Date">
-          {DateTime.to_date(media_item.uploaded_at)}
-        </:col>
+
+        <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
+
         <:col :let={media_item} label="Size / Progress">
           {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
         </:col>
+
         <:col :let={media_item} label="Action">
           <button
             :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
@@ -98,16 +99,17 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
             phx-value-media-id={media_item.id}
             data-confirm="Are you sure you want to stop this download?"
-            class="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
+            class="rounded-m3-xs border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
           >
             Stop
           </button>
-          <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-gray-400">-</span>
+          <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
         </:col>
         <:col :let={media_item} label="" class="flex justify-end">
           <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" class="mr-4" />
         </:col>
       </.table>
+
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>

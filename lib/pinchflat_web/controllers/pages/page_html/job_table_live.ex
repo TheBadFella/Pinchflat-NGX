@@ -19,15 +19,14 @@ defmodule Pinchflat.Pages.JobTableLive do
   def render(assigns) do
     ~H"""
     <div class="max-w-full overflow-x-auto">
-      <.table rows={@tasks} table_class="text-white">
-        <:col :let={task} label="Task">
-          {worker_to_task_name(task.job.worker)}
-        </:col>
+      <.table rows={@tasks}>
+        <:col :let={task} label="Task">{worker_to_task_name(task.job.worker)}</:col>
+
         <:col :let={task} label="Subject" class="max-w-sm">
           <.subtle_link href={task_to_link(task)}>
             <div class="whitespace-normal break-words">
               <div class="font-medium">{task_to_record_label(task)}</div>
-              <div class="text-xs text-gray-400">{task_to_record_name(task)}</div>
+              <div class="text-xs text-theme-on-surface-muted">{task_to_record_name(task)}</div>
             </div>
           </.subtle_link>
         </:col>
@@ -35,20 +34,17 @@ defmodule Pinchflat.Pages.JobTableLive do
           <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
             <div class="whitespace-normal break-words">
               <div class="font-medium">{task_source_label(task)}</div>
-              <div class="text-xs text-gray-400">{task_source_name(task)}</div>
+              <div class="text-xs text-theme-on-surface-muted">{task_source_name(task)}</div>
             </div>
           </.subtle_link>
-          <span :if={!task_source_link(task)} class="text-gray-400">-</span>
+          <span :if={!task_source_link(task)} class="text-theme-on-surface-muted">-</span>
         </:col>
-        <:col :let={task} label="Attempt No.">
-          {task.job.attempt}
-        </:col>
-        <:col :let={task} label="Progress">
-          <.task_progress task={task} />
-        </:col>
-        <:col :let={task} label="Started At">
-          {format_datetime(task.job.attempted_at)}
-        </:col>
+        <:col :let={task} label="Attempt No.">{task.job.attempt}</:col>
+
+        <:col :let={task} label="Progress"><.task_progress task={task} /></:col>
+
+        <:col :let={task} label="Started At">{format_datetime(task.job.attempted_at)}</:col>
+
         <:col :let={task} label="">
           <button
             type="button"
@@ -295,14 +291,15 @@ defmodule Pinchflat.Pages.JobTableLive do
 
       ~H"""
       <div class="min-w-52">
-        <div class="mb-1 flex items-center justify-between text-xs text-gray-300">
+        <div class="mb-1 flex items-center justify-between text-xs text-theme-on-surface-muted">
           <span>{@label}</span>
           <span>{Float.round(@percent, 1)}%</span>
         </div>
-        <div class="h-2 overflow-hidden rounded-full bg-slate-700">
-          <div class="h-full rounded-full bg-blue-500 transition-all duration-300" style={"width: #{@width_percent}%"}></div>
+        <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
+          <div class="h-full rounded-full bg-theme-primary transition-all duration-300" style={"width: #{@width_percent}%"}>
+          </div>
         </div>
-        <div class="mt-1 text-[11px] text-gray-400">
+        <div class="mt-1 text-[11px] text-theme-on-surface-muted">
           <div>{@summary}</div>
           <div :if={@eta != nil}>ETA {@eta}</div>
         </div>
@@ -310,7 +307,7 @@ defmodule Pinchflat.Pages.JobTableLive do
       """
     else
       ~H"""
-      <span class="text-gray-400">-</span>
+      <span class="text-theme-on-surface-muted">-</span>
       """
     end
   end

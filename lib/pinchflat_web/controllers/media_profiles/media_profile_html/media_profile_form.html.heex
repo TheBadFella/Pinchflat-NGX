@@ -9,7 +9,7 @@
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
   <section x-data="{ selectedPreset: null }">
-    <h3 class="my-4 text-2xl text-black dark:text-white">Use a Preset</h3>
+    <h3 class="my-4 text-2xl text-theme-on-surface">Use a Preset</h3>
 
     <section x-data="{ selection: null }">
       <.input
@@ -24,7 +24,7 @@
       >
         <.button
           class="h-13 w-2/5 lg:w-1/5 ml-2 md:ml-4"
-          rounding="rounded"
+          rounding="rounded-m3-sm"
           type="button"
           x-on:click="selectedPreset = selection; selection = null"
           x-bind:disabled="!selection"
@@ -35,9 +35,12 @@
     </section>
 
     <section class="flex justify-between items-center mt-8">
-      <h3 class="text-2xl text-white">General Options</h3>
+      <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
-      <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
+      <span
+        class="cursor-pointer text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline"
+        x-on:click="advancedMode = !advancedMode"
+      >
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
       </span>
     </section>
@@ -56,7 +59,7 @@
         label="Name"
         placeholder="New Profile"
         help="Something descriptive. Does not impact indexing or downloading (required)"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
@@ -74,11 +77,11 @@
         inputclass="font-mono"
         label="Output path template"
         help="Must end with .{{ ext }}. See below for more details. The default is good for most cases (required)"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">Subtitle Options</h3>
+    <h3 class="mt-10 text-2xl text-theme-on-surface">Subtitle Options</h3>
 
     <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
       <.input
@@ -116,7 +119,7 @@
         type="text"
         label="Subtitle Languages"
         help="Use commas for multiple languages (eg: en,de)"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
@@ -130,7 +133,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">Thumbnail Options</h3>
+    <h3 class="mt-10 text-2xl text-theme-on-surface">Thumbnail Options</h3>
 
     <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
       <.input
@@ -152,7 +155,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">Metadata Options</h3>
+    <h3 class="mt-10 text-2xl text-theme-on-surface">Metadata Options</h3>
 
     <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: true } }">
       <.input
@@ -174,7 +177,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">Release Format Options</h3>
+    <h3 class="mt-10 text-2xl text-theme-on-surface">Release Format Options</h3>
 
     <section x-data="{ presets: { default: 'include', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
       <.input
@@ -183,7 +186,7 @@
         type="select"
         label="Include Shorts"
         help="Experimental. Please report any issues on GitHub"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
@@ -194,11 +197,11 @@
         type="select"
         label="Include Livestreams"
         help="How to handle past livestreams"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">Quality Options</h3>
+    <h3 class="mt-10 text-2xl text-theme-on-surface">Quality Options</h3>
 
     <section x-data="{ presets: { default: '1080p', media_center: '1080p', audio: 'audio', archiving: '2160p' } }">
       <.input
@@ -207,7 +210,7 @@
         type="select"
         label="Preferred Resolution"
         help="Will grab the closest available resolution if your preferred is not available. 'Audio Only' grabs the highest quality m4a"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
@@ -228,13 +231,13 @@
         label="Redownload Delay (days)"
         min="0"
         help="Delay in days until new media is redownloaded. Redownloading new media can improve its quality or SponsorBlock tags. Leave blank to not redownload"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p]))"
+        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
       />
     </section>
 
-    <h3 class="mt-8 text-2xl text-black dark:text-white">Media Center Options</h3>
+    <h3 class="mt-8 text-2xl text-theme-on-surface">Media Center Options</h3>
 
-    <p class="text-sm mt-2 max-w-prose">
+    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
       Everything in this section is experimental - please open a GitHub issue if you see something odd.
       <strong>
         These options only work if this Media Profile's output template is set to split media into seasons.
@@ -266,7 +269,7 @@
       />
     </section>
 
-    <h3 class="mt-10 text-2xl text-black dark:text-white">SponsorBlock Options</h3>
+    <h3 class="mt-10 text-2xl text-theme-on-surface">SponsorBlock Options</h3>
 
     <section x-data="{ sponsorblockBehaviour: null }">
       <section x-data="{ presets: { default: 'disabled', media_center: 'disabled', audio: 'disabled', archiving: 'disabled' } }">
@@ -279,7 +282,7 @@
           x-model="sponsorblockBehaviour"
           x-init="
             sponsorblockBehaviour = $el.value
-            $watch('selectedPreset', p => p && ($el.value = presets[p]))
+          $watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))
           "
         />
       </section>
@@ -293,8 +296,8 @@
         />
       </section>
     </section>
-    <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Media profile</.button>
+    <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Media profile</.button>
   </section>
 
-  <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mb-5"><.output_template_help /></div>
+  <div class="theme-surface-accent mb-5 p-4 md:p-6"><.output_template_help /></div>
 </.simple_form>

@@ -1,34 +1,35 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex gap-3 items-center min-w-0">
     <.link href={~p"/sources"}>
-      <.icon name="hero-arrow-left" class="w-10 h-10 hover:dark:text-white" />
+      <.icon
+        name="hero-arrow-left"
+        class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
+      />
     </.link>
 
-    <h2 class="text-title-md2 font-bold text-black dark:text-white ml-4 truncate">
+    <h2 class="ml-4 truncate text-title-md2 font-bold text-theme-on-surface">
       {@source.custom_name}
     </h2>
   </div>
 
   <nav>
     <.link href={~p"/sources/#{@source}/edit"}>
-      <.button color="bg-primary" rounding="rounded-lg">
+      <.button rounding="rounded-m3-sm">
         <.icon name="hero-pencil-square" class="mr-2" /> Edit <span class="hidden sm:inline pl-1">Source</span>
       </.button>
     </.link>
   </nav>
 </div>
 
-<div class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5">
+<div class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="max-w-full">
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
-      <:tab_append>
-        <.actions_dropdown source={@source} conn={@conn} />
-      </:tab_append>
+      <:tab_append><.actions_dropdown source={@source} conn={@conn} /></:tab_append>
 
       <:tab title="Source" id="source">
-        <div class="flex flex-col text-white gap-10">
+        <div class="flex flex-col gap-10 text-theme-on-surface">
           <section>
-            <h3 class="font-bold text-xl mb-2 mt-6">Raw Attributes</h3>
+            <h3 class="mb-2 mt-6 text-xl font-bold">Raw Attributes</h3>
 
             <section>
               <strong>Media Profile:</strong>

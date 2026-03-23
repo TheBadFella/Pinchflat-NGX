@@ -10,9 +10,12 @@
 
   <section x-data="{ mediaProfileId: null }">
     <section class="flex justify-between items-center mt-4">
-      <h3 class="text-2xl text-white">General Options</h3>
+      <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
-      <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
+      <span
+        class="cursor-pointer text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline"
+        x-on:click="advancedMode = !advancedMode"
+      >
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
       </span>
     </section>
@@ -38,7 +41,7 @@
       help="Sets your preferences for what media to look for and how to store it"
       x-model.fill="mediaProfileId"
     />
-    <h3 class="mt-8 text-2xl text-black dark:text-white">Indexing Options</h3>
+    <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
 
     <section x-data="{ fastIndexingEnabled: null }">
       <.input
@@ -47,7 +50,7 @@
         type="select"
         label="Index Frequency"
         x-bind:disabled="fastIndexingEnabled == true"
-        x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60))"
+        x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60, $el.dispatchEvent(new Event('change', { bubbles: true }))))"
         help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
       />
       <div phx-click={show_modal("upgrade-modal")}>
@@ -66,7 +69,7 @@
       </div>
     </section>
 
-    <h3 class="mt-8 text-2xl text-black dark:text-white">Downloading Options</h3>
+    <h3 class="mt-8 text-2xl text-theme-on-surface">Downloading Options</h3>
 
     <.input
       field={f[:download_media]}
@@ -81,12 +84,12 @@
       label="Cookie Behaviour"
       help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
     />
-    <section class="rounded-lg border border-strokedark bg-black/10 px-5 py-4">
+    <section class="theme-surface-accent px-5 py-4">
       <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div class="space-y-2">
-          <p class="text-sm font-medium text-white">Shared `cookies.txt` file</p>
+          <p class="text-sm font-medium text-theme-on-surface">Shared `cookies.txt` file</p>
 
-          <p class="text-sm text-bodydark2">
+          <p class="text-sm text-theme-on-surface-muted">
             <%= cond do %>
               <% @cookie_file_configured -> %>
                 Cookie file is configured and ready to use.
@@ -97,28 +100,29 @@
             <% end %>
           </p>
 
-          <p class="text-xs break-all text-bodydark">{@cookie_file_path}</p>
+          <p class="break-all text-xs text-theme-on-surface-muted">{@cookie_file_path}</p>
         </div>
 
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            class="theme-primary-button inline-flex px-4 py-2 text-sm font-medium"
             phx-click={show_modal("cookie-upload-modal")}
           >
             Upload cookies.txt
           </button>
           <button
             type="button"
-            class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+            class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
             phx-click={show_modal("cookie-paste-modal")}
           >
             Paste Cookie Contents
           </button>
+
           <button
             :if={@cookie_file_exists}
             type="button"
-            class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+            class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
             phx-click={show_modal("cookie-inspect-modal")}
           >
             Inspect Cookie File
@@ -179,9 +183,9 @@
       html_help={true}
     />
     <section x-show="advancedMode">
-      <h3 class="mt-8 text-2xl text-black dark:text-white">Advanced Options</h3>
+      <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
 
-      <p class="text-sm mt-2">Tread carefully</p>
+      <p class="mt-2 text-sm text-theme-on-surface-muted">Tread carefully</p>
 
       <.input
         field={f[:title_filter_regex]}
@@ -214,22 +218,22 @@
         />
       </section>
 
-      <p class="text-sm mt-4">
+      <p class="mt-4 text-sm text-theme-on-surface-muted">
         Need custom yt-dlp arguments for this source? After saving, add them to
         <code>extras/yt-dlp-configs/source-123-config.txt</code>
         using the saved source ID. Pinchflat already loads
         per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
       </p>
     </section>
-    <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Source</.button>
-    <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mb-5"><.fast_indexing_help /></div>
+    <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+    <div class="theme-surface-accent mb-5 p-4 md:p-6"><.fast_indexing_help /></div>
   </section>
 </.simple_form>
 
 <.modal id="cookie-upload-modal">
-  <h3 class="text-2xl text-white">Upload cookies.txt</h3>
+  <h3 class="text-2xl text-theme-on-surface">Upload cookies.txt</h3>
 
-  <p class="mt-2 text-sm text-bodydark2">
+  <p class="mt-2 text-sm text-theme-on-surface-muted">
     Upload a Netscape-format cookie file exported from your browser extension or account tools.
   </p>
 
@@ -246,20 +250,20 @@
     <div class="flex justify-end gap-2">
       <button
         type="button"
-        class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+        class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
         phx-click={hide_modal("cookie-upload-modal")}
       >
         Cancel
       </button>
-       <.button class="w-auto" rounding="rounded-lg">Upload</.button>
+      <.button class="w-auto" rounding="rounded-m3-sm">Upload</.button>
     </div>
   </.form>
 </.modal>
 
 <.modal id="cookie-paste-modal">
-  <h3 class="text-2xl text-white">Paste Cookie Contents</h3>
+  <h3 class="text-2xl text-theme-on-surface">Paste Cookie Contents</h3>
 
-  <p class="mt-2 text-sm text-bodydark2">
+  <p class="mt-2 text-sm text-theme-on-surface-muted">
     Paste the full contents of the file and Pinchflat will create or replace `cookies.txt`.
   </p>
 
@@ -270,25 +274,25 @@
       type="textarea"
       label="Cookie file contents"
       value={@cookie_file_contents}
-      inputclass="min-h-[18rem] bg-form-input font-mono text-white"
+      inputclass="min-h-[18rem] font-mono"
     />
     <div class="flex justify-end gap-2">
       <button
         type="button"
-        class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+        class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
         phx-click={hide_modal("cookie-paste-modal")}
       >
         Cancel
       </button>
-       <.button class="w-auto" rounding="rounded-lg">Save Cookie File</.button>
+      <.button class="w-auto" rounding="rounded-m3-sm">Save Cookie File</.button>
     </div>
   </.form>
 </.modal>
 
 <.modal :if={@cookie_file_exists} id="cookie-inspect-modal">
-  <h3 class="text-2xl text-white">Inspect Cookie File</h3>
+  <h3 class="text-2xl text-theme-on-surface">Inspect Cookie File</h3>
 
-  <p class="mt-2 text-sm text-bodydark2">
+  <p class="mt-2 text-sm text-theme-on-surface-muted">
     This is the current shared `cookies.txt` content used for sources that enable cookie behavior.
   </p>
 
@@ -298,12 +302,12 @@
     label="Current contents"
     value={@cookie_file_contents || ""}
     readonly
-    inputclass="mt-4 min-h-[20rem] border-form-strokedark bg-form-input !text-white font-mono"
+    inputclass="mt-4 min-h-[20rem] font-mono"
   />
   <div class="mt-6 flex justify-end">
     <button
       type="button"
-      class="inline-flex rounded-lg border border-strokedark px-4 py-2 text-sm font-medium text-white hover:bg-white/5"
+      class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
       phx-click={hide_modal("cookie-inspect-modal")}
     >
       Close

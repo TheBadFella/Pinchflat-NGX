@@ -55,3 +55,4 @@ pinchflat.db.backup-*
 build.log
 /.codex-local-build-pr/
 /.gitattributes
+/.ai/mcp/mcp.json

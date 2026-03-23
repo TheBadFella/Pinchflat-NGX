@@ -1,35 +1,41 @@
 <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-  <div class="flex flex-col justify-center rounded-sm border px-7.5 py-6 shadow-default border-strokedark bg-boxdark">
+  <div class="theme-surface-raised flex flex-col justify-center px-7.5 py-6">
     <a href={~p"/media_profiles"} class="flex flex-col items-center py-2">
-      <span class="text-md font-medium">Media <.pluralize count={@media_profile_count} word="Profile" /></span>
-      <h4 class="text-title-md font-bold text-white"><.localized_number number={@media_profile_count} /></h4>
+      <span class="text-md font-medium text-theme-on-surface-muted">
+        Media <.pluralize count={@media_profile_count} word="Profile" />
+      </span>
+      <h4 class="text-title-md font-bold text-theme-on-surface"><.localized_number number={@media_profile_count} /></h4>
     </a>
   </div>
 
-  <div class="flex flex-col justify-center rounded-sm border px-7.5 py-6 shadow-default border-strokedark bg-boxdark">
+  <div class="theme-surface-raised flex flex-col justify-center px-7.5 py-6">
     <a href={~p"/sources"} class="flex flex-col items-center py-2">
-      <span class="text-md font-medium"><.pluralize count={@source_count} word="Source" /></span>
-      <h4 class="text-title-md font-bold text-white"><.localized_number number={@source_count} /></h4>
+      <span class="text-md font-medium text-theme-on-surface-muted">
+        <.pluralize count={@source_count} word="Source" />
+      </span>
+      <h4 class="text-title-md font-bold text-theme-on-surface"><.localized_number number={@source_count} /></h4>
     </a>
   </div>
 
-  <div class="flex flex-col justify-center rounded-sm border px-7.5 py-6 shadow-default border-strokedark bg-boxdark">
+  <div class="theme-surface-raised flex flex-col justify-center px-7.5 py-6">
     <span class="flex flex-col items-center py-2">
-      <span class="text-md font-medium"><.pluralize count={@media_item_count} word="Download" /></span>
-      <h4 class="text-title-md font-bold text-white"><.localized_number number={@media_item_count} /></h4>
+      <span class="text-md font-medium text-theme-on-surface-muted">
+        <.pluralize count={@media_item_count} word="Download" />
+      </span>
+      <h4 class="text-title-md font-bold text-theme-on-surface"><.localized_number number={@media_item_count} /></h4>
     </span>
   </div>
 
-  <div class="flex flex-col justify-center rounded-sm border px-7.5 py-6 shadow-default border-strokedark bg-boxdark">
+  <div class="theme-surface-raised flex flex-col justify-center px-7.5 py-6">
     <span class="flex flex-col items-center py-2">
-      <span class="text-md font-medium">Library Size</span>
-      <h4 class="text-title-md font-bold text-white"><.readable_filesize byte_size={@media_item_size} /></h4>
+      <span class="text-md font-medium text-theme-on-surface-muted">Library Size</span>
+      <h4 class="text-title-md font-bold text-theme-on-surface"><.readable_filesize byte_size={@media_item_size} /></h4>
     </span>
   </div>
 </div>
 
-<div class="rounded-sm border shadow-default border-strokedark bg-boxdark mt-4 p-5">
-  <span class="text-2xl font-medium mb-4">Media History</span>
+<div class="theme-surface-raised mt-4 p-5">
+  <span class="mb-4 block text-2xl font-medium text-theme-on-surface">Media History</span>
   <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
     <:tab title="Pending" id="pending">
       {live_render(
@@ -39,9 +45,8 @@
       )}
     </:tab>
 
-    <:tab title="Active Tasks" id="active-tasks">
-      {live_render(@conn, Pinchflat.Pages.JobTableLive)}
-    </:tab>
+    <:tab title="Active Tasks" id="active-tasks">{live_render(@conn, Pinchflat.Pages.JobTableLive)}</:tab>
+
     <:tab title="Downloaded" id="downloaded">
       {live_render(
         @conn,
@@ -49,9 +54,9 @@
         session: %{"media_state" => "downloaded"}
       )}
     </:tab>
-    <:tab title="Job Queue" id="job-queue">
-      {live_render(@conn, Pinchflat.Pages.JobQueueLive)}
-    </:tab>
+
+    <:tab title="Job Queue" id="job-queue">{live_render(@conn, Pinchflat.Pages.JobQueueLive)}</:tab>
+
     <:tab title="System Health" id="system-health">{live_render(@conn, Pinchflat.Pages.SystemHealthLive)}</:tab>
   </.tabbed_layout>
 </div>

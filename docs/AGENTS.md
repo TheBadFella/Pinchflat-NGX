@@ -15,6 +15,11 @@ Pinchflat is a self-hosted media management app using:
 
 **Always use Docker for development and testing.** The project has permission issues when mixing Docker and local builds.
 
+## Git And PR Policy
+
+- Create pull requests against this fork's `origin` remote unless the user explicitly says otherwise.
+- Do not open pull requests against `upstream`.
+
 **Database backup:** Use `pinchflat.db.backup-*` files for testing and development with real data. These contain production-like data for debugging issues.
 
 ```bash
