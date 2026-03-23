@@ -38,7 +38,6 @@ This is a targeted audit checklist of patterns that are known to be SQLite-speci
 **Observed in:**
 
 - `priv/repo/migrations/20260308222828_cleanup_orphaned_tasks.exs`
-
   - Uses `execute(""" ... """)`:
   - https://github.com/Mozart409/pinchflat/blob/e699395375d7dc9319f3175bbd8003ff6e0e3857/priv/repo/migrations/20260308222828_cleanup_orphaned_tasks.exs#L1-L17
 
@@ -55,7 +54,6 @@ This is a targeted audit checklist of patterns that are known to be SQLite-speci
 **Observed in:**
 
 - `lib/pinchflat/media/media_query.ex`
-
   - `IFNULL(retention_period_days, 0)`
   - `IFNULL(redownload_delay_days, 0)`
 
@@ -84,11 +82,9 @@ This is a targeted audit checklist of patterns that are known to be SQLite-speci
 **Observed in:**
 
 - `lib/pinchflat/media/media_query.ex`
-
   - `fragment("regexp_like(?, ?)", mi.title, source.title_filter_regex)`
 
 - `config/runtime.exs` loads the sqlean extension
-
   - `load_extensions: [ ... "sqlean" ... ]`
   - https://github.com/Mozart409/pinchflat/blob/e699395375d7dc9319f3175bbd8003ff6e0e3857/config/runtime.exs#L1-L74
 
@@ -118,11 +114,11 @@ This is a targeted audit checklist of patterns that are known to be SQLite-speci
 
 **Observed in:**
 
-- `AGENTS.md` ("Ecto with SQLite")
-- `Pinchflat_improvements.md` has a section about SQLite "Database busy" errors
+- `docs/AGENTS.md` ("Ecto with SQLite")
+- `docs/Pinchflat_improvements.md` has a section about SQLite "Database busy" errors
 - `lib/pinchflat/media/media.ex` comment: "SQLite doesn't like empty MATCH clauses."
 - `priv/repo/migrations/20260308222828_cleanup_orphaned_tasks.exs` comment: SQLite foreign keys disabled
-- `README.md` warns about SQLite WAL on network shares
+- `docs/README.md` warns about SQLite WAL on network shares
 
 **Implication:** behavior assumptions may no longer apply after Postgres migration.
 

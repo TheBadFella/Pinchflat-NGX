@@ -1,0 +1,16 @@
+services:
+  phx:
+    build:
+      context: .
+      dockerfile: ./docker/dev.Dockerfile
+    volumes:
+      - '.:/app'
+    ports:
+      - '4200:4008'
+    command: bash -c "chmod +x docker/docker-run.dev.sh && docker/docker-run.dev.sh"
+    stdin_open: true
+    tty: true
+    environment:
+      PAGINATION_HISTORY_LIMIT: 10
+      PAGINATION_LIMIT: 20
+      YT_DLP_WORKER_CONCURRENCY: ${YT_DLP_WORKER_CONCURRENCY:-5}

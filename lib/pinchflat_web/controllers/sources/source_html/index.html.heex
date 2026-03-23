@@ -1,5 +1,5 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
-  <h2 class="text-title-md2 font-bold text-black dark:text-white">Sources</h2>
+  <h2 class="text-title-md2 font-bold text-theme-on-surface">Sources</h2>
 
   <nav class="flex items-center justify-between gap-6">
     <.link href={opml_feed_url(@conn)} x-data="{ copied: false }" x-on:click={~s"
@@ -14,14 +14,14 @@
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </.link>
     <.link href={~p"/sources/new"}>
-      <.button color="bg-primary" rounding="rounded-lg">
+      <.button rounding="rounded-m3-sm">
         <span class="font-bold mx-2">+</span> New <span class="hidden sm:inline pl-1">Source</span>
       </.button>
     </.link>
   </nav>
 </div>
 
-<div class="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
+<div class="theme-surface-raised">
   <div class="max-w-full overflow-x-auto">
     {live_render(@conn, PinchflatWeb.Sources.SourceLive.IndexTableLive,
       session: %{

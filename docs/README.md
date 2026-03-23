@@ -16,6 +16,8 @@ For installation, configuration, and the base feature set, use the actual upstre
 - Single video sources and downloads. Upstream Pinchflat focused on channels and playlists; this fork also accepts individual YouTube video URLs as sources.
 - Cookie file management in the UI. You can upload, paste, and inspect the shared `cookies.txt` file directly from the source form.
 - Collapsible desktop sidebar for a cleaner PC layout.
+- AMOLED-black Material 3-inspired theme pass across shared components, layouts, and screens.
+- Custom themed single-select dropdowns and animated perimeter borders for the updated form controls.
 - Uses `yt-dlp nightly` builds so download fixes can land faster when YouTube changes.
 - A few quality-of-life UI and maintenance changes on top of upstream.
 

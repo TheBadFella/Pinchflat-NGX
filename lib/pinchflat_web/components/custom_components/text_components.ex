@@ -12,7 +12,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def inline_code(assigns) do
     ~H"""
-    <code class="inline-block text-sm font-mono text-gray bg-boxdark rounded-md p-0.5 mx-0.5 text-nowrap">
+    <code class="mx-0.5 inline-block rounded-m3-xs bg-theme-surface-2 px-1.5 py-0.5 font-mono text-sm text-theme-on-surface text-nowrap">
       {render_slot(@inner_block)}
     </code>
     """
@@ -26,7 +26,9 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def inline_link(assigns) do
     ~H"""
-    <.link href={@href} target="_blank" class="text-blue-500 hover:text-blue-300">{render_slot(@inner_block)}</.link>
+    <.link href={@href} target="_blank" class="text-theme-primary transition hover:text-theme-secondary">
+      {render_slot(@inner_block)}
+    </.link>
     """
   end
 
@@ -39,7 +41,11 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def subtle_link(assigns) do
     ~H"""
-    <.link href={@href} target={@target} class="underline decoration-bodydark decoration-1 hover:decoration-white">
+    <.link
+      href={@href}
+      target={@target}
+      class="underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
+    >
       {render_slot(@inner_block)}
     </.link>
     """
@@ -54,7 +60,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def icon_link(assigns) do
     ~H"""
-    <.link href={@href} class={["hover:text-secondary duration-200 ease-in-out", @class]}>
+    <.link href={@href} class={["text-theme-on-surface-muted transition hover:text-theme-secondary", @class]}>
       <CoreComponents.icon name={@icon} />
     </.link>
     """
@@ -84,7 +90,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     assigns = Map.put(assigns, :url, url)
 
     ~H"""
-    <a href={@url} target="_blank" class="text-blue-500 hover:text-blue-300">{@url}</a>
+    <a href={@url} target="_blank" class="text-theme-primary transition hover:text-theme-secondary">{@url}</a>
     """
   end
 
@@ -199,14 +205,12 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
       <div
         :if={@tooltip}
         class={[
-          "hidden absolute top-full z-20 mt-3 whitespace-nowrap rounded-md",
-          "p-1.5 text-sm font-medium opacity-0 drop-shadow-4 group-hover:opacity-100 group-hover:block bg-meta-4",
-          "border border-form-strokedark text-wrap",
+          "theme-surface-accent hidden absolute top-full z-20 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover:block group-hover:opacity-100 text-wrap shadow-m3-2",
           @tooltip_class
         ]}
       >
         <span class={[
-          "border-t border-l border-form-strokedark absolute -z-10 h-2 w-2 rotate-45 rounded-sm bg-meta-4",
+          "absolute -z-10 h-2 w-2 rotate-45 rounded-[2px] border-l border-t border-theme-outline/80 bg-theme-surface-3",
           @tooltip_arrow_class
         ]}>
         </span>

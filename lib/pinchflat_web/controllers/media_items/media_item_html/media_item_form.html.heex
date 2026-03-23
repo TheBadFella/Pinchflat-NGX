@@ -7,7 +7,7 @@
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
-  <h3 class="text-2xl text-black dark:text-white">General Options</h3>
+  <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
   <.input
     field={f[:prevent_download]}
@@ -20,5 +20,5 @@
     type="toggle"
     label="Prevent Automatic Deletion"
     help="Checking excludes media from being automatically deleted based on media retention rules"
-  /> <.button class="my-10 sm:mb-7.5 w-full sm:w-auto" rounding="rounded-lg">Save Media Item</.button>
+  /> <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Media Item</.button>
 </.simple_form>

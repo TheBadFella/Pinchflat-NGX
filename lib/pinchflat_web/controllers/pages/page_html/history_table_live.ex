@@ -31,9 +31,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
         </span>
       </span>
-
       <div class="max-w-full overflow-x-auto">
-        <.table rows={@records} table_class="text-white">
+        <.table rows={@records}>
           <:col :let={media_item} label="Title" class="max-w-xs">
             <section class="space-y-2">
               <div class="flex items-center space-x-1 gap-2">
@@ -53,29 +52,27 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                   </.subtle_link>
                 </span>
               </div>
+
               <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
                 {media_item.last_error}
               </div>
             </section>
           </:col>
 
-          <:col :let={media_item} label="Upload Date">
-            {DateTime.to_date(media_item.uploaded_at)}
-          </:col>
+          <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
+
           <:col :let={media_item} label="Size / Progress">
             {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
           </:col>
-          <:col :let={media_item} label="Indexed At">
-            {format_datetime(media_item.inserted_at)}
-          </:col>
-          <:col :let={media_item} label="Downloaded At">
-            {format_datetime(media_item.media_downloaded_at)}
-          </:col>
+
+          <:col :let={media_item} label="Indexed At">{format_datetime(media_item.inserted_at)}</:col>
+
+          <:col :let={media_item} label="Downloaded At">{format_datetime(media_item.media_downloaded_at)}</:col>
+
           <:col :let={media_item} label="Source" class="truncate max-w-xs">
-            <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
-              {media_item.source.custom_name}
-            </.subtle_link>
+            <.subtle_link href={~p"/sources/#{media_item.source_id}"}>{media_item.source.custom_name}</.subtle_link>
           </:col>
+
           <:col :let={media_item} label="Action">
             <button
               :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
@@ -83,14 +80,15 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               phx-click="stop_download"
               phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
               data-confirm="Are you sure you want to stop this download?"
-              class="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
+              class="rounded-m3-xs border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
             >
               Stop
             </button>
-            <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-gray-400">-</span>
+            <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
           </:col>
         </.table>
       </div>
+
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>

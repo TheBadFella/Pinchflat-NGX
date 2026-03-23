@@ -3,7 +3,7 @@ name: Cleanup Old Images
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * 0"
+    - cron: '0 6 * * 0'
 
 concurrency:
   group: ${{ github.workflow }}
@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 15
     env:
       PACKAGE_NAME: ${{ github.event.repository.name }}
-      RETAIN_COUNT: "5"
+      RETAIN_COUNT: '5'
     steps:
       - name: Delete old GHCR image versions
         env:

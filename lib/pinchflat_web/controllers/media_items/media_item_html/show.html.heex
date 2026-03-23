@@ -1,27 +1,28 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex gap-3 items-center min-w-0">
     <.link href={~p"/sources/#{@media_item.source_id}"}>
-      <.icon name="hero-arrow-left" class="w-10 h-10 hover:dark:text-white" />
+      <.icon
+        name="hero-arrow-left"
+        class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
+      />
     </.link>
-    <h2 class="text-title-md2 font-bold text-black dark:text-white ml-4 truncate">{@media_item.title}</h2>
+    <h2 class="ml-4 truncate text-title-md2 font-bold text-theme-on-surface">{@media_item.title}</h2>
   </div>
 
   <nav>
     <.link href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit"}>
-      <.button color="bg-primary" rounding="rounded-lg"><.icon name="hero-pencil-square" class="mr-2" /> Edit</.button>
+      <.button rounding="rounded-m3-sm"><.icon name="hero-pencil-square" class="mr-2" /> Edit</.button>
     </.link>
   </nav>
 </div>
 
-<div class="rounded-sm border py-5 pt-6 shadow-default border-strokedark bg-boxdark px-7.5">
+<div class="theme-surface-raised px-7.5 py-5 pt-6">
   <div class="max-w-full">
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
-      <:tab_append>
-        <.actions_dropdown media_item={@media_item} />
-      </:tab_append>
+      <:tab_append><.actions_dropdown media_item={@media_item} /></:tab_append>
 
       <:tab title="Media" id="media">
-        <div class="flex flex-col gap-10 text-white">
+        <div class="flex flex-col gap-10 text-theme-on-surface">
           <section :if={@media_item.last_error} class="mt-6">
             <div class="flex items-center gap-1 mb-2">
               <.icon name="hero-exclamation-circle-solid" class="text-red-500" />
@@ -54,7 +55,7 @@
                   </span>
                 </div>
 
-                <div :if={@media_item.description} class="mt-4 text-bodydark">
+                <div :if={@media_item.description} class="mt-4 text-theme-on-surface-muted">
                   <.render_description text={@media_item.description} />
                 </div>
               </aside>
@@ -75,7 +76,7 @@
 
       <:tab title="Tasks" id="tasks">
         <%= if match?([_|_], @media_item.tasks) do %>
-          <.table rows={@media_item.tasks} table_class="text-white">
+          <.table rows={@media_item.tasks}>
             <:col :let={task} label="Worker">{task.job.worker}</:col>
 
             <:col :let={task} label="State">{task.job.state}</:col>
@@ -83,7 +84,7 @@
             <:col :let={task} label="Scheduled At"><.datetime_in_zone datetime={task.job.scheduled_at} /></:col>
           </.table>
         <% else %>
-          <p class="text-black dark:text-white">Nothing Here!</p>
+          <p class="text-theme-on-surface">Nothing Here!</p>
         <% end %>
       </:tab>
     </.tabbed_layout>

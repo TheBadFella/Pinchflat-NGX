@@ -52,7 +52,7 @@ defmodule PinchflatWeb.CoreComponents do
       data-cancel={JS.exec(@on_cancel, "phx-remove")}
       class="relative z-99999 hidden"
     >
-      <div id={"#{@id}-bg"} class="bg-black-2/80 fixed inset-0 transition-opacity" aria-hidden="true" />
+      <div id={"#{@id}-bg"} class="bg-theme-scrim/80 fixed inset-0 transition-opacity" aria-hidden="true" />
       <div
         class="fixed inset-0 overflow-y-auto"
         aria-labelledby={"#{@id}-title"}
@@ -68,7 +68,7 @@ defmodule PinchflatWeb.CoreComponents do
               phx-window-keydown={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
               phx-key="escape"
               phx-click-away={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
-              class="shadow-zinc-700/10 ring-zinc-700/10 relative hidden rounded-2xl bg-graydark p-8 sm:p-14 shadow-lg ring-1 transition"
+              class="theme-surface-raised relative hidden rounded-m3-lg p-8 sm:p-14 transition"
             >
               <div :if={@allow_close} class="absolute top-6 right-5">
                 <button
@@ -77,7 +77,7 @@ defmodule PinchflatWeb.CoreComponents do
                   class="-m-3 flex-none p-3 opacity-60 hover:opacity-80"
                   aria-label={gettext("close")}
                 >
-                  <.icon name="hero-x-mark-solid" class="h-5 w-5 text-white" />
+                  <.icon name="hero-x-mark-solid" class="h-5 w-5 text-theme-on-surface" />
                 </button>
               </div>
 
@@ -118,9 +118,9 @@ defmodule PinchflatWeb.CoreComponents do
       {@rest}
     >
       <div class={[
-        "flex justify-between w-full border-l-6 bg-opacity-[50%] p-5 shadow-md dark:bg-opacity-40 dark:text-white",
-        @kind == :info && "border-[#34D399] bg-[#34D399]",
-        @kind == :error && "border-[#F87171] bg-[#F87171]"
+        "flex justify-between w-full rounded-m3-sm border-l-4 p-5 shadow-m3-1",
+        @kind == :info && "border-theme-success bg-theme-success/15 text-theme-on-surface",
+        @kind == :error && "border-theme-error bg-theme-error/15 text-theme-on-surface"
       ]}>
         <main>
           <h5 :if={@title} class="mb-2 text-lg font-bold">{@title}</h5>
@@ -289,9 +289,9 @@ defmodule PinchflatWeb.CoreComponents do
           name={@name}
           value="true"
           checked={@checked}
-          class={["rounded focus:ring-0", @inputclass]}
+          class={["rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0", @inputclass]}
           {@rest}
-        /> {@label} <span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
+        /> {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </label>
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
 
@@ -303,7 +303,9 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{type: "checkbox_group"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}>{@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span></.label>
+      <.label for={@id}>
+        {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+      </.label>
 
       <section class="grid grid-cols-1 gap-2 md:grid-cols-2 max-w-prose mb-4 ml-1">
         <div :for={{option_name, option_value} <- @options} class="flex items-center">
@@ -313,7 +315,10 @@ defmodule PinchflatWeb.CoreComponents do
             name={"#{@name}[]"}
             value={option_value}
             checked={option_value in @value}
-            class={["rounded focus:ring-offset-0 ring-offset-0 focus:ring-0 h-5 w-5 ", @inputclass]}
+            class={[
+              "h-5 w-5 rounded border-theme-outline bg-theme-surface-2 text-theme-primary ring-offset-0 focus:ring-0 focus:ring-offset-0",
+              @inputclass
+            ]}
           /> <label for={"#{@id}-#{option_value}"} class="ml-2 cursor-pointer select-none">{option_name}</label>
         </div>
       </section>
@@ -334,9 +339,9 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <div phx-feedback-for={@name} id={"#{@id}-wrapper"}>
       <.label :if={@label} for={@id}>
-        {@label}
-        <span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
+        {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
+
       <div class="flex flex-col">
         <label for={@id} class="relative inline-flex w-fit cursor-pointer items-center">
           <input type="hidden" name={@name} value="false" />
@@ -349,15 +354,16 @@ defmodule PinchflatWeb.CoreComponents do
             class="peer sr-only"
             {@rest}
           />
-          <div class="block h-8 w-14 rounded-full bg-black transition peer-checked:bg-primary peer-disabled:opacity-50">
+          <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50">
           </div>
           <div class={[
-            "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white transition peer-checked:translate-x-6 peer-disabled:opacity-80",
+            "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
             @inputclass
           ]}>
           </div>
         </label>
         <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
         <.error :for={msg <- @errors}>{msg}</.error>
       </div>
     </div>
@@ -365,54 +371,39 @@ defmodule PinchflatWeb.CoreComponents do
   end
 
   def input(%{type: "select"} = assigns) do
-    ~H"""
-    <div phx-feedback-for={@name}>
-      <.label :if={@label} for={@id}>
-        {@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span>
-      </.label>
+    assigns =
+      assigns
+      |> assign(:select_options, normalize_select_options(assigns.options || []))
+      |> assign(:prompt_option, prompt_option(assigns.prompt))
+      |> assign(:select_options_json, Phoenix.json_library().encode!(normalize_select_options(assigns.options || [])))
+      |> assign(:prompt_json, Phoenix.json_library().encode!(assigns.prompt || ""))
+      |> assign(:rest_disabled, rest_attr(assigns.rest, "disabled"))
+      |> assign(:rest_x_bind_disabled, rest_attr(assigns.rest, "x-bind:disabled"))
 
-      <div class="flex">
-        <select
-          id={@id}
-          name={@name}
-          class={[
-            "relative z-20 w-full appearance-none rounded border border-form-strokedark py-3 pl-5 pr-12 outline-none transition",
-            "focus:border-primary active:border-primary bg-form-input text-black text-white",
-            "disabled:text-opacity-50 disabled:cursor-not-allowed disabled:border-black",
-            @inputclass
-          ]}
-          multiple={@multiple}
-          {@rest}
-        >
-          <option :if={@prompt} value="">{@prompt}</option>
-          {Phoenix.HTML.Form.options_for_select(@options, @value)}
-        </select>
-         {render_slot(@inner_block)}
-      </div>
-
-      <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
-    """
+    if assigns.multiple do
+      render_native_select(assigns)
+    else
+      render_custom_select(assigns)
+    end
   end
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}>{@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span></.label>
-      <textarea
-        id={@id}
-        name={@name}
-        class={[
-          "mt-2 block w-full rounded-lg text-zinc-900 focus:ring-0 sm:text-sm sm:leading-6",
-          "min-h-[6rem] phx-no-feedback:border-zinc-300 phx-no-feedback:focus:border-zinc-400",
-          @inputclass,
-          @errors == [] && "border-zinc-300 focus:border-zinc-400",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
-        ]}
-        {@rest}
-      ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
+      <.label for={@id}>
+        {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+      </.label>
+      <div class="theme-field-shell mt-2">
+        <textarea
+          id={@id}
+          name={@name}
+          class={[
+            "theme-input block min-h-[6rem] w-full rounded-m3-sm px-5 py-3 focus:ring-0 sm:text-sm sm:leading-6",
+            @inputclass
+          ]}
+          {@rest}
+        ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
+      </div>
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
 
       <.error :for={msg <- @errors}>{msg}</.error>
@@ -424,23 +415,187 @@ defmodule PinchflatWeb.CoreComponents do
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}>{@label}<span :if={@label_suffix} class="text-xs text-bodydark">{@label_suffix}</span></.label>
+      <.label for={@id}>
+        {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+      </.label>
 
       <div class="flex items-center">
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            "w-full rounded-lg border-[1.5px] px-5 py-3 font-normal border-form-strokedark bg-form-input",
-            "outline-none transition active:border-primary disabled:cursor-default disabled:bg-whiter",
-            "text-white focus:border-primary",
-            @inputclass,
-            @errors != [] && "border-rose-400 focus:border-rose-400"
-          ]}
-          {@rest}
-        /> {render_slot(@input_append)}
+        <div class="theme-field-shell">
+          <input
+            type={@type}
+            name={@name}
+            id={@id}
+            value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+            class={[
+              "theme-input w-full rounded-m3-sm px-5 py-3 font-normal",
+              "outline-none transition disabled:cursor-default disabled:opacity-50",
+              @inputclass
+            ]}
+            {@rest}
+          />
+        </div>
+        {render_slot(@input_append)}
+      </div>
+
+      <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </div>
+    """
+  end
+
+  defp render_native_select(assigns) do
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label :if={@label} for={@id}>
+        {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+      </.label>
+
+      <div class="flex">
+        <div class="theme-field-shell">
+          <select
+            id={@id}
+            name={@name}
+            class={[
+              "theme-input theme-select relative z-20 w-full appearance-none rounded-m3-sm py-3 pl-5 pr-12 outline-none transition",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              @inputclass
+            ]}
+            multiple={@multiple}
+            {@rest}
+          >
+            <option :if={@prompt} value="">{@prompt}</option>
+            {Phoenix.HTML.Form.options_for_select(@options, @value)}
+          </select>
+        </div>
+        {render_slot(@inner_block)}
+      </div>
+
+      <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </div>
+    """
+  end
+
+  defp render_custom_select(assigns) do
+    custom_select_data = """
+    {
+      open: false,
+      options: #{assigns.select_options_json},
+      prompt: #{assigns.prompt_json},
+      selectedValue: '',
+      selectedLabel: '',
+      syncFromInput() {
+        this.selectedValue = `${this.$refs.input.value ?? ''}`
+        const match = this.options.find(option => option.value === this.selectedValue)
+        this.selectedLabel = match ? match.label : ''
+      },
+      selectOption(value) {
+        this.$refs.input.value = value
+        this.syncFromInput()
+        this.open = false
+        this.$refs.input.dispatchEvent(new Event('input', { bubbles: true }))
+        this.$refs.input.dispatchEvent(new Event('change', { bubbles: true }))
+      },
+      init() {
+        this.syncFromInput()
+      }
+    }
+    """
+
+    assigns = assign(assigns, :custom_select_data, custom_select_data)
+
+    ~H"""
+    <div phx-feedback-for={@name}>
+      <.label :if={@label} for={@id}>
+        {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+      </.label>
+
+      <div class="flex">
+        <div
+          class="theme-field-shell relative w-full isolate"
+          x-data={@custom_select_data}
+          x-init="init()"
+          x-on:click.outside="open = false"
+          x-bind:class="open ? 'theme-field-shell-active z-[90]' : 'z-10'"
+        >
+          <input
+            x-ref="input"
+            type="hidden"
+            id={@id}
+            name={@name}
+            value={@value}
+            {@rest}
+            x-on:input="syncFromInput()"
+            x-on:change="syncFromInput()"
+          />
+
+          <button
+            type="button"
+            class={[
+              "theme-input flex w-full items-center justify-between gap-3 rounded-m3-sm px-5 py-3 text-left outline-none transition",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              @inputclass
+            ]}
+            x-on:click="open = !open"
+            x-on:keydown.escape.prevent="open = false"
+            x-bind:aria-expanded="open"
+            aria-haspopup="listbox"
+            aria-controls={"#{@id}-options"}
+            x-bind:disabled={@rest_x_bind_disabled}
+            disabled={@rest_disabled}
+          >
+            <span
+              class="truncate"
+              x-bind:class="selectedLabel ? 'text-theme-on-surface' : 'text-theme-on-surface-muted'"
+              x-text="selectedLabel || prompt"
+            >
+            </span>
+            <.icon
+              name="hero-chevron-down"
+              class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
+              x-bind:class="open ? 'rotate-180 text-theme-primary' : ''"
+            />
+          </button>
+
+          <div
+            x-cloak
+            x-show="open"
+            x-transition.origin.top.left.duration.120ms
+            id={"#{@id}-options"}
+            class="theme-select-menu absolute left-0 top-full z-[100] mt-2 max-h-72 w-full overflow-y-auto p-2"
+            role="listbox"
+          >
+            <button
+              :if={@prompt_option}
+              type="button"
+              class="theme-select-option flex w-full items-center rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
+              x-bind:class="selectedValue === '' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-muted'"
+              x-on:click="selectOption('')"
+            >
+              {@prompt_option.label}
+            </button>
+
+            <button
+              :for={option <- @select_options}
+              type="button"
+              data-value={option.value}
+              class="theme-select-option flex w-full items-center justify-between gap-3 rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
+              x-bind:class={"selectedValue === '#{option.value}' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-muted'"}
+              x-on:click="selectOption($el.dataset.value)"
+            >
+              <span class="truncate">{option.label}</span>
+              <.icon
+                name="hero-check"
+                class="h-4 w-4 shrink-0 text-theme-primary"
+                x-show={"selectedValue === '#{option.value}'"}
+              />
+            </button>
+          </div>
+        </div>
+
+        {render_slot(@inner_block)}
       </div>
 
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
@@ -457,7 +612,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def help(assigns) do
     ~H"""
-    <p class="mt-1 text-sm leading-5">{render_slot(@inner_block)}</p>
+    <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">{render_slot(@inner_block)}</p>
     """
   end
 
@@ -469,7 +624,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class="mt-5 mb-2 inline-block text-md font-medium text-black dark:text-white">
+    <label for={@for} class="mt-5 mb-2 inline-block text-md font-medium text-theme-on-surface">
       {render_slot(@inner_block)}
     </label>
     """
@@ -482,7 +637,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def error(assigns) do
     ~H"""
-    <p class="mt-1 mb-5 flex gap-3 text-md leading-6 text-rose-600 phx-no-feedback:hidden">
+    <p class="mt-1 mb-5 flex gap-3 text-md leading-6 text-theme-error phx-no-feedback:hidden">
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" /> {render_slot(@inner_block)}
     </p>
     """
@@ -600,11 +755,11 @@ defmodule PinchflatWeb.CoreComponents do
   def list(assigns) do
     ~H"""
     <div class="mt-2 mb-14">
-      <dl class="-my-4 divide-y dark:divide-strokedark">
+      <dl class="-my-4 divide-y divide-theme-outline/70">
         <div :for={item <- @item} class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
-          <dt class="w-1/4 flex-none dark:text-white">{item.title}</dt>
+          <dt class="w-1/4 flex-none text-theme-on-surface">{item.title}</dt>
 
-          <dd class="dark:text-white">{render_slot(item)}</dd>
+          <dd class="text-theme-on-surface">{render_slot(item)}</dd>
         </div>
       </dl>
     </div>
@@ -640,7 +795,7 @@ defmodule PinchflatWeb.CoreComponents do
     <ul>
       <li :for={{k, v} <- @iterable_attributes} class="mb-2 w-2/3">
         <strong>{k}:</strong>
-        <code class="inline-block text-sm font-mono text-gray p-0.5 mx-0.5">
+        <code class="mx-0.5 inline-block p-0.5 font-mono text-sm text-theme-on-surface-muted">
           <%= if is_binary(v) && URI.parse(v).scheme && URI.parse(v).scheme =~ "http" do %>
             <TextComponents.inline_link href={v}>{v}</TextComponents.inline_link>
           <% else %>
@@ -665,7 +820,7 @@ defmodule PinchflatWeb.CoreComponents do
   def back(assigns) do
     ~H"""
     <div class="mt-16">
-      <.link href={@href} class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700">
+      <.link href={@href} class="text-sm font-semibold leading-6 text-theme-on-surface transition hover:text-theme-primary">
         <.icon name="hero-arrow-left-solid" class="h-3 w-3" /> {render_slot(@inner_block)}
       </.link>
     </div>
@@ -773,5 +928,28 @@ defmodule PinchflatWeb.CoreComponents do
   """
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+  end
+
+  defp normalize_select_options(options) do
+    Enum.map(options, fn
+      {label, value} -> %{label: to_string(label), value: to_string(value)}
+      label -> %{label: to_string(label), value: to_string(label)}
+    end)
+  end
+
+  defp prompt_option(nil), do: nil
+  defp prompt_option(prompt), do: %{label: prompt}
+
+  defp rest_attr(rest, attr_name) do
+    Enum.find_value(rest, fn
+      {^attr_name, value} ->
+        value
+
+      {key, value} ->
+        if is_atom(key) and Atom.to_string(key) == attr_name, do: value
+
+      _ ->
+        nil
+    end)
   end
 end

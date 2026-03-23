@@ -9,9 +9,12 @@
 
   <section>
     <section class="flex justify-between items-center mt-4">
-      <h3 class="text-2xl text-black dark:text-white">Notification Settings</h3>
+      <h3 class="text-2xl text-theme-on-surface">Notification Settings</h3>
 
-      <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
+      <span
+        class="cursor-pointer text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline"
+        x-on:click="advancedMode = !advancedMode"
+      >
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
       </span>
     </section>
@@ -24,7 +27,7 @@
 
   <section class="mt-8">
     <section>
-      <h3 class="text-2xl text-black dark:text-white">Extractor Settings</h3>
+      <h3 class="text-2xl text-theme-on-surface">Extractor Settings</h3>
 
       <.input
         field={f[:youtube_api_key]}
@@ -59,9 +62,9 @@
 
   <section class="mt-8" x-show="advancedMode">
     <section>
-      <h3 class="text-2xl text-black dark:text-white">Codec Options</h3>
+      <h3 class="text-2xl text-theme-on-surface">Codec Options</h3>
 
-      <p class="text-sm mt-2 max-w-prose">
+      <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
         The best available codec will be used if your preferred codecs are not found
       </p>
 
@@ -83,7 +86,7 @@
       />
     </section>
 
-    <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mt-5"><.codec_settings_help /></div>
+    <div class="theme-surface-accent mt-5 p-4 md:p-6"><.codec_settings_help /></div>
   </section>
-  <.button class="mt-10 mb-4 sm:mb-8 w-full sm:w-auto" rounding="rounded-lg">Save Settings</.button>
+  <.button class="mt-10 mb-4 w-full sm:mb-8 sm:w-auto" rounding="rounded-m3-sm">Save Settings</.button>
 </.simple_form>
