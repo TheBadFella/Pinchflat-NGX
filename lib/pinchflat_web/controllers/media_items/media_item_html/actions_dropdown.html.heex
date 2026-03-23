@@ -11,9 +11,11 @@
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </span>
   </:option>
+
   <:option>
     <div class="h-px w-full bg-bodydark2"></div>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/force_download"}
@@ -23,9 +25,11 @@
       Force Download
     </.link>
   </:option>
+
   <:option>
     <div class="h-px w-full bg-bodydark2"></div>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}"}
@@ -35,6 +39,7 @@
       Delete Files
     </.link>
   </:option>
+
   <:option>
     <.link
       href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}?prevent_download=true"}

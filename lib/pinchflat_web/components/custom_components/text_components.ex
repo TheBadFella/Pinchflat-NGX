@@ -26,9 +26,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def inline_link(assigns) do
     ~H"""
-    <.link href={@href} target="_blank" class="text-blue-500 hover:text-blue-300">
-      {render_slot(@inner_block)}
-    </.link>
+    <.link href={@href} target="_blank" class="text-blue-500 hover:text-blue-300">{render_slot(@inner_block)}</.link>
     """
   end
 
@@ -78,9 +76,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     assigns = Map.put(assigns, :text, formatted_text)
 
     ~H"""
-    <span>
-      <.rendered_description_line :for={line <- @text} content={line} />
-    </span>
+    <span><.rendered_description_line :for={line <- @text} content={line} /></span>
     """
   end
 
@@ -88,9 +84,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     assigns = Map.put(assigns, :url, url)
 
     ~H"""
-    <a href={@url} target="_blank" class="text-blue-500 hover:text-blue-300">
-      {@url}
-    </a>
+    <a href={@url} target="_blank" class="text-blue-500 hover:text-blue-300">{@url}</a>
     """
   end
 
@@ -200,9 +194,8 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   def tooltip(assigns) do
     ~H"""
     <div class="group relative inline-block cursor-pointer">
-      <div>
-        {render_slot(@inner_block)}
-      </div>
+      <div>{render_slot(@inner_block)}</div>
+
       <div
         :if={@tooltip}
         class={[

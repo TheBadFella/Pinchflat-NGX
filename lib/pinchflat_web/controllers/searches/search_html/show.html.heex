@@ -1,7 +1,5 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
-  <h2 class="text-title-md2 font-bold text-black dark:text-white truncate">
-    Results for "{@search_term}"
-  </h2>
+  <h2 class="text-title-md2 font-bold text-black dark:text-white truncate">Results for "{@search_term}"</h2>
 </div>
 
 <div class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5">
@@ -10,13 +8,10 @@
       <%= if match?([_|_], @search_results) do %>
         <.table rows={@search_results} table_class="text-black dark:text-white">
           <:col :let={result} label="Title" class="truncate max-w-xs">
-            <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>
-              {result.title}
-            </.subtle_link>
+            <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>{result.title}</.subtle_link>
           </:col>
-          <:col :let={result} label="Excerpt">
-            <.highlight_search_terms text={result.matching_search_term} />
-          </:col>
+
+          <:col :let={result} label="Excerpt"><.highlight_search_terms text={result.matching_search_term} /></:col>
         </.table>
       <% else %>
         <p class="font-bold text-lg text-center text-black dark:text-white">No results found</p>

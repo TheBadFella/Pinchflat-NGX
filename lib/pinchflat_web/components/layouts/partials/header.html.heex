@@ -1,9 +1,7 @@
 <header class="sticky top-0 z-999 flex min-h-20 w-full bg-white drop-shadow-1 dark:bg-boxdark dark:drop-shadow-none">
   <div class="flex flex-grow items-center justify-between lg:justify-end px-4 py-4 shadow-2 md:px-6 2xl:px-11">
     <div class="flex items-center gap-2 sm:gap-4 lg:hidden w-2/6">
-      <section class="pr-1">
-        <img src={~p"/images/icon-2024-03-20.png"} alt="Pinchflat" class="w-10" />
-      </section>
+      <section class="pr-1"><img src={~p"/images/icon-2024-03-20.png"} alt="Pinchflat" class="w-10" /></section>
 
       <button
         class="z-99999 block mx-2 rounded-sm border border-stroke bg-white p-1.5 shadow-sm dark:border-strokedark dark:bg-boxdark lg:hidden"
@@ -12,11 +10,10 @@
         <.icon name="hero-bars-3" />
       </button>
     </div>
+
     <div class="bg-meta-4 rounded-md w-4/6 lg:w-3/6 xl:w-2/6">
       <div class="relative">
-        <span class="absolute left-2 top-1/2 -translate-y-1/2 flex">
-          <.icon name="hero-magnifying-glass" />
-        </span>
+        <span class="absolute left-2 top-1/2 -translate-y-1/2 flex"><.icon name="hero-magnifying-glass" /></span>
         <form action={~p"/search"}>
           <input
             type="text"

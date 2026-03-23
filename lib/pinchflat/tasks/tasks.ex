@@ -162,7 +162,7 @@ defmodule Pinchflat.Tasks do
     |> Repo.update()
     |> tap(fn
       {:ok, updated_task} ->
-        PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: updated_task.job_id})
+        PinchflatWeb.Endpoint.broadcast("job:progress", "update", task_progress_payload(updated_task))
 
       _ ->
         :ok
@@ -174,5 +174,40 @@ defmodule Pinchflat.Tasks do
   """
   def change_task(%Task{} = task, attrs \\ %{}) do
     Task.changeset(task, attrs)
+  end
+
+  @doc """
+  Returns task metadata used to scope UI refreshes for a job.
+
+  Returns %{task_id: integer(), job_id: integer(), source_id: integer() | nil, media_item_id: integer() | nil} | nil.
+  """
+  def get_task_event_payload(job_id) do
+    from(t in Task,
+      left_join: mi in assoc(t, :media_item),
+      where: t.job_id == ^job_id,
+      select: %{
+        task_id: t.id,
+        job_id: t.job_id,
+        source_id: type(fragment("coalesce(?, ?)", t.source_id, mi.source_id), :integer),
+        media_item_id: t.media_item_id
+      }
+    )
+    |> Repo.one()
+  end
+
+  defp task_progress_payload(task) do
+    Map.take(task, [
+      :id,
+      :job_id,
+      :source_id,
+      :media_item_id,
+      :progress_percent,
+      :progress_status,
+      :progress_downloaded_bytes,
+      :progress_total_bytes,
+      :progress_eta_seconds,
+      :progress_updated_at
+    ])
+    |> Map.put(:task_id, task.id)
   end
 end

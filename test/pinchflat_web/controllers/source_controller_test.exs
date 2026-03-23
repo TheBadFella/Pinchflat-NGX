@@ -16,7 +16,10 @@ defmodule PinchflatWeb.SourceControllerTest do
   setup do
     media_profile = media_profile_fixture()
     Settings.set(onboarding: false)
-    extras_directory = Path.join(System.tmp_dir!(), "pinchflat-source-controller-cookie-tests-#{System.unique_integer([:positive])}")
+
+    extras_directory =
+      Path.join(System.tmp_dir!(), "pinchflat-source-controller-cookie-tests-#{System.unique_integer([:positive])}")
+
     original_directory = Application.get_env(:pinchflat, :extras_directory)
 
     Application.put_env(:pinchflat, :extras_directory, extras_directory)
@@ -74,7 +77,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/new")
       response = html_response(conn, 200)
 
-      assert response =~ ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
+      assert response =~
+               ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
     end
 
     test "renders correct layout when onboarding", %{conn: conn} do
@@ -168,14 +172,21 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/#{source}/edit")
       response = html_response(conn, 200)
 
-      assert response =~ ~r/<option[^>]*value="disabled"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="disabled"/
-      refute response =~ ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
+      assert response =~
+               ~r/<option[^>]*value="disabled"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="disabled"/
+
+      refute response =~
+               ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
     end
   end
 
   describe "cookie file actions" do
     test "save_cookies writes cookie contents and redirects back", %{conn: conn, extras_directory: extras_directory} do
-      conn = post(conn, ~p"/sources/cookies/save", %{"cookies" => %{"contents" => "youtube-cookie-data"}, "return_to" => "/sources/new"})
+      conn =
+        post(conn, ~p"/sources/cookies/save", %{
+          "cookies" => %{"contents" => "youtube-cookie-data"},
+          "return_to" => "/sources/new"
+        })
 
       assert redirected_to(conn) == "/sources/new"
       assert File.read!(Path.join(extras_directory, "cookies.txt")) == "youtube-cookie-data"

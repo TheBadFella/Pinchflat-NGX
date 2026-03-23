@@ -171,6 +171,16 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       assert html =~ media_item.title
       refute html =~ other_media_item.title
     end
+
+    test "filters source-attached tasks to a single source when source_id is provided", %{conn: conn} do
+      {source, _task, _job} = create_source_job(%{custom_name: "Source One"})
+      {other_source, _other_task, _other_job} = create_source_job(%{custom_name: "Source Two"})
+
+      {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{"source_id" => source.id})
+
+      assert html =~ source.custom_name
+      refute html =~ other_source.custom_name
+    end
   end
 
   defp create_media_item_job(job_state \\ :executing) do
@@ -187,8 +197,14 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
     {source, media_item, task, job}
   end
 
-  defp create_source_job(job_state \\ :executing) do
-    source = source_fixture()
+  defp create_source_job(attrs \\ %{}, job_state \\ :executing)
+
+  defp create_source_job(job_state, attrs) when is_atom(job_state) and is_map(attrs) do
+    create_source_job(attrs, job_state)
+  end
+
+  defp create_source_job(attrs, job_state) do
+    source = source_fixture(attrs)
     {:ok, task} = FastIndexingWorker.kickoff_with_task(source)
 
     Oban.Job

@@ -28,6 +28,15 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Preloads associations used by API serialization.
+
+  Returns [%MediaItem{}, ...] | %MediaItem{}.
+  """
+  def preload_api_assocs(media_items) do
+    Repo.preload(media_items, source: :media_profile)
+  end
+
+  @doc """
   Returns a list of media_items that are upgradeable based on the redownload delay
   of the media_profile their source belongs to. In this context, upgradeable means
   that it's been long enough since upload that the video may be in a higher quality
@@ -102,6 +111,7 @@ defmodule Pinchflat.Media do
     |> MediaQuery.matching_search_term(search_term)
     |> Repo.maybe_limit(limit)
     |> Repo.all()
+    |> preload_api_assocs()
   end
 
   @doc """
@@ -135,17 +145,19 @@ defmodule Pinchflat.Media do
   def create_media_item_from_backend_attrs(source, media_attrs_struct) do
     attrs = Map.merge(%{source_id: source.id}, Map.from_struct(media_attrs_struct))
 
-    %MediaItem{}
-    |> MediaItem.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: [
-        set:
-          attrs
-          |> Map.drop(@fields_to_drop_on_update)
-          |> Map.to_list()
-      ],
-      conflict_target: [:source_id, :media_id]
-    )
+    case attrs.media_id do
+      nil ->
+        insert_media_item_from_backend_attrs(source, attrs)
+
+      media_id ->
+        case Repo.get_by(MediaItem, source_id: source.id, media_id: media_id) do
+          %MediaItem{} = media_item ->
+            update_media_item_from_backend_attrs(media_item, attrs)
+
+          nil ->
+            insert_media_item_from_backend_attrs(source, attrs)
+        end
+    end
   end
 
   @doc """
@@ -238,5 +250,33 @@ defmodule Pinchflat.Media do
     runner = Application.get_env(:pinchflat, :user_script_runner, UserScriptRunner)
 
     runner.run(event, media_item)
+  end
+
+  defp insert_media_item_from_backend_attrs(source, attrs) do
+    %MediaItem{source: source}
+    |> MediaItem.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, %MediaItem{} = media_item} ->
+        {:ok, media_item}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        case attrs.media_id do
+          nil ->
+            {:error, changeset}
+
+          media_id ->
+            case Repo.get_by(MediaItem, source_id: source.id, media_id: media_id) do
+              %MediaItem{} = media_item -> update_media_item_from_backend_attrs(media_item, attrs)
+              nil -> {:error, changeset}
+            end
+        end
+    end
+  end
+
+  defp update_media_item_from_backend_attrs(media_item, attrs) do
+    media_item
+    |> MediaItem.changeset(Map.drop(attrs, @fields_to_drop_on_update))
+    |> Repo.update()
   end
 end

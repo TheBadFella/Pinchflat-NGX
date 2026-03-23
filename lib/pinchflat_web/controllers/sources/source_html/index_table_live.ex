@@ -12,20 +12,21 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
     ~H"""
     <.table rows={@sources} table_class="text-white">
       <:col :let={source} label="Name" class="truncate max-w-xs">
-        <.subtle_link href={~p"/sources/#{source.id}"}>
-          {source.custom_name || source.collection_name}
-        </.subtle_link>
+        <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name || source.collection_name}</.subtle_link>
       </:col>
+
       <:col :let={source} label="Pending">
         <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
           <.localized_number number={source.pending_count} />
         </.subtle_link>
       </:col>
+
       <:col :let={source} label="Downloaded">
         <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
           <.localized_number number={source.downloaded_count} />
         </.subtle_link>
       </:col>
+
       <:col :let={source} label="Retention">
         <%= if source.retention_period_days && source.retention_period_days > 0 do %>
           <.localized_number number={source.retention_period_days} />
@@ -34,11 +35,11 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
           <span class="text-lg">∞</span>
         <% end %>
       </:col>
+
       <:col :let={source} label="Media Profile">
-        <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
-          {source.media_profile.name}
-        </.subtle_link>
+        <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
       </:col>
+
       <:col :let={source} label="Enabled?">
         <.input
           name={"source[#{source.id}][enabled]"}
@@ -51,6 +52,7 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
           type="toggle"
         />
       </:col>
+
       <:col :let={source} label="" class="flex place-content-evenly">
         <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
       </:col>

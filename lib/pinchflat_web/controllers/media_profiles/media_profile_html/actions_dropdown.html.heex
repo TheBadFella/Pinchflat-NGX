@@ -11,14 +11,15 @@
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </span>
   </:option>
+
   <:option>
-    <.link href={~p"/media_profiles/new?template_id=#{@media_profile}"} method="get">
-      Use as Template
-    </.link>
+    <.link href={~p"/media_profiles/new?template_id=#{@media_profile}"} method="get">Use as Template</.link>
   </:option>
+
   <:option>
     <div class="h-px w-full bg-bodydark2"></div>
   </:option>
+
   <:option>
     <.link
       href={~p"/media_profiles/#{@media_profile}"}
@@ -28,6 +29,7 @@
       Delete Profile
     </.link>
   </:option>
+
   <:option>
     <.link
       href={~p"/media_profiles/#{@media_profile}?delete_files=true"}

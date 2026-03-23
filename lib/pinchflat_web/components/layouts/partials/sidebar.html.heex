@@ -24,11 +24,9 @@
           x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'w-auto'"
         />
       </a>
-
       <button class="block mt-3 lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
         <.icon name="hero-arrow-left" class="fill-current" />
       </button>
-
       <button
         type="button"
         class="hidden rounded-sm border border-strokedark p-1.5 text-bodydark1 transition hover:bg-meta-4 lg:block"
@@ -43,6 +41,7 @@
         />
       </button>
     </div>
+
     <div
       class="no-scrollbar flex flex-col duration-300 ease-linear"
       x-bind:class="sidebarCollapsed ? 'overflow-visible' : 'overflow-y-auto'"
@@ -51,6 +50,7 @@
         <h3 class="mb-4 ml-4 text-sm font-medium text-bodydark2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
           <span>MENU</span>
         </h3>
+
         <div class="flex flex-col justify-between">
           <ul class="mb-6 flex flex-col gap-1.5" x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''">
             <.sidebar_item icon="hero-home" text="Home" href={~p"/"} />
@@ -61,14 +61,14 @@
               text="Config"
               current_path={Phoenix.Controller.current_path(@conn)}
             >
-              <:submenu text="Settings" href={~p"/settings"} />
-              <:submenu text="App Info" href={~p"/app_info"} />
+              <:submenu text="Settings" href={~p"/settings"} /> <:submenu text="App Info" href={~p"/app_info"} />
             </.sidebar_submenu>
           </ul>
         </div>
       </nav>
     </div>
   </section>
+
   <section>
     <nav
       class="px-4 py-4 lg:px-6"
@@ -95,8 +95,11 @@
             x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
             phx-click={show_modal("donate-modal")}
           >
-            <.icon name="hero-currency-dollar" class="h-5 w-5 shrink-0 scale-110" x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''" />
-            <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">Donate</span>
+            <.icon
+              name="hero-currency-dollar"
+              class="h-5 w-5 shrink-0 scale-110"
+              x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
+            /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">Donate</span>
             <span
               x-cloak
               x-show="sidebarCollapsed"
@@ -107,15 +110,14 @@
             </span>
           </span>
         </li>
+
         <li>
           <span
             class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm"
             x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
             x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
-            <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
-              PinchYT {Application.spec(:pinchflat)[:vsn]}
-            </span>
+            <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">PinchYT {Application.spec(:pinchflat)[:vsn]}</span>
           </span>
           <.link
             href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"

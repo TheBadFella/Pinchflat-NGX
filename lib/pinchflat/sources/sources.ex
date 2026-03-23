@@ -110,6 +110,15 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Preloads associations used by API serialization.
+
+  Returns [%Source{}, ...] | %Source{}.
+  """
+  def preload_api_assocs(sources) do
+    Repo.preload(sources, :media_profile)
+  end
+
+  @doc """
   Returns the list of sources for a media_profile.
 
   Returns [%Source{}, ...]

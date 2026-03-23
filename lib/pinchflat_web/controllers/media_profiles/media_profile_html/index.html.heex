@@ -1,7 +1,6 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
-  <h2 class="text-title-md2 font-bold text-black dark:text-white">
-    Media Profiles
-  </h2>
+  <h2 class="text-title-md2 font-bold text-black dark:text-white">Media Profiles</h2>
+
   <nav>
     <.link href={~p"/media_profiles/new"}>
       <.button color="bg-primary" rounding="rounded-lg">
@@ -10,23 +9,23 @@
     </.link>
   </nav>
 </div>
+
 <div class="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
   <div class="max-w-full overflow-x-auto">
     <div class="flex flex-col gap-10 min-w-max">
       <.table rows={@media_profiles} table_class="text-black dark:text-white">
         <:col :let={media_profile} label="Name" class="truncate max-w-xs">
-          <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>
-            {media_profile.name}
-          </.subtle_link>
+          <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
         </:col>
-        <:col :let={media_profile} label="Preferred Resolution">
-          {media_profile.preferred_resolution}
-        </:col>
+
+        <:col :let={media_profile} label="Preferred Resolution">{media_profile.preferred_resolution}</:col>
+
         <:col :let={media_profile} label="Sources">
           <.subtle_link href={~p"/media_profiles/#{media_profile.id}/#tab-sources"}>
             <.localized_number number={media_profile.source_count} />
           </.subtle_link>
         </:col>
+
         <:col :let={media_profile} label="" class="flex justify-end">
           <.icon_link href={~p"/media_profiles/#{media_profile.id}/edit"} icon="hero-pencil-square" class="mr-4" />
         </:col>

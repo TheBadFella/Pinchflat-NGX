@@ -7,6 +7,8 @@ defmodule Pinchflat.Settings do
   alias Pinchflat.Repo
   alias Pinchflat.Settings.Setting
 
+  @cache_key {__MODULE__, :record}
+
   @doc """
   Returns the only setting record. It _should_ be impossible
   to create or delete this record, so it's assertive about
@@ -15,9 +17,16 @@ defmodule Pinchflat.Settings do
   Returns %Setting{}
   """
   def record do
-    Setting
-    |> limit(1)
-    |> Repo.one()
+    case cached_record() do
+      %Setting{} = setting ->
+        setting
+
+      _ ->
+        Setting
+        |> limit(1)
+        |> Repo.one()
+        |> cache_record()
+    end
   end
 
   @doc """
@@ -29,6 +38,10 @@ defmodule Pinchflat.Settings do
     setting
     |> Setting.changeset(attrs)
     |> Repo.update()
+    |> tap(fn
+      {:ok, %Setting{} = updated_setting} -> cache_record(updated_setting)
+      _ -> :ok
+    end)
   end
 
   @doc """
@@ -77,5 +90,26 @@ defmodule Pinchflat.Settings do
   """
   def change_setting(%Setting{} = setting, attrs \\ %{}) do
     Setting.changeset(setting, attrs)
+  end
+
+  defp cached_record do
+    if cache_enabled?() do
+      :persistent_term.get(@cache_key, nil)
+    end
+  end
+
+  defp cache_record(%Setting{} = setting) do
+    if cache_enabled?() do
+      :persistent_term.put(@cache_key, setting)
+    end
+
+    setting
+  end
+
+  defp cache_record(setting), do: setting
+
+  defp cache_enabled? do
+    default_enabled = if function_exported?(Mix, :env, 0), do: Mix.env() != :test, else: true
+    Application.get_env(:pinchflat, :settings_cache, default_enabled)
   end
 end

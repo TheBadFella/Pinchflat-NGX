@@ -89,7 +89,9 @@ defmodule Pinchflat.SourcesTest do
 
   describe "cookie file helpers" do
     setup do
-      extras_directory = Path.join(System.tmp_dir!(), "pinchflat-source-cookie-tests-#{System.unique_integer([:positive])}")
+      extras_directory =
+        Path.join(System.tmp_dir!(), "pinchflat-source-cookie-tests-#{System.unique_integer([:positive])}")
+
       original_directory = Application.get_env(:pinchflat, :extras_directory)
 
       Application.put_env(:pinchflat, :extras_directory, extras_directory)

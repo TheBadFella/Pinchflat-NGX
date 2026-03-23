@@ -15,15 +15,18 @@ defmodule PinchflatWeb.Pages.PageController do
     if force_onboarding || Settings.get!(:onboarding) do
       render_onboarding_page(conn)
     else
-      render_home_page(conn)
+      render_home_page(conn, params)
     end
   end
 
-  defp render_home_page(conn) do
+  defp render_home_page(conn, params) do
     downloaded_media_items = where(MediaQuery.new(), ^MediaQuery.downloaded())
+    active_tab = tab_param(params, ~w(pending active-tasks downloaded job-queue system-health), "pending")
 
     conn
     |> render(:home,
+      active_tab: active_tab,
+      tab_href: fn tab -> ~p"/?#{[tab: tab]}" end,
       media_profile_count: Repo.aggregate(MediaProfile, :count, :id),
       source_count: Repo.aggregate(Source, :count, :id),
       media_item_size: Repo.aggregate(downloaded_media_items, :sum, :media_size_bytes),
@@ -40,5 +43,15 @@ defmodule PinchflatWeb.Pages.PageController do
       sources_exist: Repo.exists?(Source),
       layout: {Layouts, :onboarding}
     )
+  end
+
+  defp tab_param(params, allowed_tabs, default_tab) do
+    tab = params["tab"]
+
+    if tab in allowed_tabs do
+      tab
+    else
+      default_tab
+    end
   end
 end

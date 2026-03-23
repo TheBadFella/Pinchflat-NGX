@@ -63,8 +63,11 @@ defmodule PinchflatWeb.Layouts do
         x-on:click="if (sidebarCollapsed) { sidebarCollapsed = false; window.setSidebarCollapsed(false) } else { selected = !selected }"
       >
         <span class="flex items-center gap-2.5" x-bind:class="sidebarCollapsed ? 'lg:justify-center' : ''">
-          <.icon name={@icon} class="h-5 w-5 shrink-0" x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''" />
-          <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">{@text}</span>
+          <.icon
+            name={@icon}
+            class="h-5 w-5 shrink-0"
+            x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
+          /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">{@text}</span>
         </span>
         <span class="text-bodydark2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
           <.icon name="hero-chevron-down" x-bind:class="{ 'rotate-180': selected }" />
@@ -78,7 +81,6 @@ defmodule PinchflatWeb.Layouts do
           {@text}
         </span>
       </span>
-
       <ul x-cloak x-show="selected && !sidebarCollapsed">
         <li :for={menu <- @submenu} class="text-bodydark2">
           <.sidebar_link icon={menu[:icon]} text={menu[:text]} href={menu[:href]} target={menu[:target]} class="pl-10" />
@@ -116,8 +118,12 @@ defmodule PinchflatWeb.Layouts do
       ]}
       x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
     >
-      <.icon :if={@icon} name={@icon} class={["h-5 w-5 shrink-0", @icon_class]} x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''" />
-      <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">{@text}</span>
+      <.icon
+        :if={@icon}
+        name={@icon}
+        class={["h-5 w-5 shrink-0", @icon_class]}
+        x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
+      /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">{@text}</span>
       <span
         x-cloak
         x-show="sidebarCollapsed"

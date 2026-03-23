@@ -20,9 +20,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center space-x-2">
           <.icon_button icon_name="hero-arrow-path" class="h-8 w-8" phx-click="refresh" tooltip="Refresh" />
-          <span class="text-sm text-gray-400">
-            Auto-refreshes every {div(@refresh_interval, 1000)}s
-          </span>
+          <span class="text-sm text-gray-400">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
         </div>
       </div>
 
@@ -62,26 +60,26 @@ defmodule Pinchflat.Pages.SystemHealthLive do
         <h3 class="text-lg font-semibold mb-3 flex items-center">
           <.icon name="hero-exclamation-triangle" class="h-5 w-5 text-yellow-400 mr-2" /> Sources Not Indexed Recently
         </h3>
+
         <p class="text-sm text-gray-400 mb-4">
           These sources haven't been indexed in over 24 hours. They may be stuck or have configuration issues.
         </p>
+
         <div class="max-w-full overflow-x-auto">
           <.table rows={@stale_sources} table_class="text-white text-sm">
             <:col :let={source} label="Source">
-              <.subtle_link href={~p"/sources/#{source.id}"}>
-                {source.custom_name}
-              </.subtle_link>
+              <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
             </:col>
-            <:col :let={source} label="Last Indexed">
-              {format_last_indexed(source.last_indexed_at)}
-            </:col>
-            <:col :let={source} label="Index Frequency">
-              {format_frequency(source.index_frequency_minutes)}
-            </:col>
+
+            <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
+
+            <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
+
             <:col :let={source} label="Enabled">
               <span :if={source.enabled} class="text-green-400">Yes</span>
               <span :if={!source.enabled} class="text-gray-400">No</span>
             </:col>
+
             <:col :let={source} label="">
               <.link
                 href={~p"/sources/#{source.id}/force_index"}
@@ -126,8 +124,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
     ~H"""
     <div class="flex justify-between items-center">
-      <span class="text-gray-400 text-sm">{@label}</span>
-      <span class={"font-medium #{@status_class}"}>{@value}</span>
+      <span class="text-gray-400 text-sm">{@label}</span> <span class={"font-medium #{@status_class}"}>{@value}</span>
     </div>
     """
   end

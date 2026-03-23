@@ -5,20 +5,16 @@
   x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
   x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
 >
-  <.error :if={@changeset.action}>
-    Oops, something went wrong! Please check the errors below.
-  </.error>
+  <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
   <section>
     <section class="flex justify-between items-center mt-4">
-      <h3 class="text-2xl text-black dark:text-white">
-        Notification Settings
-      </h3>
+      <h3 class="text-2xl text-black dark:text-white">Notification Settings</h3>
+
       <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
       </span>
     </section>
-
     {live_render(
       @conn,
       Pinchflat.Settings.AppriseServerLive,
@@ -28,9 +24,7 @@
 
   <section class="mt-8">
     <section>
-      <h3 class="text-2xl text-black dark:text-white">
-        Extractor Settings
-      </h3>
+      <h3 class="text-2xl text-black dark:text-white">Extractor Settings</h3>
 
       <.input
         field={f[:youtube_api_key]}
@@ -41,7 +35,6 @@
         html_help={true}
         inputclass="font-mono text-sm mr-4"
       />
-
       <.input
         field={f[:extractor_sleep_interval_seconds]}
         placeholder="0"
@@ -49,14 +42,12 @@
         label="Sleep Interval (seconds)"
         help="Sleep interval in seconds between each extractor request. Must be a positive whole number. Set to 0 to disable"
       />
-
       <.input
         field={f[:download_throughput_limit]}
         placeholder="4.2M"
         label="Download Throughput"
         help="Sets the max bytes-per-second throughput when downloading media. Examples: '50K' or '4.2M'. Leave blank to disable"
       />
-
       <.input
         field={f[:restrict_filenames]}
         type="toggle"
@@ -68,9 +59,7 @@
 
   <section class="mt-8" x-show="advancedMode">
     <section>
-      <h3 class="text-2xl text-black dark:text-white">
-        Codec Options
-      </h3>
+      <h3 class="text-2xl text-black dark:text-white">Codec Options</h3>
 
       <p class="text-sm mt-2 max-w-prose">
         The best available codec will be used if your preferred codecs are not found
@@ -84,7 +73,6 @@
         help="Video codec preference. Will be remuxed into an MP4 container. See below for more details"
         inputclass="font-mono text-sm mr-4"
       />
-
       <.input
         field={f[:audio_codec_preference]}
         placeholder="m4a"
@@ -95,10 +83,7 @@
       />
     </section>
 
-    <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mt-5">
-      <.codec_settings_help />
-    </div>
+    <div class="rounded-sm dark:bg-meta-4 p-4 md:p-6 mt-5"><.codec_settings_help /></div>
   </section>
-
   <.button class="mt-10 mb-4 sm:mb-8 w-full sm:w-auto" rounding="rounded-lg">Save Settings</.button>
 </.simple_form>

@@ -50,7 +50,10 @@ defmodule PinchflatWeb.Api.MediaController do
         query
       end
 
-    media_items = Repo.all(query)
+    media_items =
+      query
+      |> Repo.all()
+      |> Media.preload_api_assocs()
 
     conn
     |> put_status(:ok)
@@ -71,7 +74,10 @@ defmodule PinchflatWeb.Api.MediaController do
   )
 
   def show(conn, %{"id" => id}) do
-    media_item = Media.get_media_item!(id) |> Repo.preload(:source)
+    media_item =
+      id
+      |> Media.get_media_item!()
+      |> Media.preload_api_assocs()
 
     conn
     |> put_status(:ok)

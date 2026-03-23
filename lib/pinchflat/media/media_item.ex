@@ -140,6 +140,18 @@ defmodule Pinchflat.Media.MediaItem do
     ~w(__meta__ __struct__ metadata tasks media_items_search_index)a
   end
 
+  @doc false
+  def to_json_map(%MediaItem{} = media_item) do
+    excluded_fields = json_exluded_fields()
+
+    media_item
+    |> Map.from_struct()
+    |> Enum.reject(fn {key, value} ->
+      key in excluded_fields || match?(%Ecto.Association.NotLoaded{}, value)
+    end)
+    |> Enum.into(%{})
+  end
+
   # Run it on new records no matter what. The method we delegate to
   # will handle the case where `uploaded_at` is `nil`
   defp update_upload_date_index(%{data: %{id: nil}} = changeset) do
@@ -165,8 +177,7 @@ defmodule Pinchflat.Media.MediaItem do
   defp update_upload_date_index(changeset), do: changeset
 
   defp do_update_upload_date_index(%{changes: changes} = changeset) when is_map_key(changes, :uploaded_at) do
-    source_id = get_field(changeset, :source_id)
-    source = Sources.get_source!(source_id)
+    source = source_for_upload_date_index(changeset)
     # Channels should count down from 99, playlists should count up from 0
     # This reflects the fact that channels prepend new videos to the top of the list
     # and playlists append new videos to the bottom of the list.
@@ -174,24 +185,52 @@ defmodule Pinchflat.Media.MediaItem do
     aggregator = if source.collection_type == :channel, do: :min, else: :max
     change_direction = if source.collection_type == :channel, do: -1, else: 1
 
-    current_max =
-      MediaQuery.new()
-      |> where(^dynamic([mi], ^MediaQuery.upload_date_matches(changes.uploaded_at) and ^MediaQuery.for_source(source)))
-      |> Repo.aggregate(aggregator, :upload_date_index)
-
-    case current_max do
-      nil -> put_change(changeset, :upload_date_index, default_index)
-      max -> put_change(changeset, :upload_date_index, max + change_direction)
-    end
+    put_change(
+      changeset,
+      :upload_date_index,
+      next_upload_date_index(source, changes.uploaded_at, aggregator, default_index, change_direction)
+    )
   end
 
   defp do_update_upload_date_index(changeset), do: changeset
 
+  defp source_for_upload_date_index(%{data: %{source: %Source{} = source}}), do: source
+
+  defp source_for_upload_date_index(changeset) do
+    changeset
+    |> get_field(:source_id)
+    |> Sources.get_source!()
+  end
+
+  defp next_upload_date_index(source, uploaded_at, aggregator, default_index, change_direction) do
+    cache_key = {__MODULE__, source.id, DateTime.to_date(uploaded_at)}
+
+    case Process.get(cache_key) do
+      nil ->
+        current_index =
+          MediaQuery.new()
+          |> where(^dynamic([mi], ^MediaQuery.upload_date_matches(uploaded_at) and ^MediaQuery.for_source(source)))
+          |> Repo.aggregate(aggregator, :upload_date_index)
+
+        next_index =
+          case current_index do
+            nil -> default_index
+            max_index -> max_index + change_direction
+          end
+
+        Process.put(cache_key, next_index + change_direction)
+        next_index
+
+      next_index ->
+        Process.put(cache_key, next_index + change_direction)
+        next_index
+    end
+  end
+
   defimpl Jason.Encoder, for: MediaItem do
     def encode(value, opts) do
       value
-      |> Repo.preload(:source)
-      |> Map.drop(MediaItem.json_exluded_fields())
+      |> MediaItem.to_json_map()
       |> Jason.Encode.map(opts)
     end
   end
