@@ -95,12 +95,12 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   def update do
     command = backend_executable()
 
-    case CliUtils.wrap_cmd(command, ["--update-to", "nightly"]) do
-      {output, 0} ->
-        {:ok, String.trim(output)}
+    case retry_self_update(command) do
+      {:ok, output} ->
+        {:ok, output}
 
-      {output, _} ->
-        {:error, output}
+      {:error, output} ->
+        maybe_fallback_to_direct_download(command, output)
     end
   end
 
@@ -339,5 +339,78 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
   defp backend_executable do
     Application.get_env(:pinchflat, :yt_dlp_executable)
+  end
+
+  defp retry_self_update(command) do
+    1..3
+    |> Enum.reduce_while({:error, ""}, fn attempt, _acc ->
+      case run_self_update(command) do
+        {:ok, output} ->
+          {:halt, {:ok, output}}
+
+        {:error, output} = error ->
+          if transient_update_error?(output) and attempt < 3 do
+            Process.sleep(attempt * 1_000)
+            {:cont, error}
+          else
+            {:halt, error}
+          end
+      end
+    end)
+  end
+
+  defp run_self_update(command) do
+    case CliUtils.wrap_cmd(command, ["--update-to", "nightly"]) do
+      {output, 0} -> {:ok, String.trim(output)}
+      {output, _} -> {:error, String.trim(output)}
+    end
+  end
+
+  defp maybe_fallback_to_direct_download(command, output) do
+    if transient_update_error?(output) do
+      Logger.warning("yt-dlp self-update failed with a transient network error, attempting direct nightly download")
+
+      case direct_download_latest_nightly(command) do
+        :ok ->
+          {:ok, "Downloaded latest yt-dlp nightly directly after self-update failure"}
+
+        {:error, reason} ->
+          {:error, "#{output}\nFallback download failed: #{reason}"}
+      end
+    else
+      {:error, output}
+    end
+  end
+
+  defp direct_download_latest_nightly(command) do
+    tmp_path = Path.join(System.tmp_dir!(), "yt-dlp-nightly-download")
+    download_url = "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp"
+
+    with {curl_output, 0} <- CliUtils.wrap_cmd("curl", ["-fL", download_url, "-o", tmp_path]),
+         :ok <- File.cp(tmp_path, command),
+         :ok <- File.chmod(command, 0o755),
+         :ok <- File.rm(tmp_path) do
+      _ = curl_output
+      :ok
+    else
+      {curl_output, status} when is_integer(status) -> {:error, String.trim(curl_output)}
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  end
+
+  defp transient_update_error?(output) do
+    normalized_output = String.downcase(to_string(output))
+
+    Enum.any?(
+      [
+        "tls/ssl connection has been closed",
+        "unable to obtain version info",
+        "temporary failure",
+        "timed out",
+        "connection reset",
+        "eof"
+      ],
+      &String.contains?(normalized_output, &1)
+    )
   end
 end

@@ -7,8 +7,9 @@ defmodule Pinchflat.Podcasts.RssFeedBuilder do
 
   import Pinchflat.Utils.XmlUtils, only: [safe: 1]
 
+  use PinchflatWeb, :verified_routes
+
   alias Pinchflat.Podcasts.PodcastHelpers
-  alias PinchflatWeb.Router.Helpers, as: Routes
 
   @doc """
   Builds an RSS feed for a given source and its media items.
@@ -133,10 +134,16 @@ defmodule Pinchflat.Podcasts.RssFeedBuilder do
   end
 
   defp podcast_route(action, params) do
-    Routes.podcast_path(PinchflatWeb.Endpoint, action, params)
+    case action do
+      :rss_feed -> ~p"/sources/#{params}/feed"
+      :feed_image -> ~p"/sources/#{params}/feed_image"
+      :episode_image -> ~p"/media/#{params}/episode_image"
+    end
   end
 
   defp media_route(action, params) do
-    Routes.media_item_path(PinchflatWeb.Endpoint, action, params)
+    case action do
+      :stream -> ~p"/media/#{params}/stream"
+    end
   end
 end

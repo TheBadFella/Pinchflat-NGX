@@ -101,11 +101,13 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :icon_name, :string, required: true
   attr :class, :string, default: ""
   attr :tooltip, :string, default: nil
+  attr :tooltip_position, :string, default: "bottom"
+  attr :icon_class, :string, default: "text-theme-on-surface-muted"
   attr :rest, :global
 
   def icon_button(assigns) do
     ~H"""
-    <TextComponents.tooltip position="bottom" tooltip={@tooltip} tooltip_class="text-nowrap">
+    <TextComponents.tooltip position={@tooltip_position} tooltip={@tooltip} tooltip_class="text-nowrap">
       <button
         class={[
           "theme-outline-button flex items-center justify-center rounded-m3-sm border-2",
@@ -115,7 +117,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
         type="button"
         {@rest}
       >
-        <CoreComponents.icon name={@icon_name} class="text-theme-on-surface-muted" />
+        <CoreComponents.icon name={@icon_name} class={@icon_class} />
       </button>
     </TextComponents.tooltip>
     """

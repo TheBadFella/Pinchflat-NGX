@@ -267,7 +267,7 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
-    |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
+    |> assign(:errors, if(Phoenix.Component.used_input?(field), do: Enum.map(field.errors, &translate_error(&1)), else: []))
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn -> field.value end)
     |> input()
@@ -280,7 +280,7 @@ defmodule PinchflatWeb.CoreComponents do
       end)
 
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <label class="flex items-center gap-4 text-sm leading-6">
         <input type="hidden" name={@name} value="false" />
         <input
@@ -302,7 +302,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def input(%{type: "checkbox_group"} = assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
@@ -337,7 +337,7 @@ defmodule PinchflatWeb.CoreComponents do
       end)
 
     ~H"""
-    <div phx-feedback-for={@name} id={"#{@id}-wrapper"}>
+    <div id={"#{@id}-wrapper"}>
       <.label :if={@label} for={@id}>
         {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
@@ -389,7 +389,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
@@ -414,7 +414,7 @@ defmodule PinchflatWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
@@ -446,7 +446,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   defp render_native_select(assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
@@ -507,7 +507,7 @@ defmodule PinchflatWeb.CoreComponents do
     assigns = assign(assigns, :custom_select_data, custom_select_data)
 
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
@@ -637,7 +637,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def error(assigns) do
     ~H"""
-    <p class="mt-1 mb-5 flex gap-3 text-md leading-6 text-theme-error phx-no-feedback:hidden">
+    <p class="mt-1 mb-5 flex gap-3 text-md leading-6 text-theme-error">
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" /> {render_slot(@inner_block)}
     </p>
     """

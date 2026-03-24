@@ -197,15 +197,27 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     """
   end
 
+  def tooltip(%{position: "bottom-left"} = assigns) do
+    ~H"""
+    <.tooltip
+      tooltip={@tooltip}
+      tooltip_class={["left-0", @tooltip_class]}
+      tooltip_arrow_class={["-top-1 left-4", @tooltip_arrow_class]}
+    >
+      {render_slot(@inner_block)}
+    </.tooltip>
+    """
+  end
+
   def tooltip(assigns) do
     ~H"""
-    <div class="group relative inline-block cursor-pointer">
+    <div class="group relative inline-flex cursor-pointer overflow-visible align-middle">
       <div>{render_slot(@inner_block)}</div>
 
       <div
         :if={@tooltip}
         class={[
-          "theme-surface-accent hidden absolute top-full z-20 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover:block group-hover:opacity-100 text-wrap shadow-m3-2",
+          "theme-surface-accent hidden absolute top-full z-50 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover:block group-hover:opacity-100 text-wrap shadow-m3-2",
           @tooltip_class
         ]}
       >
