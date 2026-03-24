@@ -77,8 +77,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/new")
       response = html_response(conn, 200)
 
-      assert response =~
-               ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
+      assert response =~ ~r/<input[^>]*type="hidden"[^>]*name="source\[cookie_behaviour\]"[^>]*value="all_operations"/
     end
 
     test "renders correct layout when onboarding", %{conn: conn} do
@@ -172,11 +171,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/#{source}/edit")
       response = html_response(conn, 200)
 
-      assert response =~
-               ~r/<option[^>]*value="disabled"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="disabled"/
-
-      refute response =~
-               ~r/<option[^>]*value="all_operations"[^>]*selected(?:="selected")?|<option[^>]*selected(?:="selected")?[^>]*value="all_operations"/
+      assert response =~ ~r/<input[^>]*type="hidden"[^>]*name="source\[cookie_behaviour\]"[^>]*value="disabled"/
+      refute response =~ ~r/<input[^>]*type="hidden"[^>]*name="source\[cookie_behaviour\]"[^>]*value="all_operations"/
     end
   end
 

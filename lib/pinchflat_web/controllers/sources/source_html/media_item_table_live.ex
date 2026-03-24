@@ -53,6 +53,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         </div>
       </header>
       <.table rows={@records}>
+        <:col :let={media_item} :if={@media_state == "pending"} label="#" class="w-16 text-center">
+          {Map.get(@queue_positions, media_item.id, "-")}
+        </:col>
+
         <:col :let={media_item} label="Title" class="max-w-xs">
           <section class="space-y-2">
             <div class="flex items-center space-x-1 gap-2">
@@ -65,6 +69,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 phx-value-media-id={media_item.id}
                 data-confirm="Are you sure you want to force a download of this media?"
                 tooltip="Force Download"
+                tooltip_position="bottom-left"
               />
               <span class="truncate">
                 <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>{media_item.title}</.subtle_link>
@@ -92,17 +97,18 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         </:col>
 
         <:col :let={media_item} label="Action">
-          <button
+          <.icon_button
             :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-            type="button"
+            icon_name="hero-stop"
+            class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
+            icon_class="text-red-300"
             phx-click="stop_download"
             phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
             phx-value-media-id={media_item.id}
             data-confirm="Are you sure you want to stop this download?"
-            class="rounded-m3-xs border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
-          >
-            Stop
-          </button>
+            tooltip="Stop Download"
+            tooltip_position="bottom-left"
+          />
           <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
         </:col>
         <:col :let={media_item} label="" class="flex justify-end">
@@ -131,7 +137,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> Repo.preload(:media_profile)
 
     base_query = generate_base_query(source, media_state)
-    pagination_attrs = fetch_pagination_attributes(base_query, page, nil)
+    pagination_attrs = fetch_pagination_attributes(base_query, page, nil, media_state)
 
     new_assigns =
       Map.merge(
@@ -149,14 +155,16 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("page_change", %{"direction" => direction}, %{assigns: assigns} = socket) do
     direction = if direction == "inc", do: 1, else: -1
     new_page = assigns.page + direction
-    new_assigns = fetch_pagination_attributes(assigns.base_query, new_page, assigns.search_term)
+    new_assigns = fetch_pagination_attributes(assigns.base_query, new_page, assigns.search_term, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
 
   def handle_event("search_term", params, socket) do
     search_term = Map.get(params, "q", nil)
-    new_assigns = fetch_pagination_attributes(socket.assigns.base_query, 1, search_term)
+
+    new_assigns =
+      fetch_pagination_attributes(socket.assigns.base_query, 1, search_term, socket.assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -189,7 +197,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   end
 
   def handle_info(%{topic: "media_table", event: "reload"}, %{assigns: assigns} = socket) do
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term)
+    new_assigns =
+      fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -197,7 +206,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_info(%{topic: "job:state", event: "change", payload: payload}, %{assigns: assigns} = socket)
       when is_map(payload) do
     if refresh_required?(assigns, payload) do
-      new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term)
+      new_assigns =
+        fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term, assigns.media_state)
+
       {:noreply, assign(socket, new_assigns)}
     else
       {:noreply, socket}
@@ -205,7 +216,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   end
 
   def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term)
+    new_assigns =
+      fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -221,9 +233,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     {:noreply, socket}
   end
 
-  defp fetch_pagination_attributes(base_query, page, ""), do: fetch_pagination_attributes(base_query, page, nil)
+  defp fetch_pagination_attributes(base_query, page, "", media_state),
+    do: fetch_pagination_attributes(base_query, page, nil, media_state)
 
-  defp fetch_pagination_attributes(base_query, page, nil) do
+  defp fetch_pagination_attributes(base_query, page, nil, media_state) do
     total_record_count = Repo.aggregate(base_query, :count, :id)
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
@@ -233,17 +246,20 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> order_by(desc: :uploaded_at)
       |> Repo.all()
 
-    build_pagination_attrs(%{
-      page: page,
-      total_pages: total_pages,
-      records: records,
-      search_term: nil,
-      total_record_count: total_record_count,
-      filtered_record_count: total_record_count
-    })
+    build_pagination_attrs(
+      %{
+        page: page,
+        total_pages: total_pages,
+        records: records,
+        search_term: nil,
+        total_record_count: total_record_count,
+        filtered_record_count: total_record_count
+      },
+      media_state
+    )
   end
 
-  defp fetch_pagination_attributes(base_query, page, search_term) do
+  defp fetch_pagination_attributes(base_query, page, search_term, media_state) do
     filtered_base_query = filtered_base_query(base_query, search_term)
 
     total_record_count = Repo.aggregate(base_query, :count, :id)
@@ -256,14 +272,17 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> order_by(desc: fragment("rank"), desc: :uploaded_at)
       |> Repo.all()
 
-    build_pagination_attrs(%{
-      page: page,
-      total_pages: total_pages,
-      records: records,
-      search_term: search_term,
-      total_record_count: total_record_count,
-      filtered_record_count: filtered_record_count
-    })
+    build_pagination_attrs(
+      %{
+        page: page,
+        total_pages: total_pages,
+        records: records,
+        search_term: search_term,
+        total_record_count: total_record_count,
+        filtered_record_count: filtered_record_count
+      },
+      media_state
+    )
   end
 
   defp fetch_records(base_query, page) do
@@ -375,8 +394,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp too_long?(_media_item, _source), do: false
 
-  defp build_pagination_attrs(attrs) do
-    Map.put(attrs, :tasks_by_media_item_id, fetch_download_tasks(attrs.records))
+  defp build_pagination_attrs(attrs, media_state) do
+    tasks_by_media_item_id = fetch_download_tasks(attrs.records)
+    ordered_records = order_records_for_display(attrs.records, tasks_by_media_item_id, media_state)
+
+    attrs
+    |> Map.put(:records, ordered_records)
+    |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
+    |> Map.put(:queue_positions, build_queue_positions(ordered_records, tasks_by_media_item_id, media_state))
   end
 
   defp fetch_download_tasks(records) do
@@ -399,6 +424,40 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       end)
     end
   end
+
+  defp order_records_for_display(records, tasks_by_media_item_id, "pending") do
+    Enum.sort_by(records, fn media_item ->
+      queue_sort_key(media_item, Map.get(tasks_by_media_item_id, media_item.id))
+    end)
+  end
+
+  defp order_records_for_display(records, _tasks_by_media_item_id, _media_state), do: records
+
+  defp build_queue_positions(records, tasks_by_media_item_id, "pending") do
+    records
+    |> Enum.filter(&Map.has_key?(tasks_by_media_item_id, &1.id))
+    |> Enum.with_index(1)
+    |> Map.new(fn {media_item, position} -> {media_item.id, position} end)
+  end
+
+  defp build_queue_positions(_records, _tasks_by_media_item_id, _media_state), do: %{}
+
+  defp queue_sort_key(media_item, %Task{job: %{state: "executing"}, inserted_at: inserted_at}) do
+    {0, sort_datetime_asc_key(inserted_at || media_item.uploaded_at), media_item.id}
+  end
+
+  defp queue_sort_key(media_item, %Task{inserted_at: inserted_at}) do
+    {1, sort_datetime_asc_key(inserted_at || media_item.uploaded_at), media_item.id}
+  end
+
+  defp queue_sort_key(media_item, nil) do
+    {2, sort_datetime_desc_key(media_item.uploaded_at), media_item.id}
+  end
+
+  defp sort_datetime_asc_key(%DateTime{} = datetime), do: DateTime.to_unix(datetime, :second)
+  defp sort_datetime_asc_key(_datetime), do: 9_999_999_999
+  defp sort_datetime_desc_key(%DateTime{} = datetime), do: -DateTime.to_unix(datetime, :second)
+  defp sort_datetime_desc_key(_datetime), do: 0
 
   defp size_or_progress_label(media_item, nil) do
     case media_item.media_size_bytes do

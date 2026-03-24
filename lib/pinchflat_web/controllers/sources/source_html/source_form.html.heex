@@ -84,12 +84,29 @@
       label="Cookie Behaviour"
       help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
     />
-    <section class="theme-surface-accent px-5 py-4">
-      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div class="space-y-2">
-          <p class="text-sm font-medium text-theme-on-surface">Shared `cookies.txt` file</p>
+    <section class="theme-surface-accent mt-3 px-6 py-5">
+      <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_max-content] lg:items-start">
+        <div class="space-y-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-sm font-medium text-theme-on-surface">Shared `cookies.txt` file</p>
 
-          <p class="text-sm text-theme-on-surface-muted">
+            <span
+              :if={@cookie_file_exists}
+              class="theme-field-shell theme-field-shell-active inline-flex w-auto rounded-full"
+            >
+              <span class={[
+                "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
+                if(@cookie_file_configured,
+                  do: "bg-theme-primary-container/25 text-theme-on-primary-container",
+                  else: "bg-theme-surface-2 text-theme-on-surface-muted"
+                )
+              ]}>
+                {if @cookie_file_configured, do: "Ready", else: "Needs Contents"}
+              </span>
+            </span>
+          </div>
+
+          <p class="max-w-2xl text-sm leading-6 text-theme-on-surface-muted">
             <%= cond do %>
               <% @cookie_file_configured -> %>
                 Cookie file is configured and ready to use.
@@ -100,33 +117,36 @@
             <% end %>
           </p>
 
-          <p class="break-all text-xs text-theme-on-surface-muted">{@cookie_file_path}</p>
+          <p class="break-all font-mono text-xs leading-6 text-theme-on-surface-muted">{@cookie_file_path}</p>
         </div>
 
-        <div class="flex flex-wrap gap-2">
-          <button
+        <div class="flex flex-wrap items-start content-start gap-3 self-start lg:flex-nowrap lg:justify-end lg:self-start lg:justify-self-end">
+          <.button
             type="button"
-            class="theme-primary-button inline-flex px-4 py-2 text-sm font-medium"
+            class="w-auto px-5 py-3 text-sm"
+            color="bg-theme-primary text-theme-on-primary"
             phx-click={show_modal("cookie-upload-modal")}
           >
             Upload cookies.txt
-          </button>
-          <button
+          </.button>
+          <.button
             type="button"
-            class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+            class="w-auto px-5 py-3 text-sm"
+            color="theme-outline-button"
             phx-click={show_modal("cookie-paste-modal")}
           >
             Paste Cookie Contents
-          </button>
+          </.button>
 
-          <button
+          <.button
             :if={@cookie_file_exists}
             type="button"
-            class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+            class="w-auto px-5 py-3 text-sm"
+            color="theme-outline-button"
             phx-click={show_modal("cookie-inspect-modal")}
           >
             Inspect Cookie File
-          </button>
+          </.button>
         </div>
       </div>
     </section>
@@ -161,15 +181,17 @@
         x-model="cutoffDate"
       >
         <:input_append>
-          <.input
-            prompt="Select preset"
-            name="download_cutoff_date_preset"
-            value=""
-            options={cutoff_date_presets()}
-            type="select"
-            inputclass="w-30 lg:w-60 ml-2 md:ml-4"
-            x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
-          />
+          <div class="ml-3 md:ml-4 shrink-0">
+            <.input
+              prompt="Select preset"
+              name="download_cutoff_date_preset"
+              value=""
+              options={cutoff_date_presets()}
+              type="select"
+              inputclass="w-30 lg:w-60"
+              x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
+            />
+          </div>
         </:input_append>
       </.input>
     </section>
@@ -226,7 +248,35 @@
       </p>
     </section>
     <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
-    <div class="theme-surface-accent mb-5 p-4 md:p-6"><.fast_indexing_help /></div>
+
+    <section x-data="{ fastIndexHelpOpen: false }" class="theme-surface-accent mb-5 overflow-hidden">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
+        x-on:click="fastIndexHelpOpen = !fastIndexHelpOpen"
+        x-bind:aria-expanded="fastIndexHelpOpen"
+      >
+        <div>
+          <h3 class="text-lg font-semibold text-theme-on-surface">What is fast indexing?</h3>
+          <p class="mt-1 text-sm text-theme-on-surface-muted">Click to expand the explanation and recommendations.</p>
+        </div>
+
+        <.icon
+          name="hero-chevron-down"
+          class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
+          x-bind:class="fastIndexHelpOpen ? 'rotate-180 text-theme-primary' : ''"
+        />
+      </button>
+
+      <div
+        x-cloak
+        x-show="fastIndexHelpOpen"
+        x-transition.opacity.duration.150ms
+        class="border-t border-theme-outline/60 px-4 py-4 md:px-6 md:py-6"
+      >
+        <.fast_indexing_help />
+      </div>
+    </section>
   </section>
 </.simple_form>
 

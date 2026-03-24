@@ -45,6 +45,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                   phx-value-media-id={media_item.id}
                   data-confirm="Are you sure you want to force a download of this media?"
                   tooltip="Force Download"
+                  tooltip_position="bottom-left"
                 />
                 <span class="truncate">
                   <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
@@ -74,16 +75,17 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           </:col>
 
           <:col :let={media_item} label="Action">
-            <button
+            <.icon_button
               :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-              type="button"
+              icon_name="hero-stop"
+              class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
+              icon_class="text-red-300"
               phx-click="stop_download"
               phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
               data-confirm="Are you sure you want to stop this download?"
-              class="rounded-m3-xs border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
-            >
-              Stop
-            </button>
+              tooltip="Stop Download"
+              tooltip_position="bottom-left"
+            />
             <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
           </:col>
         </.table>

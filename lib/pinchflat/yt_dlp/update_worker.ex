@@ -30,10 +30,21 @@ defmodule Pinchflat.YtDlp.UpdateWorker do
   def perform(%Oban.Job{}) do
     Logger.info("Updating yt-dlp")
 
-    yt_dlp_runner().update()
+    case yt_dlp_runner().update() do
+      {:ok, _output} ->
+        :ok
 
-    {:ok, yt_dlp_version} = yt_dlp_runner().version()
-    Settings.set(yt_dlp_version: yt_dlp_version)
+      {:error, output} ->
+        Logger.warning("yt-dlp update failed: #{inspect(output)}")
+    end
+
+    case yt_dlp_runner().version() do
+      {:ok, yt_dlp_version} ->
+        Settings.set(yt_dlp_version: yt_dlp_version)
+
+      {:error, output} ->
+        Logger.warning("yt-dlp version check failed after update attempt: #{inspect(output)}")
+    end
 
     :ok
   end

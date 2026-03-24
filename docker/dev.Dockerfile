@@ -7,13 +7,30 @@ ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEB
 FROM ${DEV_IMAGE}
 
 ARG TARGETPLATFORM
+ARG YT_DLP_CACHE_BUST=""
 RUN echo "Building for ${TARGETPLATFORM:?}"
 
 # Install debian packages
-RUN apt-get update -qq && \
-  apt-get install -y inotify-tools curl git openssh-client jq \
-    python3 python3-setuptools python3-wheel python3-dev pipx \
-    python3-mutagen locales procps build-essential graphviz zsh unzip
+RUN set -eux; \
+  for attempt in 1 2 3 4 5; do \
+    rm -rf /var/lib/apt/lists/*; \
+    apt-get clean; \
+    if apt-get \
+      -o Acquire::Retries=5 \
+      -o Acquire::By-Hash=force \
+      -o Acquire::http::No-Cache=true \
+      -o Acquire::https::No-Cache=true \
+      update -qq && \
+      apt-get install -y --no-install-recommends inotify-tools curl git openssh-client jq \
+        python3 python3-setuptools python3-wheel python3-dev pipx \
+        python3-mutagen locales procps build-essential graphviz zsh unzip; then \
+      break; \
+    fi; \
+    if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+    sleep 5; \
+  done && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 # Install ffmpeg
 RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
@@ -27,7 +44,22 @@ RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
 # Install nodejs and Yarn
 RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
   bash nodesource_setup.sh && \
-  apt-get install -y nodejs && \
+  set -eux; \
+  for attempt in 1 2 3 4 5; do \
+    rm -rf /var/lib/apt/lists/*; \
+    apt-get clean; \
+    if apt-get \
+      -o Acquire::Retries=5 \
+      -o Acquire::By-Hash=force \
+      -o Acquire::http::No-Cache=true \
+      -o Acquire::https::No-Cache=true \
+      update -qq && \
+      apt-get install -y --no-install-recommends nodejs; then \
+      break; \
+    fi; \
+    if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+    sleep 5; \
+  done && \
   npm install -g yarn && \
   # Install baseline Elixir packages
   mix local.hex --force && \
@@ -35,6 +67,7 @@ RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
   # Install Deno - required for YouTube downloads (See yt-dlp#14404)
   curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y --no-modify-path && \
   # Download and update YT-DLP
+  echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
   export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \
   curl -L ${YT_DLP_DOWNLOAD} -o /usr/local/bin/yt-dlp && \
   chmod a+rx /usr/local/bin/yt-dlp && \
@@ -45,7 +78,9 @@ RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
   pipx install apprise && \
   # Set up ZSH tools
   chsh -s $(which zsh) && \
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen

@@ -4,8 +4,7 @@ defmodule Pinchflat.Podcasts.OpmlFeedBuilder do
   """
 
   import Pinchflat.Utils.XmlUtils, only: [safe: 1]
-
-  alias PinchflatWeb.Router.Helpers, as: Routes
+  use PinchflatWeb, :verified_routes
 
   @doc """
   Builds an OPML feed for a given list of sources.
@@ -35,6 +34,6 @@ defmodule Pinchflat.Podcasts.OpmlFeedBuilder do
   end
 
   defp source_route(url_base, source) do
-    Path.join(url_base, "#{Routes.podcast_path(PinchflatWeb.Endpoint, :rss_feed, source.uuid)}.xml")
+    Path.join(url_base, "#{~p"/sources/#{source.uuid}/feed"}.xml")
   end
 end

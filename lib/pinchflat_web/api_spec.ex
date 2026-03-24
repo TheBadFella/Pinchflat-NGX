@@ -88,6 +88,8 @@ defmodule PinchflatWeb.ApiSpec do
             action in [
               :new,
               :edit,
+              :upload_cookies,
+              :save_cookies,
               :force_download_pending,
               :force_redownload,
               :force_index,
