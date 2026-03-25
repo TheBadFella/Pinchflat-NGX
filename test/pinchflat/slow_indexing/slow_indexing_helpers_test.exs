@@ -229,25 +229,23 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert DateTime.diff(DateTime.utc_now(), source.last_indexed_at) < 2
     end
 
-    test "advances download_cutoff_date to 7 days ago when it's nil" do
+    test "does not populate download_cutoff_date when it's nil" do
       source = source_fixture(download_cutoff_date: nil)
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
       source = Repo.reload!(source)
 
-      expected_cutoff = Date.utc_today() |> Date.add(-7)
-      assert source.download_cutoff_date == expected_cutoff
+      assert source.download_cutoff_date == nil
     end
 
-    test "advances download_cutoff_date to 7 days ago when it's older" do
+    test "does not replace an older download_cutoff_date" do
       old_cutoff = Date.utc_today() |> Date.add(-30)
       source = source_fixture(download_cutoff_date: old_cutoff)
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
       source = Repo.reload!(source)
 
-      expected_cutoff = Date.utc_today() |> Date.add(-7)
-      assert source.download_cutoff_date == expected_cutoff
+      assert source.download_cutoff_date == old_cutoff
     end
 
     test "does not change download_cutoff_date when it's more recent than 7 days ago" do

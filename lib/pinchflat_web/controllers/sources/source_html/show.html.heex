@@ -50,6 +50,119 @@
         )}
       </:tab>
 
+      <:tab :if={@source.collection_type == :playlist} title="Selection" id="selection">
+        <div
+          x-data="{ toggleAll(value) { this.$root.querySelectorAll('input[data-selection-checkbox]').forEach(input => input.checked = value) } }"
+          class="space-y-5 text-theme-on-surface"
+        >
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 class="text-xl font-bold">Playlist Selection</h3>
+              <p class="mt-1 text-sm text-theme-on-surface-muted">
+                Choose which indexed playlist items should be eligible for download.
+              </p>
+            </div>
+
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+                x-on:click="toggleAll(true)"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+                x-on:click="toggleAll(false)"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          <.form for={%{}} as={:selection} action={~p"/sources/#{@source}/apply_selection"} method="post">
+            <div class="mb-4 grid gap-3 sm:max-w-md">
+              <label for="selection_range" class="text-sm font-medium text-theme-on-surface">
+                Playlist Index Range
+              </label>
+              <input
+                id="selection_range"
+                name="selection_range"
+                type="text"
+                placeholder="1-10,15,20-25"
+                class="rounded-xl border border-theme-outline bg-theme-surface-2 px-4 py-3 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none"
+              />
+              <p class="text-xs text-theme-on-surface-muted">
+                Optional. This selects items by playlist index and combines with any checked boxes below.
+              </p>
+            </div>
+
+            <div
+              :if={Enum.empty?(@selection_media_items)}
+              class="theme-surface-accent rounded-xl px-5 py-4 text-sm text-theme-on-surface-muted"
+            >
+              No playlist items are indexed yet. Once indexing finishes, they will appear here.
+            </div>
+
+            <div
+              :if={!Enum.empty?(@selection_media_items)}
+              class="overflow-hidden rounded-xl border border-theme-outline/70"
+            >
+              <div class="grid grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/70 bg-theme-surface-5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+                <div>Pick</div>
+                <div>Item</div>
+                <div>Index</div>
+              </div>
+
+              <label
+                :for={media_item <- @selection_media_items}
+                for={"selection-media-#{media_item.id}"}
+                class="grid cursor-pointer grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/50 px-4 py-3 last:border-b-0 hover:bg-theme-surface-5/50"
+              >
+                <div class="pt-1">
+                  <input
+                    id={"selection-media-#{media_item.id}"}
+                    data-selection-checkbox
+                    type="checkbox"
+                    name="selected_media_ids[]"
+                    value={media_item.id}
+                    checked={!media_item.prevent_download}
+                    class="rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0"
+                  />
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate font-medium text-theme-on-surface">{media_item.title}</p>
+                  <p class="mt-1 text-xs text-theme-on-surface-muted">
+                    {Calendar.strftime(media_item.uploaded_at, "%Y-%m-%d")}
+                  </p>
+                </div>
+                <div class="text-sm text-theme-on-surface-muted">#{media_item.playlist_index}</div>
+              </label>
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-3">
+              <button
+                type="submit"
+                name="selection_action"
+                value="save"
+                class="theme-outline-button inline-flex px-5 py-3 text-sm font-medium"
+              >
+                Save Selection
+              </button>
+              <button
+                type="submit"
+                name="selection_action"
+                value="download"
+                class="inline-flex w-auto items-center justify-center rounded-m3-sm bg-theme-primary px-5 py-3 text-sm font-medium text-theme-on-primary"
+              >
+                Download Selected
+              </button>
+            </div>
+          </.form>
+        </div>
+      </:tab>
+
       <:tab title="Active Tasks" id="active-tasks">
         {live_render(
           @conn,

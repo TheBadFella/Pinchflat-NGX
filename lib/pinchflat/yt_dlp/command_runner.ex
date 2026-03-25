@@ -250,7 +250,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
   defp parse_progress_line("pinchflat-progress:" <> progress_payload) do
     case String.split(progress_payload, "|") do
-      [percent, downloaded_bytes, total_bytes, estimated_total_bytes, eta, _speed] ->
+      [percent, downloaded_bytes, total_bytes, estimated_total_bytes, eta, speed] ->
         downloaded_bytes = parse_integer(downloaded_bytes)
         total_bytes = parse_integer(total_bytes) || parse_integer(estimated_total_bytes)
 
@@ -259,7 +259,8 @@ defmodule Pinchflat.YtDlp.CommandRunner do
           progress_status: progress_status_for(downloaded_bytes, total_bytes),
           progress_downloaded_bytes: downloaded_bytes,
           progress_total_bytes: total_bytes,
-          progress_eta_seconds: parse_integer(eta)
+          progress_eta_seconds: parse_integer(eta),
+          progress_speed_bytes_per_second: parse_integer(speed)
         }
 
       _ ->

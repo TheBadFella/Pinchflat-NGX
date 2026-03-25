@@ -57,6 +57,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/sources/new")
       assert html_response(conn, 200) =~ "New Source"
+      assert html_response(conn, 200) =~ "Delay Automatic Download"
     end
 
     test "renders cookie management controls", %{conn: conn} do
@@ -146,6 +147,30 @@ defmodule PinchflatWeb.SourceControllerTest do
         )
 
       assert %{id: _id} = redirected_params(conn)
+    end
+
+    test "redirects playlists with delayed automatic download to the selection tab", %{conn: conn} do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: nil,
+           channel_id: nil,
+           playlist_id: "some_playlist_id_123",
+           playlist_title: "Some Playlist"
+         })}
+      end)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: %{
+            media_profile_id: media_profile_fixture().id,
+            original_url: "https://www.youtube.com/playlist?list=PL1234567890ABCDEF",
+            delay_automatic_download: "true"
+          }
+        )
+
+      assert %{id: id} = redirected_params(conn)
+      assert redirected_to(conn) == ~p"/sources/#{id}?#{[tab: "selection"]}"
     end
 
     test "renders correct layout on error when onboarding", %{conn: conn, invalid_attrs: invalid_attrs} do
@@ -269,7 +294,7 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       assert [] = all_enqueued(worker: MediaDownloadWorker)
       post(conn, ~p"/sources/#{source.id}/force_download_pending")
-      assert [_] = all_enqueued(worker: MediaDownloadWorker)
+      assert [%{args: %{"reset_last_error" => true}}] = all_enqueued(worker: MediaDownloadWorker)
     end
 
     test "redirects to the source page", %{conn: conn} do
@@ -303,6 +328,74 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/#{source}")
 
       assert html_response(conn, 200) =~ "Job Queue"
+    end
+
+    test "renders the selection tab label for playlists", %{conn: conn} do
+      source = source_fixture(collection_type: :playlist)
+
+      conn = get(conn, ~p"/sources/#{source}")
+
+      assert html_response(conn, 200) =~ "Selection"
+    end
+  end
+
+  describe "apply_selection" do
+    test "saves a manual playlist selection", %{conn: conn} do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+      selected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+      unselected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: false})
+
+      conn =
+        post(conn, ~p"/sources/#{source}/apply_selection", %{
+          "selected_media_ids" => [Integer.to_string(selected.id)],
+          "selection_action" => "save"
+        })
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "selection"]}"
+      refute Repo.reload!(selected).prevent_download
+      assert Repo.reload!(unselected).prevent_download
+      refute Repo.reload!(source).download_media
+    end
+
+    test "download action enables downloads and enqueues selected items", %{conn: conn} do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+      selected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+      _unselected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: false})
+
+      conn =
+        post(conn, ~p"/sources/#{source}/apply_selection", %{
+          "selected_media_ids" => [Integer.to_string(selected.id)],
+          "selection_action" => "download"
+        })
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "selection"]}"
+      assert Repo.reload!(source).download_media
+      assert [%{args: %{"id" => selected_id}}] = all_enqueued(worker: MediaDownloadWorker)
+      assert selected_id == selected.id
+    end
+
+    test "range input selects matching playlist indexes", %{conn: conn} do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+
+      first =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true, playlist_index: 1})
+
+      second =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true, playlist_index: 2})
+
+      third =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true, playlist_index: 3})
+
+      conn =
+        post(conn, ~p"/sources/#{source}/apply_selection", %{
+          "selection_range" => "1-2",
+          "selection_action" => "save"
+        })
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "selection"]}"
+      refute Repo.reload!(first).prevent_download
+      refute Repo.reload!(second).prevent_download
+      assert Repo.reload!(third).prevent_download
     end
   end
 

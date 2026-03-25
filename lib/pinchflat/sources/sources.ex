@@ -15,6 +15,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Metadata.SourceMetadata
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.DownloadingHelpers
+  alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.FastIndexing.FastIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
@@ -156,6 +157,7 @@ defmodule Pinchflat.Sources do
         %Source{}
         |> maybe_change_source_from_url(attrs)
         |> maybe_change_indexing_frequency()
+        |> maybe_enable_manual_selection(opts)
         |> commit_and_handle_tasks(opts)
 
       changeset ->
@@ -225,6 +227,40 @@ defmodule Pinchflat.Sources do
   """
   def change_source(%Source{} = source, attrs \\ %{}, validation_stage \\ :pre_insert) do
     Source.changeset(source, attrs, validation_stage)
+  end
+
+  @doc """
+  Applies manual playlist selection to a source.
+
+  Selected media items will have `prevent_download: false`. All others will be
+  marked `prevent_download: true`. If `enable_downloads` is true, the source is
+  switched to downloading mode and only the selected pending items are enqueued.
+  """
+  def apply_media_selection(%Source{} = source, selected_media_item_ids, opts \\ []) do
+    enable_downloads = Keyword.get(opts, :enable_downloads, false)
+    selected_ids = normalize_media_item_ids(selected_media_item_ids)
+
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.update_all(:exclude_unselected, media_items_for_source_query(source), set: [prevent_download: true])
+      |> maybe_include_selected_items(source, selected_ids)
+      |> maybe_enable_source_downloads(source, enable_downloads)
+
+    case Repo.transaction(multi) do
+      {:ok, _changes} ->
+        source = Repo.reload!(source)
+
+        if enable_downloads do
+          source
+          |> Media.list_pending_media_items_for_ids(selected_ids)
+          |> Enum.each(&MediaDownloadWorker.kickoff_with_task/1)
+        end
+
+        {:ok, source}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
+    end
   end
 
   # NOTE: When operating in the ideal path, this effectively adds an API call
@@ -317,6 +353,17 @@ defmodule Pinchflat.Sources do
     changeset
     |> maybe_disable_recurring_indexing_for_single_video()
     |> maybe_change_fast_index_frequency()
+  end
+
+  defp maybe_enable_manual_selection(changeset, opts) do
+    if Keyword.get(opts, :delay_automatic_download, false) &&
+         Ecto.Changeset.get_field(changeset, :collection_type) == :playlist do
+      changeset
+      |> Ecto.Changeset.put_change(:selection_mode, :manual)
+      |> Ecto.Changeset.put_change(:download_media, false)
+    else
+      changeset
+    end
   end
 
   defp maybe_disable_recurring_indexing_for_single_video(changeset) do
@@ -483,5 +530,55 @@ defmodule Pinchflat.Sources do
       _ ->
         :ok
     end
+  end
+
+  defp maybe_include_selected_items(multi, _source, []), do: multi
+
+  defp maybe_include_selected_items(multi, source, selected_ids) do
+    Ecto.Multi.update_all(
+      multi,
+      :include_selected,
+      media_items_for_source_query(source, selected_ids),
+      set: [prevent_download: false]
+    )
+  end
+
+  defp maybe_enable_source_downloads(multi, _source, false), do: multi
+
+  defp maybe_enable_source_downloads(multi, source, true) do
+    changeset = change_source(source, %{download_media: true}, :initial)
+    Ecto.Multi.update(multi, :enable_downloads, changeset)
+  end
+
+  defp media_items_for_source_query(source, selected_ids \\ nil) do
+    query =
+      MediaQuery.new()
+      |> where(^MediaQuery.for_source(source))
+
+    if is_list(selected_ids) do
+      where(query, [m], m.id in ^selected_ids)
+    else
+      query
+    end
+  end
+
+  defp normalize_media_item_ids(media_item_ids) do
+    media_item_ids
+    |> List.wrap()
+    |> Enum.map(fn
+      id when is_integer(id) ->
+        id
+
+      id when is_binary(id) ->
+        case Integer.parse(id) do
+          {parsed_id, ""} -> parsed_id
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 end

@@ -13,6 +13,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Tasks
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Sources
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Downloading.MediaDownloader
 
@@ -24,6 +25,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   Returns {:ok, %Task{}} | {:error, :duplicate_job} | {:error, %Ecto.Changeset{}}
   """
   def kickoff_with_task(media_item, job_args \\ %{}, job_opts \\ []) do
+    maybe_replace_existing_manual_retry(media_item, job_args)
+
     %{id: media_item.id}
     |> Map.merge(job_args)
     |> MediaDownloadWorker.new(job_opts)
@@ -47,11 +50,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args}) do
     should_force = Map.get(args, "force", false)
     is_quality_upgrade = Map.get(args, "quality_upgrade?", false)
+    should_reset_last_error = Map.get(args, "reset_last_error", false)
 
     media_item = fetch_and_run_prevent_download_user_script(media_item_id)
 
+    maybe_reset_last_error(media_item, should_reset_last_error)
+
     if should_download_media?(media_item, should_force, is_quality_upgrade) do
-      download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, job_id)
+      download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id)
     else
       :ok
     end
@@ -88,9 +94,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     Repo.preload(media_item, :source)
   end
 
-  defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, job_id) do
+  defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id) do
     overwrite_behaviour = if should_force || is_quality_upgrade, do: :force_overwrites, else: :no_force_overwrites
-    override_opts = [overwrite_behaviour: overwrite_behaviour, progress_handler: build_progress_handler(job_id)]
+
+    override_opts = [
+      overwrite_behaviour: overwrite_behaviour,
+      progress_handler: build_progress_handler(job_id, reset_last_error?: should_reset_last_error),
+      skip_download_precheck: should_skip_download_precheck?(media_item)
+    ]
 
     case MediaDownloader.download_for_media_item(media_item, override_opts) do
       {:ok, downloaded_media_item} ->
@@ -118,11 +129,34 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     end
   end
 
-  defp build_progress_handler(job_id) do
-    maybe_update_progress(job_id, %{progress_percent: 0.0, progress_status: "Queued"})
+  defp build_progress_handler(job_id, opts) do
+    initial_status = if Keyword.get(opts, :reset_last_error?, false), do: "Retry requested", else: "Queued"
+    maybe_update_progress(job_id, %{progress_percent: 0.0, progress_status: initial_status})
 
     fn attrs ->
       maybe_update_progress(job_id, attrs)
+    end
+  end
+
+  defp maybe_reset_last_error(_media_item, false), do: :ok
+  defp maybe_reset_last_error(%{last_error: nil}, true), do: :ok
+
+  defp maybe_reset_last_error(media_item, true) do
+    {:ok, _media_item} = Media.update_media_item(media_item, %{last_error: nil})
+    :ok
+  end
+
+  defp should_skip_download_precheck?(%{livestream: false, source: source}) do
+    Sources.use_cookies?(source, :downloading)
+  end
+
+  defp should_skip_download_precheck?(_media_item), do: false
+
+  defp maybe_replace_existing_manual_retry(media_item, job_args) do
+    if Map.get(job_args, :reset_last_error) || Map.get(job_args, "reset_last_error") do
+      Tasks.delete_pending_tasks_for(media_item)
+    else
+      :ok
     end
   end
 

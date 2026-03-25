@@ -118,7 +118,12 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       media_item = media_item_fixture(%{media_filepath: nil})
 
       post(conn, ~p"/sources/#{media_item.source_id}/media/#{media_item.id}/force_download")
-      assert [_] = all_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id, "force" => true})
+
+      assert [_] =
+               all_enqueued(
+                 worker: MediaDownloadWorker,
+                 args: %{"id" => media_item.id, "force" => true, "reset_last_error" => true}
+               )
     end
 
     test "redirects to the show page", %{conn: conn} do

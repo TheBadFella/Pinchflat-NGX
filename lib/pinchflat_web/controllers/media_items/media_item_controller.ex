@@ -63,7 +63,7 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
     media_item = Media.get_media_item!(id)
 
     :ok =
-      case MediaDownloadWorker.kickoff_with_task(media_item, %{force: true}) do
+      case MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true}) do
         {:ok, _} -> :ok
         {:error, :duplicate_job} -> :ok
         err -> err

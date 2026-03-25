@@ -150,6 +150,12 @@ defmodule PinchflatWeb.Schemas do
         },
         index_frequency_minutes: %Schema{type: :integer, description: "Indexing frequency in minutes", example: 1440},
         fast_index: %Schema{type: :boolean, description: "Use fast indexing", example: false},
+        selection_mode: %Schema{
+          type: :string,
+          enum: [:all, :manual],
+          description: "Whether playlist downloads are automatic or manually selected",
+          example: :all
+        },
         download_media: %Schema{type: :boolean, description: "Download media items", example: true},
         last_indexed_at: %Schema{
           type: :string,
@@ -342,6 +348,11 @@ defmodule PinchflatWeb.Schemas do
             enabled: %Schema{type: :boolean, description: "Whether the source is active", default: true},
             download_media: %Schema{type: :boolean, description: "Download media items", default: true},
             fast_index: %Schema{type: :boolean, description: "Use fast indexing", default: false},
+            delay_automatic_download: %Schema{
+              type: :boolean,
+              description: "For playlist sources, index first and wait for a manual item selection before downloading",
+              default: false
+            },
             index_frequency_minutes: %Schema{
               type: :integer,
               description: "Indexing frequency in minutes",
@@ -652,6 +663,33 @@ defmodule PinchflatWeb.Schemas do
           type: :array,
           items: %Schema{type: :object},
           description: "Job errors"
+        },
+        progress_percent: %Schema{
+          type: :number,
+          format: :float,
+          nullable: true,
+          description: "Download progress percent"
+        },
+        progress_status: %Schema{type: :string, nullable: true, description: "Download progress status"},
+        progress_downloaded_bytes: %Schema{
+          type: :integer,
+          nullable: true,
+          description: "Downloaded bytes reported by yt-dlp"
+        },
+        progress_total_bytes: %Schema{
+          type: :integer,
+          nullable: true,
+          description: "Total bytes reported by yt-dlp"
+        },
+        progress_eta_seconds: %Schema{
+          type: :integer,
+          nullable: true,
+          description: "Estimated remaining time in seconds"
+        },
+        progress_speed_bytes_per_second: %Schema{
+          type: :integer,
+          nullable: true,
+          description: "Current download speed in bytes per second"
         },
         attempt: %Schema{type: :integer, description: "Current attempt number"},
         max_attempts: %Schema{type: :integer, description: "Maximum attempts"},

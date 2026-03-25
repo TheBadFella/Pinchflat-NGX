@@ -112,6 +112,24 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       assert html =~ "Waiting for transfer to start"
     end
 
+    test "shows active download speed in the media table", %{conn: conn, source: source} do
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      {:ok, _task} =
+        Tasks.update_task_progress(task, %{
+          progress_percent: 50.0,
+          progress_status: "Downloading",
+          progress_downloaded_bytes: 512,
+          progress_total_bytes: 1024,
+          progress_speed_bytes_per_second: 256
+        })
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+
+      assert html =~ "512.0 B / 1.0 KB (512.0 B left) at 256.0 B/s"
+    end
+
     test "shows wrapped full errors inline", %{conn: conn, source: source} do
       media_item =
         media_item_fixture(

@@ -38,12 +38,17 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         Media.update_media_item(media_item, %{last_error: nil})
 
       {:error, error_atom, message} ->
-        Media.update_media_item(media_item, %{last_error: StringUtils.wrap_string(message)})
+        Media.update_media_item(reload_media_item_for_last_error(media_item), %{
+          last_error: persisted_last_error(media_item, message)
+        })
 
         {:error, error_atom, message}
 
       {:recovered, media_item, message} ->
-        {:ok, updated_media_item} = Media.update_media_item(media_item, %{last_error: StringUtils.wrap_string(message)})
+        {:ok, updated_media_item} =
+          Media.update_media_item(reload_media_item_for_last_error(media_item), %{
+            last_error: persisted_last_error(media_item, message)
+          })
 
         {:recovered, updated_media_item, message}
     end
@@ -168,28 +173,37 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         use_cookies: should_use_cookies
       ] ++ if emit_progress, do: [progress_handler: Keyword.fetch!(override_opts, :progress_handler)], else: []
 
-    maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Prechecking media"})
+    if Keyword.get(override_opts, :skip_download_precheck, false) do
+      maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Waiting for transfer to start"})
+      YtDlpMedia.download(url, options, runner_opts)
+    else
+      maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Prechecking media"})
 
-    case {YtDlpMedia.get_downloadable_status(url, use_cookies: should_use_cookies), should_use_cookies} do
-      {{:ok, :downloadable}, _} ->
-        maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Waiting for transfer to start"})
-        YtDlpMedia.download(url, options, runner_opts)
+      case {YtDlpMedia.get_downloadable_status(url, use_cookies: should_use_cookies), should_use_cookies} do
+        {{:ok, :downloadable}, _} ->
+          maybe_report_progress(override_opts, %{
+            progress_percent: 0.0,
+            progress_status: "Waiting for transfer to start"
+          })
 
-      {{:ok, :ignorable}, _} ->
-        {:error, :unsuitable_for_download}
+          YtDlpMedia.download(url, options, runner_opts)
 
-      {{:error, _message, _exit_code} = err, false} ->
-        # If there was an error and we don't have cookies, this method will retry with cookies
-        # if doing so would help AND the source allows. Otherwise, it will return the error as-is
-        maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
+        {{:ok, :ignorable}, _} ->
+          {:error, :unsuitable_for_download}
 
-      # This gets hit if cookies are enabled which, importantly, also covers the case where we
-      # retry a download with cookies and it fails again
-      {{:error, message, exit_code}, true} ->
-        {:error, message, exit_code}
+        {{:error, _message, _exit_code} = err, false} ->
+          # If there was an error and we don't have cookies, this method will retry with cookies
+          # if doing so would help AND the source allows. Otherwise, it will return the error as-is
+          maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
 
-      {err, _} ->
-        err
+        # This gets hit if cookies are enabled which, importantly, also covers the case where we
+        # retry a download with cookies and it fails again
+        {{:error, message, exit_code}, true} ->
+          {:error, message, exit_code}
+
+        {err, _} ->
+          err
+      end
     end
   end
 
@@ -228,5 +242,31 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       nil -> :ok
       progress_handler -> progress_handler.(attrs)
     end
+  end
+
+  defp persisted_last_error(media_item, message) do
+    wrapped_message = StringUtils.wrap_string(message)
+    previous_error = media_item.last_error
+
+    if normalized_error(previous_error) == normalized_error(wrapped_message) && is_binary(previous_error) do
+      previous_error
+    else
+      wrapped_message
+    end
+  end
+
+  defp normalized_error(nil), do: nil
+
+  defp normalized_error(message) do
+    message
+    |> to_string()
+    |> String.trim()
+    |> String.replace(~r/^ERROR:\s*/i, "")
+    |> String.replace(~r/\s+/, " ")
+    |> String.downcase()
+  end
+
+  defp reload_media_item_for_last_error(media_item) do
+    Media.get_media_item!(media_item.id)
   end
 end

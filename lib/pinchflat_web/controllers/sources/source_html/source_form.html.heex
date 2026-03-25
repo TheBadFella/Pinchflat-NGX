@@ -77,6 +77,14 @@
       label="Download Media"
       help="Unchecking still indexes media but it won't be downloaded until you enable this option"
     />
+    <section :if={@show_delay_automatic_download} class="mt-3">
+      <.input
+        field={f[:delay_automatic_download]}
+        type="toggle"
+        label="Delay Automatic Download"
+        help="For playlists only. Index first, then send me to a selection screen so I can choose which items to download."
+      />
+    </section>
     <.input
       field={f[:cookie_behaviour]}
       options={friendly_cookie_behaviours()}

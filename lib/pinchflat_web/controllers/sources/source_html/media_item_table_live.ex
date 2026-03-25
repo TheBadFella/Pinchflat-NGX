@@ -171,7 +171,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_event("force_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
-    MediaDownloadWorker.kickoff_with_task(media_item, %{force: true})
+    MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
     PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
 
     {:noreply, socket}
@@ -469,21 +469,26 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   defp size_or_progress_label(_media_item, task) do
     downloaded_bytes = task.progress_downloaded_bytes
     total_bytes = task.progress_total_bytes
+    speed_bytes = task.progress_speed_bytes_per_second
 
     cond do
       total_bytes && downloaded_bytes ->
         remaining_bytes = max(total_bytes - downloaded_bytes, 0)
 
         "#{readable_byte_size(downloaded_bytes)} / #{readable_byte_size(total_bytes)} (#{readable_byte_size(remaining_bytes)} left)"
+        |> maybe_append_speed(speed_bytes)
 
       total_bytes ->
         readable_byte_size(total_bytes)
+        |> maybe_append_speed(speed_bytes)
 
       downloaded_bytes ->
         "#{readable_byte_size(downloaded_bytes)} downloaded"
+        |> maybe_append_speed(speed_bytes)
 
       true ->
         waiting_size_label(task.progress_status)
+        |> maybe_append_speed(speed_bytes)
     end
   end
 
@@ -498,6 +503,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     {num, suffix} = NumberUtils.human_byte_size(bytes, precision: 1)
     "#{num} #{suffix}"
   end
+
+  defp maybe_append_speed(text, nil), do: text
+  defp maybe_append_speed(text, speed_bytes), do: "#{text} at #{readable_byte_size(speed_bytes)}/s"
 
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do
@@ -526,6 +534,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :progress_downloaded_bytes,
       :progress_total_bytes,
       :progress_eta_seconds,
+      :progress_speed_bytes_per_second,
       :progress_updated_at
     ]
   end

@@ -15,6 +15,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :cookie_file_exists, :boolean, required: true
   attr :cookie_file_configured, :boolean, required: true
   attr :cookie_file_contents, :string, default: nil
+  attr :show_delay_automatic_download, :boolean, default: false
 
   def source_form(assigns)
 

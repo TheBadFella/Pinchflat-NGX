@@ -41,8 +41,19 @@ config :pinchflat, Pinchflat.Repo,
   ]
 
 # Some users may want to increase the number of workers that use yt-dlp to improve speeds
-# Others may want to decrease the number of these workers to lessen the chance of an IP ban
+# Others may want to decrease the number of these workers to lessen the chance of an IP ban.
+# Downloads can be tuned separately from indexing so slow media fetches don't starve indexing.
 {yt_dlp_worker_count, _} = Integer.parse(System.get_env("YT_DLP_WORKER_CONCURRENCY", "5"))
+
+{yt_dlp_download_worker_count, _} =
+  Integer.parse(System.get_env("YT_DLP_DOWNLOAD_WORKER_CONCURRENCY", Integer.to_string(yt_dlp_worker_count)))
+
+{yt_dlp_index_worker_count, _} =
+  Integer.parse(System.get_env("YT_DLP_INDEX_WORKER_CONCURRENCY", Integer.to_string(yt_dlp_worker_count)))
+
+{yt_dlp_remote_metadata_worker_count, _} =
+  Integer.parse(System.get_env("YT_DLP_REMOTE_METADATA_WORKER_CONCURRENCY", Integer.to_string(yt_dlp_worker_count)))
+
 # Used to set the cron for the yt-dlp update worker. The reason for this is
 # to avoid all instances of PF updating yt-dlp at the same time, which 1)
 # could result in rate limiting and 2) gives me time to react if an update
@@ -52,10 +63,10 @@ config :pinchflat, Pinchflat.Repo,
 config :pinchflat, Oban,
   queues: [
     default: 10,
-    fast_indexing: yt_dlp_worker_count,
-    media_collection_indexing: yt_dlp_worker_count,
-    media_fetching: yt_dlp_worker_count,
-    remote_metadata: yt_dlp_worker_count,
+    fast_indexing: yt_dlp_index_worker_count,
+    media_collection_indexing: yt_dlp_index_worker_count,
+    media_fetching: yt_dlp_download_worker_count,
+    remote_metadata: yt_dlp_remote_metadata_worker_count,
     local_data: 8
   ],
   plugins: [

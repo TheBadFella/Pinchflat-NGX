@@ -40,6 +40,20 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   end
 
   @doc """
+  Starts retry-style download tasks for any pending media items in a source.
+  Existing `last_error` values are cleared when the new attempt begins.
+
+  Returns :ok
+  """
+  def retry_pending_download_tasks(%Source{download_media: true} = source) do
+    source
+    |> Media.list_pending_media_items_for()
+    |> Enum.each(&MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
+  end
+
+  def retry_pending_download_tasks(%Source{download_media: false}), do: :ok
+
+  @doc """
   Deletes ALL pending tasks for a source's media items.
 
   Returns :ok

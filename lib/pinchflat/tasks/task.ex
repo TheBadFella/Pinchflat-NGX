@@ -18,6 +18,7 @@ defmodule Pinchflat.Tasks.Task do
     field :progress_downloaded_bytes, :integer
     field :progress_total_bytes, :integer
     field :progress_eta_seconds, :integer
+    field :progress_speed_bytes_per_second, :integer
     field :progress_updated_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
@@ -35,6 +36,7 @@ defmodule Pinchflat.Tasks.Task do
       :progress_downloaded_bytes,
       :progress_total_bytes,
       :progress_eta_seconds,
+      :progress_speed_bytes_per_second,
       :progress_updated_at
     ])
     |> validate_required([:job_id])

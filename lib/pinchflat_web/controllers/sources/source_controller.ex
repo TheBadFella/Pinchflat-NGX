@@ -5,6 +5,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   alias OpenApiSpex.Schema
   alias Pinchflat.Repo
+  alias Pinchflat.Media
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
@@ -89,7 +90,9 @@ defmodule PinchflatWeb.Sources.SourceController do
   )
 
   def create(conn, %{"source" => source_params}) do
-    case Sources.create_source(source_params) do
+    delay_automatic_download = truthy_param?(Map.get(source_params, "delay_automatic_download", false))
+
+    case Sources.create_source(source_params, delay_automatic_download: delay_automatic_download) do
       {:ok, source} ->
         case get_format(conn) do
           "json" ->
@@ -98,7 +101,16 @@ defmodule PinchflatWeb.Sources.SourceController do
 
           _ ->
             redirect_location =
-              if Settings.get!(:onboarding), do: ~p"/?onboarding=1", else: ~p"/sources/#{source}"
+              cond do
+                Settings.get!(:onboarding) ->
+                  ~p"/?onboarding=1"
+
+                source.collection_type == :playlist && source.selection_mode == :manual ->
+                  ~p"/sources/#{source}?#{[tab: "selection"]}"
+
+                true ->
+                  ~p"/sources/#{source}"
+              end
 
             conn
             |> put_flash(:info, "Source created successfully.")
@@ -145,7 +157,14 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   def show(conn, %{"id" => id}) do
     source = Sources.get_source!(id) |> Sources.preload_api_assocs()
-    active_tab = tab_param(conn.params, ~w(source pending active-tasks downloaded job-queue other), "source")
+    active_tab = tab_param(conn.params, allowed_tabs_for(source), "source")
+
+    selection_media_items =
+      if active_tab == "selection" do
+        Media.list_media_items_for_selection(source)
+      else
+        []
+      end
 
     case get_format(conn) do
       "json" ->
@@ -155,7 +174,8 @@ defmodule PinchflatWeb.Sources.SourceController do
         render(conn, :show,
           source: source,
           active_tab: active_tab,
-          tab_href: fn tab -> ~p"/sources/#{source}?#{[tab: tab]}" end
+          tab_href: fn tab -> ~p"/sources/#{source}?#{[tab: tab]}" end,
+          selection_media_items: selection_media_items
         )
     end
   end
@@ -320,7 +340,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       conn,
       id,
       "Forcing download of pending media items.",
-      &DownloadingHelpers.enqueue_pending_download_tasks/1
+      &DownloadingHelpers.retry_pending_download_tasks/1
     )
   end
 
@@ -358,6 +378,54 @@ defmodule PinchflatWeb.Sources.SourceController do
       "File sync enqueued.",
       &FileSyncingWorker.kickoff_with_task/1
     )
+  end
+
+  operation(:apply_selection,
+    operation_id: "Sources.SourceController.apply_selection",
+    summary: "Apply playlist selection",
+    description: "Applies manual playlist selection for a source and can optionally enqueue selected downloads",
+    parameters: [
+      source_id: [in: :path, description: "Source ID", schema: %Schema{type: :integer}, required: true]
+    ],
+    responses: [
+      found: {
+        "Selection applied and browser redirected back to the source selection tab",
+        "text/html",
+        %Schema{type: :string}
+      }
+    ]
+  )
+
+  def apply_selection(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    selected_media_ids =
+      merge_selected_media_ids(
+        source,
+        Map.get(params, "selected_media_ids", []),
+        Map.get(params, "selection_range", "")
+      )
+
+    enable_downloads = Map.get(params, "selection_action", "save") == "download"
+
+    case Sources.apply_media_selection(source, selected_media_ids, enable_downloads: enable_downloads) do
+      {:ok, source} ->
+        flash_message =
+          if enable_downloads do
+            "Selection saved and selected downloads enqueued."
+          else
+            "Selection saved."
+          end
+
+        conn
+        |> put_flash(:info, flash_message)
+        |> redirect(to: ~p"/sources/#{source}?#{[tab: "selection"]}")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> put_flash(:error, inspect(changeset.errors))
+        |> redirect(to: ~p"/sources/#{source}?#{[tab: "selection"]}")
+    end
   end
 
   defp wrap_forced_action(conn, source_id, message, fun) do
@@ -424,5 +492,67 @@ defmodule PinchflatWeb.Sources.SourceController do
     else
       default_tab
     end
+  end
+
+  defp truthy_param?(value) when value in [true, "true", 1, "1"], do: true
+  defp truthy_param?(_value), do: false
+
+  defp merge_selected_media_ids(source, selected_media_ids, selection_range) do
+    range_selected_ids =
+      source
+      |> Media.list_media_items_for_selection()
+      |> Enum.filter(&(&1.playlist_index in parse_selection_range(selection_range)))
+      |> Enum.map(&Integer.to_string(&1.id))
+
+    selected_media_ids
+    |> List.wrap()
+    |> Kernel.++(range_selected_ids)
+    |> Enum.uniq()
+  end
+
+  defp parse_selection_range(selection_range) do
+    selection_range
+    |> to_string()
+    |> String.split(",", trim: true)
+    |> Enum.flat_map(&parse_selection_segment/1)
+    |> Enum.uniq()
+  end
+
+  defp parse_selection_segment(segment) do
+    segment = String.trim(segment)
+
+    cond do
+      segment == "" ->
+        []
+
+      String.contains?(segment, "-") ->
+        case String.split(segment, "-", parts: 2) do
+          [start_segment, end_segment] ->
+            case {Integer.parse(String.trim(start_segment)), Integer.parse(String.trim(end_segment))} do
+              {{start_index, ""}, {end_index, ""}} ->
+                Range.new(min(start_index, end_index), max(start_index, end_index)) |> Enum.to_list()
+
+              _ ->
+                []
+            end
+
+          _ ->
+            []
+        end
+
+      true ->
+        case Integer.parse(segment) do
+          {parsed_index, ""} -> [parsed_index]
+          _ -> []
+        end
+    end
+  end
+
+  defp allowed_tabs_for(%Source{collection_type: :playlist}) do
+    ~w(source pending selection active-tasks downloaded job-queue other)
+  end
+
+  defp allowed_tabs_for(_source) do
+    ~w(source pending active-tasks downloaded job-queue other)
   end
 end

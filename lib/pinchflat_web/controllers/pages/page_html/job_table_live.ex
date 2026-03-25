@@ -190,6 +190,7 @@ defmodule Pinchflat.Pages.JobTableLive do
       :progress_downloaded_bytes,
       :progress_total_bytes,
       :progress_eta_seconds,
+      :progress_speed_bytes_per_second,
       :progress_updated_at
     ]
   end
@@ -272,6 +273,7 @@ defmodule Pinchflat.Pages.JobTableLive do
       percent = assigns.task.progress_percent || 0.0
       downloaded_bytes = assigns.task.progress_downloaded_bytes
       total_bytes = assigns.task.progress_total_bytes
+      speed_bytes = assigns.task.progress_speed_bytes_per_second
 
       label =
         cond do
@@ -285,7 +287,7 @@ defmodule Pinchflat.Pages.JobTableLive do
           percent: percent,
           width_percent: trunc(percent),
           label: label,
-          summary: format_progress_summary(assigns.task.progress_status, downloaded_bytes, total_bytes),
+          summary: format_progress_summary(assigns.task.progress_status, downloaded_bytes, total_bytes, speed_bytes),
           eta: format_eta(assigns.task.progress_eta_seconds)
         )
 
@@ -316,7 +318,7 @@ defmodule Pinchflat.Pages.JobTableLive do
     if String.ends_with?(task.job.worker, "MediaDownloadWorker"), do: "Stop", else: "Cancel"
   end
 
-  defp format_progress_summary(status, nil, nil) do
+  defp format_progress_summary(status, nil, nil, nil) do
     case status do
       "Queued" -> "Queued"
       "Prechecking media" -> "Checking the media before starting the download"
@@ -327,14 +329,20 @@ defmodule Pinchflat.Pages.JobTableLive do
     end
   end
 
-  defp format_progress_summary(_status, downloaded_bytes, nil) do
-    "#{readable_byte_size(downloaded_bytes)} downloaded"
+  defp format_progress_summary(status, nil, nil, speed_bytes) do
+    maybe_append_speed(status || "Queued", speed_bytes)
   end
 
-  defp format_progress_summary(_status, downloaded_bytes, total_bytes) do
+  defp format_progress_summary(_status, downloaded_bytes, nil, speed_bytes) do
+    "#{readable_byte_size(downloaded_bytes)} downloaded"
+    |> maybe_append_speed(speed_bytes)
+  end
+
+  defp format_progress_summary(_status, downloaded_bytes, total_bytes, speed_bytes) do
     remaining_bytes = max(total_bytes - (downloaded_bytes || 0), 0)
 
     "#{readable_byte_size(downloaded_bytes)} of #{readable_byte_size(total_bytes)} done, #{readable_byte_size(remaining_bytes)} remaining"
+    |> maybe_append_speed(speed_bytes)
   end
 
   defp format_eta(nil), do: nil
@@ -359,4 +367,7 @@ defmodule Pinchflat.Pages.JobTableLive do
     {num, suffix} = NumberUtils.human_byte_size(bytes, precision: 1)
     "#{num} #{suffix}"
   end
+
+  defp maybe_append_speed(text, nil), do: text
+  defp maybe_append_speed(text, speed_bytes), do: "#{text} at #{readable_byte_size(speed_bytes)}/s"
 end

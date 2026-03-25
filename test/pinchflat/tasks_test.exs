@@ -278,7 +278,8 @@ defmodule Pinchflat.TasksTest do
                  progress_status: "Downloading",
                  progress_downloaded_bytes: 512,
                  progress_total_bytes: 1024,
-                 progress_eta_seconds: 9
+                 progress_eta_seconds: 9,
+                 progress_speed_bytes_per_second: 256
                })
 
       assert task.progress_percent == 42.5
@@ -286,6 +287,7 @@ defmodule Pinchflat.TasksTest do
       assert task.progress_downloaded_bytes == 512
       assert task.progress_total_bytes == 1024
       assert task.progress_eta_seconds == 9
+      assert task.progress_speed_bytes_per_second == 256
       assert task.progress_updated_at
     end
 
