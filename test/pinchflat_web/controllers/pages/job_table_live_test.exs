@@ -100,14 +100,15 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
           progress_status: "Downloading",
           progress_downloaded_bytes: 512,
           progress_total_bytes: 1024,
-          progress_eta_seconds: 30
+          progress_eta_seconds: 30,
+          progress_speed_bytes_per_second: 256
         })
 
       {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})
 
       assert html =~ "37.5%"
       assert html =~ "Downloading"
-      assert html =~ "512.0 B of 1.0 KB done, 512.0 B remaining"
+      assert html =~ "512.0 B of 1.0 KB done, 512.0 B remaining at 256.0 B/s"
       assert html =~ "ETA 30s"
       assert html =~ "Stop"
     end

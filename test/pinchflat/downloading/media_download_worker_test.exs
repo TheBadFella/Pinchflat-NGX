@@ -168,6 +168,64 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.last_error =~ "HTTP Error 429"
     end
 
+    test "clears the last error when a manual retry begins", %{media_item: media_item} do
+      media_item = Repo.reload!(media_item)
+      {:ok, media_item} = Media.update_media_item(media_item, %{last_error: "Old error"})
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          assert Repo.reload!(media_item).last_error == nil
+          {:ok, "{}"}
+
+        _url, :download, _opts, _ot, _addl ->
+          {:error, "New error", 1}
+      end)
+
+      assert {:error, :download_failed} =
+               perform_job(MediaDownloadWorker, %{id: media_item.id, force: true, reset_last_error: true})
+
+      assert Repo.reload!(media_item).last_error == "New error"
+    end
+
+    test "restores the same error if a manual retry fails with the same message", %{media_item: media_item} do
+      media_item = Repo.reload!(media_item)
+      {:ok, media_item} = Media.update_media_item(media_item, %{last_error: "Same error"})
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          assert Repo.reload!(media_item).last_error == nil
+          {:ok, "{}"}
+
+        _url, :download, _opts, _ot, _addl ->
+          {:error, "Same error", 1}
+      end)
+
+      assert {:error, :download_failed} =
+               perform_job(MediaDownloadWorker, %{id: media_item.id, force: true, reset_last_error: true})
+
+      assert Repo.reload!(media_item).last_error == "Same error"
+    end
+
+    test "keeps the last error cleared if a manual retry succeeds", %{media_item: media_item} do
+      media_item = Repo.reload!(media_item)
+      {:ok, media_item} = Media.update_media_item(media_item, %{last_error: "Old error"})
+
+      expect(YtDlpRunnerMock, :run, 3, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          assert Repo.reload!(media_item).last_error == nil
+          {:ok, "{}"}
+
+        _url, :download, _opts, _ot, _addl ->
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id, force: true, reset_last_error: true})
+      assert Repo.reload!(media_item).last_error == nil
+    end
+
     test "does not set the job to retryable you aren't a member", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :get_downloadable_status, _opts, _ot, _addl ->
@@ -243,7 +301,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
             progress_status: "Downloading",
             progress_downloaded_bytes: 512,
             progress_total_bytes: 1024,
-            progress_eta_seconds: 4
+            progress_eta_seconds: 4,
+            progress_speed_bytes_per_second: 128
           })
 
           {:ok, render_metadata(:media_metadata)}
@@ -262,6 +321,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert task.progress_downloaded_bytes == 512
       assert task.progress_total_bytes == 1024
       assert task.progress_eta_seconds == 4
+      assert task.progress_speed_bytes_per_second == 128
     end
 
     test "does not set redownloaded_at by default", %{media_item: media_item} do
@@ -358,6 +418,25 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       end)
 
       perform_job(MediaDownloadWorker, %{id: media_item.id, force: true})
+    end
+  end
+
+  describe "perform/1 when testing download precheck skipping" do
+    test "skips the separate precheck for non-livestream downloads that already use cookies", %{media_item: media_item} do
+      source = Repo.preload(media_item, :source).source
+      {:ok, _source} = Sources.update_source(source, %{cookie_behaviour: :all_operations})
+      media_item = Repo.reload!(media_item)
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, addl ->
+          assert {:use_cookies, true} in addl
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      perform_job(MediaDownloadWorker, %{id: media_item.id})
     end
   end
 

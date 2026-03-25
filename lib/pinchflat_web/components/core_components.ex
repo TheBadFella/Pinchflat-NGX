@@ -267,7 +267,10 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
-    |> assign(:errors, if(Phoenix.Component.used_input?(field), do: Enum.map(field.errors, &translate_error(&1)), else: []))
+    |> assign(
+      :errors,
+      if(Phoenix.Component.used_input?(field), do: Enum.map(field.errors, &translate_error(&1)), else: [])
+    )
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn -> field.value end)
     |> input()

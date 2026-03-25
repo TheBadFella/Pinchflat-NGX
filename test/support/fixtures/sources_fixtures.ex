@@ -78,7 +78,6 @@ defmodule Pinchflat.SourcesFixtures do
 
   def source_attributes_return_fixture do
     # Use recent dates to ensure media items pass the download_cutoff_date filter
-    # (which is set to 7 days ago after indexing)
     today = Date.utc_today()
     date1 = Date.add(today, -1) |> Calendar.strftime("%Y%m%d")
     date2 = Date.add(today, -2) |> Calendar.strftime("%Y%m%d")

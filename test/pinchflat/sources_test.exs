@@ -474,6 +474,34 @@ defmodule Pinchflat.SourcesTest do
 
       assert_enqueued(worker: SourceMetadataStorageWorker, args: %{"id" => source.id})
     end
+
+    test "delay_automatic_download puts playlists into manual selection mode" do
+      expect(YtDlpRunnerMock, :run, &playlist_mock/5)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/playlist?list=abc123"
+      }
+
+      assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs, delay_automatic_download: true)
+      assert source.collection_type == :playlist
+      assert source.selection_mode == :manual
+      refute source.download_media
+    end
+
+    test "delay_automatic_download does not change channel behavior" do
+      expect(YtDlpRunnerMock, :run, &channel_mock/5)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/abc123"
+      }
+
+      assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs, delay_automatic_download: true)
+      assert source.collection_type == :channel
+      assert source.selection_mode == :all
+      assert source.download_media
+    end
   end
 
   describe "create_source/2 when testing yt-dlp options" do
@@ -883,6 +911,41 @@ defmodule Pinchflat.SourcesTest do
       refute_enqueued(worker: SourceMetadataStorageWorker)
       refute_enqueued(worker: MediaDownloadWorker)
       refute_enqueued(worker: FastIndexingWorker)
+    end
+  end
+
+  describe "apply_media_selection/3" do
+    test "saves selection state without enabling downloads" do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+      selected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+      unselected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: false})
+
+      assert {:ok, %Source{} = updated_source} = Sources.apply_media_selection(source, [selected.id])
+
+      refute updated_source.download_media
+      refute Repo.reload!(selected).prevent_download
+      assert Repo.reload!(unselected).prevent_download
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
+    test "enables downloads and enqueues only selected pending items" do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+      selected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+      _unselected = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: false})
+
+      _downloaded =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/already-downloaded.mp4",
+          prevent_download: true
+        })
+
+      assert {:ok, %Source{} = updated_source} =
+               Sources.apply_media_selection(source, [selected.id], enable_downloads: true)
+
+      assert updated_source.download_media
+      assert [%{args: %{"id" => selected_id}}] = all_enqueued(worker: MediaDownloadWorker)
+      assert selected_id == selected.id
     end
   end
 

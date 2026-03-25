@@ -221,6 +221,33 @@ defmodule Pinchflat.Media do
     MediaItem.changeset(media_item, attrs)
   end
 
+  @doc """
+  Returns media items for a source ordered for manual playlist selection.
+  """
+  def list_media_items_for_selection(%Source{} = source) do
+    MediaQuery.new()
+    |> where(^MediaQuery.for_source(source))
+    |> order_by([m], asc: m.playlist_index, asc: m.uploaded_at, asc: m.id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns pending media items for a source, restricted to a given set of IDs.
+  """
+  def list_pending_media_items_for_ids(%Source{} = source, media_item_ids) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(
+      ^dynamic(
+        [m, s, mp],
+        ^MediaQuery.for_source(source) and
+          m.id in ^media_item_ids and
+          ^MediaQuery.pending()
+      )
+    )
+    |> Repo.all()
+  end
+
   defp do_delete_media_files(media_item) do
     mapped_struct = Map.from_struct(media_item)
 
@@ -253,15 +280,17 @@ defmodule Pinchflat.Media do
   end
 
   defp insert_media_item_from_backend_attrs(source, attrs) do
+    insert_attrs = maybe_prevent_download_by_default(attrs, source)
+
     %MediaItem{source: source}
-    |> MediaItem.changeset(attrs)
+    |> MediaItem.changeset(insert_attrs)
     |> Repo.insert()
     |> case do
       {:ok, %MediaItem{} = media_item} ->
         {:ok, media_item}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        case attrs.media_id do
+        case insert_attrs.media_id do
           nil ->
             {:error, changeset}
 
@@ -279,4 +308,10 @@ defmodule Pinchflat.Media do
     |> MediaItem.changeset(Map.drop(attrs, @fields_to_drop_on_update))
     |> Repo.update()
   end
+
+  defp maybe_prevent_download_by_default(attrs, %Source{collection_type: :playlist, selection_mode: :manual}) do
+    Map.put_new(attrs, :prevent_download, true)
+  end
+
+  defp maybe_prevent_download_by_default(attrs, _source), do: attrs
 end

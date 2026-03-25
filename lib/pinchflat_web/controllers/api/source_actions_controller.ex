@@ -27,7 +27,7 @@ defmodule PinchflatWeb.Api.SourceActionsController do
 
   def download_pending(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
-    DownloadingHelpers.enqueue_pending_download_tasks(source)
+    DownloadingHelpers.retry_pending_download_tasks(source)
 
     conn
     |> put_status(:ok)

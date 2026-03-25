@@ -206,6 +206,7 @@ defmodule Pinchflat.Tasks do
       :progress_downloaded_bytes,
       :progress_total_bytes,
       :progress_eta_seconds,
+      :progress_speed_bytes_per_second,
       :progress_updated_at
     ])
     |> Map.put(:task_id, task.id)

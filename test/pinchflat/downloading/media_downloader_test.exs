@@ -140,6 +140,18 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
 
       assert {:ok, _} = MediaDownloader.download_for_media_item(media_item, override_opts)
     end
+
+    test "can skip the downloadable precheck when explicitly requested", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, _addl ->
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      assert {:ok, _} = MediaDownloader.download_for_media_item(media_item, skip_download_precheck: true)
+    end
   end
 
   describe "download_for_media_item/3 when testing cookie usage" do
@@ -295,6 +307,21 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
       media_item = Repo.reload(media_item)
 
       assert media_item.last_error == "Unable to communicate with SponsorBlock"
+    end
+  end
+
+  describe "download_for_media_item/3 when testing error normalization" do
+    test "preserves the prior error message when the normalized error matches", %{media_item: media_item} do
+      {:ok, media_item} = Media.update_media_item(Repo.reload!(media_item), %{last_error: "ERROR: Too   Many Requests"})
+      media_item = Repo.preload(media_item, [:metadata, source: :media_profile])
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+        _url, :download, _opts, _ot, _addl -> {:error, "Too Many   Requests", 1}
+      end)
+
+      assert {:error, :download_failed, "Too Many   Requests"} = MediaDownloader.download_for_media_item(media_item)
+      assert Repo.reload!(media_item).last_error == "ERROR: Too   Many Requests"
     end
   end
 

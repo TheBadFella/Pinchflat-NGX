@@ -55,6 +55,7 @@ defmodule PinchflatWeb.Router do
     get "/download_logs", Settings.SettingController, :download_logs
 
     resources "/sources", Sources.SourceController do
+      post "/apply_selection", Sources.SourceController, :apply_selection
       post "/force_download_pending", Sources.SourceController, :force_download_pending
       post "/force_redownload", Sources.SourceController, :force_redownload
       post "/force_index", Sources.SourceController, :force_index

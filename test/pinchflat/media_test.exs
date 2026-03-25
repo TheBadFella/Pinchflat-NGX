@@ -722,6 +722,37 @@ defmodule Pinchflat.MediaTest do
       assert media_item_1.id == updated_media_item.id
       assert Repo.reload!(updated_media_item).upload_date_index == 99
     end
+
+    test "defaults new playlist items to prevent_download in manual selection mode" do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual})
+
+      media_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      assert {:ok, %MediaItem{} = media_item} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+      assert media_item.prevent_download
+    end
+
+    test "does not re-apply prevent_download on updates to existing media items" do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual})
+
+      media_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      {:ok, media_item} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+      {:ok, _} = Media.update_media_item(media_item, %{prevent_download: false})
+
+      updated_attrs = %YtDlpMedia{media_attrs | title: "Updated title"}
+
+      assert {:ok, %MediaItem{} = updated_media_item} =
+               Media.create_media_item_from_backend_attrs(source, updated_attrs)
+
+      refute Repo.reload!(updated_media_item).prevent_download
+    end
   end
 
   describe "update_media_item/2" do
