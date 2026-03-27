@@ -163,6 +163,74 @@
     @apply rounded-m3-sm bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
   }
 
+  .theme-success-button {
+    @apply border-theme-success/80 bg-theme-success text-theme-bg transition hover:border-theme-success hover:bg-theme-success/90;
+  }
+
+  .theme-warning-button {
+    @apply border-theme-warning/80 bg-theme-warning text-theme-bg transition hover:border-theme-warning hover:bg-theme-warning/90;
+  }
+
+  .theme-status-info {
+    @apply text-theme-primary;
+  }
+
+  .theme-status-success {
+    @apply text-theme-success;
+  }
+
+  .theme-status-warning {
+    @apply text-theme-warning;
+  }
+
+  .theme-status-error {
+    @apply text-theme-error;
+  }
+
+  .theme-status-card {
+    @apply theme-surface-accent border-l-4 p-4;
+  }
+
+  .theme-status-card-info {
+    @apply border-theme-primary text-theme-primary;
+  }
+
+  .theme-status-card-success {
+    @apply border-theme-success text-theme-success;
+  }
+
+  .theme-status-card-warning {
+    @apply border-theme-warning text-theme-warning;
+  }
+
+  .theme-status-card-error {
+    @apply border-theme-error text-theme-error;
+  }
+
+  .theme-danger-text-button {
+    @apply text-theme-error transition hover:opacity-85;
+  }
+
+  .theme-danger-button {
+    @apply border-theme-error/70 bg-theme-error/10 text-theme-error transition hover:border-theme-error hover:bg-theme-error/15;
+  }
+
+  .theme-danger-button-solid {
+    @apply border-theme-error/80 bg-theme-error text-theme-on-error transition hover:border-theme-error hover:bg-theme-error/90;
+  }
+
+  .theme-danger-panel {
+    @apply bg-theme-error/10 text-theme-error;
+  }
+
+  .theme-badge-success {
+    @apply bg-theme-success/20 text-theme-success;
+  }
+
+  .theme-badge-warning {
+    @apply bg-theme-warning/25 text-theme-warning;
+  }
+
   .theme-sidebar-active {
     @apply relative overflow-hidden border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container;
   }

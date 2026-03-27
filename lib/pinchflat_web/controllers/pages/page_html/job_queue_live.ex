@@ -21,19 +21,17 @@ defmodule Pinchflat.Pages.JobQueueLive do
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center space-x-2">
           <.icon_button icon_name="hero-arrow-path" class="h-8 w-8" phx-click="refresh" tooltip="Refresh" />
-          <span class="text-sm text-theme-on-surface-muted">
-            Auto-refreshes every {div(@refresh_interval, 1000)}s
-          </span>
+          <span class="text-sm text-theme-on-surface-muted">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
         </div>
       </div>
-
+      
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <.stat_card label="Executing" count={@stats.executing} color="green" />
         <.stat_card label="Available" count={@stats.available} color="blue" />
         <.stat_card label="Scheduled" count={@stats.scheduled} color="yellow" />
         <.stat_card label="Retryable" count={@stats.retryable} color="orange" />
       </div>
-
+      
       <div class="space-y-6">
         <.job_section
           :if={@executing_jobs != []}
@@ -91,19 +89,19 @@ defmodule Pinchflat.Pages.JobQueueLive do
   defp stat_card(assigns) do
     color_classes =
       case assigns.color do
-        "green" -> "border-green-500 text-green-400"
-        "blue" -> "border-blue-500 text-blue-400"
-        "yellow" -> "border-yellow-500 text-yellow-400"
-        "orange" -> "border-orange-500 text-orange-400"
-        _ -> "border-gray-500 text-gray-400"
+        "green" -> "theme-status-card-success"
+        "blue" -> "theme-status-card-info"
+        "yellow" -> "theme-status-card-warning"
+        "orange" -> "theme-status-card-error"
+        _ -> "theme-status-card-info"
       end
 
     assigns = assign(assigns, :color_classes, color_classes)
 
     ~H"""
-    <div class={"theme-surface-accent border-l-4 p-4 #{@color_classes}"}>
+    <div class={"theme-status-card #{@color_classes}"}>
       <div class="text-2xl font-bold">{@count}</div>
-
+      
       <div class="text-sm text-theme-on-surface-muted">{@label}</div>
     </div>
     """
@@ -130,7 +128,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
               :if={@show_cancel}
               phx-click="cancel_job"
               phx-value-job-id={row.job.id}
-              class="shrink-0 text-xs text-red-400 transition hover:text-red-300"
+              class="theme-danger-text-button shrink-0 text-xs"
               data-confirm="Are you sure you want to cancel this job?"
             >
               Cancel
@@ -209,7 +207,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
               <button
                 phx-click="cancel_job"
                 phx-value-job-id={row.job.id}
-                class="text-xs text-red-400 transition hover:text-red-300"
+                class="theme-danger-text-button text-xs"
                 data-confirm="Are you sure you want to cancel this job?"
               >
                 Cancel
@@ -251,7 +249,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
         <div>
           <p class="mb-2 text-xs uppercase tracking-wide text-theme-on-surface-muted">Details</p>
           <div class="max-h-[50vh] overflow-y-auto rounded-m3-lg border border-theme-outline/70 bg-theme-surface p-4">
-            <pre class="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-red-300">{format_errors(@row.job.errors, limit: :all)}</pre>
+            <pre class="theme-status-error whitespace-pre-wrap break-words font-sans text-sm leading-6">{format_errors(@row.job.errors, limit: :all)}</pre>
           </div>
         </div>
 

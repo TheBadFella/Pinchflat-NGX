@@ -34,7 +34,7 @@ defmodule Pinchflat.Pages.JobTableLive do
               phx-click="cancel_task"
               phx-value-task-id={task.id}
               data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
-              class="shrink-0 rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
+              class="theme-danger-button shrink-0 rounded-md border px-3 py-1 text-xs font-medium"
             >
               {task_action_label(task)}
             </button>
@@ -100,7 +100,7 @@ defmodule Pinchflat.Pages.JobTableLive do
               phx-click="cancel_task"
               phx-value-task-id={task.id}
               data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
-              class="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
+              class="theme-danger-button rounded-md border px-3 py-1 text-xs font-medium"
             >
               {task_action_label(task)}
             </button>
@@ -344,15 +344,17 @@ defmodule Pinchflat.Pages.JobTableLive do
       ~H"""
       <div class="min-w-52">
         <div class="mb-1 flex items-center justify-between text-xs text-theme-on-surface-muted">
-          <span>{@label}</span>
-          <span>{Float.round(@percent, 1)}%</span>
+          <span>{@label}</span> <span>{Float.round(@percent, 1)}%</span>
         </div>
+        
         <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
           <div class="h-full rounded-full bg-theme-primary transition-all duration-300" style={"width: #{@width_percent}%"}>
           </div>
         </div>
+        
         <div class="mt-1 text-[11px] text-theme-on-surface-muted">
           <div>{@summary}</div>
+          
           <div :if={@eta != nil}>ETA {@eta}</div>
         </div>
       </div>

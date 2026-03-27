@@ -32,13 +32,12 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             Showing <.localized_number number={length(@records)} /> of <.localized_number number={@filtered_record_count} />
           </span>
         </span>
-
+        
         <div class="theme-surface-accent rounded-m3-sm">
           <div class="relative">
             <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
               <.icon name="hero-magnifying-glass" />
             </span>
-
             <form phx-change="search_term" phx-submit="search_term">
               <input
                 type="text"
@@ -56,14 +55,23 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1 space-y-2">
-              <div :if={@media_state == "pending"} class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">
+              <div
+                :if={@media_state == "pending"}
+                class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted"
+              >
                 Queue #{Map.get(@queue_positions, media_item.id, "-")}
               </div>
               <div class="flex items-start gap-2">
-                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="mt-0.5 shrink-0 text-red-500" />
+                <.icon
+                  :if={media_item.last_error}
+                  name="hero-exclamation-circle-solid"
+                  class="theme-status-error mt-0.5 shrink-0"
+                />
                 <div class="min-w-0">
                   <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
-                    <span class="block whitespace-normal break-words font-medium text-theme-on-surface">{media_item.title}</span>
+                    <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
+                      {media_item.title}
+                    </span>
                   </.subtle_link>
                 </div>
               </div>
@@ -83,8 +91,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop"
-                class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
-                icon_class="text-red-300"
+                class="theme-danger-button h-10 w-10"
+                icon_class="text-theme-error"
                 phx-click="stop_download"
                 phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
                 phx-value-media-id={media_item.id}
@@ -96,7 +104,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             </div>
           </div>
 
-          <div :if={media_item.last_error} class="whitespace-pre-wrap break-words rounded-m3-sm bg-red-500/10 p-3 text-xs text-red-300">
+          <div
+            :if={media_item.last_error}
+            class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
+          >
             {media_item.last_error}
           </div>
 
@@ -134,7 +145,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           <:col :let={media_item} label="Title" class="max-w-sm">
             <section class="space-y-2">
               <div class="flex items-start space-x-1 gap-2">
-                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
+                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="theme-status-error shrink-0" />
                 <.icon_button
                   :if={@media_state != "downloaded"}
                   icon_name="hero-arrow-down-tray"
@@ -150,7 +161,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 </.subtle_link>
               </div>
 
-              <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
+              <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
                 {media_item.last_error}
               </div>
             </section>
@@ -174,8 +185,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             <.icon_button
               :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
               icon_name="hero-stop"
-              class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
-              icon_class="text-red-300"
+              class="theme-danger-button h-10 w-10"
+              icon_class="text-theme-error"
               phx-click="stop_download"
               phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
               phx-value-media-id={media_item.id}
@@ -187,12 +198,16 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </:col>
           <:col :let={media_item} label="" class="align-middle text-right">
             <div class="flex justify-end">
-              <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+              <.icon_link
+                href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"}
+                icon="hero-pencil-square"
+                class="mr-4"
+              />
             </div>
           </:col>
         </.table>
       </div>
-
+      
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>

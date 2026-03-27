@@ -113,6 +113,14 @@ end
 - Use `mix format` - config in `.formatter.exs`
 - Prettier for JS/CSS/YAML/JSON
 
+### UI Theming Guardrails
+
+- Follow Material Design 3 tokens and design foundations for UI work.
+- Use shared semantic theme classes from `assets/css/app.css` instead of page-local hardcoded palette combinations.
+- Do not introduce raw palette classes like `text-red-*`, `bg-red-*`, `border-green-*`, or `zinc-*` in `lib/pinchflat_web`.
+- When a new UI state is needed, add a semantic class or token rather than styling a single screen inline.
+- Run `yarn run ui:check-theme` after UI changes that touch `lib/pinchflat_web`.
+
 ### Return Types
 
 Document returns in `@doc`:

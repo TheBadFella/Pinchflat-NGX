@@ -23,7 +23,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
           <span class="text-sm text-theme-on-surface-muted">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
         </div>
       </div>
-
+      
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <.health_card title="Database">
           <div class="space-y-2">
@@ -32,7 +32,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
             <.health_row label="Page Count" value={format_number(@db_stats.page_count)} />
           </div>
         </.health_card>
-
+        
         <.health_card title="Job Queue">
           <div class="space-y-2">
             <.health_row label="Pending" value={@queue_stats.pending} />
@@ -41,7 +41,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
             <.health_row label="Completed (24h)" value={@queue_stats.completed_24h} />
           </div>
         </.health_card>
-
+        
         <.health_card title="Sources">
           <div class="space-y-2">
             <.health_row label="Total" value={@source_stats.total} />
@@ -55,31 +55,29 @@ defmodule Pinchflat.Pages.SystemHealthLive do
           </div>
         </.health_card>
       </div>
-
+      
       <div :if={@stale_sources != []} class="theme-surface-raised p-4">
         <h3 class="mb-3 flex items-center text-lg font-semibold text-theme-on-surface">
-          <.icon name="hero-exclamation-triangle" class="h-5 w-5 text-yellow-400 mr-2" /> Sources Not Indexed Recently
+          <.icon name="hero-exclamation-triangle" class="theme-status-warning mr-2 h-5 w-5" /> Sources Not Indexed Recently
         </h3>
-
+        
         <p class="mb-4 text-sm text-theme-on-surface-muted">
           These sources haven't been indexed in over 24 hours. They may be stuck or have configuration issues.
         </p>
-
+        
         <div class="max-w-full overflow-x-auto">
           <.table rows={@stale_sources} table_class="text-sm">
             <:col :let={source} label="Source">
               <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
             </:col>
-
+            
             <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
-
+            
             <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
-
-            <:col :let={source} label="Enabled">
-              <span :if={source.enabled} class="text-green-400">Yes</span>
-              <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span>
-            </:col>
-
+            
+            <:col :let={source} label="Enabled"><span :if={source.enabled} class="theme-status-success">Yes</span>
+              <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span></:col>
+            
             <:col :let={source} label="">
               <.link
                 href={~p"/sources/#{source.id}/force_index"}
@@ -103,7 +101,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
     ~H"""
     <div class="theme-surface-raised p-4">
       <h3 class="mb-3 text-md font-semibold text-theme-on-surface">{@title}</h3>
-      {render_slot(@inner_block)}
+       {render_slot(@inner_block)}
     </div>
     """
   end
@@ -115,8 +113,8 @@ defmodule Pinchflat.Pages.SystemHealthLive do
   defp health_row(assigns) do
     status_class =
       case assigns.status do
-        :warning -> "text-yellow-400"
-        :error -> "text-red-400"
+        :warning -> "theme-status-warning"
+        :error -> "theme-status-error"
         _ -> "text-theme-on-surface"
       end
 
