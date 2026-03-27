@@ -110,68 +110,72 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       </div>
 
       <div class="hidden md:block">
-        <div class="max-w-full overflow-x-auto">
-          <.table rows={@records}>
-            <:col :let={media_item} label="Title" class="max-w-sm">
-              <section class="space-y-2">
-                <div class="flex items-start space-x-1 gap-2">
-                  <.icon
-                    :if={media_item.last_error}
-                    name="hero-exclamation-circle-solid"
-                    class="theme-status-error shrink-0"
-                  />
-                  <.icon_button
-                    :if={is_nil(media_item.media_downloaded_at)}
-                    icon_name="hero-arrow-down-tray"
-                    class="h-10 w-10"
-                    phx-click="force_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm="Are you sure you want to force a download of this media?"
-                    tooltip="Force Download"
-                    tooltip_position="bottom-left"
-                  />
-                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                    <span class="block whitespace-normal break-words">{media_item.title}</span>
-                  </.subtle_link>
-                </div>
+        <div class="max-w-full overflow-visible">
+          <div class="overflow-x-auto overflow-y-hidden">
+            <.table rows={@records}>
+              <:col :let={media_item} label="Title" class="max-w-sm">
+                <section class="space-y-2">
+                  <div class="flex items-start space-x-1 gap-2">
+                    <.icon
+                      :if={media_item.last_error}
+                      name="hero-exclamation-circle-solid"
+                      class="theme-status-error shrink-0"
+                    />
+                    <.icon_button
+                      :if={is_nil(media_item.media_downloaded_at)}
+                      icon_name="hero-arrow-down-tray"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Are you sure you want to force a download of this media?"
+                      tooltip="Force Download"
+                      tooltip_position="bottom-left"
+                    />
+                    <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                      <span class="block whitespace-normal break-words">{media_item.title}</span>
+                    </.subtle_link>
+                  </div>
 
-                <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
-                  {media_item.last_error}
-                </div>
-              </section>
-            </:col>
+                  <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
+                    {media_item.last_error}
+                  </div>
+                </section>
+              </:col>
 
-            <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
+              <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
 
-            <:col :let={media_item} label="Size / Progress">
-              <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
-            </:col>
+              <:col :let={media_item} label="Size / Progress">
+                <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+              </:col>
 
-            <:col :let={media_item} label="Indexed At">{format_datetime(media_item.inserted_at)}</:col>
+              <:col :let={media_item} label="Indexed At">{format_datetime(media_item.inserted_at)}</:col>
 
-            <:col :let={media_item} label="Downloaded At">{format_datetime(media_item.media_downloaded_at)}</:col>
+              <:col :let={media_item} label="Downloaded At">{format_datetime(media_item.media_downloaded_at)}</:col>
 
-            <:col :let={media_item} label="Source" class="max-w-sm">
-              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
-                <span class="block whitespace-normal break-words">{media_item.source.custom_name}</span>
-              </.subtle_link>
-            </:col>
+              <:col :let={media_item} label="Source" class="max-w-sm">
+                <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
+                  <span class="block whitespace-normal break-words">{media_item.source.custom_name}</span>
+                </.subtle_link>
+              </:col>
 
-            <:col :let={media_item} label="Action">
-              <.icon_button
-                :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-                icon_name="hero-stop"
-                variant="danger"
-                class="h-10 w-10"
-                phx-click="stop_download"
-                phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
-                data-confirm="Are you sure you want to stop this download?"
-                tooltip="Stop Download"
-                tooltip_position="bottom-left"
-              />
-              <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
-            </:col>
-          </.table>
+              <:col :let={media_item} label="Action">
+                <.icon_button
+                  :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+                  icon_name="hero-stop"
+                  variant="danger"
+                  class="h-10 w-10"
+                  phx-click="stop_download"
+                  phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+                  data-confirm="Are you sure you want to stop this download?"
+                  tooltip="Stop Download"
+                  tooltip_position="bottom-left"
+                />
+                <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">
+                  -
+                </span>
+              </:col>
+            </.table>
+          </div>
         </div>
       </div>
 

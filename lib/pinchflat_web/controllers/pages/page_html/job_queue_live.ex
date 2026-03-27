@@ -170,50 +170,52 @@ defmodule Pinchflat.Pages.JobQueueLive do
       </div>
 
       <div class="hidden md:block">
-        <div class="max-w-full overflow-x-auto">
-          <.table rows={@jobs} table_class="table-fixed text-sm">
-            <:col :let={row} label="Worker">
-              {worker_to_short_name(row.job.worker)}
-            </:col>
-            <:col :let={row} label="Subject" class="w-64 align-top">
-              <div class="w-64 whitespace-normal break-words">
-                <div class="font-medium">{row_to_subject_label(row)}</div>
-                <div class="text-xs text-theme-on-surface-muted">{row_to_subject_name(row)}</div>
-              </div>
-            </:col>
-            <:col :let={row} label="Source" class="w-64 align-top">
-              <div class="w-64 whitespace-normal break-words">
-                <div class="font-medium">{row_to_source_label(row)}</div>
-                <div class="text-xs text-theme-on-surface-muted">{row_to_source_name(row)}</div>
-              </div>
-            </:col>
-            <:col :let={row} label="Attempt">
-              {row.job.attempt}/{row.job.max_attempts}
-            </:col>
-            <:col :let={row} label="Scheduled">
-              {format_datetime(row.job.scheduled_at)}
-            </:col>
-            <:col :let={row} :if={@state == "discarded"} label="Error" class="w-40 align-middle">
-              <button
-                type="button"
-                phx-click={show_modal(error_modal_id(row, :desktop))}
-                class="inline-flex items-center rounded-full border border-theme-outline bg-theme-surface px-4 py-2 text-xs font-medium text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-surface-2 hover:text-theme-primary"
-              >
-                Error Details
-              </button>
-              <.error_modal row={row} modal_id={error_modal_id(row, :desktop)} />
-            </:col>
-            <:col :let={row} :if={@show_cancel} label="">
-              <button
-                phx-click="cancel_job"
-                phx-value-job-id={row.job.id}
-                class="theme-danger-text-button text-xs"
-                data-confirm="Are you sure you want to cancel this job?"
-              >
-                Cancel
-              </button>
-            </:col>
-          </.table>
+        <div class="max-w-full overflow-visible">
+          <div class="overflow-x-auto overflow-y-hidden">
+            <.table rows={@jobs} table_class="table-fixed text-sm">
+              <:col :let={row} label="Worker">
+                {worker_to_short_name(row.job.worker)}
+              </:col>
+              <:col :let={row} label="Subject" class="w-64 align-top">
+                <div class="w-64 whitespace-normal break-words">
+                  <div class="font-medium">{row_to_subject_label(row)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{row_to_subject_name(row)}</div>
+                </div>
+              </:col>
+              <:col :let={row} label="Source" class="w-64 align-top">
+                <div class="w-64 whitespace-normal break-words">
+                  <div class="font-medium">{row_to_source_label(row)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{row_to_source_name(row)}</div>
+                </div>
+              </:col>
+              <:col :let={row} label="Attempt">
+                {row.job.attempt}/{row.job.max_attempts}
+              </:col>
+              <:col :let={row} label="Scheduled">
+                {format_datetime(row.job.scheduled_at)}
+              </:col>
+              <:col :let={row} :if={@state == "discarded"} label="Error" class="w-40 align-middle">
+                <button
+                  type="button"
+                  phx-click={show_modal(error_modal_id(row, :desktop))}
+                  class="inline-flex items-center rounded-full border border-theme-outline bg-theme-surface px-4 py-2 text-xs font-medium text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-surface-2 hover:text-theme-primary"
+                >
+                  Error Details
+                </button>
+                <.error_modal row={row} modal_id={error_modal_id(row, :desktop)} />
+              </:col>
+              <:col :let={row} :if={@show_cancel} label="">
+                <button
+                  phx-click="cancel_job"
+                  phx-value-job-id={row.job.id}
+                  class="theme-danger-text-button text-xs"
+                  data-confirm="Are you sure you want to cancel this job?"
+                >
+                  Cancel
+                </button>
+              </:col>
+            </.table>
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <h2 class="text-title-md2 font-bold text-theme-on-surface">Media Profiles</h2>
-  
+
   <nav>
     <.link href={~p"/media_profiles/new"}>
       <.button rounding="rounded-m3-sm">
@@ -41,25 +41,27 @@
   </div>
 
   <div class="hidden md:block">
-    <div class="max-w-full overflow-x-auto">
-      <div class="flex flex-col gap-10 min-w-max">
-        <.table rows={@media_profiles}>
-          <:col :let={media_profile} label="Name" class="truncate max-w-xs">
-            <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
-          </:col>
-          
-          <:col :let={media_profile} label="Preferred Resolution">{media_profile.preferred_resolution}</:col>
-          
-          <:col :let={media_profile} label="Sources">
-            <.subtle_link href={~p"/media_profiles/#{media_profile.id}/#tab-sources"}>
-              <.localized_number number={media_profile.source_count} />
-            </.subtle_link>
-          </:col>
-          
-          <:col :let={media_profile} label="" class="flex justify-end">
-            <.icon_link href={~p"/media_profiles/#{media_profile.id}/edit"} icon="hero-pencil-square" class="mr-4" />
-          </:col>
-        </.table>
+    <div class="max-w-full overflow-visible">
+      <div class="overflow-x-auto overflow-y-hidden">
+        <div class="flex min-w-max flex-col gap-10">
+          <.table rows={@media_profiles}>
+            <:col :let={media_profile} label="Name" class="truncate max-w-xs">
+              <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
+            </:col>
+
+            <:col :let={media_profile} label="Preferred Resolution">{media_profile.preferred_resolution}</:col>
+
+            <:col :let={media_profile} label="Sources">
+              <.subtle_link href={~p"/media_profiles/#{media_profile.id}/#tab-sources"}>
+                <.localized_number number={media_profile.source_count} />
+              </.subtle_link>
+            </:col>
+
+            <:col :let={media_profile} label="" class="flex justify-end">
+              <.icon_link href={~p"/media_profiles/#{media_profile.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+            </:col>
+          </.table>
+        </div>
       </div>
     </div>
   </div>

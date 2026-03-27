@@ -67,45 +67,47 @@ defmodule Pinchflat.Pages.JobTableLive do
         </article>
       </div>
 
-      <div class="hidden md:block max-w-full overflow-x-auto">
-        <.table rows={@tasks}>
-          <:col :let={task} label="Task">{worker_to_task_name(task.job.worker)}</:col>
+      <div class="hidden md:block max-w-full overflow-visible">
+        <div class="overflow-x-auto overflow-y-hidden">
+          <.table rows={@tasks}>
+            <:col :let={task} label="Task">{worker_to_task_name(task.job.worker)}</:col>
 
-          <:col :let={task} label="Subject" class="max-w-sm">
-            <.subtle_link href={task_to_link(task)}>
-              <div class="whitespace-normal break-words">
-                <div class="font-medium">{task_to_record_label(task)}</div>
-                <div class="text-xs text-theme-on-surface-muted">{task_to_record_name(task)}</div>
-              </div>
-            </.subtle_link>
-          </:col>
-          <:col :let={task} label="Source" class="max-w-sm">
-            <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
-              <div class="whitespace-normal break-words">
-                <div class="font-medium">{task_source_label(task)}</div>
-                <div class="text-xs text-theme-on-surface-muted">{task_source_name(task)}</div>
-              </div>
-            </.subtle_link>
-            <span :if={!task_source_link(task)} class="text-theme-on-surface-muted">-</span>
-          </:col>
-          <:col :let={task} label="Attempt No.">{task.job.attempt}</:col>
+            <:col :let={task} label="Subject" class="max-w-sm">
+              <.subtle_link href={task_to_link(task)}>
+                <div class="whitespace-normal break-words">
+                  <div class="font-medium">{task_to_record_label(task)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{task_to_record_name(task)}</div>
+                </div>
+              </.subtle_link>
+            </:col>
+            <:col :let={task} label="Source" class="max-w-sm">
+              <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
+                <div class="whitespace-normal break-words">
+                  <div class="font-medium">{task_source_label(task)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{task_source_name(task)}</div>
+                </div>
+              </.subtle_link>
+              <span :if={!task_source_link(task)} class="text-theme-on-surface-muted">-</span>
+            </:col>
+            <:col :let={task} label="Attempt No.">{task.job.attempt}</:col>
 
-          <:col :let={task} label="Progress"><.task_progress task={task} /></:col>
+            <:col :let={task} label="Progress"><.task_progress task={task} /></:col>
 
-          <:col :let={task} label="Started At">{format_datetime(task.job.attempted_at)}</:col>
+            <:col :let={task} label="Started At">{format_datetime(task.job.attempted_at)}</:col>
 
-          <:col :let={task} label="">
-            <button
-              type="button"
-              phx-click="cancel_task"
-              phx-value-task-id={task.id}
-              data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
-              class="theme-danger-button rounded-md border px-3 py-1 text-xs font-medium"
-            >
-              {task_action_label(task)}
-            </button>
-          </:col>
-        </.table>
+            <:col :let={task} label="">
+              <button
+                type="button"
+                phx-click="cancel_task"
+                phx-value-task-id={task.id}
+                data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
+                class="theme-danger-button rounded-md border px-3 py-1 text-xs font-medium"
+              >
+                {task_action_label(task)}
+              </button>
+            </:col>
+          </.table>
+        </div>
       </div>
     </div>
     """

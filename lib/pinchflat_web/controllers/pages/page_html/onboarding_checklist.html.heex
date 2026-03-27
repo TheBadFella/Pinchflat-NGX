@@ -1,21 +1,21 @@
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
-  <div class="max-w-full overflow-x-auto">
+  <div class="max-w-full overflow-visible">
     <div class="flex flex-col items-center gap-10 text-theme-on-surface">
       <section class="text-center">
         <h2 class="text-3xl font-bold">Welcome to Pinchflat</h2>
-
+        
         <p class="text-lg text-theme-on-surface-muted">Getting started is easy</p>
       </section>
-
+      
       <section class={["text-center", @media_profiles_exist && "opacity-20"]}>
         <h3 class="text-xl font-bold">1. Create a Media Profile</h3>
-
+        
         <p class="text-md text-theme-on-surface-muted">
           Media Profiles set your preferences for fetching and downloading media.
         </p>
-
+        
         <p class="text-md text-theme-on-surface-muted">Don't worry, you can create more Media Profiles later!</p>
-
+        
         <div class="mt-8">
           <.link href={~p"/media_profiles/new"}>
             <.button rounding="rounded-m3-sm" disabled={@media_profiles_exist}>
@@ -24,16 +24,16 @@
           </.link>
         </div>
       </section>
-
+      
       <section class={["text-center", (!@media_profiles_exist || @sources_exist) && "opacity-20"]}>
         <h3 class="text-xl font-bold">2. Create a Source</h3>
-
+        
         <p class="text-md text-theme-on-surface-muted">Sources are the channels and playlists you want to download.</p>
-
+        
         <p class="text-md text-theme-on-surface-muted">
           Each Media Profile can control many Sources so it's easy to add more content!
         </p>
-
+        
         <div class="mt-8">
           <.link href={~p"/sources/new"}>
             <.button rounding="rounded-m3-sm" disabled={not @media_profiles_exist}>
@@ -42,20 +42,20 @@
           </.link>
         </div>
       </section>
-
+      
       <section class={["text-center", @sources_exist || "opacity-20"]}>
         <h3 class="text-xl font-bold">3. That's it!</h3>
-
+        
         <p class="text-md text-theme-on-surface-muted">Everything is set up and running based on your preferences.</p>
-
+        
         <p class="text-md text-theme-on-surface-muted">
           Remember that indexing and downloading media can take a while, many hours for a large source.
         </p>
-
+        
         <p class="text-md text-theme-on-surface-muted">
           Feel free to add more Media Profiles or Sources in the meantime!
         </p>
-
+        
         <div class="mt-8">
           <.link href={~p"/?onboarding=0"}>
             <.button rounding="rounded-m3-sm" disabled={not @sources_exist}>

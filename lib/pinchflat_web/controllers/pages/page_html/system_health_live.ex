@@ -103,29 +103,31 @@ defmodule Pinchflat.Pages.SystemHealthLive do
           </article>
         </div>
 
-        <div class="hidden md:block max-w-full overflow-x-auto">
-          <.table rows={@stale_sources} table_class="text-sm">
-            <:col :let={source} label="Source">
-              <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
-            </:col>
+        <div class="hidden md:block max-w-full overflow-visible">
+          <div class="overflow-x-auto overflow-y-hidden">
+            <.table rows={@stale_sources} table_class="text-sm">
+              <:col :let={source} label="Source">
+                <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+              </:col>
 
-            <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
+              <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
 
-            <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
+              <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
 
-            <:col :let={source} label="Enabled"><span :if={source.enabled} class="theme-status-success">Yes</span>
-              <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span></:col>
+              <:col :let={source} label="Enabled"><span :if={source.enabled} class="theme-status-success">Yes</span>
+                <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span></:col>
 
-            <:col :let={source} label="">
-              <.link
-                href={~p"/sources/#{source.id}/force_index"}
-                method="post"
-                class="text-xs text-theme-primary transition hover:text-theme-secondary"
-              >
-                Force Index
-              </.link>
-            </:col>
-          </.table>
+              <:col :let={source} label="">
+                <.link
+                  href={~p"/sources/#{source.id}/force_index"}
+                  method="post"
+                  class="text-xs text-theme-primary transition hover:text-theme-secondary"
+                >
+                  Force Index
+                </.link>
+              </:col>
+            </.table>
+          </div>
         </div>
       </div>
     </div>

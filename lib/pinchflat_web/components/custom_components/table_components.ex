@@ -31,45 +31,47 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
 
   def table(assigns) do
     ~H"""
-    <div class="overflow-x-auto overflow-y-visible rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
-      <table class={[
-        "min-w-full w-max table-auto text-theme-on-surface",
-        @table_class
-      ]}>
-        <thead>
-          <tr class="border-b border-theme-outline/70 bg-theme-surface-3 text-left">
-            <th
-              :for={col <- @col}
-              class={["px-4 py-4 font-medium text-theme-on-surface", col[:sort_key] && "cursor-pointer"]}
-              phx-click={col[:sort_key] && "sort_update"}
-              phx-value-sort_key={col[:sort_key]}
-            >
-              <div class="relative">
-                {col[:label]}
-                <.icon
-                  :if={to_string(@sort_key) == col[:sort_key]}
-                  name={if @sort_direction == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
-                  class="w-3 h-3 mt-2 ml-1 absolute"
-                />
-              </div>
-            </th>
-          </tr>
-        </thead>
+    <div class="overflow-visible rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
+      <div class="overflow-x-auto overflow-y-hidden">
+        <table class={[
+          "min-w-full w-max table-auto text-theme-on-surface",
+          @table_class
+        ]}>
+          <thead>
+            <tr class="border-b border-theme-outline/70 bg-theme-surface-3 text-left">
+              <th
+                :for={col <- @col}
+                class={["px-4 py-4 font-medium text-theme-on-surface", col[:sort_key] && "cursor-pointer"]}
+                phx-click={col[:sort_key] && "sort_update"}
+                phx-value-sort_key={col[:sort_key]}
+              >
+                <div class="relative">
+                  {col[:label]}
+                  <.icon
+                    :if={to_string(@sort_key) == col[:sort_key]}
+                    name={if @sort_direction == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
+                    class="w-3 h-3 mt-2 ml-1 absolute"
+                  />
+                </div>
+              </th>
+            </tr>
+          </thead>
 
-        <tbody class="divide-y divide-theme-outline/60">
-          <tr :for={row <- @rows} class="transition hover:bg-theme-surface-2">
-            <td
-              :for={col <- @col}
-              class={[
-                "px-4 py-5 text-theme-on-surface-muted",
-                col[:class]
-              ]}
-            >
-              {render_slot(col, @row_item.(row))}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          <tbody class="divide-y divide-theme-outline/60">
+            <tr :for={row <- @rows} class="transition hover:bg-theme-surface-2">
+              <td
+                :for={col <- @col}
+                class={[
+                  "px-4 py-5 text-theme-on-surface-muted",
+                  col[:class]
+                ]}
+              >
+                {render_slot(col, @row_item.(row))}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
     """
   end
@@ -102,13 +104,13 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
             <.icon name="hero-chevron-left" />
           </span>
         </li>
-
+        
         <li>
           <span class="mx-2">
             Page <.localized_number number={@page_number} /> of <.localized_number number={@total_pages} />
           </span>
         </li>
-
+        
         <li>
           <span
             class={[
