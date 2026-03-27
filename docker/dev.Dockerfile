@@ -43,7 +43,7 @@ RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
     tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffprobe"
 
 # Install nodejs and Yarn
-RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
+RUN curl -sL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
   bash nodesource_setup.sh && \
   set -eux; \
   for attempt in 1 2 3 4 5; do \

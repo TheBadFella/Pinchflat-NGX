@@ -6,7 +6,6 @@
         class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
       />
     </.link>
-
     <h2 class="ml-4 break-words text-title-md2 font-bold text-theme-on-surface">
       {@source.custom_name}
     </h2>
@@ -114,6 +113,7 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 class="text-xl font-bold">Playlist Selection</h3>
+
               <p class="mt-1 text-sm text-theme-on-surface-muted">
                 Choose which indexed playlist items should be eligible for download.
               </p>
@@ -167,7 +167,9 @@
             >
               <div class="grid grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/70 bg-theme-surface-5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
                 <div>Pick</div>
+
                 <div>Item</div>
+
                 <div>Index</div>
               </div>
 
@@ -187,12 +189,14 @@
                     class="rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0"
                   />
                 </div>
+
                 <div class="min-w-0">
                   <p class="break-words font-medium text-theme-on-surface">{media_item.title}</p>
                   <p class="mt-1 text-xs text-theme-on-surface-muted">
                     {Calendar.strftime(media_item.uploaded_at, "%Y-%m-%d")}
                   </p>
                 </div>
+
                 <div class="text-sm text-theme-on-surface-muted">#{media_item.playlist_index}</div>
               </label>
             </div>

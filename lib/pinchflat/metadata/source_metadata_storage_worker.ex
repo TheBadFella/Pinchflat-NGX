@@ -49,27 +49,27 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     source = Repo.preload(Sources.get_source!(source_id), [:metadata, :media_profile])
     series_directory = determine_series_directory(source)
 
-    with {:ok, {source_metadata, source_image_attrs, metadata_image_attrs}} <-
-           fetch_source_metadata_and_images(series_directory, source) do
-      source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
+    case fetch_source_metadata_and_images(series_directory, source) do
+      {:ok, {source_metadata, source_image_attrs, metadata_image_attrs}} ->
+        source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
 
-      Sources.update_source(
-        source,
-        Map.merge(
-          %{
-            series_directory: series_directory,
-            nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
-            description: source_metadata["description"],
-            metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
-          },
-          source_image_attrs
-        ),
-        # `run_post_commit_tasks: false` prevents this from running in an infinite loop
-        run_post_commit_tasks: false
-      )
+        Sources.update_source(
+          source,
+          Map.merge(
+            %{
+              series_directory: series_directory,
+              nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+              description: source_metadata["description"],
+              metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
+            },
+            source_image_attrs
+          ),
+          # `run_post_commit_tasks: false` prevents this from running in an infinite loop
+          run_post_commit_tasks: false
+        )
 
-      :ok
-    else
+        :ok
+
       {:error, reason} ->
         Logger.warning(
           "#{__MODULE__} failed to fetch metadata for source #{source.id} " <>

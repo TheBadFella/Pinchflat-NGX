@@ -181,6 +181,8 @@ defmodule Pinchflat.Tasks do
 
   Returns %{task_id: integer(), job_id: integer(), source_id: integer() | nil, media_item_id: integer() | nil} | nil.
   """
+  def get_task_event_payload(nil), do: nil
+
   def get_task_event_payload(job_id) do
     from(t in Task,
       left_join: mi in assoc(t, :media_item),

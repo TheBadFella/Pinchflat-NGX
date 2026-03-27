@@ -8,7 +8,7 @@
     </.link>
     <h2 class="ml-2 truncate text-title-md2 font-bold text-theme-on-surface">{@media_profile.name}</h2>
   </div>
-  
+
   <nav>
     <.link href={~p"/media_profiles/#{@media_profile}/edit"}>
       <.button rounding="rounded-m3-sm">
@@ -22,12 +22,12 @@
   <div class="max-w-full">
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown media_profile={@media_profile} /></:tab_append>
-      
+
       <:tab title="Media Profile" id="media-profile">
         <div class="flex flex-col gap-10 text-theme-on-surface">
           <section>
             <h3 class="font-bold text-xl mt-6 mb-2">Raw Attributes</h3>
-             <.list_items_from_map map={Map.from_struct(@media_profile)} />
+            <.list_items_from_map map={Map.from_struct(@media_profile)} />
           </section>
         </div>
       </:tab>

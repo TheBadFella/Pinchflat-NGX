@@ -104,13 +104,13 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
             <.icon name="hero-chevron-left" />
           </span>
         </li>
-        
+
         <li>
           <span class="mx-2">
             Page <.localized_number number={@page_number} /> of <.localized_number number={@total_pages} />
           </span>
         </li>
-        
+
         <li>
           <span
             class={[

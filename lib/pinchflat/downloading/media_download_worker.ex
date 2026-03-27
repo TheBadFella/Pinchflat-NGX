@@ -60,7 +60,10 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id)
 
       {:skip, reason} ->
-        Logger.info("media_download_skipped media_item_id=#{media_item.id} source_id=#{media_item.source_id} reason=#{reason}")
+        Logger.info(
+          "media_download_skipped media_item_id=#{media_item.id} source_id=#{media_item.source_id} reason=#{reason}"
+        )
+
         :ok
     end
   rescue

@@ -80,7 +80,7 @@ defmodule PinchflatWeb.CoreComponents do
                   <.icon name="hero-x-mark-solid" class="h-5 w-5 text-theme-on-surface" />
                 </button>
               </div>
-              
+
               <div id={"#{@id}-content"}>{render_slot(@inner_block)}</div>
             </div>
           </div>
@@ -124,10 +124,10 @@ defmodule PinchflatWeb.CoreComponents do
       ]}>
         <main>
           <h5 :if={@title} class="mb-2 text-lg font-bold">{@title}</h5>
-          
+
           <p class="mt-2 text-md leading-5 opacity-80">{msg}</p>
         </main>
-        
+
         <button
           type="button"
           aria-label={gettext("close")}
@@ -164,7 +164,7 @@ defmodule PinchflatWeb.CoreComponents do
       >
         Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
       </.flash>
-      
+
       <.flash
         id="server-error"
         kind={:error}
@@ -297,7 +297,7 @@ defmodule PinchflatWeb.CoreComponents do
         /> {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </label>
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-      
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -309,7 +309,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-      
+
       <section class="grid grid-cols-1 gap-2 md:grid-cols-2 max-w-prose mb-4 ml-1">
         <div :for={{option_name, option_value} <- @options} class="flex items-center">
           <input
@@ -325,9 +325,9 @@ defmodule PinchflatWeb.CoreComponents do
           /> <label for={"#{@id}-#{option_value}"} class="ml-2 cursor-pointer select-none">{option_name}</label>
         </div>
       </section>
-      
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-      
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -344,7 +344,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label :if={@label} for={@id}>
         {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-      
+
       <div class="flex flex-col">
         <label for={@id} class="relative inline-flex w-fit cursor-pointer items-center">
           <input type="hidden" name={@name} value="false" />
@@ -359,7 +359,7 @@ defmodule PinchflatWeb.CoreComponents do
           />
           <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50">
           </div>
-          
+
           <div class={[
             "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
             @inputclass
@@ -367,7 +367,7 @@ defmodule PinchflatWeb.CoreComponents do
           </div>
         </label>
         <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-        
+
         <.error :for={msg <- @errors}>{msg}</.error>
       </div>
     </div>
@@ -397,7 +397,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-      
+
       <div class="theme-field-shell mt-2">
         <textarea
           id={@id}
@@ -409,9 +409,9 @@ defmodule PinchflatWeb.CoreComponents do
           {@rest}
         ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
       </div>
-      
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-      
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -424,7 +424,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-      
+
       <div class="flex items-center">
         <div class="theme-field-shell">
           <input
@@ -440,11 +440,11 @@ defmodule PinchflatWeb.CoreComponents do
             {@rest}
           />
         </div>
-         {render_slot(@input_append)}
+        {render_slot(@input_append)}
       </div>
-      
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-      
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -456,7 +456,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-      
+
       <div class="flex">
         <div class="theme-field-shell">
           <select
@@ -471,14 +471,14 @@ defmodule PinchflatWeb.CoreComponents do
             {@rest}
           >
             <option :if={@prompt} value="">{@prompt}</option>
-             {Phoenix.HTML.Form.options_for_select(@options, @value)}
+            {Phoenix.HTML.Form.options_for_select(@options, @value)}
           </select>
         </div>
-         {render_slot(@inner_block)}
+        {render_slot(@inner_block)}
       </div>
-      
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-      
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -517,7 +517,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-      
+
       <div class="flex">
         <div
           class="theme-field-shell relative w-full isolate"
@@ -597,11 +597,11 @@ defmodule PinchflatWeb.CoreComponents do
             </button>
           </div>
         </div>
-         {render_slot(@inner_block)}
+        {render_slot(@inner_block)}
       </div>
-      
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-      
+
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -662,7 +662,7 @@ defmodule PinchflatWeb.CoreComponents do
 
         <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-theme-on-surface-muted">{render_slot(@subtitle)}</p>
       </div>
-      
+
       <div class="flex-none">{render_slot(@actions)}</div>
     </header>
     """
@@ -704,11 +704,11 @@ defmodule PinchflatWeb.CoreComponents do
       <thead class="text-sm text-left leading-6 text-theme-on-surface-muted">
         <tr>
           <th :for={col <- @col} class="p-0 pb-4 pr-6 font-normal">{col[:label]}</th>
-          
+
           <th :if={@action != []} class="relative p-0 pb-4"><span class="sr-only">{gettext("Actions")}</span></th>
         </tr>
       </thead>
-      
+
       <tbody
         id={@id}
         phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
@@ -765,7 +765,7 @@ defmodule PinchflatWeb.CoreComponents do
       <dl class="-my-4 divide-y divide-theme-outline/70">
         <div :for={item <- @item} class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
           <dt class="w-1/4 flex-none text-theme-on-surface">{item.title}</dt>
-          
+
           <dd class="text-theme-on-surface">{render_slot(item)}</dd>
         </div>
       </dl>

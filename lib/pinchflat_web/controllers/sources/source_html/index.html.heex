@@ -1,6 +1,6 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <h2 class="text-title-md2 font-bold text-theme-on-surface">Sources</h2>
-  
+
   <nav class="flex items-center justify-between gap-6">
     <.link href={opml_feed_url(@conn)} x-data="{ copied: false }" x-on:click={~s"
           $event.preventDefault();

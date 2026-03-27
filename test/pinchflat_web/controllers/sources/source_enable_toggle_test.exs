@@ -11,7 +11,8 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
 
       html = render_component(SourceEnableToggle, %{id: :foo, source: source})
 
-      assert html =~ ~s(<input type="checkbox" id="source_1_enabled_input" name="source[enabled]" value="true" checked)
+      assert html =~
+               ~s(<input type="checkbox" id="source_enable_toggle_foo_input" name="source[enabled]" value="true" checked)
     end
 
     test "renders a toggle in the off position if the source is disabled" do
@@ -20,7 +21,17 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
       html = render_component(SourceEnableToggle, %{id: :foo, source: source})
 
       assert html =~
-               ~s(<input type="checkbox" id="source_1_enabled_input" name="source[enabled]" value="true" class="peer sr-only")
+               ~s(<input type="checkbox" id="source_enable_toggle_foo_input" name="source[enabled]" value="true" class="peer sr-only")
+    end
+
+    test "renders unique ids for separate component instances of the same source" do
+      source = %{id: 1, enabled: true}
+
+      desktop_html = render_component(SourceEnableToggle, %{id: "source_1_enabled", source: source})
+      mobile_html = render_component(SourceEnableToggle, %{id: "source_1_enabled_mobile", source: source})
+
+      assert desktop_html =~ ~s(id="source_enable_toggle_source_1_enabled_input")
+      assert mobile_html =~ ~s(id="source_enable_toggle_source_1_enabled_mobile_input")
     end
   end
 end

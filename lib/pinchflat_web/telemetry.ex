@@ -32,7 +32,7 @@ defmodule PinchflatWeb.Telemetry do
         tags: job.tags || [],
         show_in_dashboard: "show_in_dashboard" in (job.tags || [])
       }
-      |> Map.merge(Tasks.get_task_event_payload(job.id) || %{})
+      |> Map.merge(task_event_payload(job.id))
 
     PinchflatWeb.Endpoint.broadcast("job:state", "change", payload)
   end
@@ -110,4 +110,7 @@ defmodule PinchflatWeb.Telemetry do
   defp job_event([:oban, :job, event]), do: event
   defp job_state([:oban, :job, :start], _meta), do: :executing
   defp job_state(_event, meta), do: meta[:state]
+
+  defp task_event_payload(nil), do: %{}
+  defp task_event_payload(job_id), do: Tasks.get_task_event_payload(job_id) || %{}
 end

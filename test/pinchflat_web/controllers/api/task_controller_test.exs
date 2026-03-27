@@ -87,7 +87,7 @@ defmodule PinchflatWeb.Api.TaskControllerTest do
       response = json_response(conn, 200)
 
       # All tasks use TestJobWorker, so both should be returned
-      assert length(response["data"]) >= 1
+      refute response["data"] == []
     end
 
     test "filters by state", %{conn: conn} do

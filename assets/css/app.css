@@ -1,6 +1,6 @@
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
+@import 'tailwindcss';
+@config "../tailwind.config.js";
+@plugin "@tailwindcss/forms";
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
 
@@ -67,6 +67,11 @@
   *:focus-visible {
     @apply outline-none ring-2 ring-theme-primary/70 ring-offset-2 ring-offset-theme-bg;
   }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer components {
@@ -105,11 +110,10 @@
     inset: 0;
     border-radius: inherit;
     padding: 2px;
-    background:
-      linear-gradient(
-        rgb(var(--theme-outline-strong) / 0.7),
-        rgb(var(--theme-outline-strong) / 0.7)
-      );
+    background: linear-gradient(
+      rgb(var(--theme-outline-strong) / 0.7),
+      rgb(var(--theme-outline-strong) / 0.7)
+    );
     pointer-events: none;
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
@@ -120,16 +124,15 @@
 
   .theme-field-shell:focus-within::before,
   .theme-field-shell-active::before {
-    background:
-      conic-gradient(
-        from var(--theme-perimeter-angle, 0deg),
-        rgb(var(--theme-primary) / 0.18) 0deg,
-        rgb(var(--theme-primary) / 1) 60deg,
-        rgb(var(--theme-primary) / 0.14) 96deg,
-        rgb(var(--theme-secondary) / 0.82) 188deg,
-        rgb(var(--theme-tertiary) / 0.92) 276deg,
-        rgb(var(--theme-primary) / 0.18) 360deg
-      );
+    background: conic-gradient(
+      from var(--theme-perimeter-angle, 0deg),
+      rgb(var(--theme-primary) / 0.18) 0deg,
+      rgb(var(--theme-primary) / 1) 60deg,
+      rgb(var(--theme-primary) / 0.14) 96deg,
+      rgb(var(--theme-secondary) / 0.82) 188deg,
+      rgb(var(--theme-tertiary) / 0.92) 276deg,
+      rgb(var(--theme-primary) / 0.18) 360deg
+    );
     animation: perimeter-spin 3.2s linear infinite;
   }
 
@@ -241,15 +244,14 @@
     inset: 0;
     border-radius: inherit;
     padding: 1px;
-    background:
-      conic-gradient(
-        from var(--theme-perimeter-angle, 0deg),
-        rgb(var(--theme-primary) / 0.14) 0deg,
-        rgb(var(--theme-primary) / 0.8) 52deg,
-        rgb(var(--theme-secondary) / 0.42) 170deg,
-        rgb(var(--theme-tertiary) / 0.5) 270deg,
-        rgb(var(--theme-primary) / 0.14) 360deg
-      );
+    background: conic-gradient(
+      from var(--theme-perimeter-angle, 0deg),
+      rgb(var(--theme-primary) / 0.14) 0deg,
+      rgb(var(--theme-primary) / 0.8) 52deg,
+      rgb(var(--theme-secondary) / 0.42) 170deg,
+      rgb(var(--theme-tertiary) / 0.5) 270deg,
+      rgb(var(--theme-primary) / 0.14) 360deg
+    );
     animation: perimeter-spin 5.6s linear infinite;
     pointer-events: none;
     -webkit-mask:
