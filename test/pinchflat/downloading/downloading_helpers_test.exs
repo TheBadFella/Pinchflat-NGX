@@ -14,7 +14,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       source = source_fixture()
       media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
 
-      assert :ok = DownloadingHelpers.enqueue_pending_download_tasks(source)
+      assert 1 = DownloadingHelpers.enqueue_pending_download_tasks(source)
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
     end
@@ -23,7 +23,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       source = source_fixture()
       _media_item = media_item_fixture(source_id: source.id, media_filepath: "some/filepath.mp4")
 
-      assert :ok = DownloadingHelpers.enqueue_pending_download_tasks(source)
+      assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source)
 
       refute_enqueued(worker: MediaDownloadWorker)
     end
@@ -34,7 +34,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
 
       assert [] = Tasks.list_tasks_for(media_item)
 
-      assert :ok = DownloadingHelpers.enqueue_pending_download_tasks(source)
+      assert 1 = DownloadingHelpers.enqueue_pending_download_tasks(source)
 
       assert [_] = Tasks.list_tasks_for(media_item)
     end
@@ -42,7 +42,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
     test "does not create a job if the source is set to not download" do
       source = source_fixture(download_media: false)
 
-      assert :ok = DownloadingHelpers.enqueue_pending_download_tasks(source)
+      assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source)
 
       refute_enqueued(worker: MediaDownloadWorker)
     end
@@ -51,7 +51,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       source = source_fixture(download_media: false)
       media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
 
-      assert :ok = DownloadingHelpers.enqueue_pending_download_tasks(source)
+      assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source)
       assert [] = Tasks.list_tasks_for(media_item)
     end
 
@@ -59,7 +59,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       source = source_fixture()
       media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
 
-      assert :ok = DownloadingHelpers.enqueue_pending_download_tasks(source, priority: 1)
+      assert 1 = DownloadingHelpers.enqueue_pending_download_tasks(source, priority: 1)
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id}, priority: 1)
     end
@@ -73,7 +73,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       DownloadingHelpers.enqueue_pending_download_tasks(source)
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
 
-      assert :ok = DownloadingHelpers.dequeue_pending_download_tasks(source)
+      assert 1 = DownloadingHelpers.dequeue_pending_download_tasks(source)
 
       refute_enqueued(worker: MediaDownloadWorker)
       assert [] = Tasks.list_tasks_for(media_item)

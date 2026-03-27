@@ -31,9 +31,9 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
 
   def table(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
+    <div class="overflow-x-auto overflow-y-hidden rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
       <table class={[
-        "w-full table-auto text-theme-on-surface",
+        "min-w-full w-max table-auto text-theme-on-surface",
         @table_class
       ]}>
         <thead>

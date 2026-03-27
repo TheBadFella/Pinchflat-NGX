@@ -31,64 +31,135 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
         </span>
       </span>
-      <div class="max-w-full overflow-x-auto">
-        <.table rows={@records}>
-          <:col :let={media_item} label="Title" class="max-w-xs">
-            <section class="space-y-2">
-              <div class="flex items-center space-x-1 gap-2">
-                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
-                <.icon_button
-                  :if={is_nil(media_item.media_downloaded_at)}
-                  icon_name="hero-arrow-down-tray"
-                  class="h-10 w-10"
-                  phx-click="force_download"
-                  phx-value-media-id={media_item.id}
-                  data-confirm="Are you sure you want to force a download of this media?"
-                  tooltip="Force Download"
-                  tooltip_position="bottom-left"
-                />
-                <span class="truncate">
+      <div class="space-y-4 md:hidden">
+        <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 space-y-2">
+              <div class="flex items-start gap-2">
+                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="mt-0.5 shrink-0 text-red-500" />
+                <div class="min-w-0">
                   <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                    {media_item.title}
+                    <span class="break-words font-medium text-theme-on-surface">{media_item.title}</span>
                   </.subtle_link>
-                </span>
+                </div>
               </div>
+              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
+                <span class="text-sm text-theme-on-surface-muted">{media_item.source.custom_name}</span>
+              </.subtle_link>
+            </div>
 
-              <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
-                {media_item.last_error}
-              </div>
-            </section>
-          </:col>
+            <div class="flex shrink-0 items-center gap-2">
+              <.icon_button
+                :if={is_nil(media_item.media_downloaded_at)}
+                icon_name="hero-arrow-down-tray"
+                class="h-10 w-10"
+                phx-click="force_download"
+                phx-value-media-id={media_item.id}
+                data-confirm="Are you sure you want to force a download of this media?"
+                tooltip="Force Download"
+                tooltip_position="bottom-left"
+              />
+              <.icon_button
+                :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+                icon_name="hero-stop"
+                class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
+                icon_class="text-red-300"
+                phx-click="stop_download"
+                phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+                data-confirm="Are you sure you want to stop this download?"
+                tooltip="Stop Download"
+                tooltip_position="bottom-left"
+              />
+            </div>
+          </div>
 
-          <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
+          <div :if={media_item.last_error} class="whitespace-pre-wrap break-words rounded-m3-sm bg-red-500/10 p-3 text-xs text-red-300">
+            {media_item.last_error}
+          </div>
 
-          <:col :let={media_item} label="Size / Progress">
-            {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
-          </:col>
+          <dl class="grid grid-cols-1 gap-3 text-sm">
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Upload Date</dt>
+              <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Size / Progress</dt>
+              <dd class="max-w-[60%] text-right text-theme-on-surface">
+                {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
+              </dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Indexed At</dt>
+              <dd class="text-right text-theme-on-surface">{format_datetime(media_item.inserted_at)}</dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Downloaded At</dt>
+              <dd class="text-right text-theme-on-surface">{format_datetime(media_item.media_downloaded_at)}</dd>
+            </div>
+          </dl>
+        </article>
+      </div>
 
-          <:col :let={media_item} label="Indexed At">{format_datetime(media_item.inserted_at)}</:col>
+      <div class="hidden md:block">
+        <div class="max-w-full overflow-x-auto">
+          <.table rows={@records}>
+            <:col :let={media_item} label="Title" class="max-w-xs">
+              <section class="space-y-2">
+                <div class="flex items-center space-x-1 gap-2">
+                  <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
+                  <.icon_button
+                    :if={is_nil(media_item.media_downloaded_at)}
+                    icon_name="hero-arrow-down-tray"
+                    class="h-10 w-10"
+                    phx-click="force_download"
+                    phx-value-media-id={media_item.id}
+                    data-confirm="Are you sure you want to force a download of this media?"
+                    tooltip="Force Download"
+                    tooltip_position="bottom-left"
+                  />
+                  <span class="truncate">
+                    <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                      {media_item.title}
+                    </.subtle_link>
+                  </span>
+                </div>
 
-          <:col :let={media_item} label="Downloaded At">{format_datetime(media_item.media_downloaded_at)}</:col>
+                <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
+                  {media_item.last_error}
+                </div>
+              </section>
+            </:col>
 
-          <:col :let={media_item} label="Source" class="truncate max-w-xs">
-            <.subtle_link href={~p"/sources/#{media_item.source_id}"}>{media_item.source.custom_name}</.subtle_link>
-          </:col>
+            <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
 
-          <:col :let={media_item} label="Action">
-            <.icon_button
-              :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-              icon_name="hero-stop"
-              class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
-              icon_class="text-red-300"
-              phx-click="stop_download"
-              phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
-              data-confirm="Are you sure you want to stop this download?"
-              tooltip="Stop Download"
-              tooltip_position="bottom-left"
-            />
-            <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
-          </:col>
-        </.table>
+            <:col :let={media_item} label="Size / Progress">
+              {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
+            </:col>
+
+            <:col :let={media_item} label="Indexed At">{format_datetime(media_item.inserted_at)}</:col>
+
+            <:col :let={media_item} label="Downloaded At">{format_datetime(media_item.media_downloaded_at)}</:col>
+
+            <:col :let={media_item} label="Source" class="truncate max-w-xs">
+              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>{media_item.source.custom_name}</.subtle_link>
+            </:col>
+
+            <:col :let={media_item} label="Action">
+              <.icon_button
+                :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+                icon_name="hero-stop"
+                class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
+                icon_class="text-red-300"
+                phx-click="stop_download"
+                phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+                data-confirm="Are you sure you want to stop this download?"
+                tooltip="Stop Download"
+                tooltip_position="bottom-left"
+              />
+              <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
+            </:col>
+          </.table>
+        </div>
       </div>
 
       <section class="flex justify-center mt-5">
