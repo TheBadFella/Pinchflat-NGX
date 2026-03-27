@@ -10,6 +10,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
 
+  def source_download_mode_label(%{selection_mode: :manual}), do: "Delayed Downloads"
+  def source_download_mode_label(%{selection_mode: _selection_mode}), do: "Automatic Downloads"
+
   def mount(_params, session, socket) do
     limit = session["results_per_page"]
 

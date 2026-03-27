@@ -51,6 +51,31 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources")
       assert html_response(conn, 200) =~ "Sources"
     end
+
+    test "renders download mode identifiers for automatic and delayed playlists", %{conn: conn} do
+      source_fixture(%{custom_name: "Automatic Source", collection_type: :playlist, selection_mode: :all})
+      source_fixture(%{custom_name: "Delayed Source", collection_type: :playlist, selection_mode: :manual})
+
+      conn = get(conn, ~p"/sources")
+      response = html_response(conn, 200)
+
+      assert response =~ "Automatic Downloads"
+      assert response =~ "Delayed Downloads"
+    end
+
+    test "renders source row controls", %{conn: conn} do
+      source_fixture(%{custom_name: "Controllable Source"})
+
+      conn = get(conn, ~p"/sources")
+      response = html_response(conn, 200)
+
+      assert response =~ "Start all"
+      assert response =~ "Pause all"
+      assert response =~ "Stop all"
+      assert response =~ "Start downloads for Controllable Source?"
+      assert response =~ "Pause downloads for Controllable Source?"
+      assert response =~ "Stop downloads for Controllable Source?"
+    end
   end
 
   describe "new source" do
@@ -58,6 +83,28 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/new")
       assert html_response(conn, 200) =~ "New Source"
       assert html_response(conn, 200) =~ "Delay Automatic Download"
+      assert html_response(conn, 200) =~ "How source folders work"
+      assert html_response(conn, 200) =~ "Insert media profile template"
+    end
+
+    test "renders source folder picker options from existing media directories", %{conn: conn} do
+      media_root = Path.join(System.tmp_dir!(), "pinchflat-source-folder-picker-#{System.unique_integer([:positive])}")
+      original_media_root = Application.get_env(:pinchflat, :media_directory)
+
+      Application.put_env(:pinchflat, :media_directory, media_root)
+      File.mkdir_p!(Path.join([media_root, "Kids", "Bluey"]))
+
+      on_exit(fn ->
+        Application.put_env(:pinchflat, :media_directory, original_media_root)
+        File.rm_rf!(media_root)
+      end)
+
+      conn = get(conn, ~p"/sources/new")
+      response = html_response(conn, 200)
+
+      assert response =~ "Pick existing source folder"
+      assert response =~ "Kids"
+      assert response =~ "Kids/Bluey"
     end
 
     test "renders cookie management controls", %{conn: conn} do
@@ -173,6 +220,33 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert redirected_to(conn) == ~p"/sources/#{id}?#{[tab: "selection"]}"
     end
 
+    test "redirects normal playlists to the source page and leaves auto download enabled", %{conn: conn} do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: nil,
+           channel_id: nil,
+           playlist_id: "some_playlist_id_123",
+           playlist_title: "Some Playlist"
+         })}
+      end)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: %{
+            media_profile_id: media_profile_fixture().id,
+            original_url: "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
+          }
+        )
+
+      assert %{id: id} = redirected_params(conn)
+      assert redirected_to(conn) == ~p"/sources/#{id}"
+
+      source = Pinchflat.Sources.get_source!(id)
+      assert source.selection_mode == :all
+      assert source.download_media
+    end
+
     test "renders correct layout on error when onboarding", %{conn: conn, invalid_attrs: invalid_attrs} do
       Settings.set(onboarding: true)
       conn = post(conn, ~p"/sources", source: invalid_attrs)
@@ -187,6 +261,14 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders form for editing chosen source", %{conn: conn, source: source} do
       conn = get(conn, ~p"/sources/#{source}/edit")
       assert html_response(conn, 200) =~ "Editing \"#{source.custom_name}\""
+    end
+
+    test "renders restore automatic downloads action for manual playlists", %{conn: conn} do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+
+      conn = get(conn, ~p"/sources/#{source}/edit")
+
+      assert html_response(conn, 200) =~ "Restore Automatic Downloads"
     end
 
     test "does not override saved cookie behaviour on edit when cookies.txt exists", %{conn: conn, source: source} do
@@ -306,6 +388,31 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "show source" do
+    test "renders delayed download summary for manual playlists", %{conn: conn} do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+
+      conn = get(conn, ~p"/sources/#{source}")
+      response = html_response(conn, 200)
+
+      assert response =~ "Mode: Delayed"
+      assert response =~ "Restore Automatic Downloads"
+      assert response =~ "manual selection mode"
+    end
+
+    test "renders start, pause, and stop actions in the source actions dropdown", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Dropdown Source"})
+
+      conn = get(conn, ~p"/sources/#{source}")
+      response = html_response(conn, 200)
+
+      assert response =~ "Start All"
+      assert response =~ "Pause All"
+      assert response =~ "Stop All"
+      assert response =~ "Start downloads for Dropdown Source?"
+      assert response =~ "Pause downloads for Dropdown Source?"
+      assert response =~ "Stop downloads for Dropdown Source?"
+    end
+
     test "renders the excluded tab label", %{conn: conn} do
       source = source_fixture()
 
@@ -330,12 +437,111 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Job Queue"
     end
 
-    test "renders the selection tab label for playlists", %{conn: conn} do
-      source = source_fixture(collection_type: :playlist)
+    test "renders the selection tab label for manual playlists", %{conn: conn} do
+      source = source_fixture(collection_type: :playlist, selection_mode: :manual)
 
       conn = get(conn, ~p"/sources/#{source}")
 
       assert html_response(conn, 200) =~ "Selection"
+    end
+
+    test "does not render the selection tab label for normal playlists", %{conn: conn} do
+      source = source_fixture(collection_type: :playlist, selection_mode: :all)
+
+      conn = get(conn, ~p"/sources/#{source}")
+
+      refute html_response(conn, 200) =~ "Selection"
+    end
+  end
+
+  describe "source row actions" do
+    test "start_all enables the source and enqueues pending downloads", %{conn: conn} do
+      source = source_fixture(%{enabled: false, download_media: false})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      conn = post(conn, ~p"/sources/#{source.id}/start_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      assert Repo.reload!(source).enabled
+      assert Repo.reload!(source).download_media
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "start_all reports when there is nothing to download", %{conn: conn} do
+      source = source_fixture(%{enabled: false, download_media: false})
+
+      conn = post(conn, ~p"/sources/#{source.id}/start_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Nothing to download for this source."
+      refute Repo.reload!(source).enabled
+      refute Repo.reload!(source).download_media
+    end
+
+    test "pause_all disables automatic downloads for the source", %{conn: conn} do
+      source = source_fixture(%{enabled: true, download_media: true})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      Pinchflat.Downloading.DownloadingHelpers.enqueue_pending_download_tasks(source)
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+
+      conn = post(conn, ~p"/sources/#{source.id}/pause_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      refute Repo.reload!(source).download_media
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "pause_all reports when there are no active downloads", %{conn: conn} do
+      source = source_fixture(%{enabled: true, download_media: true})
+      media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      conn = post(conn, ~p"/sources/#{source.id}/pause_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "No active downloads to pause for this source."
+      assert Repo.reload!(source).download_media
+    end
+
+    test "stop_all disables the source and clears pending download jobs", %{conn: conn} do
+      source = source_fixture(%{enabled: true, download_media: true})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      Pinchflat.Downloading.DownloadingHelpers.enqueue_pending_download_tasks(source)
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+
+      conn = post(conn, ~p"/sources/#{source.id}/stop_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      refute Repo.reload!(source).enabled
+      refute Repo.reload!(source).download_media
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "stop_all reports when there is nothing to stop", %{conn: conn} do
+      source = source_fixture(%{enabled: true, download_media: true})
+
+      conn = post(conn, ~p"/sources/#{source.id}/stop_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Nothing to stop for this source."
+      assert Repo.reload!(source).enabled
+      assert Repo.reload!(source).download_media
+    end
+  end
+
+  describe "restore_automatic_downloads" do
+    test "restores automatic downloads for a manual playlist source", %{conn: conn} do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+
+      conn = post(conn, ~p"/sources/#{source.id}/restore_automatic_downloads", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      assert Repo.reload!(source).selection_mode == :all
+      assert Repo.reload!(source).download_media
+      refute Repo.reload!(media_item).prevent_download
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
     end
   end
 

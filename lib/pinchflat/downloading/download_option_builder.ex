@@ -196,8 +196,12 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   defp build_output_path(string, media_item_with_preloads) do
     additional_options_map = output_options_map(media_item_with_preloads)
     {:ok, output_path} = OutputPathBuilder.build(string, additional_options_map)
+    relative_output_path = output_path |> String.trim_leading("/") |> String.trim_leading("\\")
+    source_subdirectory = media_item_with_preloads.source.download_subdirectory
 
-    Path.join(base_directory(), output_path)
+    [base_directory(), source_subdirectory, relative_output_path]
+    |> Enum.reject(&is_nil/1)
+    |> Path.join()
   end
 
   defp output_options_map(media_item_with_preloads) do

@@ -1,6 +1,7 @@
 defmodule Pinchflat.SourcesTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
   import Pinchflat.TasksFixtures
   import Pinchflat.MediaFixtures
   import Pinchflat.ProfilesFixtures
@@ -17,6 +18,17 @@ defmodule Pinchflat.SourcesTest do
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
 
   @invalid_source_attrs %{name: nil, collection_id: nil}
+
+  setup do
+    original_level = Logger.level()
+    Logger.configure(level: :info)
+
+    on_exit(fn ->
+      Logger.configure(level: original_level)
+    end)
+
+    :ok
+  end
 
   describe "schema" do
     test "source_metadata is deleted when the source is deleted" do
@@ -57,6 +69,26 @@ defmodule Pinchflat.SourcesTest do
       source = source_fixture(%{media_profile_id: media_profile.id, output_path_template_override: "  "})
 
       assert Sources.output_path_template(source) == "/profile/{{ title }}.{{ ext }}"
+    end
+  end
+
+  describe "download_subdirectory validation" do
+    test "normalizes slashes and trims surrounding separators" do
+      changeset = Source.changeset(%Source{}, %{download_subdirectory: "\\Kids\\Bluey\\"}, :initial)
+
+      assert Ecto.Changeset.get_field(changeset, :download_subdirectory) == "Kids/Bluey"
+    end
+
+    test "rejects drive-letter absolute paths" do
+      changeset = Source.changeset(%Source{}, %{download_subdirectory: "C:/Kids/Bluey"}, :initial)
+
+      assert "must be a relative path under the media root" in errors_on(changeset).download_subdirectory
+    end
+
+    test "rejects parent directory traversal" do
+      changeset = Source.changeset(%Source{}, %{download_subdirectory: "../Kids"}, :initial)
+
+      assert "cannot contain parent directory segments" in errors_on(changeset).download_subdirectory
     end
   end
 
@@ -182,6 +214,26 @@ defmodule Pinchflat.SourcesTest do
       assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs)
       assert source.collection_name == "some channel name"
       assert String.starts_with?(source.collection_id, "some_channel_id_")
+    end
+
+    test "logs structured source creation details" do
+      expect(YtDlpRunnerMock, :run, &playlist_mock/5)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/playlist?list=abc123"
+      }
+
+      log =
+        capture_log([level: :info], fn ->
+          assert {:ok, %Source{}} = Sources.create_source(valid_attrs, run_post_commit_tasks: false)
+        end)
+
+      assert log =~ "source_created"
+      assert log =~ "collection_type=playlist"
+      assert log =~ "selection_mode=all"
+      assert log =~ "download_media=true"
+      assert log =~ "enabled=true"
     end
 
     test "creates a source and adds name + ID for playlists" do
@@ -499,6 +551,20 @@ defmodule Pinchflat.SourcesTest do
 
       assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs, delay_automatic_download: true)
       assert source.collection_type == :channel
+      assert source.selection_mode == :all
+      assert source.download_media
+    end
+
+    test "playlist creation without delay_automatic_download keeps automatic downloads enabled" do
+      expect(YtDlpRunnerMock, :run, &playlist_mock/5)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/playlist?list=abc123"
+      }
+
+      assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs)
+      assert source.collection_type == :playlist
       assert source.selection_mode == :all
       assert source.download_media
     end
@@ -946,6 +1012,23 @@ defmodule Pinchflat.SourcesTest do
       assert updated_source.download_media
       assert [%{args: %{"id" => selected_id}}] = all_enqueued(worker: MediaDownloadWorker)
       assert selected_id == selected.id
+    end
+  end
+
+  describe "restore_automatic_downloads/1" do
+    test "switches a manual playlist back to automatic downloads and clears prevented media" do
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+      first = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+      second = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+
+      assert {:ok, %Source{} = restored_source} = Sources.restore_automatic_downloads(source)
+
+      assert restored_source.selection_mode == :all
+      assert restored_source.download_media
+      refute Repo.reload!(first).prevent_download
+      refute Repo.reload!(second).prevent_download
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => first.id})
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => second.id})
     end
   end
 

@@ -22,6 +22,8 @@ For installation, configuration, and the base feature set, use the actual upstre
 - **Download Speed:** Real-time download speed is now visible in both the job dashboard and media tables.
 - **Smarter Retries:** Improved retry logic that clears stale errors and provides accurate task status updates.
 - **Nightly yt-dlp Builds:** Automatically uses nightly builds to ensure immediate compatibility with YouTube changes.
+- **Better Source Controls:** Automatic vs delayed download indicators, inline start/pause/stop controls, matching dropdown actions, and improved playlist/manual-mode recovery.
+- **Per-Source Folder Routing:** Dedicated source folder, existing-folder picker, and media-profile template insertion to simplify output path setup.
 - **Quality-of-Life Tweaks:** General UI improvements and maintenance fixes beyond the upstream implementation.
 
 For local development in this repo, use Docker:

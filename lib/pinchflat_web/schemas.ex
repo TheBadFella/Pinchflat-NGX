@@ -368,6 +368,10 @@ defmodule PinchflatWeb.Schemas do
               description: "Delete media older than this many days"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
+            download_subdirectory: %Schema{
+              type: :string,
+              description: "Relative folder under the media root for this source"
+            },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
             output_path_template_override: %Schema{
@@ -410,6 +414,10 @@ defmodule PinchflatWeb.Schemas do
             },
             retention_period_days: %Schema{type: :integer, description: "Delete media older than this many days"},
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
+            download_subdirectory: %Schema{
+              type: :string,
+              description: "Relative folder under the media root for this source"
+            },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
             output_path_template_override: %Schema{

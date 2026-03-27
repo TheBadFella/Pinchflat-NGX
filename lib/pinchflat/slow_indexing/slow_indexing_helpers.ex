@@ -110,7 +110,13 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       end)
 
     update_source_after_indexing(source)
-    DownloadingHelpers.enqueue_pending_download_tasks(source)
+    enqueued_download_count = DownloadingHelpers.enqueue_pending_download_tasks(source)
+
+    Logger.info(
+      "indexing_completed source_id=#{source.id} indexed_media_count=#{length(media_attributes)} " <>
+        "created_media_count=#{Enum.count(result, &match?(%MediaItem{}, &1))} " <>
+        "pending_downloads_enqueued=#{enqueued_download_count} download_media=#{source.download_media}"
+    )
 
     result
   end

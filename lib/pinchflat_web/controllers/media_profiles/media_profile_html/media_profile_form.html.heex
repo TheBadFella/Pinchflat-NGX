@@ -37,12 +37,29 @@
     <section class="flex justify-between items-center mt-8">
       <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
-      <span
-        class="cursor-pointer text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline"
-        x-on:click="advancedMode = !advancedMode"
-      >
-        Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
-      </span>
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
+        <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
+            x-on:click="advancedMode = false"
+            x-bind:aria-pressed="!advancedMode"
+          >
+            Standard
+          </button>
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
+            x-on:click="advancedMode = true"
+            x-bind:aria-pressed="advancedMode"
+          >
+            Advanced
+          </button>
+        </div>
+      </div>
     </section>
 
     <section x-data="{ 

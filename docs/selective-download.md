@@ -282,3 +282,35 @@ These are deployment recommendations, not verified live values from the current 
 - [x] `mix format`
 - [x] Focused regression suite for touched files
 - [x] Full `mix test`
+
+## Verified Remaining Work
+
+This section lists only the items that still appear to be missing after comparing this document against the current codebase.
+
+### Performance Validation And Tuning
+
+- [x] Verify the actual runtime values for `YT_DLP_WORKER_CONCURRENCY`, `download_throughput_limit`, and `extractor_sleep_interval_seconds`.
+
+Pertains to:
+
+- Confirming the real environment settings the app is running with, not just the code defaults.
+- Determining whether slow downloads or indexing are caused by deployment configuration rather than application logic.
+- `download_throughput_limit` may cap transfer speed.
+- `extractor_sleep_interval_seconds` may intentionally add delay between yt-dlp requests.
+- `YT_DLP_WORKER_CONCURRENCY` is still used as the fallback for the newer split queue settings.
+
+- [x] Review the source-wide pending download sweep that still runs after indexing and reduce redundant enqueue scans if a narrower safe path exists.
+
+Pertains to:
+
+- `Pinchflat.SlowIndexing.SlowIndexingHelpers` still calls `DownloadingHelpers.enqueue_pending_download_tasks(source)` after indexing completes.
+- That broad pass is correct, but it may do unnecessary work for large sources when only some items changed.
+- The remaining work is to determine whether this can be narrowed without regressing download correctness or manual selection behavior.
+
+- [x] Use the new download speed display in real runtime conditions to determine whether slowness is caused by network throughput, remote throttling, queue starvation, or precheck/index overhead.
+
+Pertains to:
+
+- Operational diagnosis rather than missing UI or backend implementation.
+- The speed field is already stored and rendered, but the follow-up analysis has not been captured as complete.
+- This work should inform whether any additional queue tuning or yt-dlp request changes are actually needed.

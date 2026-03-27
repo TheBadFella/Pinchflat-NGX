@@ -23,6 +23,58 @@
 
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="max-w-full">
+    <section class="theme-surface-accent mb-6 rounded-m3-lg px-6 py-5 text-theme-on-surface">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-3">
+            <span class={[
+              "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
+              if(@source.selection_mode == :manual,
+                do: "bg-theme-tertiary-container/40 text-theme-on-surface",
+                else: "bg-theme-primary-container/30 text-theme-on-surface"
+              )
+            ]}>
+              {if @source.selection_mode == :manual, do: "Mode: Delayed", else: "Mode: Automatic"}
+            </span>
+            <span class={[
+              "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
+              if(@source.download_media,
+                do: "bg-theme-primary-container/30 text-theme-on-surface",
+                else: "bg-theme-surface-3 text-theme-on-surface-muted"
+              )
+            ]}>
+              {if @source.download_media, do: "Status: Active", else: "Status: Paused"}
+            </span>
+          </div>
+
+          <p class="max-w-3xl text-sm text-theme-on-surface-muted">
+            <%= if @source.selection_mode == :manual do %>
+              This playlist is in manual selection mode. Items not selected in the `Selection` tab are excluded from
+              downloading until you restore automatic downloads.
+            <% else %>
+              This source is using normal automatic downloads for all eligible media items.
+            <% end %>
+          </p>
+        </div>
+
+        <.form
+          :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
+          for={%{}}
+          as={:restore_source}
+          action={~p"/sources/#{@source}/restore_automatic_downloads"}
+          method="post"
+        >
+          <input type="hidden" name="return_to" value={~p"/sources/#{@source}"} />
+          <.button
+            rounding="rounded-m3-sm"
+            data-confirm="Restore automatic downloads for this playlist and allow all indexed items to download?"
+          >
+            Restore Automatic Downloads
+          </.button>
+        </.form>
+      </div>
+    </section>
+
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown source={@source} conn={@conn} /></:tab_append>
 
@@ -50,7 +102,11 @@
         )}
       </:tab>
 
-      <:tab :if={@source.collection_type == :playlist} title="Selection" id="selection">
+      <:tab
+        :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
+        title="Selection"
+        id="selection"
+      >
         <div
           x-data="{ toggleAll(value) { this.$root.querySelectorAll('input[data-selection-checkbox]').forEach(input => input.checked = value) } }"
           class="space-y-5 text-theme-on-surface"

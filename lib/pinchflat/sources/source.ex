@@ -36,6 +36,7 @@ defmodule Pinchflat.Sources.Source do
     download_cutoff_date
     retention_period_days
     title_filter_regex
+    download_subdirectory
     media_profile_id
     output_path_template_override
     marked_for_deletion_at
@@ -88,6 +89,7 @@ defmodule Pinchflat.Sources.Source do
     field :retention_period_days, :integer
     field :original_url, :string
     field :title_filter_regex, :string
+    field :download_subdirectory, :string
     field :output_path_template_override, :string
 
     field :min_duration_seconds, :integer
@@ -128,6 +130,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_required(required_fields)
     |> validate_original_url()
     |> validate_title_regex()
+    |> normalize_download_subdirectory()
+    |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
@@ -208,6 +212,44 @@ defmodule Pinchflat.Sources.Source do
   end
 
   defp validate_original_url(changeset), do: changeset
+
+  defp normalize_download_subdirectory(changeset) do
+    update_change(changeset, :download_subdirectory, fn
+      nil ->
+        nil
+
+      value ->
+        value
+        |> String.trim()
+        |> String.replace("\\", "/")
+        |> String.trim("/")
+        |> case do
+          "" -> nil
+          normalized -> normalized
+        end
+    end)
+  end
+
+  defp validate_download_subdirectory(changeset) do
+    validate_change(changeset, :download_subdirectory, fn :download_subdirectory, value ->
+      cond do
+        is_nil(value) ->
+          []
+
+        String.starts_with?(value, "/") ->
+          [download_subdirectory: "must be a relative path under the media root"]
+
+        Regex.match?(~r/^[A-Za-z]:/, value) ->
+          [download_subdirectory: "must be a relative path under the media root"]
+
+        Enum.any?(String.split(value, "/", trim: true), &(&1 == "..")) ->
+          [download_subdirectory: "cannot contain parent directory segments"]
+
+        true ->
+          []
+      end
+    end)
+  end
 
   defp supported_youtube_custom_path?(url) do
     case URI.parse(url) do

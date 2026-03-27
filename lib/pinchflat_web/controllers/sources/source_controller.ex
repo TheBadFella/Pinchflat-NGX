@@ -2,10 +2,13 @@ defmodule PinchflatWeb.Sources.SourceController do
   use PinchflatWeb, :controller
   use OpenApiSpex.ControllerSpecs
   use Pinchflat.Sources.SourcesQuery
+  import Ecto.Query, warn: false
 
   alias OpenApiSpex.Schema
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Tasks
+  alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
@@ -53,6 +56,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       Keyword.merge(
         [
           media_profiles: media_profiles(),
+          available_folders: available_media_directories(),
           current_path: ~p"/sources/new",
           layout: get_onboarding_layout(),
           # Most of these don't actually _need_ to be nullified at this point,
@@ -132,6 +136,7 @@ defmodule PinchflatWeb.Sources.SourceController do
                 [
                   changeset: changeset,
                   media_profiles: media_profiles(),
+                  available_folders: available_media_directories(),
                   current_path: ~p"/sources/new",
                   layout: get_onboarding_layout()
                 ],
@@ -192,6 +197,7 @@ defmodule PinchflatWeb.Sources.SourceController do
           source: source,
           changeset: changeset,
           media_profiles: media_profiles(),
+          available_folders: available_media_directories(),
           current_path: ~p"/sources/#{source}/edit"
         ],
         cookie_file_assigns()
@@ -246,6 +252,7 @@ defmodule PinchflatWeb.Sources.SourceController do
                   source: source,
                   changeset: changeset,
                   media_profiles: media_profiles(),
+                  available_folders: available_media_directories(),
                   current_path: ~p"/sources/#{source}/edit"
                 ],
                 cookie_file_assigns()
@@ -332,6 +339,71 @@ defmodule PinchflatWeb.Sources.SourceController do
         conn
         |> put_flash(:info, "Source deletion started. This may take a while to complete.")
         |> redirect(to: ~p"/sources")
+    end
+  end
+
+  def start_all(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    if startable_source?(source) do
+      {:ok, source} = Sources.update_source(source, %{enabled: true, download_media: true})
+
+      conn
+      |> put_flash(:info, "Source started.")
+      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    else
+      conn
+      |> put_flash(:info, "Nothing to download for this source.")
+      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    end
+  end
+
+  def pause_all(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    if active_downloads_for_source?(source) || queued_downloads_for_source?(source) do
+      {:ok, source} = Sources.update_source(source, %{download_media: false})
+
+      conn
+      |> put_flash(:info, "Source downloads paused.")
+      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    else
+      conn
+      |> put_flash(:info, "No active downloads to pause for this source.")
+      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    end
+  end
+
+  def stop_all(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    if stoppable_source?(source) do
+      {:ok, source} = Sources.update_source(source, %{enabled: false, download_media: false})
+      Tasks.delete_pending_tasks_for(source, "MediaDownloadWorker", include_executing: true)
+
+      conn
+      |> put_flash(:info, "Source stopped.")
+      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    else
+      conn
+      |> put_flash(:info, "Nothing to stop for this source.")
+      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    end
+  end
+
+  def restore_automatic_downloads(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    case Sources.restore_automatic_downloads(source) do
+      {:ok, source} ->
+        conn
+        |> put_flash(:info, "Automatic downloads restored for this source.")
+        |> redirect(to: redirect_target_for(params, source, ~p"/sources/#{source}"))
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> put_flash(:error, inspect(changeset.errors))
+        |> redirect(to: redirect_target_for(params, source, ~p"/sources/#{source}/edit"))
     end
   end
 
@@ -437,6 +509,13 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> redirect(to: ~p"/sources/#{source}")
   end
 
+  defp redirect_target_for(params, source, fallback) do
+    case Map.get(params, "return_to") do
+      value when is_binary(value) and value != "" -> value
+      _ -> fallback || ~p"/sources/#{source}"
+    end
+  end
+
   defp media_profiles do
     MediaProfile
     |> order_by(asc: :name)
@@ -497,6 +576,36 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp truthy_param?(value) when value in [true, "true", 1, "1"], do: true
   defp truthy_param?(_value), do: false
 
+  defp startable_source?(source) do
+    source
+    |> Media.list_pending_media_items_for()
+    |> Enum.any?()
+  end
+
+  defp stoppable_source?(source) do
+    active_downloads_for_source?(source) || queued_downloads_for_source?(source)
+  end
+
+  defp active_downloads_for_source?(source) do
+    count_download_tasks_for_source(source, ["executing"]) > 0
+  end
+
+  defp queued_downloads_for_source?(source) do
+    count_download_tasks_for_source(source, ["available", "scheduled", "retryable"]) > 0
+  end
+
+  defp count_download_tasks_for_source(source, states) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      join: mi in assoc(t, :media_item),
+      where: mi.source_id == ^source.id,
+      where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+      where: j.state in ^states,
+      select: count(t.id)
+    )
+    |> Repo.one()
+  end
+
   defp merge_selected_media_ids(source, selected_media_ids, selection_range) do
     range_selected_ids =
       source
@@ -548,11 +657,54 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
-  defp allowed_tabs_for(%Source{collection_type: :playlist}) do
+  defp allowed_tabs_for(%Source{collection_type: :playlist, selection_mode: :manual}) do
     ~w(source pending selection active-tasks downloaded job-queue other)
   end
 
   defp allowed_tabs_for(_source) do
     ~w(source pending active-tasks downloaded job-queue other)
+  end
+
+  defp available_media_directories do
+    base_dir = Application.get_env(:pinchflat, :media_directory)
+
+    if File.dir?(base_dir) do
+      list_media_directories(base_dir)
+      |> Enum.sort()
+    else
+      []
+    end
+  end
+
+  defp list_media_directories(base_dir, relative_dir \\ "") do
+    current_dir =
+      case relative_dir do
+        "" -> base_dir
+        _ -> Path.join(base_dir, relative_dir)
+      end
+
+    case File.ls(current_dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.sort()
+        |> Enum.flat_map(fn entry ->
+          relative_path =
+            case relative_dir do
+              "" -> entry
+              _ -> Path.join(relative_dir, entry)
+            end
+
+          absolute_path = Path.join(base_dir, relative_path)
+
+          if File.dir?(absolute_path) do
+            [relative_path | list_media_directories(base_dir, relative_path)]
+          else
+            []
+          end
+        end)
+
+      {:error, _reason} ->
+        []
+    end
   end
 end

@@ -438,6 +438,29 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
 
       assert path == "/tmp/test/media/override.%(ext)s"
     end
+
+    test "prepends the source download subdirectory when present", %{media_item: media_item} do
+      source = media_item.source
+      {:ok, source} = Sources.update_source(source, %{download_subdirectory: "Kids/Bluey"})
+
+      path = DownloadOptionBuilder.build_output_path_for(source)
+
+      assert path == "/tmp/test/media/Kids/Bluey/%(title)S.%(ext)s"
+    end
+
+    test "nests the output template under the source download subdirectory", %{media_item: media_item} do
+      source = media_item.source
+
+      {:ok, source} =
+        Sources.update_source(source, %{
+          download_subdirectory: "Kids",
+          output_path_template_override: "Bluey/override.%(ext)s"
+        })
+
+      path = DownloadOptionBuilder.build_output_path_for(source)
+
+      assert path == "/tmp/test/media/Kids/Bluey/override.%(ext)s"
+    end
   end
 
   describe "build_quality_options_for/1" do

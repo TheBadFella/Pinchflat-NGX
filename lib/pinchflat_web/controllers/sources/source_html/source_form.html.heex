@@ -12,12 +12,29 @@
     <section class="flex justify-between items-center mt-4">
       <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
-      <span
-        class="cursor-pointer text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline"
-        x-on:click="advancedMode = !advancedMode"
-      >
-        Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
-      </span>
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
+        <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
+            x-on:click="advancedMode = false"
+            x-bind:aria-pressed="!advancedMode"
+          >
+            Standard
+          </button>
+          <button
+            type="button"
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
+            x-on:click="advancedMode = true"
+            x-bind:aria-pressed="advancedMode"
+          >
+            Advanced
+          </button>
+        </div>
+      </div>
     </section>
 
     <.input
@@ -230,22 +247,99 @@
           """
           { 
             placeholders: JSON.parse('#{output_path_template_override_placeholders(@media_profiles)}'),
-            inputValue: null
+            inputValue: null,
+            sourceFolderValue: #{Phoenix.json_library().encode!(Phoenix.HTML.Form.normalize_value("text", f[:download_subdirectory].value) || "")},
+            sourceFolderPickerOpen: false
           }
           """
         }
         x-on:load-template="inputValue = placeholders[mediaProfileId]"
       >
         <.input
-          field={f[:output_path_template_override]}
+          field={f[:download_subdirectory]}
           type="text"
           inputclass="font-mono"
-          label="Output path template override"
-          help={output_path_template_override_help()}
-          html_help={true}
-          x-bind:placeholder="placeholders[mediaProfileId]"
-          x-model.fill="inputValue"
+          label="Source folder"
+          placeholder="Kids/Bluey"
+          help={download_subdirectory_help()}
+          x-model="sourceFolderValue"
         />
+
+        <section
+          :if={Enum.any?(@available_folders)}
+          class="theme-surface-accent mt-3 overflow-hidden rounded-m3-lg"
+          x-bind:class="sourceFolderPickerOpen ? 'ring-1 ring-theme-primary/40' : ''"
+        >
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
+            x-on:click="sourceFolderPickerOpen = !sourceFolderPickerOpen"
+            x-bind:aria-expanded="sourceFolderPickerOpen"
+          >
+            <div>
+              <h3 class="text-base font-semibold text-theme-on-surface">Pick existing source folder</h3>
+              <p class="mt-1 text-sm text-theme-on-surface-muted">
+                Choose from folders already under your media root instead of typing the path manually.
+              </p>
+            </div>
+
+            <.icon
+              name="hero-folder-open"
+              class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
+              x-bind:class="sourceFolderPickerOpen ? 'text-theme-primary' : ''"
+            />
+          </button>
+
+          <div
+            x-cloak
+            x-show="sourceFolderPickerOpen"
+            x-transition.opacity.duration.150ms
+            class="border-t border-theme-outline/60 px-4 py-4 md:px-6"
+          >
+            <div class="max-h-60 space-y-2 overflow-y-auto pr-1">
+              <button
+                :for={folder <- @available_folders}
+                type="button"
+                data-folder={folder}
+                class="flex w-full items-center justify-between rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-4 py-3 text-left font-mono text-sm text-theme-on-surface transition hover:bg-theme-surface-3"
+                x-bind:class="$el.dataset.folder === sourceFolderValue ? 'border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container' : ''"
+                x-on:click="sourceFolderValue = $el.dataset.folder; sourceFolderPickerOpen = false"
+              >
+                <span class="truncate">{folder}</span>
+                <.icon
+                  name="hero-check"
+                  class="h-4 w-4 shrink-0 text-theme-primary"
+                  x-show="$el.parentElement.dataset.folder === sourceFolderValue"
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div class="mt-4">
+          <.input
+            field={f[:output_path_template_override]}
+            type="text"
+            inputclass="font-mono"
+            label="Output path template override"
+            help={output_path_template_override_help()}
+            html_help={true}
+            x-bind:placeholder="placeholders[mediaProfileId]"
+            x-model.fill="inputValue"
+          >
+            <:input_append>
+              <button
+                type="button"
+                class="ml-3 inline-flex shrink-0 items-center rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-4 py-3 text-sm font-medium text-theme-on-surface transition hover:bg-theme-surface-3 md:ml-4"
+                title="Start from the media profile template, then tweak only what you need for this source."
+                aria-label="Insert media profile template. Start from the media profile template, then tweak only what you need for this source."
+                x-on:click="inputValue = placeholders[mediaProfileId]"
+              >
+                Insert media profile template
+              </button>
+            </:input_append>
+          </.input>
+        </div>
       </section>
 
       <p class="mt-4 text-sm text-theme-on-surface-muted">
@@ -255,9 +349,60 @@
         per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
       </p>
     </section>
-    <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+    <div class="my-10 w-full">
+      <.button class="w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+    </div>
 
-    <section x-data="{ fastIndexHelpOpen: false }" class="theme-surface-accent mb-5 overflow-hidden">
+    <section x-data="{ sourceFolderHelpOpen: false }" class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
+        x-on:click="sourceFolderHelpOpen = !sourceFolderHelpOpen"
+        x-bind:aria-expanded="sourceFolderHelpOpen"
+      >
+        <div>
+          <h3 class="text-lg font-semibold text-theme-on-surface">How source folders work?</h3>
+          <p class="mt-1 text-sm text-theme-on-surface-muted">
+            Source folders sit in front of the output template. Expand this for examples and edge cases.
+          </p>
+        </div>
+
+        <.icon
+          name="hero-chevron-down"
+          class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
+          x-bind:class="sourceFolderHelpOpen ? 'rotate-180 text-theme-primary' : ''"
+        />
+      </button>
+
+      <div
+        x-cloak
+        x-show="sourceFolderHelpOpen"
+        x-transition.opacity.duration.150ms
+        class="border-t border-theme-outline/60 px-4 py-4 text-sm text-theme-on-surface md:px-6"
+      >
+        <p>
+          Pinchflat saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
+        </p>
+
+        <p class="mt-3">
+          Use <strong class="text-theme-on-surface">Source folder</strong> for the main folder, then keep your template focused on file naming or
+          subfolders inside it.
+        </p>
+
+        <p class="mt-3">
+          If both the source folder and the template point to the same folder name, it will be duplicated.
+          Example: source folder <code class="text-theme-on-surface">Kids</code> plus template <code class="text-theme-on-surface">{~S(Kids/{{ title }}.{{ ext }})}</code>
+          becomes <code class="text-theme-on-surface">Kids/Kids/...</code>.
+        </p>
+
+        <p class="mt-3">Good examples:</p>
+        <ul class="mt-2 list-disc pl-5">
+          <li :for={example <- download_subdirectory_examples()}><code class="text-theme-on-surface">{example}</code></li>
+        </ul>
+      </div>
+    </section>
+
+    <section x-data="{ fastIndexHelpOpen: false }" class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg">
       <button
         type="button"
         class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
