@@ -1,6 +1,7 @@
 defmodule PinchflatWeb.SourceControllerTest do
   use PinchflatWeb.ConnCase
 
+  import Ecto.Query, warn: false
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
@@ -12,6 +13,7 @@ defmodule PinchflatWeb.SourceControllerTest do
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
+  alias Pinchflat.Tasks
 
   setup do
     media_profile = media_profile_fixture()
@@ -492,6 +494,23 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
     end
 
+    test "pause_all cancels executing download tasks for the source", %{conn: conn} do
+      source = source_fixture(%{enabled: true, download_media: true})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      Oban.Job
+      |> where([j], j.id == ^task.job_id)
+      |> Repo.update_all(set: [state: "executing"])
+
+      conn = post(conn, ~p"/sources/#{source.id}/pause_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      refute Repo.reload!(source).download_media
+      assert_raise Ecto.NoResultsError, fn -> Tasks.get_task!(task.id) end
+      assert Repo.get!(Oban.Job, task.job_id).state == "cancelled"
+    end
+
     test "pause_all reports when there are no active downloads", %{conn: conn} do
       source = source_fixture(%{enabled: true, download_media: true})
       media_item_fixture(%{source_id: source.id, media_filepath: nil})
@@ -516,6 +535,24 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute Repo.reload!(source).enabled
       refute Repo.reload!(source).download_media
       refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "stop_all cancels executing download tasks for the source", %{conn: conn} do
+      source = source_fixture(%{enabled: true, download_media: true})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      Oban.Job
+      |> where([j], j.id == ^task.job_id)
+      |> Repo.update_all(set: [state: "executing"])
+
+      conn = post(conn, ~p"/sources/#{source.id}/stop_all", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      refute Repo.reload!(source).enabled
+      refute Repo.reload!(source).download_media
+      assert_raise Ecto.NoResultsError, fn -> Tasks.get_task!(task.id) end
+      assert Repo.get!(Oban.Job, task.job_id).state == "cancelled"
     end
 
     test "stop_all reports when there is nothing to stop", %{conn: conn} do

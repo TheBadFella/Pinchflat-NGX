@@ -12,6 +12,7 @@ defmodule Pinchflat.Settings.Setting do
     :yt_dlp_version,
     :apprise_version,
     :apprise_server,
+    :external_base_url,
     :video_codec_preference,
     :audio_codec_preference,
     :youtube_api_key,
@@ -34,6 +35,7 @@ defmodule Pinchflat.Settings.Setting do
     field :yt_dlp_version, :string
     field :apprise_version, :string
     field :apprise_server, :string
+    field :external_base_url, :string
     field :youtube_api_key, :string
     field :route_token, :string
     field :extractor_sleep_interval_seconds, :integer, default: 0

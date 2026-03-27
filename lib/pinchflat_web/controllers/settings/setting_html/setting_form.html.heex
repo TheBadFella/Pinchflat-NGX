@@ -23,6 +23,14 @@
       Pinchflat.Settings.AppriseServerLive,
       session: %{"value" => f[:apprise_server].value}
     )}
+    <.input
+      field={f[:external_base_url]}
+      placeholder="https://pinchflat.example.com"
+      type="text"
+      label="External Base URL"
+      help={external_base_url_help()}
+      inputclass="font-mono text-sm mr-4"
+    />
   </section>
 
   <section class="mt-8">

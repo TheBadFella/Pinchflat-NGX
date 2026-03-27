@@ -5,10 +5,16 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
   import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Lifecycle.Notifications.SourceNotifications
+  alias Pinchflat.Settings
 
   @apprise_servers ["server_1", "server_2"]
 
   describe "wrap_new_media_notification/3" do
+    setup do
+      Settings.set(external_base_url: nil)
+      :ok
+    end
+
     test "sends a notification when the pending count changes" do
       source = source_fixture()
 
@@ -79,6 +85,11 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
   end
 
   describe "send_new_media_notification/3" do
+    setup do
+      Settings.set(external_base_url: nil)
+      :ok
+    end
+
     test "sends a notification when count is positive" do
       source = source_fixture()
 
@@ -94,6 +105,26 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
       end)
 
       :ok = SourceNotifications.send_new_media_notification(@apprise_servers, source, 1)
+    end
+
+    test "includes a source link when external base url is configured" do
+      source = source_fixture()
+      Settings.set(external_base_url: "https://pinchflat.example.com/")
+
+      expect(AppriseRunnerMock, :run, fn servers, opts ->
+        assert servers == @apprise_servers
+
+        assert opts == [
+                 title: "[Pinchflat] New media found",
+                 body: "Found 2 new media item(s) for #{source.custom_name}. Downloading them now",
+                 href: "https://pinchflat.example.com/sources/#{source.id}",
+                 format: "markdown"
+               ]
+
+        {:ok, ""}
+      end)
+
+      :ok = SourceNotifications.send_new_media_notification(@apprise_servers, source, 2)
     end
 
     test "does not send a notification when count not positive" do

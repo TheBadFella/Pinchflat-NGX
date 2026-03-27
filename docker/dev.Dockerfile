@@ -78,7 +78,7 @@ RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
   export PIPX_BIN_DIR=/usr/local/bin && \
   pipx install apprise && \
   # Set up optional shell tools
-  if [ "${INSTALL_SHELL_TOOLS}" = "1" ]; then \
+  if [ "${INSTALL_SHELL_TOOLS:-0}" = "1" ]; then \
     chsh -s $(which zsh) && \
     RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"; \
   fi && \

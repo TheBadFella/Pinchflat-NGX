@@ -18,6 +18,10 @@ defmodule PinchflatWeb.Settings.SettingHTML do
     ~s(Server endpoint for Apprise notifications when new media is found. See <a href="#{url}" class="#{help_link_classes()}" target="_blank">Apprise docs</a> for more information)
   end
 
+  def external_base_url_help do
+    "Public Pinchflat URL used to build clickable links in notifications. Include the scheme, for example https://pinchflat.example.com"
+  end
+
   def youtube_api_help do
     url = "https://github.com/kieraneglin/pinchflat/wiki/Generating-a-YouTube-API-key"
 

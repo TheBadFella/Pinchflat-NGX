@@ -64,13 +64,21 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def retry_pending_download_tasks(%Source{download_media: false}), do: :ok
 
   @doc """
-  Deletes ALL pending tasks for a source's media items.
+  Deletes pending download tasks for a source's media items.
 
-  Returns :ok
+  Options:
+    - `:include_executing` - when true, also cancels currently executing download tasks
+
+  Returns integer()
   """
-  def dequeue_pending_download_tasks(%Source{} = source) do
+  def dequeue_pending_download_tasks(%Source{} = source, opts \\ []) do
+    include_executing = Keyword.get(opts, :include_executing, false)
     media_items = Media.list_pending_media_items_for(source)
-    Enum.each(media_items, &Tasks.delete_pending_tasks_for/1)
+
+    Enum.each(media_items, fn media_item ->
+      Tasks.delete_pending_tasks_for(media_item, nil, include_executing: include_executing)
+    end)
+
     length(media_items)
   end
 
