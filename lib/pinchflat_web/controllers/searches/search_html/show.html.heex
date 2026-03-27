@@ -6,13 +6,27 @@
   <div class="max-w-full">
     <div class="flex flex-col gap-10 text-theme-on-surface">
       <%= if match?([_|_], @search_results) do %>
-        <.table rows={@search_results}>
-          <:col :let={result} label="Title" class="truncate max-w-xs">
-            <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>{result.title}</.subtle_link>
-          </:col>
+        <div class="space-y-4 md:hidden">
+          <article :for={result <- @search_results} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
+            <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>
+              <span class="block break-words font-medium text-theme-on-surface">{result.title}</span>
+            </.subtle_link>
 
-          <:col :let={result} label="Excerpt"><.highlight_search_terms text={result.matching_search_term} /></:col>
-        </.table>
+            <div class="text-sm text-theme-on-surface-muted">
+              <.highlight_search_terms text={result.matching_search_term} />
+            </div>
+          </article>
+        </div>
+
+        <div class="hidden md:block">
+          <.table rows={@search_results}>
+            <:col :let={result} label="Title" class="truncate max-w-xs">
+              <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>{result.title}</.subtle_link>
+            </:col>
+
+            <:col :let={result} label="Excerpt"><.highlight_search_terms text={result.matching_search_term} /></:col>
+          </.table>
+        </div>
       <% else %>
         <p class="text-center text-lg font-bold text-theme-on-surface">No results found</p>
       <% end %>

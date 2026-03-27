@@ -33,7 +33,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       </span>
       <div class="space-y-4 md:hidden">
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-          <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1 space-y-2">
               <div class="flex items-start gap-2">
                 <.icon
@@ -68,8 +68,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop"
-                class="theme-danger-button h-10 w-10"
-                icon_class="text-theme-error"
+                variant="danger"
+                class="h-10 w-10"
                 phx-click="stop_download"
                 phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
                 data-confirm="Are you sure you want to stop this download?"
@@ -161,8 +161,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop"
-                class="theme-danger-button h-10 w-10"
-                icon_class="text-theme-error"
+                variant="danger"
+                class="h-10 w-10"
                 phx-click="stop_download"
                 phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
                 data-confirm="Are you sure you want to stop this download?"
@@ -174,7 +174,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           </.table>
         </div>
       </div>
-      
+
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>
@@ -187,22 +187,23 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     PinchflatWeb.Endpoint.subscribe("job:progress")
 
     page = 1
-    base_query = generate_base_query(session["media_state"])
-    pagination_attrs = fetch_pagination_attributes(base_query, page)
+    media_state = session["media_state"]
+    base_query = generate_base_query(media_state)
+    pagination_attrs = fetch_pagination_attributes(base_query, page, media_state)
 
-    {:ok, assign(socket, Map.merge(pagination_attrs, %{base_query: base_query}))}
+    {:ok, assign(socket, Map.merge(pagination_attrs, %{base_query: base_query, media_state: media_state}))}
   end
 
   def handle_event("page_change", %{"direction" => direction}, %{assigns: assigns} = socket) do
     direction = if direction == "inc", do: 1, else: -1
     new_page = assigns.page + direction
-    new_assigns = fetch_pagination_attributes(assigns.base_query, new_page)
+    new_assigns = fetch_pagination_attributes(assigns.base_query, new_page, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
 
   def handle_event("reload_page", _params, %{assigns: assigns} = socket) do
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -211,7 +212,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     media_item = Media.get_media_item!(media_id)
     MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
 
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -223,7 +224,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       {:ok, _task} = Tasks.delete_task(task)
     end
 
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -231,7 +232,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   def handle_info(%{topic: "job:state", event: "change", payload: payload}, %{assigns: assigns} = socket)
       when is_map(payload) do
     if refresh_required?(payload) do
-      new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+      new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.media_state)
       {:noreply, assign(socket, new_assigns)}
     else
       {:noreply, socket}
@@ -239,7 +240,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
-    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page)
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.media_state)
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -255,19 +256,37 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     {:noreply, socket}
   end
 
-  defp fetch_pagination_attributes(base_query, page) do
+  defp fetch_pagination_attributes(base_query, page, media_state) do
     total_record_count = Repo.aggregate(base_query, :count, :id)
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
-    records = fetch_records(base_query, page)
 
-    %{
-      page: page,
-      total_pages: total_pages,
-      records: records,
-      total_record_count: total_record_count,
-      tasks_by_media_item_id: fetch_download_tasks(records)
-    }
+    if media_state == "pending" do
+      records =
+        base_query
+        |> order_pending_media()
+        |> fetch_records(page)
+
+      tasks_by_media_item_id = fetch_download_tasks(records)
+
+      %{
+        page: page,
+        total_pages: total_pages,
+        records: records,
+        total_record_count: total_record_count,
+        tasks_by_media_item_id: tasks_by_media_item_id
+      }
+    else
+      records = fetch_records(base_query, page)
+
+      %{
+        page: page,
+        total_pages: total_pages,
+        records: records,
+        total_record_count: total_record_count,
+        tasks_by_media_item_id: fetch_download_tasks(records)
+      }
+    end
   end
 
   defp fetch_records(base_query, page) do
@@ -428,6 +447,42 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   defp update_task_progress(tasks_by_media_item_id, _records, _payload), do: tasks_by_media_item_id
+
+  defp order_pending_media(base_query) do
+    latest_task_ids = latest_active_download_task_ids_query()
+
+    from(media_item in exclude(base_query, :order_by),
+      left_join: latest_task in subquery(latest_task_ids),
+      on: latest_task.media_item_id == media_item.id,
+      left_join: task in Task,
+      on: task.id == latest_task.task_id,
+      left_join: job in Oban.Job,
+      on: job.id == task.job_id,
+      order_by: [
+        asc:
+          fragment(
+            "CASE WHEN ? = 'executing' THEN 0 WHEN ? IS NOT NULL THEN 1 ELSE 2 END",
+            job.state,
+            task.id
+          ),
+        asc: fragment("CASE WHEN ? IS NULL THEN 1 ELSE 0 END", task.inserted_at),
+        asc: task.inserted_at,
+        desc: media_item.uploaded_at,
+        desc: media_item.id
+      ]
+    )
+  end
+
+  defp latest_active_download_task_ids_query do
+    from(task in Task,
+      join: job in assoc(task, :job),
+      where: fragment("? LIKE ?", job.worker, ^"%.MediaDownloadWorker"),
+      where: job.state in ^["available", "scheduled", "retryable", "executing"],
+      where: not is_nil(task.media_item_id),
+      group_by: task.media_item_id,
+      select: %{media_item_id: task.media_item_id, task_id: max(task.id)}
+    )
+  end
 
   defp refresh_required?(payload) do
     payload[:media_item_id] ||

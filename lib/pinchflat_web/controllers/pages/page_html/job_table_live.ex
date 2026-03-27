@@ -21,7 +21,7 @@ defmodule Pinchflat.Pages.JobTableLive do
     <div>
       <div class="space-y-4 md:hidden">
         <article :for={task <- @tasks} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-          <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
               <div class="font-medium text-theme-on-surface">{worker_to_task_name(task.job.worker)}</div>
               <.subtle_link href={task_to_link(task)}>
@@ -346,15 +346,15 @@ defmodule Pinchflat.Pages.JobTableLive do
         <div class="mb-1 flex items-center justify-between text-xs text-theme-on-surface-muted">
           <span>{@label}</span> <span>{Float.round(@percent, 1)}%</span>
         </div>
-        
+
         <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
           <div class="h-full rounded-full bg-theme-primary transition-all duration-300" style={"width: #{@width_percent}%"}>
           </div>
         </div>
-        
+
         <div class="mt-1 text-[11px] text-theme-on-surface-muted">
           <div>{@summary}</div>
-          
+
           <div :if={@eta != nil}>ETA {@eta}</div>
         </div>
       </div>

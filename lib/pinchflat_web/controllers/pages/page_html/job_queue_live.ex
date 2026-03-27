@@ -24,14 +24,14 @@ defmodule Pinchflat.Pages.JobQueueLive do
           <span class="text-sm text-theme-on-surface-muted">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
         </div>
       </div>
-      
+
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <.stat_card label="Executing" count={@stats.executing} color="green" />
         <.stat_card label="Available" count={@stats.available} color="blue" />
         <.stat_card label="Scheduled" count={@stats.scheduled} color="yellow" />
         <.stat_card label="Retryable" count={@stats.retryable} color="orange" />
       </div>
-      
+
       <div class="space-y-6">
         <.job_section
           :if={@executing_jobs != []}
@@ -101,7 +101,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
     ~H"""
     <div class={"theme-status-card #{@color_classes}"}>
       <div class="text-2xl font-bold">{@count}</div>
-      
+
       <div class="text-sm text-theme-on-surface-muted">{@label}</div>
     </div>
     """
@@ -118,7 +118,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
       <h3 class="mb-3 text-lg font-semibold text-theme-on-surface">{@title}</h3>
       <div class="space-y-3 md:hidden">
         <article :for={row <- @jobs} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
-          <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
               <div class="font-medium text-theme-on-surface">{worker_to_short_name(row.job.worker)}</div>
               <div class="mt-1 text-sm text-theme-on-surface-muted">{row_to_subject_label(row)}</div>

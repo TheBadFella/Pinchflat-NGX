@@ -102,25 +102,50 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :class, :string, default: ""
   attr :tooltip, :string, default: nil
   attr :tooltip_position, :string, default: "bottom"
-  attr :icon_class, :string, default: "text-theme-on-surface-muted"
+  attr :icon_class, :string, default: nil
+  attr :variant, :string, default: "outline", values: ["outline", "primary", "warning", "danger", "danger-solid"]
   attr :type, :string, default: "button"
   attr :rest, :global
 
   def icon_button(assigns) do
+    {variant_class, default_icon_class} = icon_button_variant(assigns.variant, assigns.class)
+    icon_class = assigns.icon_class || default_icon_class
+
+    assigns =
+      assigns
+      |> assign(:variant_class, variant_class)
+      |> assign(:resolved_icon_class, icon_class)
+
     ~H"""
     <TextComponents.tooltip position={@tooltip_position} tooltip={@tooltip} tooltip_class="text-nowrap">
       <button
         class={[
-          "theme-outline-button flex items-center justify-center rounded-m3-sm border-2",
-          "hover:bg-theme-surface-3",
+          "flex items-center justify-center rounded-m3-sm border-2 transition-colors",
+          @variant_class,
           @class
         ]}
         type={@type}
         {@rest}
       >
-        <CoreComponents.icon name={@icon_name} class={@icon_class} />
+        <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} />
       </button>
     </TextComponents.tooltip>
     """
+  end
+
+  defp icon_button_variant("outline", _class), do: {"theme-outline-button", "text-theme-on-surface-muted"}
+  defp icon_button_variant("primary", _class), do: {"theme-primary-button", "text-theme-on-primary"}
+  defp icon_button_variant("warning", _class), do: {"theme-warning-button", "text-theme-bg"}
+  defp icon_button_variant("danger", _class), do: {"theme-danger-button", "text-theme-error"}
+  defp icon_button_variant("danger-solid", _class), do: {"theme-danger-button-solid", "text-theme-on-error"}
+
+  defp icon_button_variant(_variant, class) when is_binary(class) do
+    cond do
+      String.contains?(class, "theme-primary-button") -> {"", "text-theme-on-primary"}
+      String.contains?(class, "theme-warning-button") -> {"", "text-theme-bg"}
+      String.contains?(class, "theme-danger-button-solid") -> {"", "text-theme-on-error"}
+      String.contains?(class, "theme-danger-button") -> {"", "text-theme-error"}
+      true -> {"theme-outline-button", "text-theme-on-surface-muted"}
+    end
   end
 end

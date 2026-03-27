@@ -32,7 +32,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             Showing <.localized_number number={length(@records)} /> of <.localized_number number={@filtered_record_count} />
           </span>
         </span>
-        
+
         <div class="theme-surface-accent rounded-m3-sm">
           <div class="relative">
             <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
@@ -91,8 +91,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop"
-                class="theme-danger-button h-10 w-10"
-                icon_class="text-theme-error"
+                variant="danger"
+                class="h-10 w-10"
                 phx-click="stop_download"
                 phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
                 phx-value-media-id={media_item.id}
@@ -185,8 +185,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             <.icon_button
               :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
               icon_name="hero-stop"
-              class="theme-danger-button h-10 w-10"
-              icon_class="text-theme-error"
+              variant="danger"
+              class="h-10 w-10"
               phx-click="stop_download"
               phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
               phx-value-media-id={media_item.id}
@@ -207,7 +207,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </:col>
         </.table>
       </div>
-      
+
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>
@@ -333,22 +333,44 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
 
-    records =
-      fetch_records(base_query, page)
-      |> order_by(desc: :uploaded_at)
-      |> Repo.all()
+    if media_state == "pending" do
+      records =
+        base_query
+        |> order_pending_media()
+        |> fetch_records(page)
+        |> Repo.all()
 
-    build_pagination_attrs(
-      %{
-        page: page,
-        total_pages: total_pages,
-        records: records,
-        search_term: nil,
-        total_record_count: total_record_count,
-        filtered_record_count: total_record_count
-      },
-      media_state
-    )
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: nil,
+          total_record_count: total_record_count,
+          filtered_record_count: total_record_count
+        },
+        media_state,
+        base_query
+      )
+    else
+      records =
+        fetch_records(base_query, page)
+        |> order_by(desc: :uploaded_at)
+        |> Repo.all()
+
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: nil,
+          total_record_count: total_record_count,
+          filtered_record_count: total_record_count
+        },
+        media_state,
+        base_query
+      )
+    end
   end
 
   defp fetch_pagination_attributes(base_query, page, search_term, media_state) do
@@ -359,22 +381,44 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     total_pages = max(ceil(filtered_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
 
-    records =
-      fetch_records(filtered_base_query, page)
-      |> order_by(desc: fragment("rank"), desc: :uploaded_at)
-      |> Repo.all()
+    if media_state == "pending" do
+      records =
+        filtered_base_query
+        |> order_pending_media()
+        |> fetch_records(page)
+        |> Repo.all()
 
-    build_pagination_attrs(
-      %{
-        page: page,
-        total_pages: total_pages,
-        records: records,
-        search_term: search_term,
-        total_record_count: total_record_count,
-        filtered_record_count: filtered_record_count
-      },
-      media_state
-    )
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: search_term,
+          total_record_count: total_record_count,
+          filtered_record_count: filtered_record_count
+        },
+        media_state,
+        filtered_base_query
+      )
+    else
+      records =
+        fetch_records(filtered_base_query, page)
+        |> order_by(desc: fragment("rank"), desc: :uploaded_at)
+        |> Repo.all()
+
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: search_term,
+          total_record_count: total_record_count,
+          filtered_record_count: filtered_record_count
+        },
+        media_state,
+        filtered_base_query
+      )
+    end
   end
 
   defp fetch_records(base_query, page) do
@@ -490,14 +534,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp too_long?(_media_item, _source), do: false
 
-  defp build_pagination_attrs(attrs, media_state) do
+  defp build_pagination_attrs(attrs, media_state, queue_base_query) do
     tasks_by_media_item_id = fetch_download_tasks(attrs.records)
     ordered_records = order_records_for_display(attrs.records, tasks_by_media_item_id, media_state)
 
     attrs
     |> Map.put(:records, ordered_records)
     |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
-    |> Map.put(:queue_positions, build_queue_positions(ordered_records, tasks_by_media_item_id, media_state))
+    |> Map.put(:queue_positions, build_queue_positions(queue_base_query, ordered_records, media_state))
   end
 
   defp fetch_download_tasks(records) do
@@ -529,14 +573,77 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp order_records_for_display(records, _tasks_by_media_item_id, _media_state), do: records
 
-  defp build_queue_positions(records, tasks_by_media_item_id, "pending") do
+  defp build_queue_positions(base_query, records, "pending") do
     records
-    |> Enum.filter(&Map.has_key?(tasks_by_media_item_id, &1.id))
-    |> Enum.with_index(1)
-    |> Map.new(fn {media_item, position} -> {media_item.id, position} end)
+    |> Enum.map(& &1.id)
+    |> then(fn record_ids ->
+      base_query
+      |> active_pending_media_ids_query()
+      |> Repo.all()
+      |> Enum.with_index(1)
+      |> Enum.reduce(%{}, fn {media_item_id, position}, acc ->
+        if media_item_id in record_ids, do: Map.put(acc, media_item_id, position), else: acc
+      end)
+    end)
   end
 
-  defp build_queue_positions(_records, _tasks_by_media_item_id, _media_state), do: %{}
+  defp build_queue_positions(_base_query, _records, _media_state), do: %{}
+
+  defp active_pending_media_ids_query(base_query) do
+    latest_task_ids = latest_active_download_task_ids_query()
+
+    from(media_item in exclude(base_query, :select),
+      join: latest_task in subquery(latest_task_ids),
+      on: latest_task.media_item_id == media_item.id,
+      join: task in Task,
+      on: task.id == latest_task.task_id,
+      join: job in Oban.Job,
+      on: job.id == task.job_id,
+      order_by: [
+        asc: fragment("CASE WHEN ? = 'executing' THEN 0 ELSE 1 END", job.state),
+        asc: task.inserted_at,
+        desc: media_item.uploaded_at,
+        desc: media_item.id
+      ],
+      select: media_item.id
+    )
+  end
+
+  defp order_pending_media(base_query) do
+    latest_task_ids = latest_active_download_task_ids_query()
+
+    from(media_item in exclude(base_query, :order_by),
+      left_join: latest_task in subquery(latest_task_ids),
+      on: latest_task.media_item_id == media_item.id,
+      left_join: task in Task,
+      on: task.id == latest_task.task_id,
+      left_join: job in Oban.Job,
+      on: job.id == task.job_id,
+      order_by: [
+        asc:
+          fragment(
+            "CASE WHEN ? = 'executing' THEN 0 WHEN ? IS NOT NULL THEN 1 ELSE 2 END",
+            job.state,
+            task.id
+          ),
+        asc: fragment("CASE WHEN ? IS NULL THEN 1 ELSE 0 END", task.inserted_at),
+        asc: task.inserted_at,
+        desc: media_item.uploaded_at,
+        desc: media_item.id
+      ]
+    )
+  end
+
+  defp latest_active_download_task_ids_query do
+    from(task in Task,
+      join: job in assoc(task, :job),
+      where: fragment("? LIKE ?", job.worker, ^"%.MediaDownloadWorker"),
+      where: job.state in ^["available", "scheduled", "retryable", "executing"],
+      where: not is_nil(task.media_item_id),
+      group_by: task.media_item_id,
+      select: %{media_item_id: task.media_item_id, task_id: max(task.id)}
+    )
+  end
 
   defp queue_sort_key(media_item, %Task{job: %{state: "executing"}, inserted_at: inserted_at}) do
     {0, sort_datetime_asc_key(inserted_at || media_item.uploaded_at), media_item.id}

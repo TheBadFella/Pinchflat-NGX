@@ -8,7 +8,7 @@
     </.link>
     <h2 class="ml-4 truncate text-title-md2 font-bold text-theme-on-surface">{@media_item.title}</h2>
   </div>
-  
+
   <nav>
     <.link href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit"}>
       <.button rounding="rounded-m3-sm"><.icon name="hero-pencil-square" class="mr-2" /> Edit</.button>
@@ -20,7 +20,7 @@
   <div class="max-w-full">
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown media_item={@media_item} /></:tab_append>
-      
+
       <:tab title="Media" id="media">
         <div class="flex flex-col gap-10 text-theme-on-surface">
           <section :if={@media_item.last_error} class="mt-6">
@@ -30,16 +30,16 @@
             </div>
             <span>{@media_item.last_error}</span>
           </section>
-          
+
           <%= if media_file_exists?(@media_item) do %>
             <section class="grid grid-cols-1 xl:gap-6 mt-6">
               <div><.media_preview media_item={@media_item} /></div>
-              
+
               <aside class="mt-4">
                 <h2 class="text-xl mb-2">{@media_item.title}</h2>
-                
+
                 <div>Uploaded: {DateTime.to_date(@media_item.uploaded_at)}</div>
-                
+
                 <div>
                   <span :if={URI.parse(@media_item.original_url).scheme =~ "http"}>
                     <.subtle_link href={@media_item.original_url} target="_blank">Open Original</.subtle_link>
@@ -54,17 +54,17 @@
                     </.subtle_link>
                   </span>
                 </div>
-                
+
                 <div :if={@media_item.description} class="mt-4 text-theme-on-surface-muted">
                   <.render_description text={@media_item.description} />
                 </div>
               </aside>
             </section>
           <% end %>
-          
+
           <section>
             <h3 class="font-bold text-xl mb-2">Raw Attributes</h3>
-            
+
             <section>
               <strong>Source:</strong>
               <.subtle_link href={~p"/sources/#{@media_item.source_id}"}>{@media_item.source.custom_name}</.subtle_link>
@@ -73,16 +73,37 @@
           </section>
         </div>
       </:tab>
-      
+
       <:tab title="Tasks" id="tasks">
         <%= if match?([_|_], @media_item.tasks) do %>
-          <.table rows={@media_item.tasks}>
-            <:col :let={task} label="Worker">{task.job.worker}</:col>
-            
-            <:col :let={task} label="State">{task.job.state}</:col>
-            
-            <:col :let={task} label="Scheduled At"><.datetime_in_zone datetime={task.job.scheduled_at} /></:col>
-          </.table>
+          <div class="space-y-4 md:hidden">
+            <article :for={task <- @media_item.tasks} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
+              <div class="break-words font-medium text-theme-on-surface">{task.job.worker}</div>
+
+              <dl class="grid grid-cols-1 gap-3 text-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <dt class="text-theme-on-surface-muted">State</dt>
+                  <dd class="text-right text-theme-on-surface">{task.job.state}</dd>
+                </div>
+                <div class="flex items-start justify-between gap-3">
+                  <dt class="text-theme-on-surface-muted">Scheduled At</dt>
+                  <dd class="text-right text-theme-on-surface">
+                    <.datetime_in_zone datetime={task.job.scheduled_at} />
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          </div>
+
+          <div class="hidden md:block">
+            <.table rows={@media_item.tasks}>
+              <:col :let={task} label="Worker">{task.job.worker}</:col>
+
+              <:col :let={task} label="State">{task.job.state}</:col>
+
+              <:col :let={task} label="Scheduled At"><.datetime_in_zone datetime={task.job.scheduled_at} /></:col>
+            </.table>
+          </div>
         <% else %>
           <p class="text-theme-on-surface">Nothing Here!</p>
         <% end %>

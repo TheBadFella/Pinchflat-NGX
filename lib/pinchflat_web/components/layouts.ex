@@ -72,7 +72,7 @@ defmodule PinchflatWeb.Layouts do
       <span
         class={[
           "font-medium cursor-pointer",
-          "group relative flex min-h-11 items-center justify-between rounded-m3-sm border px-4 py-2 duration-300 ease-in-out",
+          "group relative flex min-h-10 items-center justify-between rounded-m3-sm border px-3 py-2 duration-300 ease-in-out lg:min-h-11 lg:px-4",
           "duration-300 ease-in-out lg:px-4",
           if(
             @initially_selected,
@@ -141,7 +141,7 @@ defmodule PinchflatWeb.Layouts do
       aria-current={if @active?, do: "page", else: nil}
       class={[
         "font-medium",
-        "group relative flex min-h-11 items-center gap-2.5 rounded-m3-sm border px-4 py-2 duration-300 ease-in-out",
+        "group relative flex min-h-10 items-center gap-2 rounded-m3-sm border px-3 py-2 duration-300 ease-in-out lg:min-h-11 lg:gap-2.5 lg:px-4",
         "duration-300 ease-in-out",
         if(
           @active?,

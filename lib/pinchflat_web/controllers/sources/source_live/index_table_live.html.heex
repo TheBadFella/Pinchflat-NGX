@@ -1,12 +1,12 @@
-<div class="flex flex-col min-w-max">
-  <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
-    <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
-      <div class="flex min-w-0 flex-col gap-2">
-        <div class="flex min-w-0 items-center gap-3">
-          <div class="flex min-w-0 flex-1 items-center gap-2">
+<div>
+  <div class="space-y-4 md:hidden">
+    <article :for={source <- @sources} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0 flex-1 space-y-2">
+          <div class="flex items-start gap-3">
             <span
               class={[
-                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
                 if(source.selection_mode == :manual,
                   do: "theme-badge-warning",
                   else: "theme-badge-success"
@@ -18,118 +18,263 @@
                 name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
                 class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
               />
-              <span class="sr-only">{source_download_mode_label(source)}</span>
             </span>
-            
-            <div class="min-w-0 flex-1 leading-6 break-words whitespace-normal">
-              <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+
+            <div class="min-w-0 flex-1">
+              <.subtle_link href={~p"/sources/#{source.id}"}>
+                <span class="block break-words font-medium text-theme-on-surface">{source.custom_name}</span>
+              </.subtle_link>
+              <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
+                <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
+              </.subtle_link>
             </div>
           </div>
-          
-          <div class="ml-auto flex shrink-0 items-center gap-1.5 self-center">
-            <.form
-              for={%{}}
-              as={:start_source}
-              action={~p"/sources/#{source.id}/start_all"}
-              method="post"
-              x-data="{ submitting: false }"
-              x-on:submit="submitting = true"
-            >
-              <input type="hidden" name="return_to" value={~p"/sources"} />
-              <.icon_button
-                icon_name="hero-play"
-                type="submit"
-                class="theme-primary-button h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                icon_class="h-4 w-4 text-theme-on-primary"
-                title="Start all"
-                aria-label="Start all"
-                data-confirm={"Start downloads for #{source.custom_name}?"}
-                x-bind:disabled="submitting"
-              />
-            </.form>
-            
-            <.form
-              for={%{}}
-              as={:pause_source}
-              action={~p"/sources/#{source.id}/pause_all"}
-              method="post"
-              x-data="{ submitting: false }"
-              x-on:submit="submitting = true"
-            >
-              <input type="hidden" name="return_to" value={~p"/sources"} />
-              <.icon_button
-                icon_name="hero-pause"
-                type="submit"
-                class="theme-warning-button h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                icon_class="h-4 w-4 text-theme-bg"
-                title="Pause all"
-                aria-label="Pause all"
-                data-confirm={"Pause downloads for #{source.custom_name}?"}
-                x-bind:disabled="submitting"
-              />
-            </.form>
-            
-            <.form
-              for={%{}}
-              as={:stop_source}
-              action={~p"/sources/#{source.id}/stop_all"}
-              method="post"
-              x-data="{ submitting: false }"
-              x-on:submit="submitting = true"
-            >
-              <input type="hidden" name="return_to" value={~p"/sources"} />
-              <.icon_button
-                icon_name="hero-stop"
-                type="submit"
-                class="theme-danger-button-solid h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                icon_class="h-4 w-4 text-theme-on-error"
-                title="Stop all"
-                aria-label="Stop all"
-                data-confirm={"Stop downloads for #{source.custom_name}?"}
-                x-bind:disabled="submitting"
-              />
-            </.form>
-          </div>
+        </div>
+
+        <div class="flex shrink-0 items-center gap-1.5">
+          <.form
+            for={%{}}
+            as={:start_source}
+            action={~p"/sources/#{source.id}/start_all"}
+            method="post"
+            x-data="{ submitting: false }"
+            x-on:submit="submitting = true"
+          >
+            <input type="hidden" name="return_to" value={~p"/sources"} />
+            <.icon_button
+              icon_name="hero-play"
+              variant="primary"
+              type="submit"
+              class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+              icon_class="h-4 w-4"
+              title="Start all"
+              aria-label="Start all"
+              data-confirm={"Start downloads for #{source.custom_name}?"}
+              x-bind:disabled="submitting"
+            />
+          </.form>
+
+          <.form
+            for={%{}}
+            as={:pause_source}
+            action={~p"/sources/#{source.id}/pause_all"}
+            method="post"
+            x-data="{ submitting: false }"
+            x-on:submit="submitting = true"
+          >
+            <input type="hidden" name="return_to" value={~p"/sources"} />
+            <.icon_button
+              icon_name="hero-pause"
+              variant="warning"
+              type="submit"
+              class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+              icon_class="h-4 w-4"
+              title="Pause all"
+              aria-label="Pause all"
+              data-confirm={"Pause downloads for #{source.custom_name}?"}
+              x-bind:disabled="submitting"
+            />
+          </.form>
+
+          <.form
+            for={%{}}
+            as={:stop_source}
+            action={~p"/sources/#{source.id}/stop_all"}
+            method="post"
+            x-data="{ submitting: false }"
+            x-on:submit="submitting = true"
+          >
+            <input type="hidden" name="return_to" value={~p"/sources"} />
+            <.icon_button
+              icon_name="hero-stop"
+              variant="danger-solid"
+              type="submit"
+              class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+              icon_class="h-4 w-4"
+              title="Stop all"
+              aria-label="Stop all"
+              data-confirm={"Stop downloads for #{source.custom_name}?"}
+              x-bind:disabled="submitting"
+            />
+          </.form>
+
+          <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
         </div>
       </div>
-    </:col>
-    
-    <:col :let={source} label="Pending" sort_key="pending_count">
-      <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
-        <.localized_number number={source.pending_count} />
-      </.subtle_link>
-    </:col>
-    
-    <:col :let={source} label="Downloaded" sort_key="downloaded_count">
-      <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
-        <.localized_number number={source.downloaded_count} />
-      </.subtle_link>
-    </:col>
-    
-    <:col :let={source} label="Size" sort_key="media_size_bytes">
-      <.readable_filesize byte_size={source.media_size_bytes} />
-    </:col>
-    
-    <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="truncate max-w-xs">
-      <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
-    </:col>
-    
-    <:col :let={source} label="Enabled?" sort_key="enabled">
-      <.live_component
-        module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-        source={source}
-        id={"source_#{source.id}_enabled"}
-      />
-    </:col>
-    
-    <:col :let={source} label="" class="align-middle">
-      <div class="flex h-full items-center justify-center">
-        <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
-      </div>
-    </:col>
-  </.table>
-  
-  <section class="flex justify-center my-5">
-    <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
-  </section>
+
+      <dl class="grid grid-cols-1 gap-3 text-sm">
+        <div class="flex items-start justify-between gap-3">
+          <dt class="text-theme-on-surface-muted">Pending</dt>
+          <dd class="text-right text-theme-on-surface">
+            <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+              <.localized_number number={source.pending_count} />
+            </.subtle_link>
+          </dd>
+        </div>
+        <div class="flex items-start justify-between gap-3">
+          <dt class="text-theme-on-surface-muted">Downloaded</dt>
+          <dd class="text-right text-theme-on-surface">
+            <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+              <.localized_number number={source.downloaded_count} />
+            </.subtle_link>
+          </dd>
+        </div>
+        <div class="flex items-start justify-between gap-3">
+          <dt class="text-theme-on-surface-muted">Size</dt>
+          <dd class="text-right text-theme-on-surface">
+            <.readable_filesize byte_size={source.media_size_bytes} />
+          </dd>
+        </div>
+        <div class="flex items-start justify-between gap-3">
+          <dt class="text-theme-on-surface-muted">Enabled</dt>
+          <dd class="text-right">
+            <.live_component
+              module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+              source={source}
+              id={"source_#{source.id}_enabled_mobile"}
+            />
+          </dd>
+        </div>
+      </dl>
+    </article>
+  </div>
+
+  <div class="hidden md:flex md:flex-col md:min-w-max">
+    <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
+      <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
+        <div class="flex min-w-0 flex-col gap-2">
+          <div class="flex min-w-0 items-center gap-3">
+            <div class="flex min-w-0 flex-1 items-center gap-2">
+              <span
+                class={[
+                  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                  if(source.selection_mode == :manual,
+                    do: "theme-badge-warning",
+                    else: "theme-badge-success"
+                  )
+                ]}
+                title={source_download_mode_label(source)}
+              >
+                <.icon
+                  name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
+                  class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
+                />
+                <span class="sr-only">{source_download_mode_label(source)}</span>
+              </span>
+
+              <div class="min-w-0 flex-1 leading-6 break-words whitespace-normal">
+                <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+              </div>
+            </div>
+
+            <div class="ml-auto flex shrink-0 items-center gap-1.5 self-center">
+              <.form
+                for={%{}}
+                as={:start_source}
+                action={~p"/sources/#{source.id}/start_all"}
+                method="post"
+                x-data="{ submitting: false }"
+                x-on:submit="submitting = true"
+              >
+                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <.icon_button
+                  icon_name="hero-play"
+                  variant="primary"
+                  type="submit"
+                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                  icon_class="h-4 w-4"
+                  title="Start all"
+                  aria-label="Start all"
+                  data-confirm={"Start downloads for #{source.custom_name}?"}
+                  x-bind:disabled="submitting"
+                />
+              </.form>
+
+              <.form
+                for={%{}}
+                as={:pause_source}
+                action={~p"/sources/#{source.id}/pause_all"}
+                method="post"
+                x-data="{ submitting: false }"
+                x-on:submit="submitting = true"
+              >
+                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <.icon_button
+                  icon_name="hero-pause"
+                  variant="warning"
+                  type="submit"
+                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                  icon_class="h-4 w-4"
+                  title="Pause all"
+                  aria-label="Pause all"
+                  data-confirm={"Pause downloads for #{source.custom_name}?"}
+                  x-bind:disabled="submitting"
+                />
+              </.form>
+
+              <.form
+                for={%{}}
+                as={:stop_source}
+                action={~p"/sources/#{source.id}/stop_all"}
+                method="post"
+                x-data="{ submitting: false }"
+                x-on:submit="submitting = true"
+              >
+                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <.icon_button
+                  icon_name="hero-stop"
+                  variant="danger-solid"
+                  type="submit"
+                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                  icon_class="h-4 w-4"
+                  title="Stop all"
+                  aria-label="Stop all"
+                  data-confirm={"Stop downloads for #{source.custom_name}?"}
+                  x-bind:disabled="submitting"
+                />
+              </.form>
+            </div>
+          </div>
+        </div>
+      </:col>
+
+      <:col :let={source} label="Pending" sort_key="pending_count">
+        <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+          <.localized_number number={source.pending_count} />
+        </.subtle_link>
+      </:col>
+
+      <:col :let={source} label="Downloaded" sort_key="downloaded_count">
+        <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+          <.localized_number number={source.downloaded_count} />
+        </.subtle_link>
+      </:col>
+
+      <:col :let={source} label="Size" sort_key="media_size_bytes">
+        <.readable_filesize byte_size={source.media_size_bytes} />
+      </:col>
+
+      <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="truncate max-w-xs">
+        <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
+      </:col>
+
+      <:col :let={source} label="Enabled?" sort_key="enabled">
+        <.live_component
+          module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+          source={source}
+          id={"source_#{source.id}_enabled"}
+        />
+      </:col>
+
+      <:col :let={source} label="" class="align-middle">
+        <div class="flex h-full items-center justify-center">
+          <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+        </div>
+      </:col>
+    </.table>
+
+    <section class="flex justify-center my-5">
+      <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
+    </section>
+  </div>
 </div>
