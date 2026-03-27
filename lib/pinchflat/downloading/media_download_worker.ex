@@ -13,7 +13,6 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Tasks
   alias Pinchflat.Repo
   alias Pinchflat.Media
-  alias Pinchflat.Sources
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Downloading.MediaDownloader
 
@@ -56,10 +55,13 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
     maybe_reset_last_error(media_item, should_reset_last_error)
 
-    if should_download_media?(media_item, should_force, is_quality_upgrade) do
-      download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id)
-    else
-      :ok
+    case should_download_media(media_item, should_force, is_quality_upgrade) do
+      :ok ->
+        download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id)
+
+      {:skip, reason} ->
+        Logger.info("media_download_skipped media_item_id=#{media_item.id} source_id=#{media_item.source_id} reason=#{reason}")
+        :ok
     end
   rescue
     Ecto.NoResultsError -> Logger.info("#{__MODULE__} discarded: media item #{media_item_id} not found")
@@ -68,16 +70,27 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
   # If this is a quality upgrade, only check if the source is set to download media
   # or that the media item's download hasn't been prevented
-  defp should_download_media?(media_item, should_force, true = _is_quality_upgrade) do
-    (media_item.source.download_media && !media_item.prevent_download) || should_force
+  defp should_download_media(media_item, should_force, true = _is_quality_upgrade) do
+    cond do
+      should_force -> :ok
+      !media_item.source.download_media -> {:skip, :source_downloads_disabled}
+      media_item.prevent_download -> {:skip, :item_prevented}
+      true -> :ok
+    end
   end
 
   # If it's not a quality upgrade, additionally check if the media item is pending download
-  defp should_download_media?(media_item, should_force, _is_quality_upgrade) do
+  defp should_download_media(media_item, should_force, _is_quality_upgrade) do
     source = media_item.source
     is_pending = Media.pending_download?(media_item)
 
-    (is_pending && source.download_media && !media_item.prevent_download) || should_force
+    cond do
+      should_force -> :ok
+      !source.download_media -> {:skip, :source_downloads_disabled}
+      media_item.prevent_download -> {:skip, :item_prevented}
+      is_pending -> :ok
+      true -> {:skip, skip_reason_for_not_pending(media_item)}
+    end
   end
 
   # If a user script exists and, when run, returns a non-zero exit code, prevent this and all future downloads
@@ -91,7 +104,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         _ -> {:ok, media_item}
       end
 
-    Repo.preload(media_item, :source)
+    Repo.preload(media_item, source: :media_profile)
   end
 
   defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id) do
@@ -146,11 +159,67 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     :ok
   end
 
-  defp should_skip_download_precheck?(%{livestream: false, source: source}) do
-    Sources.use_cookies?(source, :downloading)
-  end
+  defp should_skip_download_precheck?(%{livestream: false}), do: true
 
   defp should_skip_download_precheck?(_media_item), do: false
+
+  defp skip_reason_for_not_pending(media_item) do
+    source = media_item.source
+    media_profile = source.media_profile
+
+    cond do
+      media_item.media_filepath ->
+        :item_not_pending
+
+      before_cutoff?(media_item, source) ->
+        :format_or_profile_mismatch
+
+      too_short?(media_item, source) ->
+        :format_or_profile_mismatch
+
+      too_long?(media_item, source) ->
+        :format_or_profile_mismatch
+
+      media_profile.shorts_behaviour == :exclude && media_item.short_form_content ->
+        :format_or_profile_mismatch
+
+      media_profile.shorts_behaviour == :only && !media_item.short_form_content ->
+        :format_or_profile_mismatch
+
+      media_profile.livestream_behaviour == :exclude && media_item.livestream ->
+        :format_or_profile_mismatch
+
+      media_profile.livestream_behaviour == :only && !media_item.livestream ->
+        :format_or_profile_mismatch
+
+      is_binary(source.title_filter_regex) ->
+        :format_or_profile_mismatch
+
+      true ->
+        :item_not_pending
+    end
+  end
+
+  defp before_cutoff?(media_item, %{download_cutoff_date: %Date{} = cutoff_date})
+       when not is_nil(media_item.uploaded_at) do
+    Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
+  end
+
+  defp before_cutoff?(_media_item, _source), do: false
+
+  defp too_short?(media_item, %{min_duration_seconds: min_duration})
+       when not is_nil(min_duration) and not is_nil(media_item.duration_seconds) do
+    media_item.duration_seconds < min_duration
+  end
+
+  defp too_short?(_media_item, _source), do: false
+
+  defp too_long?(media_item, %{max_duration_seconds: max_duration})
+       when not is_nil(max_duration) and not is_nil(media_item.duration_seconds) do
+    media_item.duration_seconds > max_duration
+  end
+
+  defp too_long?(_media_item, _source), do: false
 
   defp maybe_replace_existing_manual_retry(media_item, job_args) do
     if Map.get(job_args, :reset_last_error) || Map.get(job_args, "reset_last_error") do

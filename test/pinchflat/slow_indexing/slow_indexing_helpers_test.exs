@@ -1,6 +1,7 @@
 defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
   import Pinchflat.TasksFixtures
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
@@ -14,6 +15,17 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+
+  setup do
+    original_level = Logger.level()
+    Logger.configure(level: :info)
+
+    on_exit(fn ->
+      Logger.configure(level: original_level)
+    end)
+
+    :ok
+  end
 
   setup do
     {:ok, %{source: source_fixture()}}
@@ -218,6 +230,17 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       duplicate_ids = Enum.map(duplicate_run, & &1.id)
 
       assert first_ids == duplicate_ids
+    end
+
+    test "logs indexing completion and pending enqueue details", %{source: source} do
+      log =
+        capture_log([level: :info], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      assert log =~ "indexing_completed"
+      assert log =~ "source_id=#{source.id}"
+      assert log =~ "pending_downloads_enqueued="
     end
 
     test "updates the source's last_indexed_at field", %{source: source} do
@@ -451,6 +474,40 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
       refute_enqueued(worker: MediaDownloadWorker)
+    end
+
+    test "playlist sources with automatic downloads enabled enqueue downloads after indexing" do
+      watcher_poll_interval = Application.get_env(:pinchflat, :file_watcher_poll_interval)
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :all, download_media: true})
+
+      stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
+        filepath = Keyword.get(addl_opts, :output_filepath)
+        File.write(filepath, source_attributes_return_fixture())
+
+        :timer.sleep(watcher_poll_interval * 2)
+        {:ok, ""}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert_enqueued(worker: MediaDownloadWorker)
+    end
+
+    test "playlist sources in manual selection mode do not enqueue downloads after indexing" do
+      watcher_poll_interval = Application.get_env(:pinchflat, :file_watcher_poll_interval)
+      source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
+
+      stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
+        filepath = Keyword.get(addl_opts, :output_filepath)
+        File.write(filepath, source_attributes_return_fixture())
+
+        :timer.sleep(watcher_poll_interval * 2)
+        {:ok, ""}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      refute_enqueued(worker: MediaDownloadWorker)
+      assert Enum.all?(Repo.all(MediaItem), & &1.prevent_download)
     end
 
     test "does not enqueue downloads for media that doesn't match the profile's format options" do

@@ -5,6 +5,7 @@ defmodule Pinchflat.Sources do
 
   import Ecto.Query, warn: false
   use Pinchflat.Media.MediaQuery
+  require Logger
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
@@ -259,7 +260,36 @@ defmodule Pinchflat.Sources do
         {:ok, source}
 
       {:error, _step, reason, _changes} ->
-        {:error, reason}
+      {:error, reason}
+    end
+  end
+
+  @doc """
+  Restores a manually-selected playlist source to normal automatic downloads.
+
+  This switches the source back to `selection_mode: :all`, enables downloads,
+  and clears any existing `prevent_download` flags for the source's media items.
+
+  Returns {:ok, %Source{}} | {:error, %Ecto.Changeset{}}
+  """
+  def restore_automatic_downloads(%Source{} = source) do
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.update(:source, change_source(source, %{selection_mode: :all, download_media: true}, :initial))
+      |> Ecto.Multi.update_all(:restore_media_items, media_items_for_source_query(source), set: [prevent_download: false])
+
+    case Repo.transaction(multi) do
+      {:ok, _changes} ->
+        source = Repo.reload!(source)
+
+        if source.enabled do
+          DownloadingHelpers.enqueue_pending_download_tasks(source)
+        end
+
+        {:ok, source}
+
+      {:error, :source, %Ecto.Changeset{} = changeset, _changes} ->
+        {:error, changeset}
     end
   end
 
@@ -395,6 +425,8 @@ defmodule Pinchflat.Sources do
 
     case Repo.insert_or_update(changeset) do
       {:ok, %Source{} = source} ->
+        log_source_created(changeset, source)
+
         if run_post_commit_tasks do
           maybe_handle_media_tasks(changeset, source)
           maybe_run_indexing_task(changeset, source)
@@ -581,4 +613,13 @@ defmodule Pinchflat.Sources do
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
   end
+
+  defp log_source_created(%{data: %{__meta__: %{state: :built}}}, %Source{} = source) do
+    Logger.info(
+      "source_created source_id=#{source.id} collection_type=#{source.collection_type} " <>
+        "selection_mode=#{source.selection_mode} download_media=#{source.download_media} enabled=#{source.enabled}"
+    )
+  end
+
+  defp log_source_created(_changeset, _source), do: :ok
 end

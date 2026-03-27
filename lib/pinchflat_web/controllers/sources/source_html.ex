@@ -15,6 +15,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :cookie_file_exists, :boolean, required: true
   attr :cookie_file_configured, :boolean, required: true
   attr :cookie_file_contents, :string, default: nil
+  attr :available_folders, :list, default: []
   attr :show_delay_automatic_download, :boolean, default: false
 
   def source_form(assigns)
@@ -90,6 +91,18 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     """
     Must end with .{{ ext }}. Same rules as Media Profile output path templates. #{help_button} to load your media profile's output template
     """
+  end
+
+  def download_subdirectory_help do
+    "Relative folder under the media root. Pinchflat applies this before the output template, so keep the template focused on filenames or subfolders inside this directory."
+  end
+
+  def download_subdirectory_examples do
+    [
+      "Kids/Bluey",
+      "Podcasts/Tech",
+      "TV/Documentaries"
+    ]
   end
 
   defp compute_date_offset(days) do

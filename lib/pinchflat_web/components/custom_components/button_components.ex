@@ -103,6 +103,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :tooltip, :string, default: nil
   attr :tooltip_position, :string, default: "bottom"
   attr :icon_class, :string, default: "text-theme-on-surface-muted"
+  attr :type, :string, default: "button"
   attr :rest, :global
 
   def icon_button(assigns) do
@@ -114,7 +115,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           "hover:bg-theme-surface-3",
           @class
         ]}
-        type="button"
+        type={@type}
         {@rest}
       >
         <CoreComponents.icon name={@icon_name} class={@icon_class} />

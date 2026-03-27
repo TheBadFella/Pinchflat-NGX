@@ -30,13 +30,23 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def enqueue_pending_download_tasks(source, job_opts \\ [])
 
   def enqueue_pending_download_tasks(%Source{download_media: true} = source, job_opts) do
-    source
-    |> Media.list_pending_media_items_for()
-    |> Enum.each(&MediaDownloadWorker.kickoff_with_task(&1, %{}, job_opts))
+    pending_media_items = Media.list_pending_media_items_for(source)
+
+    Enum.each(pending_media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{}, job_opts))
+
+    pending_count = length(pending_media_items)
+
+    Logger.info(
+      "pending_download_enqueue source_id=#{source.id} pending_count=#{pending_count} " <>
+        "job_opts_present=#{job_opts != []}"
+    )
+
+    pending_count
   end
 
-  def enqueue_pending_download_tasks(%Source{download_media: false}, _job_opts) do
-    :ok
+  def enqueue_pending_download_tasks(%Source{download_media: false} = source, _job_opts) do
+    Logger.info("pending_download_enqueue_skipped source_id=#{source.id} reason=source_downloads_disabled")
+    0
   end
 
   @doc """
@@ -59,9 +69,9 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   Returns :ok
   """
   def dequeue_pending_download_tasks(%Source{} = source) do
-    source
-    |> Media.list_pending_media_items_for()
-    |> Enum.each(&Tasks.delete_pending_tasks_for/1)
+    media_items = Media.list_pending_media_items_for(source)
+    Enum.each(media_items, &Tasks.delete_pending_tasks_for/1)
+    length(media_items)
   end
 
   @doc """
@@ -79,6 +89,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
 
       MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts)
     else
+      Logger.info("download_enqueue_skipped media_item_id=#{media_item.id} reason=should_not_download")
       {:error, :should_not_download}
     end
   end

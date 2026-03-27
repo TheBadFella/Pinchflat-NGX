@@ -342,7 +342,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   defp excluded_reason(media_item, source) do
     cond do
       media_item.prevent_download ->
-        "Prevented"
+        if source.selection_mode == :manual do
+          "Not selected in delayed downloads mode"
+        else
+          "Prevented"
+        end
 
       before_cutoff?(media_item, source) ->
         "Before cutoff"
