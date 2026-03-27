@@ -3,7 +3,8 @@
 > [!IMPORTANT]
 > Personal Fork Disclaimer: This fork is maintained for personal use and to continue development while the upstream project remains the canonical source.
 
-PinchYT is a fork of Pinchflat.
+> [!NOTE]
+> PinchYT keeps the core Pinchflat model, then layers on a more Material-style interface, stronger source controls, and a few workflow improvements for day-to-day downloading.
 
 For installation, configuration, and the base feature set, use the actual upstream Pinchflat docs:
 
@@ -11,25 +12,25 @@ For installation, configuration, and the base feature set, use the actual upstre
 - Upstream README: <https://github.com/kieraneglin/pinchflat/blob/master/README.md>
 - Upstream wiki: <https://github.com/kieraneglin/pinchflat/wiki>
 
-## What PinchYT Adds
+## What PinchYT Adds over Pinchflat (As a Fork)
 
-- **Single Video Support:** Individual YouTube video URLs can be used as sources (upstream focuses on channels/playlists).
-- **Cookie Management:** Internal UI for uploading, pasting, and inspecting the shared `cookies.txt` file.
-- **Collapsible Sidebar:** Optimized desktop layout with a collapsible sidebar for increased focus.
-- **Material 3 AMOLED Theme:** Comprehensive theme pass featuring AMOLED-black and Material 3 design principles.
-- **Enhanced Form Controls:** Custom single-select dropdowns and animated perimeter borders for a premium feel.
-- **Selective Playlist Download:** Choose which items to download after indexing with the new Selection tab.
-- **Download Speed:** Real-time download speed is now visible in both the job dashboard and media tables.
-- **Smarter Retries:** Improved retry logic that clears stale errors and provides accurate task status updates.
-- **Nightly yt-dlp Builds:** Automatically uses nightly builds to ensure immediate compatibility with YouTube changes.
-- **Better Source Controls:** Automatic vs delayed download indicators, inline start/pause/stop controls, matching dropdown actions, and improved playlist/manual-mode recovery.
-- **Per-Source Folder Routing:** Dedicated source folder, existing-folder picker, and media-profile template insertion to simplify output path setup.
-- **Quality-of-Life Tweaks:** General UI improvements and maintenance fixes beyond the upstream implementation.
+### Sources
+- **Single Video Sources:** Add one-off YouTube video URLs directly as sources, not just channels and playlists.
+- **Selective Playlist Downloads:** Delay playlist downloads, review indexed items, and choose exactly what to fetch from the Selection flow.
+- **Stronger Source Controls:** Manage sources faster with clearer automatic vs delayed indicators plus inline and dropdown start, pause, and stop actions.
+- **Per-Source Folder Routing:** Send each source into its own folder with a picker for existing folders and template-aware output routing.
 
-For local development in this repo, use Docker:
+### Interface
+- **Material 3 AMOLED Theme:** A darker, more opinionated visual layer with Material-inspired spacing, surfaces, controls, and hierarchy.
+- **Cleaner Form UX:** Better toggles, custom selects, clearer source/profile editing states, and improved source creation guidance.
+- **Collapsible Sidebar:** Desktop navigation can collapse for a denser, more focused layout.
 
-```bash
-docker compose run --rm phx mix test
-docker compose run --rm phx mix check
-docker compose up
-```
+### Downloads
+- **Cookie Management UI:** Upload, paste, and inspect the shared `cookies.txt` file directly from the app.
+- **Download Speed Visibility:** See live download speed in the jobs dashboard and media tables.
+- **Smarter Retry Behavior:** Retry flows clear stale errors properly and keep task state more accurate.
+- **Nightly yt-dlp Builds:** Track newer yt-dlp builds for faster compatibility with upstream extractor changes.
+
+### Operations
+- **Extra Diagnostics:** More structured logging around source creation, indexing, enqueueing, and skipped downloads.
+- **Ongoing Fork Tweaks:** Small workflow, UI, and reliability improvements that are useful in self-hosted daily use.
