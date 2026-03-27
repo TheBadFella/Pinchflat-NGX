@@ -34,12 +34,12 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       <div class="space-y-4 md:hidden">
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
           <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 space-y-2">
+            <div class="min-w-0 flex-1 space-y-2">
               <div class="flex items-start gap-2">
                 <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="mt-0.5 shrink-0 text-red-500" />
                 <div class="min-w-0">
                   <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                    <span class="break-words font-medium text-theme-on-surface">{media_item.title}</span>
+                    <span class="block whitespace-normal break-words font-medium text-theme-on-surface">{media_item.title}</span>
                   </.subtle_link>
                 </div>
               </div>
@@ -84,8 +84,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
             </div>
             <div class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Size / Progress</dt>
-              <dd class="max-w-[60%] text-right text-theme-on-surface">
-                {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
+              <dd class="max-w-[65%] text-right text-theme-on-surface">
+                <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
               </dd>
             </div>
             <div class="flex items-start justify-between gap-3">
@@ -133,7 +133,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
             <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
 
             <:col :let={media_item} label="Size / Progress">
-              {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
+              <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
             </:col>
 
             <:col :let={media_item} label="Indexed At">{format_datetime(media_item.inserted_at)}</:col>
@@ -374,6 +374,35 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
   defp maybe_append_speed(text, nil), do: text
   defp maybe_append_speed(text, speed_bytes), do: "#{text} at #{readable_byte_size(speed_bytes)}/s"
+
+  attr :media_item, :map, required: true
+  attr :task, :any, default: nil
+
+  defp progress_details(assigns) do
+    ~H"""
+    <div :if={is_nil(@task)} class="text-theme-on-surface">
+      {size_or_progress_label(@media_item, nil)}
+    </div>
+    <div :if={!is_nil(@task)} class="min-w-40 space-y-2">
+      <div class="text-right text-theme-on-surface">{size_or_progress_label(@media_item, @task)}</div>
+      <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
+        <div
+          class="h-full rounded-full bg-theme-primary transition-all duration-300"
+          style={"width: #{progress_percent(@task)}%"}
+        >
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp progress_percent(task) do
+    task.progress_percent
+    |> Kernel.||(0.0)
+    |> max(0.0)
+    |> min(100.0)
+    |> trunc()
+  end
 
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do
