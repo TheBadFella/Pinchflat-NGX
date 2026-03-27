@@ -103,9 +103,9 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       <div class="hidden md:block">
         <div class="max-w-full overflow-x-auto">
           <.table rows={@records}>
-            <:col :let={media_item} label="Title" class="max-w-xs">
+            <:col :let={media_item} label="Title" class="max-w-sm">
               <section class="space-y-2">
-                <div class="flex items-center space-x-1 gap-2">
+                <div class="flex items-start space-x-1 gap-2">
                   <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
                   <.icon_button
                     :if={is_nil(media_item.media_downloaded_at)}
@@ -117,11 +117,9 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                     tooltip="Force Download"
                     tooltip_position="bottom-left"
                   />
-                  <span class="truncate">
-                    <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                      {media_item.title}
-                    </.subtle_link>
-                  </span>
+                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                    <span class="block whitespace-normal break-words">{media_item.title}</span>
+                  </.subtle_link>
                 </div>
 
                 <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
@@ -140,8 +138,10 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
             <:col :let={media_item} label="Downloaded At">{format_datetime(media_item.media_downloaded_at)}</:col>
 
-            <:col :let={media_item} label="Source" class="truncate max-w-xs">
-              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>{media_item.source.custom_name}</.subtle_link>
+            <:col :let={media_item} label="Source" class="max-w-sm">
+              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
+                <span class="block whitespace-normal break-words">{media_item.source.custom_name}</span>
+              </.subtle_link>
             </:col>
 
             <:col :let={media_item} label="Action">

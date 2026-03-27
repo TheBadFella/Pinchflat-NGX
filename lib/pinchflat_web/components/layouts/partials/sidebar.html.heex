@@ -7,6 +7,7 @@
   x-bind:style="sidebarCollapsed ? 'overflow: visible;' : 'overflow-y: hidden;'"
   @click.outside="sidebarVisible = false"
 >
+  <% current_path = Phoenix.Controller.current_path(@conn) %>
   <section>
     <div
       class="flex items-center justify-between gap-2 px-6 py-4"
@@ -41,7 +42,7 @@
         />
       </button>
     </div>
-
+    
     <div
       class="no-scrollbar flex flex-col duration-300 ease-linear"
       x-bind:class="sidebarCollapsed ? 'overflow-visible' : 'overflow-y-auto'"
@@ -53,16 +54,21 @@
         >
           <span>MENU</span>
         </h3>
-
+        
         <div class="flex flex-col justify-between">
           <ul class="mb-6 flex flex-col gap-1.5" x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''">
-            <.sidebar_item icon="hero-home" text="Home" href={~p"/"} />
-            <.sidebar_item icon="hero-tv" text="Sources" href={~p"/sources"} />
-            <.sidebar_item icon="hero-adjustments-vertical" text="Media Profiles" href={~p"/media_profiles"} />
+            <.sidebar_item icon="hero-home" text="Home" href={~p"/"} current_path={current_path} />
+            <.sidebar_item icon="hero-tv" text="Sources" href={~p"/sources"} current_path={current_path} />
+            <.sidebar_item
+              icon="hero-adjustments-vertical"
+              text="Media Profiles"
+              href={~p"/media_profiles"}
+              current_path={current_path}
+            />
             <.sidebar_submenu
               icon="hero-cog-6-tooth"
               text="Config"
-              current_path={Phoenix.Controller.current_path(@conn)}
+              current_path={current_path}
             >
               <:submenu text="Settings" href={~p"/settings"} /> <:submenu text="App Info" href={~p"/app_info"} />
             </.sidebar_submenu>
@@ -71,7 +77,7 @@
       </nav>
     </div>
   </section>
-
+  
   <section>
     <nav
       class="px-4 py-4 lg:px-6"
@@ -113,7 +119,7 @@
             </span>
           </span>
         </li>
-
+        
         <li>
           <span
             class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm"

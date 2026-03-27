@@ -43,6 +43,18 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
     test "does not blow up if the record doesn't exist" do
       assert :ok = perform_job(SourceMetadataStorageWorker, %{id: 0})
     end
+
+    test "returns an error if yt-dlp metadata cannot be decoded" do
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      source = source_fixture()
+
+      assert {:error, %Jason.DecodeError{data: ""}} =
+               perform_job(SourceMetadataStorageWorker, %{id: source.id})
+    end
   end
 
   describe "perform/1 when testing attribute updates" do

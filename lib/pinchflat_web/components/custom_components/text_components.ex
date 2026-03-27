@@ -119,7 +119,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     assigns = Map.put(assigns, :timezone, timezone)
 
     ~H"""
-    <time>{Calendar.strftime(Timex.Timezone.convert(@datetime, @timezone), @format)}</time>
+    <time>{Calendar.strftime(DateTime.shift_zone!(@datetime, @timezone), @format)}</time>
     """
   end
 

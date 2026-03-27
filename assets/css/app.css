@@ -162,6 +162,40 @@
   .theme-primary-button {
     @apply rounded-m3-sm bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
   }
+
+  .theme-sidebar-active {
+    @apply relative overflow-hidden border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container;
+  }
+
+  .theme-sidebar-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background:
+      conic-gradient(
+        from var(--theme-perimeter-angle, 0deg),
+        rgb(var(--theme-primary) / 0.14) 0deg,
+        rgb(var(--theme-primary) / 0.8) 52deg,
+        rgb(var(--theme-secondary) / 0.42) 170deg,
+        rgb(var(--theme-tertiary) / 0.5) 270deg,
+        rgb(var(--theme-primary) / 0.14) 360deg
+      );
+    animation: perimeter-spin 5.6s linear infinite;
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-sidebar-active::before {
+    animation: none;
+  }
 }
 
 @layer utilities {

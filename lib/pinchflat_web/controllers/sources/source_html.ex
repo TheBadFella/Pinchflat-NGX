@@ -109,8 +109,9 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     timezone = Application.get_env(:pinchflat, :timezone)
 
     timezone
-    |> Timex.now()
-    |> Timex.shift(days: -days)
-    |> Timex.format!("{YYYY}-{0M}-{0D}")
+    |> DateTime.now!()
+    |> DateTime.add(-days, :day)
+    |> DateTime.to_date()
+    |> Date.to_iso8601()
   end
 end

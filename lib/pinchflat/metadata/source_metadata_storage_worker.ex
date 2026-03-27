@@ -49,27 +49,35 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     source = Repo.preload(Sources.get_source!(source_id), [:metadata, :media_profile])
     series_directory = determine_series_directory(source)
 
-    {source_metadata, source_image_attrs, metadata_image_attrs} =
-      fetch_source_metadata_and_images(series_directory, source)
+    with {:ok, {source_metadata, source_image_attrs, metadata_image_attrs}} <-
+           fetch_source_metadata_and_images(series_directory, source) do
+      source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
 
-    source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
+      Sources.update_source(
+        source,
+        Map.merge(
+          %{
+            series_directory: series_directory,
+            nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+            description: source_metadata["description"],
+            metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
+          },
+          source_image_attrs
+        ),
+        # `run_post_commit_tasks: false` prevents this from running in an infinite loop
+        run_post_commit_tasks: false
+      )
 
-    Sources.update_source(
-      source,
-      Map.merge(
-        %{
-          series_directory: series_directory,
-          nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
-          description: source_metadata["description"],
-          metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
-        },
-        source_image_attrs
-      ),
-      # `run_post_commit_tasks: false` prevents this from running in an infinite loop
-      run_post_commit_tasks: false
-    )
+      :ok
+    else
+      {:error, reason} ->
+        Logger.warning(
+          "#{__MODULE__} failed to fetch metadata for source #{source.id} " <>
+            "(#{source.original_url}): #{Exception.message(reason)}"
+        )
 
-    :ok
+        {:error, reason}
+    end
   rescue
     Ecto.NoResultsError -> Logger.info("#{__MODULE__} discarded: source #{source_id} not found")
     Ecto.StaleEntryError -> Logger.info("#{__MODULE__} discarded: source #{source_id} stale")
@@ -78,15 +86,16 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   defp fetch_source_metadata_and_images(series_directory, source) do
     metadata_directory = MetadataFileHelpers.metadata_directory_for(source)
 
-    {:ok, metadata} = fetch_metadata_for_source(source)
-    metadata_image_attrs = SourceImageParser.store_source_images(metadata_directory, metadata)
+    with {:ok, metadata} <- fetch_metadata_for_source(source) do
+      metadata_image_attrs = SourceImageParser.store_source_images(metadata_directory, metadata)
 
-    if source.media_profile.download_source_images && series_directory do
-      source_image_attrs = SourceImageParser.store_source_images(series_directory, metadata)
+      if source.media_profile.download_source_images && series_directory do
+        source_image_attrs = SourceImageParser.store_source_images(series_directory, metadata)
 
-      {metadata, source_image_attrs, metadata_image_attrs}
-    else
-      {metadata, %{}, metadata_image_attrs}
+        {:ok, {metadata, source_image_attrs, metadata_image_attrs}}
+      else
+        {:ok, {metadata, %{}, metadata_image_attrs}}
+      end
     end
   end
 

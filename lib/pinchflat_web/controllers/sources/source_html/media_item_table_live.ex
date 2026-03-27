@@ -54,7 +54,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       </header>
       <div class="space-y-4 md:hidden">
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-          <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1 space-y-2">
               <div :if={@media_state == "pending"} class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">
                 Queue #{Map.get(@queue_positions, media_item.id, "-")}
@@ -131,9 +131,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             {Map.get(@queue_positions, media_item.id, "-")}
           </:col>
 
-          <:col :let={media_item} label="Title" class="max-w-xs">
+          <:col :let={media_item} label="Title" class="max-w-sm">
             <section class="space-y-2">
-              <div class="flex items-center space-x-1 gap-2">
+              <div class="flex items-start space-x-1 gap-2">
                 <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
                 <.icon_button
                   :if={@media_state != "downloaded"}
@@ -145,9 +145,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   tooltip="Force Download"
                   tooltip_position="bottom-left"
                 />
-                <span class="truncate">
-                  <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>{media_item.title}</.subtle_link>
-                </span>
+                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                  <span class="block whitespace-normal break-words">{media_item.title}</span>
+                </.subtle_link>
               </div>
 
               <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
@@ -185,8 +185,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             />
             <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
           </:col>
-          <:col :let={media_item} label="" class="flex justify-end">
-            <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+          <:col :let={media_item} label="" class="align-middle text-right">
+            <div class="flex justify-end">
+              <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+            </div>
           </:col>
         </.table>
       </div>

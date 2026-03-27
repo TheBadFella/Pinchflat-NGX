@@ -153,9 +153,9 @@ defmodule Pinchflat.Pages.JobQueueLive do
               <dt class="text-theme-on-surface-muted">Scheduled</dt>
               <dd class="text-right text-theme-on-surface">{format_datetime(row.job.scheduled_at)}</dd>
             </div>
-            <div :if={@state == "discarded"} class="flex items-start justify-between gap-3">
+            <div :if={@state == "discarded"} class="flex items-center justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Error</dt>
-              <dd class="text-right">
+              <dd class="flex items-center text-right">
                 <button
                   type="button"
                   phx-click={show_modal(error_modal_id(row, :mobile))}
@@ -195,7 +195,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
             <:col :let={row} label="Scheduled">
               {format_datetime(row.job.scheduled_at)}
             </:col>
-            <:col :let={row} :if={@state == "discarded"} label="Error" class="w-40 align-top">
+            <:col :let={row} :if={@state == "discarded"} label="Error" class="w-40 align-middle">
               <button
                 type="button"
                 phx-click={show_modal(error_modal_id(row, :desktop))}
