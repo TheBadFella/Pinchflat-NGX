@@ -1,6 +1,7 @@
 ARG ELIXIR_VERSION=1.18.4
 ARG OTP_VERSION=27.2.4
-ARG DEBIAN_VERSION=bookworm-20250428-slim
+ARG DEBIAN_VERSION=bookworm-20260316-slim
+ARG INSTALL_SHELL_TOOLS=0
 
 ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 
@@ -76,9 +77,11 @@ RUN curl -sL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh && \
   export PIPX_HOME=/opt/pipx && \
   export PIPX_BIN_DIR=/usr/local/bin && \
   pipx install apprise && \
-  # Set up ZSH tools
-  chsh -s $(which zsh) && \
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" && \
+  # Set up optional shell tools
+  if [ "${INSTALL_SHELL_TOOLS}" = "1" ]; then \
+    chsh -s $(which zsh) && \
+    RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"; \
+  fi && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 

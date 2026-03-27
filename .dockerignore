@@ -27,6 +27,7 @@
 # Common development/test artifacts
 /cover/
 /doc/
+/docs/
 /test/
 /tmp/
 .elixir_ls
