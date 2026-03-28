@@ -5,7 +5,6 @@
 
 > [!NOTE]
 > PinchYT keeps the core Pinchflat model, then layers on a more Material-style interface, stronger source controls, and a few workflow improvements for day-to-day downloading.
-> Recent fork enhancements include a native Tailwind v4 asset pipeline, stronger mobile layouts, and faster source actions.
 
 For installation, configuration, and the base feature set, use the actual upstream Pinchflat docs:
 
@@ -20,13 +19,16 @@ For installation, configuration, and the base feature set, use the actual upstre
 - **Single Video Sources:** Add one-off YouTube video URLs directly as sources, not just channels and playlists.
 - **Selective Playlist Downloads:** Delay playlist downloads, review indexed items, and choose exactly what to fetch from the Selection flow.
 - **Stronger Source Controls:** Manage sources faster with clearer automatic vs delayed indicators plus inline and dropdown start, pause, and stop actions.
+- **Faster Source Actions:** New inline notification links and direct source delete controls make routine source management quicker.
 - **Per-Source Folder Routing:** Send each source into its own folder with a picker for existing folders and template-aware output routing.
 
 ### Interface
 
 - **Material 3 AMOLED Theme:** A darker, more opinionated visual layer with Material-inspired spacing, surfaces, controls, and hierarchy.
+- **Native Tailwind v4 Pipeline:** Shared theme tokens and the native Tailwind v4 asset pipeline make the refreshed UI more consistent and maintainable.
 - **Cleaner Form UX:** Better toggles, custom selects, clearer source/profile editing states, and improved source creation guidance.
 - **Collapsible Sidebar:** Desktop navigation can collapse for a denser, more focused layout.
+- **Broader Mobile Polish:** Source, job, and history views have improved responsive layouts for smaller screens.
 
 ### Downloads
 
