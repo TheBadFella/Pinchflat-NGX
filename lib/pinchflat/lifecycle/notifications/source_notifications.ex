@@ -8,6 +8,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   use Pinchflat.Media.MediaQuery
 
   alias Pinchflat.Repo
+  alias Pinchflat.Settings
 
   @doc """
   Wraps a function that may change the number of pending  or downloaded
@@ -34,10 +35,11 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   def send_new_media_notification(_, _, count) when count <= 0, do: :ok
 
   def send_new_media_notification(servers, source, changed_count) do
-    opts = [
-      title: "[Pinchflat] New media found",
-      body: "Found #{changed_count} new media item(s) for #{source.custom_name}. Downloading them now"
-    ]
+    opts =
+      [
+        title: "[Pinchflat] New media found",
+        body: notification_body(source, changed_count)
+      ] ++ notification_link_opts(source)
 
     case backend_runner().run(servers, opts) do
       {:ok, _} ->
@@ -77,5 +79,23 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   defp backend_runner do
     # This approach lets us mock the command for testing
     Application.get_env(:pinchflat, :apprise_runner)
+  end
+
+  defp notification_body(source, changed_count) do
+    "Found #{changed_count} new media item(s) for #{source.custom_name}. Downloading them now"
+  end
+
+  defp notification_link_opts(source) do
+    case Settings.get(:external_base_url) do
+      {:ok, base_url} when is_binary(base_url) and base_url != "" ->
+        [href: source_url(base_url, source), format: "markdown"]
+
+      _ ->
+        []
+    end
+  end
+
+  defp source_url(base_url, source) do
+    "#{String.trim_trailing(base_url, "/")}/sources/#{source.id}"
   end
 end

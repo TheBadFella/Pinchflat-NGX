@@ -157,7 +157,7 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, JobTableLive, session: %{})
 
       view
-      |> element("button[phx-click='cancel_task'][phx-value-task-id='#{task.id}']")
+      |> element(".hidden.md\\:block button[phx-click='cancel_task'][phx-value-task-id='#{task.id}']")
       |> render_click()
 
       assert_raise Ecto.NoResultsError, fn -> Tasks.get_task!(task.id) end

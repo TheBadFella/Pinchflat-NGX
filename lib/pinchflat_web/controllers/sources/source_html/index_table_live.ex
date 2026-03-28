@@ -11,8 +11,10 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
   def render(assigns) do
     ~H"""
     <.table rows={@sources}>
-      <:col :let={source} label="Name" class="truncate max-w-xs">
-        <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name || source.collection_name}</.subtle_link>
+      <:col :let={source} label="Name" class="max-w-sm">
+        <.subtle_link href={~p"/sources/#{source.id}"}>
+          <span class="block whitespace-normal break-words">{source.custom_name || source.collection_name}</span>
+        </.subtle_link>
       </:col>
 
       <:col :let={source} label="Pending">

@@ -14,6 +14,7 @@ defmodule Pinchflat.SettingsTest do
     Settings.set(onboarding: false)
     Settings.set(pro_enabled: false)
     Settings.set(yt_dlp_version: nil)
+    Settings.set(external_base_url: nil)
 
     :ok
   end
@@ -38,6 +39,11 @@ defmodule Pinchflat.SettingsTest do
     test "updates the setting" do
       assert {:ok, true} = Settings.set(onboarding: true)
       assert {:ok, true} = Settings.get(:onboarding)
+    end
+
+    test "updates the external base url" do
+      assert {:ok, "https://pinchflat.example.com"} = Settings.set(external_base_url: "https://pinchflat.example.com")
+      assert {:ok, "https://pinchflat.example.com"} = Settings.get(:external_base_url)
     end
 
     test "returns an error if the setting key doesn't exist" do

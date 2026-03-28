@@ -33,21 +33,54 @@
       </:tab>
 
       <:tab title="Sources" id="sources">
-        <.table rows={@sources}>
-          <:col :let={source} label="Name">
-            <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name || source.collection_name}</.subtle_link>
-          </:col>
+        <div class="space-y-4 md:hidden">
+          <article :for={source <- @sources} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <.subtle_link href={~p"/sources/#{source.id}"}>
+                  <span class="block break-words font-medium text-theme-on-surface">
+                    {source.custom_name || source.collection_name}
+                  </span>
+                </.subtle_link>
+              </div>
 
-          <:col :let={source} label="Type">{source.collection_type}</:col>
+              <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1 shrink-0" />
+            </div>
 
-          <:col :let={source} label="Should Download?">
-            <.icon name={if source.download_media, do: "hero-check", else: "hero-x-mark"} />
-          </:col>
+            <dl class="grid grid-cols-1 gap-3 text-sm">
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Type</dt>
+                <dd class="text-right text-theme-on-surface">{source.collection_type}</dd>
+              </div>
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Should Download</dt>
+                <dd class="text-right text-theme-on-surface">
+                  <.icon name={if source.download_media, do: "hero-check", else: "hero-x-mark"} />
+                </dd>
+              </div>
+            </dl>
+          </article>
+        </div>
 
-          <:col :let={source} label="" class="flex justify-end">
-            <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mr-4" />
-          </:col>
-        </.table>
+        <div class="hidden md:block">
+          <.table rows={@sources}>
+            <:col :let={source} label="Name">
+              <.subtle_link href={~p"/sources/#{source.id}"}>
+                {source.custom_name || source.collection_name}
+              </.subtle_link>
+            </:col>
+
+            <:col :let={source} label="Type">{source.collection_type}</:col>
+
+            <:col :let={source} label="Should Download?">
+              <.icon name={if source.download_media, do: "hero-check", else: "hero-x-mark"} />
+            </:col>
+
+            <:col :let={source} label="" class="flex justify-end">
+              <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+            </:col>
+          </.table>
+        </div>
       </:tab>
     </.tabbed_layout>
   </div>

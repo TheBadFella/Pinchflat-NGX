@@ -16,11 +16,19 @@ defmodule PinchflatWeb.Layouts do
   attr :href, :any, required: true
   attr :target, :any, default: "_self"
   attr :icon_class, :string, default: ""
+  attr :current_path, :string, default: nil
 
   def sidebar_item(assigns) do
     ~H"""
     <li class="text-theme-on-surface">
-      <.sidebar_link icon={@icon} text={@text} href={@href} target={@target} icon_class={@icon_class} />
+      <.sidebar_link
+        icon={@icon}
+        text={@text}
+        href={@href}
+        target={@target}
+        icon_class={@icon_class}
+        current_path={@current_path}
+      />
     </li>
     """
   end
@@ -48,18 +56,31 @@ defmodule PinchflatWeb.Layouts do
 
   def sidebar_submenu(assigns) do
     initially_selected = Enum.any?(assigns[:submenu], &(&1[:href] == assigns[:current_path]))
-    assigns = Map.put(assigns, :initially_selected, initially_selected)
+
+    submenu_hrefs =
+      assigns[:submenu]
+      |> Enum.map(&to_string(&1[:href]))
+      |> Phoenix.json_library().encode!()
+
+    assigns =
+      assigns
+      |> Map.put(:initially_selected, initially_selected)
+      |> Map.put(:submenu_hrefs, submenu_hrefs)
 
     ~H"""
     <li class="text-theme-on-surface" x-data={"{ selected: #{@initially_selected} }"}>
       <span
         class={[
           "font-medium cursor-pointer",
-          "group relative flex min-h-11 items-center justify-between rounded-m3-sm px-4 py-2 duration-300 ease-in-out",
+          "group relative flex min-h-10 items-center justify-between rounded-m3-sm border px-3 py-2 duration-300 ease-in-out lg:min-h-11 lg:px-4",
           "duration-300 ease-in-out lg:px-4",
-          "hover:bg-theme-surface-3"
+          if(
+            @initially_selected,
+            do: "theme-sidebar-active",
+            else: "border-transparent hover:bg-theme-surface-3"
+          )
         ]}
-        x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
+        x-bind:class={"(sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : '') + ' ' + (isSidebarSubmenuActive(#{@submenu_hrefs}) ? 'theme-sidebar-active' : 'border-transparent hover:bg-theme-surface-3')"}
         x-on:click="if (sidebarCollapsed) { sidebarCollapsed = false; window.setSidebarCollapsed(false) } else { selected = !selected }"
       >
         <span class="flex items-center gap-2.5" x-bind:class="sidebarCollapsed ? 'lg:justify-center' : ''">
@@ -81,9 +102,19 @@ defmodule PinchflatWeb.Layouts do
           {@text}
         </span>
       </span>
-      <ul x-cloak x-show="selected && !sidebarCollapsed">
+      <ul
+        x-cloak
+        x-show="selected && !sidebarCollapsed"
+        class="mt-2 ml-5 flex flex-col gap-1 border-l border-theme-outline/60 pl-4"
+      >
         <li :for={menu <- @submenu} class="text-theme-on-surface-muted">
-          <.sidebar_link icon={menu[:icon]} text={menu[:text]} href={menu[:href]} target={menu[:target]} class="pl-10" />
+          <.sidebar_link
+            icon={menu[:icon]}
+            text={menu[:text]}
+            href={menu[:href]}
+            target={menu[:target]}
+            class="min-h-9 border-transparent pl-4 text-sm"
+          />
         </li>
       </ul>
     </li>
@@ -103,20 +134,34 @@ defmodule PinchflatWeb.Layouts do
   attr :target, :any, default: "_self"
   attr :class, :string, default: ""
   attr :icon_class, :string, default: ""
+  attr :current_path, :string, default: nil
 
   def sidebar_link(assigns) do
+    href = to_string(assigns.href)
+
+    assigns =
+      assigns
+      |> assign(:active?, active_sidebar_path?(assigns.current_path, href))
+      |> assign(:href_json, Phoenix.json_library().encode!(href))
+
     ~H"""
     <.link
       href={@href}
       target={@target}
+      aria-current={if @active?, do: "page", else: nil}
       class={[
         "font-medium",
-        "group relative flex min-h-11 items-center gap-2.5 rounded-m3-sm px-4 py-2 duration-300 ease-in-out",
+        "group relative flex min-h-10 items-center gap-2 rounded-m3-sm border px-3 py-2 duration-300 ease-in-out lg:min-h-11 lg:gap-2.5 lg:px-4",
         "duration-300 ease-in-out",
-        "hover:bg-theme-surface-3",
+        if(
+          @active?,
+          do: "theme-sidebar-active",
+          else: "border-transparent hover:bg-theme-surface-3"
+        ),
         @class
       ]}
-      x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
+      x-bind:aria-current={"isSidebarPathActive(#{@href_json}) ? 'page' : null"}
+      x-bind:class={"(sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : '') + ' ' + (isSidebarPathActive(#{@href_json}) ? 'theme-sidebar-active' : 'border-transparent hover:bg-theme-surface-3')"}
     >
       <.icon
         :if={@icon}
@@ -135,4 +180,24 @@ defmodule PinchflatWeb.Layouts do
     </.link>
     """
   end
+
+  defp active_sidebar_path?(nil, _href), do: false
+
+  defp active_sidebar_path?(current_path, href) when is_binary(current_path) and is_binary(href) do
+    cond do
+      href == "/" ->
+        current_path == "/"
+
+      current_path == href ->
+        true
+
+      String.starts_with?(current_path, href <> "/") ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  defp active_sidebar_path?(_current_path, _href), do: false
 end

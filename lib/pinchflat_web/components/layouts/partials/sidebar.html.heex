@@ -1,15 +1,16 @@
 <aside
   x-bind:class="`${sidebarVisible ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-65'}`"
   class={[
-    "-translate-x-full absolute left-0 top-0 z-9999 flex h-screen w-65 flex-col justify-between transition-[width,transform]",
+    "-translate-x-full absolute left-0 top-0 z-9999 flex h-screen w-65 flex-col transition-[width,transform]",
     "border-r border-theme-outline/70 bg-theme-surface duration-300 ease-linear shadow-m3-2 sm:shadow-none lg:static lg:translate-x-0"
   ]}
-  x-bind:style="sidebarCollapsed ? 'overflow: visible;' : 'overflow-y: hidden;'"
+  x-bind:style="sidebarCollapsed ? 'overflow: visible;' : 'overflow-y: auto;'"
   @click.outside="sidebarVisible = false"
 >
-  <section>
+  <% current_path = Phoenix.Controller.current_path(@conn) %>
+  <section class="sticky top-0 z-10 bg-theme-surface">
     <div
-      class="flex items-center justify-between gap-2 px-6 py-4"
+      class="flex items-center justify-between gap-2 px-4 py-3 lg:px-6 lg:py-4"
       x-bind:class="sidebarCollapsed ? 'lg:flex-col lg:items-center lg:justify-start lg:gap-2 lg:px-2 lg:pt-4 lg:pb-2' : ''"
     >
       <a
@@ -24,7 +25,7 @@
           x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'w-auto'"
         />
       </a>
-      <button class="block mt-3 lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
+      <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
         <.icon name="hero-arrow-left" class="fill-current" />
       </button>
       <button
@@ -41,43 +42,49 @@
         />
       </button>
     </div>
-
-    <div
-      class="no-scrollbar flex flex-col duration-300 ease-linear"
-      x-bind:class="sidebarCollapsed ? 'overflow-visible' : 'overflow-y-auto'"
-    >
-      <nav class="mt-3 px-4 py-4 lg:px-6" x-bind:class="sidebarCollapsed ? 'lg:mt-5 lg:px-2' : ''">
-        <h3
-          class="mb-4 ml-4 text-sm font-medium tracking-[0.18em] text-theme-on-surface-muted"
-          x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
-        >
-          <span>MENU</span>
-        </h3>
-
-        <div class="flex flex-col justify-between">
-          <ul class="mb-6 flex flex-col gap-1.5" x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''">
-            <.sidebar_item icon="hero-home" text="Home" href={~p"/"} />
-            <.sidebar_item icon="hero-tv" text="Sources" href={~p"/sources"} />
-            <.sidebar_item icon="hero-adjustments-vertical" text="Media Profiles" href={~p"/media_profiles"} />
-            <.sidebar_submenu
-              icon="hero-cog-6-tooth"
-              text="Config"
-              current_path={Phoenix.Controller.current_path(@conn)}
-            >
-              <:submenu text="Settings" href={~p"/settings"} /> <:submenu text="App Info" href={~p"/app_info"} />
-            </.sidebar_submenu>
-          </ul>
-        </div>
-      </nav>
-    </div>
   </section>
 
-  <section>
+  <div class="no-scrollbar flex flex-1 flex-col overflow-y-auto duration-300 ease-linear">
+    <nav class="mt-2 px-3 py-3 lg:mt-3 lg:px-6 lg:py-4" x-bind:class="sidebarCollapsed ? 'lg:mt-5 lg:px-2' : ''">
+      <h3
+        class="mb-3 ml-3 text-xs font-medium tracking-[0.18em] text-theme-on-surface-muted lg:mb-4 lg:ml-4 lg:text-sm"
+        x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
+      >
+        <span>MENU</span>
+      </h3>
+
+      <div class="flex flex-col justify-between">
+        <ul
+          class="mb-4 flex flex-col gap-1 lg:mb-6 lg:gap-1.5"
+          x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''"
+        >
+          <.sidebar_item icon="hero-home" text="Home" href={~p"/"} current_path={current_path} />
+          <.sidebar_item icon="hero-tv" text="Sources" href={~p"/sources"} current_path={current_path} />
+          <.sidebar_item
+            icon="hero-adjustments-vertical"
+            text="Media Profiles"
+            href={~p"/media_profiles"}
+            current_path={current_path}
+          />
+          <.sidebar_submenu
+            icon="hero-cog-6-tooth"
+            text="Config"
+            current_path={current_path}
+          >
+            <:submenu text="Settings" href={~p"/settings"} /> <:submenu text="App Info" href={~p"/app_info"} />
+          </.sidebar_submenu>
+        </ul>
+      </div>
+    </nav>
+
     <nav
-      class="px-4 py-4 lg:px-6"
+      class="mt-auto px-3 py-3 lg:px-6 lg:py-4"
       x-bind:class="sidebarCollapsed ? 'overflow-visible lg:px-3' : ''"
     >
-      <ul class="mb-6 flex flex-col gap-1.5" x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''">
+      <ul
+        class="mb-4 flex flex-col gap-1 lg:mb-6 lg:gap-1.5"
+        x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''"
+      >
         <.sidebar_item
           icon="hero-book-open"
           text="Docs"
@@ -116,7 +123,7 @@
 
         <li>
           <span
-            class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm"
+            class="group relative flex items-center gap-2.5 px-4 pt-1 text-sm lg:pt-2"
             x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
             x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
@@ -125,7 +132,7 @@
           <.link
             href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
             target="_blank"
-            class="group relative flex items-center gap-2.5 px-4 pt-2 text-sm underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
+            class="group relative flex items-center gap-2.5 px-4 pt-1 text-sm underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface lg:pt-2"
             x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
             <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">yt-dlp {Settings.get!(:yt_dlp_version)}</span>
@@ -133,5 +140,5 @@
         </li>
       </ul>
     </nav>
-  </section>
+  </div>
 </aside>

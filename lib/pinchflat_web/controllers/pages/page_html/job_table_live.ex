@@ -18,45 +18,97 @@ defmodule Pinchflat.Pages.JobTableLive do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-full overflow-x-auto">
-      <.table rows={@tasks}>
-        <:col :let={task} label="Task">{worker_to_task_name(task.job.worker)}</:col>
-
-        <:col :let={task} label="Subject" class="max-w-sm">
-          <.subtle_link href={task_to_link(task)}>
-            <div class="whitespace-normal break-words">
-              <div class="font-medium">{task_to_record_label(task)}</div>
-              <div class="text-xs text-theme-on-surface-muted">{task_to_record_name(task)}</div>
+    <div>
+      <div class="space-y-4 md:hidden">
+        <article :for={task <- @tasks} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-medium text-theme-on-surface">{worker_to_task_name(task.job.worker)}</div>
+              <.subtle_link href={task_to_link(task)}>
+                <div class="mt-1 text-sm text-theme-on-surface-muted">{task_to_record_label(task)}</div>
+                <div class="break-words text-sm text-theme-on-surface">{task_to_record_name(task)}</div>
+              </.subtle_link>
             </div>
-          </.subtle_link>
-        </:col>
-        <:col :let={task} label="Source" class="max-w-sm">
-          <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
-            <div class="whitespace-normal break-words">
-              <div class="font-medium">{task_source_label(task)}</div>
-              <div class="text-xs text-theme-on-surface-muted">{task_source_name(task)}</div>
+            <button
+              type="button"
+              phx-click="cancel_task"
+              phx-value-task-id={task.id}
+              data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
+              class="theme-danger-button shrink-0 rounded-md border px-3 py-1 text-xs font-medium"
+            >
+              {task_action_label(task)}
+            </button>
+          </div>
+
+          <dl class="grid grid-cols-1 gap-3 text-sm">
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Source</dt>
+              <dd class="max-w-[60%] text-right">
+                <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
+                  <div class="text-theme-on-surface">{task_source_label(task)}</div>
+                  <div class="break-words text-xs text-theme-on-surface-muted">{task_source_name(task)}</div>
+                </.subtle_link>
+                <span :if={!task_source_link(task)} class="text-theme-on-surface-muted">-</span>
+              </dd>
             </div>
-          </.subtle_link>
-          <span :if={!task_source_link(task)} class="text-theme-on-surface-muted">-</span>
-        </:col>
-        <:col :let={task} label="Attempt No.">{task.job.attempt}</:col>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Attempt No.</dt>
+              <dd class="text-right text-theme-on-surface">{task.job.attempt}</dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Started At</dt>
+              <dd class="text-right text-theme-on-surface">{format_datetime(task.job.attempted_at)}</dd>
+            </div>
+            <div class="space-y-2">
+              <dt class="text-theme-on-surface-muted">Progress</dt>
+              <dd><.task_progress task={task} /></dd>
+            </div>
+          </dl>
+        </article>
+      </div>
 
-        <:col :let={task} label="Progress"><.task_progress task={task} /></:col>
+      <div class="hidden md:block max-w-full overflow-visible">
+        <div class="overflow-x-auto overflow-y-hidden">
+          <.table rows={@tasks}>
+            <:col :let={task} label="Task">{worker_to_task_name(task.job.worker)}</:col>
 
-        <:col :let={task} label="Started At">{format_datetime(task.job.attempted_at)}</:col>
+            <:col :let={task} label="Subject" class="max-w-sm">
+              <.subtle_link href={task_to_link(task)}>
+                <div class="whitespace-normal break-words">
+                  <div class="font-medium">{task_to_record_label(task)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{task_to_record_name(task)}</div>
+                </div>
+              </.subtle_link>
+            </:col>
+            <:col :let={task} label="Source" class="max-w-sm">
+              <.subtle_link :if={task_source_link(task)} href={task_source_link(task)}>
+                <div class="whitespace-normal break-words">
+                  <div class="font-medium">{task_source_label(task)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{task_source_name(task)}</div>
+                </div>
+              </.subtle_link>
+              <span :if={!task_source_link(task)} class="text-theme-on-surface-muted">-</span>
+            </:col>
+            <:col :let={task} label="Attempt No.">{task.job.attempt}</:col>
 
-        <:col :let={task} label="">
-          <button
-            type="button"
-            phx-click="cancel_task"
-            phx-value-task-id={task.id}
-            data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
-            class="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/10"
-          >
-            {task_action_label(task)}
-          </button>
-        </:col>
-      </.table>
+            <:col :let={task} label="Progress"><.task_progress task={task} /></:col>
+
+            <:col :let={task} label="Started At">{format_datetime(task.job.attempted_at)}</:col>
+
+            <:col :let={task} label="">
+              <button
+                type="button"
+                phx-click="cancel_task"
+                phx-value-task-id={task.id}
+                data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
+                class="theme-danger-button rounded-md border px-3 py-1 text-xs font-medium"
+              >
+                {task_action_label(task)}
+              </button>
+            </:col>
+          </.table>
+        </div>
+      </div>
     </div>
     """
   end
@@ -294,15 +346,17 @@ defmodule Pinchflat.Pages.JobTableLive do
       ~H"""
       <div class="min-w-52">
         <div class="mb-1 flex items-center justify-between text-xs text-theme-on-surface-muted">
-          <span>{@label}</span>
-          <span>{Float.round(@percent, 1)}%</span>
+          <span>{@label}</span> <span>{Float.round(@percent, 1)}%</span>
         </div>
+
         <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
           <div class="h-full rounded-full bg-theme-primary transition-all duration-300" style={"width: #{@width_percent}%"}>
           </div>
         </div>
+
         <div class="mt-1 text-[11px] text-theme-on-surface-muted">
           <div>{@summary}</div>
+
           <div :if={@eta != nil}>ETA {@eta}</div>
         </div>
       </div>

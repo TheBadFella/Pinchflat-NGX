@@ -3,7 +3,7 @@
     <span x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
           String.raw`#{Jason.Formatter.pretty_print(Phoenix.json_library().encode!(@media_item))}`,
-          () => copied = true, 
+          () => copied = true,
           () => copied = false
         )
       "}>

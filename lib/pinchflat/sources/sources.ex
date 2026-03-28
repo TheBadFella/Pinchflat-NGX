@@ -260,7 +260,7 @@ defmodule Pinchflat.Sources do
         {:ok, source}
 
       {:error, _step, reason, _changes} ->
-      {:error, reason}
+        {:error, reason}
     end
   end
 
@@ -276,7 +276,9 @@ defmodule Pinchflat.Sources do
     multi =
       Ecto.Multi.new()
       |> Ecto.Multi.update(:source, change_source(source, %{selection_mode: :all, download_media: true}, :initial))
-      |> Ecto.Multi.update_all(:restore_media_items, media_items_for_source_query(source), set: [prevent_download: false])
+      |> Ecto.Multi.update_all(:restore_media_items, media_items_for_source_query(source),
+        set: [prevent_download: false]
+      )
 
     case Repo.transaction(multi) do
       {:ok, _changes} ->

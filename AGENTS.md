@@ -113,6 +113,19 @@ end
 - Use `mix format` - config in `.formatter.exs`
 - Prettier for JS/CSS/YAML/JSON
 
+### UI Theming Guardrails
+
+- Follow Material Design 3 tokens and design foundations for UI work.
+- Use shared semantic theme classes from `assets/css/app.css` instead of page-local hardcoded palette combinations.
+- Do not introduce raw palette classes like `text-red-*`, `bg-red-*`, `border-green-*`, or `zinc-*` in `lib/pinchflat_web`.
+- When a new UI state is needed, add a semantic class or token rather than styling a single screen inline.
+- Run `yarn run ui:check-theme` after UI changes that touch `lib/pinchflat_web`.
+- Tailwind is configured in CSS, not `tailwind.config.js`. Keep Tailwind v4 theme tokens in `assets/css/theme/tokens.css`.
+- Keep raw palette variables in `assets/css/theme/palette.css`. Keep semantic component classes in `assets/css/app.css`.
+- The `@source` paths in `assets/css/app.css` are relative to `assets/css/app.css`. Be careful when editing them; wrong paths can make the UI compile successfully but drop most utilities.
+- Trim custom Tailwind tokens to values the app actually uses instead of restoring large legacy compatibility blocks.
+- The current global `font-sans` and `font-mono` stacks both use `Google Sans Code`. Preserve that unless the user asks for a typography change.
+
 ### Return Types
 
 Document returns in `@doc`:

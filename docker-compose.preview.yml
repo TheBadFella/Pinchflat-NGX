@@ -5,6 +5,10 @@ services:
       dockerfile: ./docker/dev.Dockerfile
     volumes:
       - '.:/app'
+      - mix_deps:/app/deps
+      - mix_build:/app/_build
+      - root_node_modules:/app/node_modules
+      - assets_node_modules:/app/assets/node_modules
     ports:
       - '4200:4008'
     command: bash -c "chmod +x docker/docker-run.dev.sh && docker/docker-run.dev.sh"
@@ -14,3 +18,9 @@ services:
       PAGINATION_HISTORY_LIMIT: 10
       PAGINATION_LIMIT: 20
       YT_DLP_WORKER_CONCURRENCY: ${YT_DLP_WORKER_CONCURRENCY:-5}
+
+volumes:
+  mix_deps:
+  mix_build:
+  root_node_modules:
+  assets_node_modules:

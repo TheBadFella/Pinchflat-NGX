@@ -102,6 +102,7 @@
         help="For playlists only. Index first, then send me to a selection screen so I can choose which items to download."
       />
     </section>
+
     <.input
       field={f[:cookie_behaviour]}
       options={friendly_cookie_behaviours()}
@@ -162,7 +163,6 @@
           >
             Paste Cookie Contents
           </.button>
-
           <.button
             :if={@cookie_file_exists}
             type="button"
@@ -245,7 +245,7 @@
       <section
         x-data={
           """
-          { 
+          {
             placeholders: JSON.parse('#{output_path_template_override_placeholders(@media_profiles)}'),
             inputValue: null,
             sourceFolderValue: #{Phoenix.json_library().encode!(Phoenix.HTML.Form.normalize_value("text", f[:download_subdirectory].value) || "")},
@@ -264,7 +264,6 @@
           help={download_subdirectory_help()}
           x-model="sourceFolderValue"
         />
-
         <section
           :if={Enum.any?(@available_folders)}
           class="theme-surface-accent mt-3 overflow-hidden rounded-m3-lg"
@@ -278,6 +277,7 @@
           >
             <div>
               <h3 class="text-base font-semibold text-theme-on-surface">Pick existing source folder</h3>
+
               <p class="mt-1 text-sm text-theme-on-surface-muted">
                 Choose from folders already under your media root instead of typing the path manually.
               </p>
@@ -289,7 +289,6 @@
               x-bind:class="sourceFolderPickerOpen ? 'text-theme-primary' : ''"
             />
           </button>
-
           <div
             x-cloak
             x-show="sourceFolderPickerOpen"
@@ -349,11 +348,15 @@
         per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
       </p>
     </section>
+
     <div class="my-10 w-full">
       <.button class="w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
     </div>
 
-    <section x-data="{ sourceFolderHelpOpen: false }" class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg">
+    <section
+      x-data="{ sourceFolderHelpOpen: false }"
+      class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg"
+    >
       <button
         type="button"
         class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
@@ -362,6 +365,7 @@
       >
         <div>
           <h3 class="text-lg font-semibold text-theme-on-surface">How source folders work?</h3>
+
           <p class="mt-1 text-sm text-theme-on-surface-muted">
             Source folders sit in front of the output template. Expand this for examples and edge cases.
           </p>
@@ -373,7 +377,6 @@
           x-bind:class="sourceFolderHelpOpen ? 'rotate-180 text-theme-primary' : ''"
         />
       </button>
-
       <div
         x-cloak
         x-show="sourceFolderHelpOpen"
@@ -385,24 +388,32 @@
         </p>
 
         <p class="mt-3">
-          Use <strong class="text-theme-on-surface">Source folder</strong> for the main folder, then keep your template focused on file naming or
+          Use <strong class="text-theme-on-surface">Source folder</strong>
+          for the main folder, then keep your template focused on file naming or
           subfolders inside it.
         </p>
 
         <p class="mt-3">
           If both the source folder and the template point to the same folder name, it will be duplicated.
-          Example: source folder <code class="text-theme-on-surface">Kids</code> plus template <code class="text-theme-on-surface">{~S(Kids/{{ title }}.{{ ext }})}</code>
+          Example: source folder <code class="text-theme-on-surface">Kids</code>
+          plus template <code class="text-theme-on-surface">{~S(Kids/{{ title }}.{{ ext }})}</code>
           becomes <code class="text-theme-on-surface">Kids/Kids/...</code>.
         </p>
 
         <p class="mt-3">Good examples:</p>
+
         <ul class="mt-2 list-disc pl-5">
-          <li :for={example <- download_subdirectory_examples()}><code class="text-theme-on-surface">{example}</code></li>
+          <li :for={example <- download_subdirectory_examples()}>
+            <code class="text-theme-on-surface">{example}</code>
+          </li>
         </ul>
       </div>
     </section>
 
-    <section x-data="{ fastIndexHelpOpen: false }" class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg">
+    <section
+      x-data="{ fastIndexHelpOpen: false }"
+      class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg"
+    >
       <button
         type="button"
         class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
@@ -411,6 +422,7 @@
       >
         <div>
           <h3 class="text-lg font-semibold text-theme-on-surface">What is fast indexing?</h3>
+
           <p class="mt-1 text-sm text-theme-on-surface-muted">Click to expand the explanation and recommendations.</p>
         </div>
 
@@ -420,7 +432,6 @@
           x-bind:class="fastIndexHelpOpen ? 'rotate-180 text-theme-primary' : ''"
         />
       </button>
-
       <div
         x-cloak
         x-show="fastIndexHelpOpen"
@@ -458,7 +469,7 @@
       >
         Cancel
       </button>
-      <.button class="w-auto" rounding="rounded-m3-sm">Upload</.button>
+       <.button class="w-auto" rounding="rounded-m3-sm">Upload</.button>
     </div>
   </.form>
 </.modal>
@@ -487,7 +498,7 @@
       >
         Cancel
       </button>
-      <.button class="w-auto" rounding="rounded-m3-sm">Save Cookie File</.button>
+       <.button class="w-auto" rounding="rounded-m3-sm">Save Cookie File</.button>
     </div>
   </.form>
 </.modal>

@@ -7,7 +7,6 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias OpenApiSpex.Schema
   alias Pinchflat.Repo
   alias Pinchflat.Media
-  alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
@@ -363,6 +362,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
     if active_downloads_for_source?(source) || queued_downloads_for_source?(source) do
       {:ok, source} = Sources.update_source(source, %{download_media: false})
+      DownloadingHelpers.dequeue_pending_download_tasks(source, include_executing: true)
 
       conn
       |> put_flash(:info, "Source downloads paused.")
@@ -379,7 +379,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
     if stoppable_source?(source) do
       {:ok, source} = Sources.update_source(source, %{enabled: false, download_media: false})
-      Tasks.delete_pending_tasks_for(source, "MediaDownloadWorker", include_executing: true)
+      DownloadingHelpers.dequeue_pending_download_tasks(source, include_executing: true)
 
       conn
       |> put_flash(:info, "Source stopped.")

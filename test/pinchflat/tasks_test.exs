@@ -268,6 +268,12 @@ defmodule Pinchflat.TasksTest do
     end
   end
 
+  describe "get_task_event_payload/1" do
+    test "returns nil when given a nil job id" do
+      assert Tasks.get_task_event_payload(nil) == nil
+    end
+  end
+
   describe "update_task_progress/2" do
     test "updates persisted progress fields" do
       task = task_fixture()

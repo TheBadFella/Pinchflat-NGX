@@ -17,7 +17,7 @@
     <span x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
           String.raw`#{Jason.Formatter.pretty_print(Phoenix.json_library().encode!(@source))}`,
-          () => copied = true, 
+          () => copied = true,
           () => copied = false
         )
       "}>
@@ -93,8 +93,7 @@
       data-confirm={"Start downloads for #{@source.custom_name}?"}
       class="inline-flex items-center gap-2"
     >
-      <.icon name="hero-play" class="h-4 w-4" />
-      Start All
+      <.icon name="hero-play-solid" class="h-4 w-4" /> Start All
     </.link>
   </:option>
 
@@ -105,8 +104,7 @@
       data-confirm={"Pause downloads for #{@source.custom_name}?"}
       class="inline-flex items-center gap-2"
     >
-      <.icon name="hero-pause" class="h-4 w-4" />
-      Pause All
+      <.icon name="hero-pause-solid" class="h-4 w-4" /> Pause All
     </.link>
   </:option>
 
@@ -117,8 +115,7 @@
       data-confirm={"Stop downloads for #{@source.custom_name}?"}
       class="inline-flex items-center gap-2"
     >
-      <.icon name="hero-stop" class="h-4 w-4" />
-      Stop All
+      <.icon name="hero-stop-solid" class="h-4 w-4" /> Stop All
     </.link>
   </:option>
 

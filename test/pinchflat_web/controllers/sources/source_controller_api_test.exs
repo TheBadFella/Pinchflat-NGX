@@ -17,7 +17,7 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
 
       response = json_response(conn, 200)
       assert is_list(response["data"])
-      assert length(response["data"]) >= 1
+      refute response["data"] == []
       assert List.first(response["data"])["id"] == source.id
     end
   end

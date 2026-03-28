@@ -58,38 +58,76 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
       <div :if={@stale_sources != []} class="theme-surface-raised p-4">
         <h3 class="mb-3 flex items-center text-lg font-semibold text-theme-on-surface">
-          <.icon name="hero-exclamation-triangle" class="h-5 w-5 text-yellow-400 mr-2" /> Sources Not Indexed Recently
+          <.icon name="hero-exclamation-triangle" class="theme-status-warning mr-2 h-5 w-5" /> Sources Not Indexed Recently
         </h3>
 
         <p class="mb-4 text-sm text-theme-on-surface-muted">
           These sources haven't been indexed in over 24 hours. They may be stuck or have configuration issues.
         </p>
 
-        <div class="max-w-full overflow-x-auto">
-          <.table rows={@stale_sources} table_class="text-sm">
-            <:col :let={source} label="Source">
-              <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
-            </:col>
+        <div class="space-y-4 md:hidden">
+          <article :for={source <- @stale_sources} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <.subtle_link href={~p"/sources/#{source.id}"}>
+                  <span class="block break-words font-medium text-theme-on-surface">{source.custom_name}</span>
+                </.subtle_link>
+              </div>
 
-            <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
-
-            <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
-
-            <:col :let={source} label="Enabled">
-              <span :if={source.enabled} class="text-green-400">Yes</span>
-              <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span>
-            </:col>
-
-            <:col :let={source} label="">
               <.link
                 href={~p"/sources/#{source.id}/force_index"}
                 method="post"
-                class="text-xs text-theme-primary transition hover:text-theme-secondary"
+                class="shrink-0 text-xs text-theme-primary transition hover:text-theme-secondary"
               >
                 Force Index
               </.link>
-            </:col>
-          </.table>
+            </div>
+
+            <dl class="grid grid-cols-1 gap-3 text-sm">
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Last Indexed</dt>
+                <dd class="text-right text-theme-on-surface">{format_last_indexed(source.last_indexed_at)}</dd>
+              </div>
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Index Frequency</dt>
+                <dd class="text-right text-theme-on-surface">{format_frequency(source.index_frequency_minutes)}</dd>
+              </div>
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Enabled</dt>
+                <dd class="text-right">
+                  <span :if={source.enabled} class="theme-status-success">Yes</span>
+                  <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span>
+                </dd>
+              </div>
+            </dl>
+          </article>
+        </div>
+
+        <div class="hidden md:block max-w-full overflow-visible">
+          <div class="overflow-x-auto overflow-y-hidden">
+            <.table rows={@stale_sources} table_class="text-sm">
+              <:col :let={source} label="Source">
+                <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+              </:col>
+
+              <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
+
+              <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
+
+              <:col :let={source} label="Enabled"><span :if={source.enabled} class="theme-status-success">Yes</span>
+                <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span></:col>
+
+              <:col :let={source} label="">
+                <.link
+                  href={~p"/sources/#{source.id}/force_index"}
+                  method="post"
+                  class="text-xs text-theme-primary transition hover:text-theme-secondary"
+                >
+                  Force Index
+                </.link>
+              </:col>
+            </.table>
+          </div>
         </div>
       </div>
     </div>
@@ -115,8 +153,8 @@ defmodule Pinchflat.Pages.SystemHealthLive do
   defp health_row(assigns) do
     status_class =
       case assigns.status do
-        :warning -> "text-yellow-400"
-        :error -> "text-red-400"
+        :warning -> "theme-status-warning"
+        :error -> "theme-status-error"
         _ -> "text-theme-on-surface"
       end
 

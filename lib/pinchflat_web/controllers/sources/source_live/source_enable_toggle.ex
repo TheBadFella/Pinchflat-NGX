@@ -7,8 +7,15 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggle do
   def render(assigns) do
     ~H"""
     <div>
-      <.form :let={f} for={@form} phx-change="update" phx-target={@myself} class="enabled_toggle_form">
-        <.input id={"source_#{@source_id}_enabled_input"} field={f[:enabled]} type="toggle" />
+      <.form
+        :let={f}
+        for={@form}
+        id={"#{@dom_id_base}_form"}
+        phx-change="update"
+        phx-target={@myself}
+        class="enabled_toggle_form"
+      >
+        <.input id={"#{@dom_id_base}_input"} field={f[:enabled]} type="toggle" />
       </.form>
     </div>
     """
@@ -16,6 +23,7 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggle do
 
   def update(assigns, socket) do
     initial_data = %{
+      dom_id_base: dom_id_base(assigns.id),
       source_id: assigns.source.id,
       form: Sources.change_source(%Source{}, assigns.source)
     }
@@ -32,4 +40,6 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggle do
 
     {:noreply, socket}
   end
+
+  defp dom_id_base(component_id), do: "source_enable_toggle_#{component_id}"
 end

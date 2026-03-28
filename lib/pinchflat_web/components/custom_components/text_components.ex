@@ -57,10 +57,17 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   attr :href, :string, required: true
   attr :icon, :string, required: true
   attr :class, :string, default: ""
+  attr :method, :string, default: nil
+  attr :rest, :global
 
   def icon_link(assigns) do
     ~H"""
-    <.link href={@href} class={["text-theme-on-surface-muted transition hover:text-theme-secondary", @class]}>
+    <.link
+      href={@href}
+      method={@method}
+      class={["text-theme-on-surface-muted transition hover:text-theme-secondary", @class]}
+      {@rest}
+    >
       <CoreComponents.icon name={@icon} />
     </.link>
     """
@@ -119,7 +126,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     assigns = Map.put(assigns, :timezone, timezone)
 
     ~H"""
-    <time>{Calendar.strftime(Timex.Timezone.convert(@datetime, @timezone), @format)}</time>
+    <time>{Calendar.strftime(DateTime.shift_zone!(@datetime, @timezone), @format)}</time>
     """
   end
 

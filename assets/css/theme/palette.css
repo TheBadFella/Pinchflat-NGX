@@ -1,0 +1,36 @@
+:root {
+  color-scheme: dark;
+
+  --theme-bg: 0 0 0;
+  --theme-surface: 10 10 10;
+  --theme-surface-1: 16 16 16;
+  --theme-surface-2: 21 21 21;
+  --theme-surface-3: 27 27 27;
+  --theme-surface-4: 33 33 33;
+  --theme-surface-5: 40 40 40;
+
+  --theme-on-surface: 244 239 244;
+  --theme-on-surface-muted: 186 182 188;
+
+  --theme-outline: 74 69 78;
+  --theme-outline-strong: 147 143 153;
+
+  --theme-primary: 208 188 255;
+  --theme-on-primary: 56 30 114;
+  --theme-secondary: 204 194 220;
+  --theme-on-secondary: 51 45 65;
+  --theme-primary-container: 79 55 139;
+  --theme-on-primary-container: 234 221 255;
+  --theme-secondary-container: 74 68 88;
+  --theme-on-secondary-container: 232 222 248;
+  --theme-tertiary: 239 184 200;
+  --theme-on-tertiary: 73 37 50;
+  --theme-tertiary-container: 99 59 72;
+  --theme-on-tertiary-container: 255 216 228;
+
+  --theme-error: 242 184 181;
+  --theme-on-error: 96 20 16;
+  --theme-success: 125 214 157;
+  --theme-warning: 245 203 92;
+  --theme-scrim: 0 0 0;
+}

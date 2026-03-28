@@ -1,44 +1,17 @@
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
+@import 'tailwindcss';
+@import './theme/tokens.css';
+@import './theme/palette.css';
 
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
+/* Tailwind v4 source paths are relative to this file: `assets/css/app.css`. */
+@source "../js";
+@source "../../lib/pinchflat_web";
+@source "../../lib/pinchflat_web.ex";
+
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;700&display=swap');
 
 /* This file is for your main application CSS */
 [x-cloak] {
   display: none !important;
-}
-
-:root {
-  color-scheme: dark;
-  --theme-bg: 0 0 0;
-  --theme-surface: 10 10 10;
-  --theme-surface-1: 16 16 16;
-  --theme-surface-2: 21 21 21;
-  --theme-surface-3: 27 27 27;
-  --theme-surface-4: 33 33 33;
-  --theme-surface-5: 40 40 40;
-  --theme-on-surface: 244 239 244;
-  --theme-on-surface-muted: 186 182 188;
-  --theme-outline: 74 69 78;
-  --theme-outline-strong: 147 143 153;
-  --theme-primary: 208 188 255;
-  --theme-on-primary: 56 30 114;
-  --theme-secondary: 204 194 220;
-  --theme-on-secondary: 51 45 65;
-  --theme-primary-container: 79 55 139;
-  --theme-on-primary-container: 234 221 255;
-  --theme-secondary-container: 74 68 88;
-  --theme-on-secondary-container: 232 222 248;
-  --theme-tertiary: 239 184 200;
-  --theme-on-tertiary: 73 37 50;
-  --theme-tertiary-container: 99 59 72;
-  --theme-on-tertiary-container: 255 216 228;
-  --theme-error: 242 184 181;
-  --theme-on-error: 96 20 16;
-  --theme-success: 125 214 157;
-  --theme-warning: 245 203 92;
-  --theme-scrim: 0 0 0;
 }
 
 @property --theme-perimeter-angle {
@@ -66,6 +39,11 @@
 
   *:focus-visible {
     @apply outline-none ring-2 ring-theme-primary/70 ring-offset-2 ring-offset-theme-bg;
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
   }
 }
 
@@ -105,11 +83,10 @@
     inset: 0;
     border-radius: inherit;
     padding: 2px;
-    background:
-      linear-gradient(
-        rgb(var(--theme-outline-strong) / 0.7),
-        rgb(var(--theme-outline-strong) / 0.7)
-      );
+    background: linear-gradient(
+      rgb(var(--theme-outline-strong) / 0.7),
+      rgb(var(--theme-outline-strong) / 0.7)
+    );
     pointer-events: none;
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
@@ -120,16 +97,15 @@
 
   .theme-field-shell:focus-within::before,
   .theme-field-shell-active::before {
-    background:
-      conic-gradient(
-        from var(--theme-perimeter-angle, 0deg),
-        rgb(var(--theme-primary) / 0.18) 0deg,
-        rgb(var(--theme-primary) / 1) 60deg,
-        rgb(var(--theme-primary) / 0.14) 96deg,
-        rgb(var(--theme-secondary) / 0.82) 188deg,
-        rgb(var(--theme-tertiary) / 0.92) 276deg,
-        rgb(var(--theme-primary) / 0.18) 360deg
-      );
+    background: conic-gradient(
+      from var(--theme-perimeter-angle, 0deg),
+      rgb(var(--theme-primary) / 0.18) 0deg,
+      rgb(var(--theme-primary) / 1) 60deg,
+      rgb(var(--theme-primary) / 0.14) 96deg,
+      rgb(var(--theme-secondary) / 0.82) 188deg,
+      rgb(var(--theme-tertiary) / 0.92) 276deg,
+      rgb(var(--theme-primary) / 0.18) 360deg
+    );
     animation: perimeter-spin 3.2s linear infinite;
   }
 
@@ -160,7 +136,113 @@
   }
 
   .theme-primary-button {
-    @apply rounded-m3-sm bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
+    @apply bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
+    border-color: rgb(var(--theme-primary) / 0.8);
+  }
+
+  .theme-primary-button:hover {
+    border-color: rgb(var(--theme-primary) / 1);
+  }
+
+  .theme-success-button {
+    @apply border-theme-success/80 bg-theme-success text-theme-bg transition hover:border-theme-success hover:bg-theme-success/90;
+  }
+
+  .theme-warning-button {
+    @apply border-theme-warning/80 bg-theme-warning text-theme-bg transition hover:border-theme-warning hover:bg-theme-warning/90;
+  }
+
+  .theme-status-info {
+    @apply text-theme-primary;
+  }
+
+  .theme-status-success {
+    @apply text-theme-success;
+  }
+
+  .theme-status-warning {
+    @apply text-theme-warning;
+  }
+
+  .theme-status-error {
+    @apply text-theme-error;
+  }
+
+  .theme-status-card {
+    @apply rounded-m3-md border border-theme-outline/80 border-l-4 bg-theme-surface-3 p-4 text-theme-on-surface shadow-m3-1;
+  }
+
+  .theme-status-card-info {
+    @apply border-theme-primary text-theme-primary;
+  }
+
+  .theme-status-card-success {
+    @apply border-theme-success text-theme-success;
+  }
+
+  .theme-status-card-warning {
+    @apply border-theme-warning text-theme-warning;
+  }
+
+  .theme-status-card-error {
+    @apply border-theme-error text-theme-error;
+  }
+
+  .theme-danger-text-button {
+    @apply text-theme-error transition hover:opacity-85;
+  }
+
+  .theme-danger-button {
+    @apply border-theme-error/70 bg-theme-error/10 text-theme-error transition hover:border-theme-error hover:bg-theme-error/15;
+  }
+
+  .theme-danger-button-solid {
+    @apply border-theme-error/80 bg-theme-error text-theme-on-error transition hover:border-theme-error hover:bg-theme-error/90;
+  }
+
+  .theme-danger-panel {
+    @apply bg-theme-error/10 text-theme-error;
+  }
+
+  .theme-badge-success {
+    @apply bg-theme-success/20 text-theme-success;
+  }
+
+  .theme-badge-warning {
+    @apply bg-theme-warning/25 text-theme-warning;
+  }
+
+  .theme-sidebar-active {
+    @apply relative overflow-hidden border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container;
+  }
+
+  .theme-sidebar-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(
+      from var(--theme-perimeter-angle, 0deg),
+      rgb(var(--theme-primary) / 0.14) 0deg,
+      rgb(var(--theme-primary) / 0.8) 52deg,
+      rgb(var(--theme-secondary) / 0.42) 170deg,
+      rgb(var(--theme-tertiary) / 0.5) 270deg,
+      rgb(var(--theme-primary) / 0.14) 360deg
+    );
+    animation: perimeter-spin 5.6s linear infinite;
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-sidebar-active::before {
+    animation: none;
   }
 }
 

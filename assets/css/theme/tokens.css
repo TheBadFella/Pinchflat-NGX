@@ -1,0 +1,76 @@
+@theme inline {
+  /* Fonts */
+  --font-sans:
+    'Google Sans Code', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono:
+    'Google Sans Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+
+  /* Semantic colors */
+  --color-theme-bg: rgb(var(--theme-bg));
+  --color-theme-surface: rgb(var(--theme-surface));
+  --color-theme-surface-1: rgb(var(--theme-surface-1));
+  --color-theme-surface-2: rgb(var(--theme-surface-2));
+  --color-theme-surface-3: rgb(var(--theme-surface-3));
+  --color-theme-surface-4: rgb(var(--theme-surface-4));
+  --color-theme-surface-5: rgb(var(--theme-surface-5));
+  --color-theme-on-surface: rgb(var(--theme-on-surface));
+  --color-theme-on-surface-muted: rgb(var(--theme-on-surface-muted));
+  --color-theme-outline: rgb(var(--theme-outline));
+  --color-theme-outline-strong: rgb(var(--theme-outline-strong));
+  --color-theme-primary: rgb(var(--theme-primary));
+  --color-theme-on-primary: rgb(var(--theme-on-primary));
+  --color-theme-secondary: rgb(var(--theme-secondary));
+  --color-theme-on-secondary: rgb(var(--theme-on-secondary));
+  --color-theme-primary-container: rgb(var(--theme-primary-container));
+  --color-theme-on-primary-container: rgb(var(--theme-on-primary-container));
+  --color-theme-secondary-container: rgb(var(--theme-secondary-container));
+  --color-theme-on-secondary-container: rgb(var(--theme-on-secondary-container));
+  --color-theme-tertiary: rgb(var(--theme-tertiary));
+  --color-theme-on-tertiary: rgb(var(--theme-on-tertiary));
+  --color-theme-tertiary-container: rgb(var(--theme-tertiary-container));
+  --color-theme-on-tertiary-container: rgb(var(--theme-on-tertiary-container));
+  --color-theme-error: rgb(var(--theme-error));
+  --color-theme-on-error: rgb(var(--theme-on-error));
+  --color-theme-success: rgb(var(--theme-success));
+  --color-theme-warning: rgb(var(--theme-warning));
+  --color-theme-scrim: rgb(var(--theme-scrim));
+
+  /* Radii */
+  --radius-m3-xs: 0.75rem;
+  --radius-m3-sm: 1rem;
+  --radius-m3-md: 1.25rem;
+  --radius-m3-lg: 1.5rem;
+
+  /* Elevation */
+  --shadow-m3-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-m3-2: 0 4px 12px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-m3-3: 0 10px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* Type */
+  --text-title-md: 24px;
+  --text-title-md--line-height: 30px;
+  --text-title-md2: 26px;
+  --text-title-md2--line-height: 30px;
+
+  /* Custom spacing values still used by the app */
+  --spacing-5.5: 1.375rem;
+  --spacing-7.5: 1.875rem;
+  --spacing-11: 2.75rem;
+  --spacing-13: 3.25rem;
+  --spacing-14: 3.5rem;
+  --spacing-16: 4rem;
+  --spacing-30: 7.5rem;
+  --spacing-40: 10rem;
+  --spacing-50: 12.5rem;
+  --spacing-52: 13rem;
+  --spacing-60: 15rem;
+  --spacing-65: 16.25rem;
+
+  /* Layering */
+  --z-index-1: 1;
+  --z-index-999: 999;
+  --z-index-9999: 9999;
+  --z-index-99999: 99999;
+}

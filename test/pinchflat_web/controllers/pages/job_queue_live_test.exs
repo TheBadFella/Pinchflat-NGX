@@ -92,7 +92,7 @@ defmodule PinchflatWeb.Pages.JobQueueLiveTest do
       {:ok, view, _html} = live_isolated(conn, JobQueueLive, session: %{})
 
       view
-      |> element("button[phx-click='cancel_job'][phx-value-job-id='#{task.job_id}']")
+      |> element(".hidden.md\\:block button[phx-click='cancel_job'][phx-value-job-id='#{task.job_id}']")
       |> render_click()
 
       # Job should be cancelled

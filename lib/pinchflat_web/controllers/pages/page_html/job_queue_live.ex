@@ -21,9 +21,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center space-x-2">
           <.icon_button icon_name="hero-arrow-path" class="h-8 w-8" phx-click="refresh" tooltip="Refresh" />
-          <span class="text-sm text-theme-on-surface-muted">
-            Auto-refreshes every {div(@refresh_interval, 1000)}s
-          </span>
+          <span class="text-sm text-theme-on-surface-muted">Auto-refreshes every {div(@refresh_interval, 1000)}s</span>
         </div>
       </div>
 
@@ -91,17 +89,17 @@ defmodule Pinchflat.Pages.JobQueueLive do
   defp stat_card(assigns) do
     color_classes =
       case assigns.color do
-        "green" -> "border-green-500 text-green-400"
-        "blue" -> "border-blue-500 text-blue-400"
-        "yellow" -> "border-yellow-500 text-yellow-400"
-        "orange" -> "border-orange-500 text-orange-400"
-        _ -> "border-gray-500 text-gray-400"
+        "green" -> "theme-status-card-success"
+        "blue" -> "theme-status-card-info"
+        "yellow" -> "theme-status-card-warning"
+        "orange" -> "theme-status-card-error"
+        _ -> "theme-status-card-info"
       end
 
     assigns = assign(assigns, :color_classes, color_classes)
 
     ~H"""
-    <div class={"theme-surface-accent border-l-4 p-4 #{@color_classes}"}>
+    <div class={"theme-status-card #{@color_classes}"}>
       <div class="text-2xl font-bold">{@count}</div>
 
       <div class="text-sm text-theme-on-surface-muted">{@label}</div>
@@ -118,47 +116,156 @@ defmodule Pinchflat.Pages.JobQueueLive do
     ~H"""
     <div class="theme-surface-raised p-4">
       <h3 class="mb-3 text-lg font-semibold text-theme-on-surface">{@title}</h3>
-      <div class="max-w-full overflow-x-auto">
-        <.table rows={@jobs} table_class="text-sm">
-          <:col :let={row} label="Worker">
-            {worker_to_short_name(row.job.worker)}
-          </:col>
-          <:col :let={row} label="Subject" class="max-w-sm">
-            <div class="whitespace-normal break-words">
-              <div class="font-medium">{row_to_subject_label(row)}</div>
-              <div class="text-xs text-theme-on-surface-muted">{row_to_subject_name(row)}</div>
+      <div class="space-y-3 md:hidden">
+        <article :for={row <- @jobs} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-medium text-theme-on-surface">{worker_to_short_name(row.job.worker)}</div>
+              <div class="mt-1 text-sm text-theme-on-surface-muted">{row_to_subject_label(row)}</div>
+              <div class="break-words text-sm text-theme-on-surface">{row_to_subject_name(row)}</div>
             </div>
-          </:col>
-          <:col :let={row} label="Source" class="max-w-sm">
-            <div class="whitespace-normal break-words">
-              <div class="font-medium">{row_to_source_label(row)}</div>
-              <div class="text-xs text-theme-on-surface-muted">{row_to_source_name(row)}</div>
-            </div>
-          </:col>
-          <:col :let={row} label="Attempt">
-            {row.job.attempt}/{row.job.max_attempts}
-          </:col>
-          <:col :let={row} label="Scheduled">
-            {format_datetime(row.job.scheduled_at)}
-          </:col>
-          <:col :let={row} :if={@state == "discarded"} label="Error" class="max-w-md">
-            <div class="whitespace-pre-wrap break-words text-xs text-red-300">
-              {format_errors(row.job.errors)}
-            </div>
-          </:col>
-          <:col :let={row} :if={@show_cancel} label="">
             <button
+              :if={@show_cancel}
               phx-click="cancel_job"
               phx-value-job-id={row.job.id}
-              class="text-xs text-red-400 transition hover:text-red-300"
+              class="theme-danger-text-button shrink-0 text-xs"
               data-confirm="Are you sure you want to cancel this job?"
             >
               Cancel
             </button>
-          </:col>
-        </.table>
+          </div>
+
+          <dl class="grid grid-cols-1 gap-2 text-sm">
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Source</dt>
+              <dd class="max-w-[60%] text-right text-theme-on-surface">
+                <div>{row_to_source_label(row)}</div>
+                <div class="break-words text-xs text-theme-on-surface-muted">{row_to_source_name(row)}</div>
+              </dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Attempt</dt>
+              <dd class="text-right text-theme-on-surface">{row.job.attempt}/{row.job.max_attempts}</dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Scheduled</dt>
+              <dd class="text-right text-theme-on-surface">{format_datetime(row.job.scheduled_at)}</dd>
+            </div>
+            <div :if={@state == "discarded"} class="flex items-center justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Error</dt>
+              <dd class="flex items-center text-right">
+                <button
+                  type="button"
+                  phx-click={show_modal(error_modal_id(row, :mobile))}
+                  class="inline-flex items-center rounded-full border border-theme-outline bg-theme-surface px-4 py-2 text-xs font-medium text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-surface-2 hover:text-theme-primary"
+                >
+                  Error Details
+                </button>
+              </dd>
+            </div>
+          </dl>
+
+          <.error_modal :if={@state == "discarded"} row={row} modal_id={error_modal_id(row, :mobile)} />
+        </article>
+      </div>
+
+      <div class="hidden md:block">
+        <div class="max-w-full overflow-visible">
+          <div class="overflow-x-auto overflow-y-hidden">
+            <.table rows={@jobs} table_class="table-fixed text-sm">
+              <:col :let={row} label="Worker">
+                {worker_to_short_name(row.job.worker)}
+              </:col>
+              <:col :let={row} label="Subject" class="w-64 align-top">
+                <div class="w-64 whitespace-normal break-words">
+                  <div class="font-medium">{row_to_subject_label(row)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{row_to_subject_name(row)}</div>
+                </div>
+              </:col>
+              <:col :let={row} label="Source" class="w-64 align-top">
+                <div class="w-64 whitespace-normal break-words">
+                  <div class="font-medium">{row_to_source_label(row)}</div>
+                  <div class="text-xs text-theme-on-surface-muted">{row_to_source_name(row)}</div>
+                </div>
+              </:col>
+              <:col :let={row} label="Attempt">
+                {row.job.attempt}/{row.job.max_attempts}
+              </:col>
+              <:col :let={row} label="Scheduled">
+                {format_datetime(row.job.scheduled_at)}
+              </:col>
+              <:col :let={row} :if={@state == "discarded"} label="Error" class="w-40 align-middle">
+                <button
+                  type="button"
+                  phx-click={show_modal(error_modal_id(row, :desktop))}
+                  class="inline-flex items-center rounded-full border border-theme-outline bg-theme-surface px-4 py-2 text-xs font-medium text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-surface-2 hover:text-theme-primary"
+                >
+                  Error Details
+                </button>
+                <.error_modal row={row} modal_id={error_modal_id(row, :desktop)} />
+              </:col>
+              <:col :let={row} :if={@show_cancel} label="">
+                <button
+                  phx-click="cancel_job"
+                  phx-value-job-id={row.job.id}
+                  class="theme-danger-text-button text-xs"
+                  data-confirm="Are you sure you want to cancel this job?"
+                >
+                  Cancel
+                </button>
+              </:col>
+            </.table>
+          </div>
+        </div>
       </div>
     </div>
+    """
+  end
+
+  attr :row, :map, required: true
+  attr :modal_id, :string, required: true
+
+  defp error_modal(assigns) do
+    ~H"""
+    <.modal id={@modal_id}>
+      <div class="space-y-5 text-theme-on-surface">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-theme-primary">Job Error</p>
+          <h4 class="mt-2 text-2xl font-semibold">{worker_to_short_name(@row.job.worker)}</h4>
+          <p class="mt-2 text-sm text-theme-on-surface-muted">
+            {@row.job.state |> String.capitalize()} for {row_to_subject_label(@row)}.
+          </p>
+        </div>
+
+        <div class="grid gap-4 rounded-m3-lg border border-theme-outline/70 bg-theme-surface-3 p-4 text-sm sm:grid-cols-2">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-theme-on-surface-muted">Subject</p>
+            <p class="mt-1 font-medium">{row_to_subject_name(@row)}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-theme-on-surface-muted">Source</p>
+            <p class="mt-1 font-medium">{row_to_source_name(@row)}</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="mb-2 text-xs uppercase tracking-wide text-theme-on-surface-muted">Details</p>
+          <div class="max-h-[50vh] overflow-y-auto rounded-m3-lg border border-theme-outline/70 bg-theme-surface p-4">
+            <pre class="theme-status-error whitespace-pre-wrap break-words font-sans text-sm leading-6">{format_errors(@row.job.errors, limit: :all)}</pre>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button
+            type="button"
+            phx-click={hide_modal(@modal_id)}
+            class="inline-flex items-center rounded-m3-sm bg-theme-primary px-5 py-3 text-sm font-medium text-theme-on-primary transition hover:bg-theme-primary/90"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </.modal>
     """
   end
 
@@ -314,11 +421,13 @@ defmodule Pinchflat.Pages.JobQueueLive do
     TextComponents.datetime_in_zone(%{datetime: datetime, format: "%Y-%m-%d %H:%M:%S"})
   end
 
-  defp format_errors([]), do: "No errors"
+  defp format_errors([], _opts), do: "No errors"
 
-  defp format_errors(errors) when is_list(errors) do
+  defp format_errors(errors, opts) when is_list(errors) do
+    limit = Keyword.get(opts, :limit, 3)
+
     errors
-    |> Enum.take(3)
+    |> maybe_take_errors(limit)
     |> Enum.map_join("\n\n", fn error ->
       case error do
         %{"error" => msg, "at" => at} -> "#{at}: #{msg}"
@@ -328,4 +437,9 @@ defmodule Pinchflat.Pages.JobQueueLive do
       end
     end)
   end
+
+  defp maybe_take_errors(errors, :all), do: errors
+  defp maybe_take_errors(errors, limit), do: Enum.take(errors, limit)
+
+  defp error_modal_id(row, context), do: "job-error-#{row.job.id}-#{context}"
 end

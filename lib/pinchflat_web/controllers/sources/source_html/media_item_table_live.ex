@@ -25,7 +25,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def render(assigns) do
     ~H"""
     <div>
-      <header class="flex justify-between items-center mb-4">
+      <header class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
           <span class="mx-2">
@@ -38,7 +38,6 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
               <.icon name="hero-magnifying-glass" />
             </span>
-
             <form phx-change="search_term" phx-submit="search_term">
               <input
                 type="text"
@@ -52,15 +51,33 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </div>
         </div>
       </header>
-      <.table rows={@records}>
-        <:col :let={media_item} :if={@media_state == "pending"} label="#" class="w-16 text-center">
-          {Map.get(@queue_positions, media_item.id, "-")}
-        </:col>
+      <div class="space-y-4 md:hidden">
+        <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0 flex-1 space-y-2">
+              <div
+                :if={@media_state == "pending"}
+                class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted"
+              >
+                Queue #{Map.get(@queue_positions, media_item.id, "-")}
+              </div>
+              <div class="flex items-start gap-2">
+                <.icon
+                  :if={media_item.last_error}
+                  name="hero-exclamation-circle-solid"
+                  class="theme-status-error mt-0.5 shrink-0"
+                />
+                <div class="min-w-0">
+                  <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                    <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
+                      {media_item.title}
+                    </span>
+                  </.subtle_link>
+                </div>
+              </div>
+            </div>
 
-        <:col :let={media_item} label="Title" class="max-w-xs">
-          <section class="space-y-2">
-            <div class="flex items-center space-x-1 gap-2">
-              <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="shrink-0 text-red-500" />
+            <div class="flex shrink-0 items-center gap-2">
               <.icon_button
                 :if={@media_state != "downloaded"}
                 icon_name="hero-arrow-down-tray"
@@ -71,50 +88,125 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 tooltip="Force Download"
                 tooltip_position="bottom-left"
               />
-              <span class="truncate">
-                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>{media_item.title}</.subtle_link>
-              </span>
+              <.icon_button
+                :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+                icon_name="hero-stop-solid"
+                variant="danger"
+                class="h-10 w-10"
+                phx-click="stop_download"
+                phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+                phx-value-media-id={media_item.id}
+                data-confirm="Are you sure you want to stop this download?"
+                tooltip="Stop Download"
+                tooltip_position="bottom-left"
+              />
+              <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" />
             </div>
+          </div>
 
-            <div :if={media_item.last_error} class="whitespace-pre-wrap break-words text-xs text-red-300">
-              {media_item.last_error}
+          <div
+            :if={media_item.last_error}
+            class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
+          >
+            {media_item.last_error}
+          </div>
+
+          <dl class="grid grid-cols-1 gap-3 text-sm">
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Upload Date</dt>
+              <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
             </div>
-          </section>
-        </:col>
+            <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Size / Progress</dt>
+              <dd class="max-w-[65%] text-right text-theme-on-surface">
+                <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+              </dd>
+            </div>
+            <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Prevent Download</dt>
+              <dd class="text-right text-theme-on-surface">
+                <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
+              </dd>
+            </div>
+            <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Excluded Reason</dt>
+              <dd class="max-w-[60%] text-right text-theme-on-surface">{excluded_reason(media_item, @source)}</dd>
+            </div>
+          </dl>
+        </article>
+      </div>
 
-        <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
-          <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
-        </:col>
+      <div class="hidden md:block">
+        <.table rows={@records}>
+          <:col :let={media_item} :if={@media_state == "pending"} label="#" class="w-16 text-center">
+            {Map.get(@queue_positions, media_item.id, "-")}
+          </:col>
 
-        <:col :let={media_item} :if={@media_state == "other"} label="Excluded Reason">
-          {excluded_reason(media_item, @source)}
-        </:col>
+          <:col :let={media_item} label="Title" class="max-w-sm">
+            <section class="space-y-2">
+              <div class="flex items-start space-x-1 gap-2">
+                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="theme-status-error shrink-0" />
+                <.icon_button
+                  :if={@media_state != "downloaded"}
+                  icon_name="hero-arrow-down-tray"
+                  class="h-10 w-10"
+                  phx-click="force_download"
+                  phx-value-media-id={media_item.id}
+                  data-confirm="Are you sure you want to force a download of this media?"
+                  tooltip="Force Download"
+                  tooltip_position="bottom-left"
+                />
+                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                  <span class="block whitespace-normal break-words">{media_item.title}</span>
+                </.subtle_link>
+              </div>
 
-        <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
+              <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
+                {media_item.last_error}
+              </div>
+            </section>
+          </:col>
 
-        <:col :let={media_item} label="Size / Progress">
-          {size_or_progress_label(media_item, Map.get(@tasks_by_media_item_id, media_item.id))}
-        </:col>
+          <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
+            <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
+          </:col>
 
-        <:col :let={media_item} label="Action">
-          <.icon_button
-            :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-            icon_name="hero-stop"
-            class="h-10 w-10 border-red-400/80 bg-red-500/10 hover:border-red-300 hover:bg-red-500/20"
-            icon_class="text-red-300"
-            phx-click="stop_download"
-            phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
-            phx-value-media-id={media_item.id}
-            data-confirm="Are you sure you want to stop this download?"
-            tooltip="Stop Download"
-            tooltip_position="bottom-left"
-          />
-          <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
-        </:col>
-        <:col :let={media_item} label="" class="flex justify-end">
-          <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" class="mr-4" />
-        </:col>
-      </.table>
+          <:col :let={media_item} :if={@media_state == "other"} label="Excluded Reason">
+            {excluded_reason(media_item, @source)}
+          </:col>
+
+          <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
+
+          <:col :let={media_item} label="Size / Progress">
+            <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+          </:col>
+
+          <:col :let={media_item} label="Action">
+            <.icon_button
+              :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+              icon_name="hero-stop-solid"
+              variant="danger"
+              class="h-10 w-10"
+              phx-click="stop_download"
+              phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+              phx-value-media-id={media_item.id}
+              data-confirm="Are you sure you want to stop this download?"
+              tooltip="Stop Download"
+              tooltip_position="bottom-left"
+            />
+            <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
+          </:col>
+          <:col :let={media_item} label="" class="align-middle text-right">
+            <div class="flex justify-end">
+              <.icon_link
+                href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"}
+                icon="hero-pencil-square"
+                class="mr-4"
+              />
+            </div>
+          </:col>
+        </.table>
+      </div>
 
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
@@ -241,22 +333,44 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
 
-    records =
-      fetch_records(base_query, page)
-      |> order_by(desc: :uploaded_at)
-      |> Repo.all()
+    if media_state == "pending" do
+      records =
+        base_query
+        |> order_pending_media()
+        |> fetch_records(page)
+        |> Repo.all()
 
-    build_pagination_attrs(
-      %{
-        page: page,
-        total_pages: total_pages,
-        records: records,
-        search_term: nil,
-        total_record_count: total_record_count,
-        filtered_record_count: total_record_count
-      },
-      media_state
-    )
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: nil,
+          total_record_count: total_record_count,
+          filtered_record_count: total_record_count
+        },
+        media_state,
+        base_query
+      )
+    else
+      records =
+        fetch_records(base_query, page)
+        |> order_by(desc: :uploaded_at)
+        |> Repo.all()
+
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: nil,
+          total_record_count: total_record_count,
+          filtered_record_count: total_record_count
+        },
+        media_state,
+        base_query
+      )
+    end
   end
 
   defp fetch_pagination_attributes(base_query, page, search_term, media_state) do
@@ -267,22 +381,44 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     total_pages = max(ceil(filtered_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
 
-    records =
-      fetch_records(filtered_base_query, page)
-      |> order_by(desc: fragment("rank"), desc: :uploaded_at)
-      |> Repo.all()
+    if media_state == "pending" do
+      records =
+        filtered_base_query
+        |> order_pending_media()
+        |> fetch_records(page)
+        |> Repo.all()
 
-    build_pagination_attrs(
-      %{
-        page: page,
-        total_pages: total_pages,
-        records: records,
-        search_term: search_term,
-        total_record_count: total_record_count,
-        filtered_record_count: filtered_record_count
-      },
-      media_state
-    )
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: search_term,
+          total_record_count: total_record_count,
+          filtered_record_count: filtered_record_count
+        },
+        media_state,
+        filtered_base_query
+      )
+    else
+      records =
+        fetch_records(filtered_base_query, page)
+        |> order_by(desc: fragment("rank"), desc: :uploaded_at)
+        |> Repo.all()
+
+      build_pagination_attrs(
+        %{
+          page: page,
+          total_pages: total_pages,
+          records: records,
+          search_term: search_term,
+          total_record_count: total_record_count,
+          filtered_record_count: filtered_record_count
+        },
+        media_state,
+        filtered_base_query
+      )
+    end
   end
 
   defp fetch_records(base_query, page) do
@@ -398,14 +534,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp too_long?(_media_item, _source), do: false
 
-  defp build_pagination_attrs(attrs, media_state) do
+  defp build_pagination_attrs(attrs, media_state, queue_base_query) do
     tasks_by_media_item_id = fetch_download_tasks(attrs.records)
     ordered_records = order_records_for_display(attrs.records, tasks_by_media_item_id, media_state)
 
     attrs
     |> Map.put(:records, ordered_records)
     |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
-    |> Map.put(:queue_positions, build_queue_positions(ordered_records, tasks_by_media_item_id, media_state))
+    |> Map.put(:queue_positions, build_queue_positions(queue_base_query, ordered_records, media_state))
   end
 
   defp fetch_download_tasks(records) do
@@ -437,14 +573,77 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp order_records_for_display(records, _tasks_by_media_item_id, _media_state), do: records
 
-  defp build_queue_positions(records, tasks_by_media_item_id, "pending") do
+  defp build_queue_positions(base_query, records, "pending") do
     records
-    |> Enum.filter(&Map.has_key?(tasks_by_media_item_id, &1.id))
-    |> Enum.with_index(1)
-    |> Map.new(fn {media_item, position} -> {media_item.id, position} end)
+    |> Enum.map(& &1.id)
+    |> then(fn record_ids ->
+      base_query
+      |> active_pending_media_ids_query()
+      |> Repo.all()
+      |> Enum.with_index(1)
+      |> Enum.reduce(%{}, fn {media_item_id, position}, acc ->
+        if media_item_id in record_ids, do: Map.put(acc, media_item_id, position), else: acc
+      end)
+    end)
   end
 
-  defp build_queue_positions(_records, _tasks_by_media_item_id, _media_state), do: %{}
+  defp build_queue_positions(_base_query, _records, _media_state), do: %{}
+
+  defp active_pending_media_ids_query(base_query) do
+    latest_task_ids = latest_active_download_task_ids_query()
+
+    from(media_item in exclude(base_query, :select),
+      join: latest_task in subquery(latest_task_ids),
+      on: latest_task.media_item_id == media_item.id,
+      join: task in Task,
+      on: task.id == latest_task.task_id,
+      join: job in Oban.Job,
+      on: job.id == task.job_id,
+      order_by: [
+        asc: fragment("CASE WHEN ? = 'executing' THEN 0 ELSE 1 END", job.state),
+        asc: task.inserted_at,
+        desc: media_item.uploaded_at,
+        desc: media_item.id
+      ],
+      select: media_item.id
+    )
+  end
+
+  defp order_pending_media(base_query) do
+    latest_task_ids = latest_active_download_task_ids_query()
+
+    from(media_item in exclude(base_query, :order_by),
+      left_join: latest_task in subquery(latest_task_ids),
+      on: latest_task.media_item_id == media_item.id,
+      left_join: task in Task,
+      on: task.id == latest_task.task_id,
+      left_join: job in Oban.Job,
+      on: job.id == task.job_id,
+      order_by: [
+        asc:
+          fragment(
+            "CASE WHEN ? = 'executing' THEN 0 WHEN ? IS NOT NULL THEN 1 ELSE 2 END",
+            job.state,
+            task.id
+          ),
+        asc: fragment("CASE WHEN ? IS NULL THEN 1 ELSE 0 END", task.inserted_at),
+        asc: task.inserted_at,
+        desc: media_item.uploaded_at,
+        desc: media_item.id
+      ]
+    )
+  end
+
+  defp latest_active_download_task_ids_query do
+    from(task in Task,
+      join: job in assoc(task, :job),
+      where: fragment("? LIKE ?", job.worker, ^"%.MediaDownloadWorker"),
+      where: job.state in ^["available", "scheduled", "retryable", "executing"],
+      where: not is_nil(task.media_item_id),
+      group_by: task.media_item_id,
+      select: %{media_item_id: task.media_item_id, task_id: max(task.id)}
+    )
+  end
 
   defp queue_sort_key(media_item, %Task{job: %{state: "executing"}, inserted_at: inserted_at}) do
     {0, sort_datetime_asc_key(inserted_at || media_item.uploaded_at), media_item.id}
@@ -510,6 +709,35 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp maybe_append_speed(text, nil), do: text
   defp maybe_append_speed(text, speed_bytes), do: "#{text} at #{readable_byte_size(speed_bytes)}/s"
+
+  attr :media_item, :map, required: true
+  attr :task, :any, default: nil
+
+  defp progress_details(assigns) do
+    ~H"""
+    <div :if={is_nil(@task)} class="text-theme-on-surface">
+      {size_or_progress_label(@media_item, nil)}
+    </div>
+    <div :if={!is_nil(@task)} class="min-w-40 space-y-2">
+      <div class="text-right text-theme-on-surface">{size_or_progress_label(@media_item, @task)}</div>
+      <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
+        <div
+          class="h-full rounded-full bg-theme-primary transition-all duration-300"
+          style={"width: #{progress_percent(@task)}%"}
+        >
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp progress_percent(task) do
+    task.progress_percent
+    |> Kernel.||(0.0)
+    |> max(0.0)
+    |> min(100.0)
+    |> trunc()
+  end
 
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do

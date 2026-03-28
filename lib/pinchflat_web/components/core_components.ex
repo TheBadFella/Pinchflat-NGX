@@ -20,6 +20,50 @@ defmodule PinchflatWeb.CoreComponents do
   alias Phoenix.LiveView.JS
   alias PinchflatWeb.CustomComponents.TextComponents
 
+  @heroicons_dir Path.expand("../../../assets/vendor/heroicons/optimized", __DIR__)
+  @simple_icons_dir Path.expand("../../../assets/vendor/simple-icons", __DIR__)
+  @hero_outline_paths Path.wildcard(Path.join(@heroicons_dir, "24/outline/*.svg"))
+  @hero_solid_paths Path.wildcard(Path.join(@heroicons_dir, "24/solid/*.svg"))
+  @hero_mini_paths Path.wildcard(Path.join(@heroicons_dir, "20/solid/*.svg"))
+  @simple_icon_paths Path.wildcard(Path.join(@simple_icons_dir, "*.svg"))
+  @icon_paths @hero_outline_paths ++ @hero_solid_paths ++ @hero_mini_paths ++ @simple_icon_paths
+
+  for path <- @icon_paths do
+    @external_resource path
+  end
+
+  @icon_data_uris (
+                    load_data_uri = fn path ->
+                      svg =
+                        path
+                        |> File.read!()
+                        |> String.replace(~r/\r?\n/, "")
+                        |> String.replace("currentColor", "#000")
+                        |> Base.encode64()
+
+                      "url(\"data:image/svg+xml;base64,#{svg}\")"
+                    end
+
+                    Enum.into(@hero_outline_paths, %{}, fn path ->
+                      {"hero-" <> Path.basename(path, ".svg"), load_data_uri.(path)}
+                    end)
+                    |> Map.merge(
+                      Enum.into(@hero_solid_paths, %{}, fn path ->
+                        {"hero-" <> Path.basename(path, ".svg") <> "-solid", load_data_uri.(path)}
+                      end)
+                    )
+                    |> Map.merge(
+                      Enum.into(@hero_mini_paths, %{}, fn path ->
+                        {"hero-" <> Path.basename(path, ".svg") <> "-mini", load_data_uri.(path)}
+                      end)
+                    )
+                    |> Map.merge(
+                      Enum.into(@simple_icon_paths, %{}, fn path ->
+                        {"si-" <> Path.basename(path, ".svg"), load_data_uri.(path)}
+                      end)
+                    )
+                  )
+
   @doc """
   Renders a modal.
 
@@ -359,6 +403,7 @@ defmodule PinchflatWeb.CoreComponents do
           />
           <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50">
           </div>
+
           <div class={[
             "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
             @inputclass
@@ -396,6 +441,7 @@ defmodule PinchflatWeb.CoreComponents do
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
+
       <div class="theme-field-shell mt-2">
         <textarea
           id={@id}
@@ -407,6 +453,7 @@ defmodule PinchflatWeb.CoreComponents do
           {@rest}
         ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
       </div>
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
 
       <.error :for={msg <- @errors}>{msg}</.error>
@@ -533,7 +580,6 @@ defmodule PinchflatWeb.CoreComponents do
             x-on:input="syncFromInput()"
             x-on:change="syncFromInput()"
           />
-
           <button
             type="button"
             class={[
@@ -561,7 +607,6 @@ defmodule PinchflatWeb.CoreComponents do
               x-bind:class="open ? 'rotate-180 text-theme-primary' : ''"
             />
           </button>
-
           <div
             x-cloak
             x-show="open"
@@ -579,7 +624,6 @@ defmodule PinchflatWeb.CoreComponents do
             >
               {@prompt_option.label}
             </button>
-
             <button
               :for={option <- @select_options}
               type="button"
@@ -597,7 +641,6 @@ defmodule PinchflatWeb.CoreComponents do
             </button>
           </div>
         </div>
-
         {render_slot(@inner_block)}
       </div>
 
@@ -659,9 +702,9 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", @class]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8 text-zinc-800">{render_slot(@inner_block)}</h1>
+        <h1 class="text-lg font-semibold leading-8 text-theme-on-surface">{render_slot(@inner_block)}</h1>
 
-        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-zinc-600">{render_slot(@subtitle)}</p>
+        <p :if={@subtitle != []} class="mt-2 text-sm leading-6 text-theme-on-surface-muted">{render_slot(@subtitle)}</p>
       </div>
 
       <div class="flex-none">{render_slot(@actions)}</div>
@@ -702,7 +745,7 @@ defmodule PinchflatWeb.CoreComponents do
 
     ~H"""
     <table class="w-[40rem] mt-11 sm:w-full">
-      <thead class="text-sm text-left leading-6 text-zinc-500">
+      <thead class="text-sm text-left leading-6 text-theme-on-surface-muted">
         <tr>
           <th :for={col <- @col} class="p-0 pb-4 pr-6 font-normal">{col[:label]}</th>
 
@@ -713,24 +756,29 @@ defmodule PinchflatWeb.CoreComponents do
       <tbody
         id={@id}
         phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
-        class="relative divide-y divide-zinc-100 border-t border-zinc-200 text-sm leading-6 text-zinc-700"
+        class="relative divide-y divide-theme-outline/60 border-t border-theme-outline/70 text-sm leading-6 text-theme-on-surface"
       >
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="group hover:bg-zinc-50">
+        <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="group transition hover:bg-theme-surface-2">
           <td
             :for={{col, i} <- Enum.with_index(@col)}
             phx-click={@row_click && @row_click.(row)}
             class={["relative p-0", @row_click && "hover:cursor-pointer"]}
           >
             <div class="block py-4 pr-6">
-              <span class="absolute -inset-y-px right-0 -left-4 group-hover:bg-zinc-50 sm:rounded-l-xl" />
-              <span class={["relative", i == 0 && "font-semibold text-zinc-900"]}>{render_slot(col, @row_item.(row))}</span>
+              <span class="absolute -inset-y-px right-0 -left-4 group-hover:bg-theme-surface-2 sm:rounded-l-xl" />
+              <span class={["relative", i == 0 && "font-semibold text-theme-on-surface"]}>
+                {render_slot(col, @row_item.(row))}
+              </span>
             </div>
           </td>
 
           <td :if={@action != []} class="relative w-14 p-0">
             <div class="relative whitespace-nowrap py-4 text-right text-sm font-medium">
-              <span class="absolute -inset-y-px -right-4 left-0 group-hover:bg-zinc-50 sm:rounded-r-xl" />
-              <span :for={action <- @action} class="relative ml-4 font-semibold leading-6 text-zinc-900 hover:text-zinc-700">
+              <span class="absolute -inset-y-px -right-4 left-0 group-hover:bg-theme-surface-2 sm:rounded-r-xl" />
+              <span
+                :for={action <- @action}
+                class="relative ml-4 font-semibold leading-6 text-theme-on-surface hover:text-theme-primary"
+              >
                 {render_slot(action, @row_item.(row))}
               </span>
             </div>
@@ -840,8 +888,8 @@ defmodule PinchflatWeb.CoreComponents do
   You can customize the size and colors of the icons by setting
   width, height, and background color classes.
 
-  Icons are extracted from your `assets/vendor/heroicons` directory and bundled
-  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
+  Icons are loaded from `assets/vendor/heroicons` and `assets/vendor/simple-icons`
+  and rendered with CSS masks, so they no longer depend on Tailwind plugin-generated classes.
 
   ## Examples
 
@@ -853,8 +901,11 @@ defmodule PinchflatWeb.CoreComponents do
   attr :rest, :global
 
   def icon(assigns) do
+    assigns =
+      assign(assigns, :style_attr, icon_style(assigns.name))
+
     ~H"""
-    <span class={[@name, @class]} {@rest} />
+    <span class={["h-5 w-5", @class, "inline-block align-middle"]} data-icon={@name} style={@style_attr} {@rest} />
     """
   end
 
@@ -954,5 +1005,33 @@ defmodule PinchflatWeb.CoreComponents do
       _ ->
         nil
     end)
+  end
+
+  defp icon_style(name) do
+    data_uri = icon_data_uri(name)
+
+    Enum.join(
+      [
+        "display:inline-block",
+        "vertical-align:middle",
+        "background-color:currentColor",
+        "-webkit-mask-repeat:no-repeat",
+        "mask-repeat:no-repeat",
+        "-webkit-mask-position:center",
+        "mask-position:center",
+        "-webkit-mask-size:contain",
+        "mask-size:contain",
+        "-webkit-mask-image:#{data_uri}",
+        "mask-image:#{data_uri}"
+      ],
+      ";"
+    )
+  end
+
+  defp icon_data_uri(name) do
+    case Map.fetch(@icon_data_uris, name) do
+      {:ok, data_uri} -> data_uri
+      :error -> raise ArgumentError, "unknown icon #{inspect(name)}"
+    end
   end
 end

@@ -18,7 +18,9 @@ defmodule Pinchflat.Settings.AppriseServerLive do
       phx-change="apprise_server_changed"
     >
       <:input_append>
-        <.icon_button icon_name={@icon_name} class="h-12 w-12" phx-click="send_apprise_test" tooltip={@tooltip} />
+        <div class="ml-3 mt-2 shrink-0 sm:mt-0">
+          <.icon_button icon_name={@icon_name} class="h-12 w-12" phx-click="send_apprise_test" tooltip={@tooltip} />
+        </div>
       </:input_append>
     </.input>
     """

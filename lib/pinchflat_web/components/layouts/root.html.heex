@@ -11,12 +11,26 @@
   </head>
 
   <body
-    x-data={"{ 
+    x-data={"{
       sidebarVisible: false,
       sidebarCollapsed: window.getSidebarCollapsed(),
+      currentPath: window.location.pathname,
       proEnabled: #{Settings.get!(:pro_enabled)},
-      onboarding: #{Settings.get!(:onboarding)}
+      onboarding: #{Settings.get!(:onboarding)},
+      updateCurrentPath() { this.currentPath = window.location.pathname },
+      isSidebarPathActive(href) {
+        if (href === '/') return this.currentPath === '/'
+        return this.currentPath === href || this.currentPath.startsWith(`${href}/`)
+      },
+      isSidebarSubmenuActive(hrefs) {
+        return hrefs.some((href) => this.isSidebarPathActive(href))
+      }
     }"}
+    x-init="
+      updateCurrentPath();
+      window.addEventListener('popstate', () => updateCurrentPath());
+      window.addEventListener('phx:page-loading-stop', () => updateCurrentPath());
+    "
     class="theme-app-shell dark bg-theme-bg text-theme-on-surface"
     data-socket-path={Path.join(Application.get_env(:pinchflat, :base_route_path), "/live")}
     data-sidebar-logo={~p"/images/logo-2024-03-20.png"}

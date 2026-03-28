@@ -111,7 +111,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       view
-      |> element(".enabled_toggle_form")
+      |> element("#source_enable_toggle_source_#{source.id}_enabled_form")
       |> render_change(%{source: %{"enabled" => false}})
 
       assert %{enabled: false} = Repo.get!(Source, source.id)

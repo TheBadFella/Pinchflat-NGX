@@ -8,16 +8,14 @@
   <div class="max-w-full">
     <.button rounding="rounded-m3-sm" x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
-          `#{diagnostic_info_string()}`, 
-          () => copied = true, 
+          `#{diagnostic_info_string()}`,
+          () => copied = true,
           () => copied = false
         )
       "}>
       Copy Diagnostic Info
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </.button>
-    <.link href={~p"/download_logs"}>
-      <.button rounding="rounded-m3-sm" class="ml-4">Download Logs</.button>
-    </.link>
+    <.link href={~p"/download_logs"}><.button rounding="rounded-m3-sm" class="ml-4">Download Logs</.button></.link>
   </div>
 </div>
