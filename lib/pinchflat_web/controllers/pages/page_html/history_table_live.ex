@@ -67,7 +67,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               />
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-                icon_name="hero-stop"
+                icon_name="hero-stop-solid"
                 variant="danger"
                 class="h-10 w-10"
                 phx-click="stop_download"
@@ -161,7 +161,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               <:col :let={media_item} label="Action">
                 <.icon_button
                   :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-                  icon_name="hero-stop"
+                  icon_name="hero-stop-solid"
                   variant="danger"
                   class="h-10 w-10"
                   phx-click="stop_download"

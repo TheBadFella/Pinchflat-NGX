@@ -28,7 +28,7 @@ Current status: Complete
 
 ### 1. Audit
 
-- [x] Inventory current color tokens in `assets/tailwind.config.js`
+- [x] Inventory current color tokens in the legacy Tailwind config and migrate them to CSS-native Tailwind v4 theme tokens
 - [x] Inventory hard-coded color and surface classes in shared components
 - [x] Inventory hard-coded color and surface classes in page templates
 - [x] Identify components that should become theme primitives
@@ -40,7 +40,7 @@ Current status: Complete
 - [x] Define text, outline, focus, success, warning, and error roles
 - [x] Define radius and elevation conventions
 - [x] Update base CSS in `assets/css/app.css`
-- [x] Update Tailwind theme tokens in `assets/tailwind.config.js`
+- [x] Update Tailwind theme tokens in `assets/css/app.css` using CSS-native Tailwind v4 `@theme`
 
 ### 3. Shared Components
 
@@ -92,7 +92,7 @@ Current status: Complete
 ### 2026-03-23
 
 - Created this tracker
-- Confirmed the app is already dark-first via root layout and Tailwind dark mode
+- Confirmed the app is already dark-first via root layout
 - Confirmed current styling is partly tokenized but still contains many hard-coded surface/color classes
 - Completed initial audit of theme tokens and styling hotspots
 - Added semantic AMOLED Material-style theme tokens in Tailwind and base CSS
@@ -112,9 +112,9 @@ Current status: Complete
 
 ### Current theme entry points
 
-- `assets/tailwind.config.js` defines the current dashboard palette with tokens like `boxdark`, `boxdark-2`, `meta-4`, `strokedark`, `form-input`, and `primary`
-- `assets/css/app.css` sets base body styles but does not yet define a semantic theme layer
-- `lib/pinchflat_web/components/layouts/root.html.heex` forces the app into dark mode with `class="dark"`
+- `assets/css/app.css` defines the current semantic Tailwind v4 theme layer using `@theme`
+- `assets/css/app.css` also declares Tailwind source detection with `@source`
+- `lib/pinchflat_web/components/layouts/root.html.heex` keeps the app in the dark theme shell
 
 ### High-frequency hard-coded styling patterns
 
@@ -157,7 +157,7 @@ Current status: Complete
 
 - Semantic colors added for background, layered surfaces, on-surface text, outlines, primary, secondary, error, success, warning, and scrim
 - AMOLED surface scale added using CSS variables in `assets/css/app.css`
-- Material-style radii added in Tailwind
+- Material-style radii added in CSS-native Tailwind v4 theme tokens
 - New surface and button utility classes added for incremental migration
 - Global focus-visible treatment added for keyboard navigation
 - Root layout updated to consume the new app-shell classes
@@ -167,6 +167,7 @@ Current status: Complete
 - Section 4 is complete
 - Home, Sources, Media Profiles, Media Items, Settings, Search, Error, and Onboarding screens are migrated
 - Legacy runtime theme references have been removed from the app code
+- The legacy `assets/tailwind.config.js` bridge has been removed in favor of CSS-native Tailwind v4 theme configuration
 
 ## QA Notes
 

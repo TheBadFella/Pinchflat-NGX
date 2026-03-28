@@ -8,6 +8,7 @@ defmodule Pinchflat.MixProject do
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       elixirc_options: [warnings_as_errors: System.get_env("EX_CHECK") == "1"],
+      listeners: [Phoenix.CodeReloader],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),

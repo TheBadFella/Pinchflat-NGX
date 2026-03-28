@@ -102,9 +102,19 @@ defmodule PinchflatWeb.Layouts do
           {@text}
         </span>
       </span>
-      <ul x-cloak x-show="selected && !sidebarCollapsed">
+      <ul
+        x-cloak
+        x-show="selected && !sidebarCollapsed"
+        class="mt-2 ml-5 flex flex-col gap-1 border-l border-theme-outline/60 pl-4"
+      >
         <li :for={menu <- @submenu} class="text-theme-on-surface-muted">
-          <.sidebar_link icon={menu[:icon]} text={menu[:text]} href={menu[:href]} target={menu[:target]} class="pl-10" />
+          <.sidebar_link
+            icon={menu[:icon]}
+            text={menu[:text]}
+            href={menu[:href]}
+            target={menu[:target]}
+            class="min-h-9 border-transparent pl-4 text-sm"
+          />
         </li>
       </ul>
     </li>

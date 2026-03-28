@@ -1,44 +1,17 @@
 @import 'tailwindcss';
-@config "../tailwind.config.js";
-@plugin "@tailwindcss/forms";
+@import './theme/tokens.css';
+@import './theme/palette.css';
 
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
+/* Tailwind v4 source paths are relative to this file: `assets/css/app.css`. */
+@source "../js";
+@source "../../lib/pinchflat_web";
+@source "../../lib/pinchflat_web.ex";
+
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;700&display=swap');
 
 /* This file is for your main application CSS */
 [x-cloak] {
   display: none !important;
-}
-
-:root {
-  color-scheme: dark;
-  --theme-bg: 0 0 0;
-  --theme-surface: 10 10 10;
-  --theme-surface-1: 16 16 16;
-  --theme-surface-2: 21 21 21;
-  --theme-surface-3: 27 27 27;
-  --theme-surface-4: 33 33 33;
-  --theme-surface-5: 40 40 40;
-  --theme-on-surface: 244 239 244;
-  --theme-on-surface-muted: 186 182 188;
-  --theme-outline: 74 69 78;
-  --theme-outline-strong: 147 143 153;
-  --theme-primary: 208 188 255;
-  --theme-on-primary: 56 30 114;
-  --theme-secondary: 204 194 220;
-  --theme-on-secondary: 51 45 65;
-  --theme-primary-container: 79 55 139;
-  --theme-on-primary-container: 234 221 255;
-  --theme-secondary-container: 74 68 88;
-  --theme-on-secondary-container: 232 222 248;
-  --theme-tertiary: 239 184 200;
-  --theme-on-tertiary: 73 37 50;
-  --theme-tertiary-container: 99 59 72;
-  --theme-on-tertiary-container: 255 216 228;
-  --theme-error: 242 184 181;
-  --theme-on-error: 96 20 16;
-  --theme-success: 125 214 157;
-  --theme-warning: 245 203 92;
-  --theme-scrim: 0 0 0;
 }
 
 @property --theme-perimeter-angle {
@@ -163,7 +136,12 @@
   }
 
   .theme-primary-button {
-    @apply rounded-m3-sm bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
+    @apply bg-theme-primary text-theme-on-primary transition hover:bg-theme-primary/90;
+    border-color: rgb(var(--theme-primary) / 0.8);
+  }
+
+  .theme-primary-button:hover {
+    border-color: rgb(var(--theme-primary) / 1);
   }
 
   .theme-success-button {
@@ -191,7 +169,7 @@
   }
 
   .theme-status-card {
-    @apply theme-surface-accent border-l-4 p-4;
+    @apply rounded-m3-md border border-theme-outline/80 border-l-4 bg-theme-surface-3 p-4 text-theme-on-surface shadow-m3-1;
   }
 
   .theme-status-card-info {

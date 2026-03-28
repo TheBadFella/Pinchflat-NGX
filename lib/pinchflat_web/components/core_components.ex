@@ -20,6 +20,50 @@ defmodule PinchflatWeb.CoreComponents do
   alias Phoenix.LiveView.JS
   alias PinchflatWeb.CustomComponents.TextComponents
 
+  @heroicons_dir Path.expand("../../../assets/vendor/heroicons/optimized", __DIR__)
+  @simple_icons_dir Path.expand("../../../assets/vendor/simple-icons", __DIR__)
+  @hero_outline_paths Path.wildcard(Path.join(@heroicons_dir, "24/outline/*.svg"))
+  @hero_solid_paths Path.wildcard(Path.join(@heroicons_dir, "24/solid/*.svg"))
+  @hero_mini_paths Path.wildcard(Path.join(@heroicons_dir, "20/solid/*.svg"))
+  @simple_icon_paths Path.wildcard(Path.join(@simple_icons_dir, "*.svg"))
+  @icon_paths @hero_outline_paths ++ @hero_solid_paths ++ @hero_mini_paths ++ @simple_icon_paths
+
+  for path <- @icon_paths do
+    @external_resource path
+  end
+
+  @icon_data_uris (
+                    load_data_uri = fn path ->
+                      svg =
+                        path
+                        |> File.read!()
+                        |> String.replace(~r/\r?\n/, "")
+                        |> String.replace("currentColor", "#000")
+                        |> Base.encode64()
+
+                      "url(\"data:image/svg+xml;base64,#{svg}\")"
+                    end
+
+                    Enum.into(@hero_outline_paths, %{}, fn path ->
+                      {"hero-" <> Path.basename(path, ".svg"), load_data_uri.(path)}
+                    end)
+                    |> Map.merge(
+                      Enum.into(@hero_solid_paths, %{}, fn path ->
+                        {"hero-" <> Path.basename(path, ".svg") <> "-solid", load_data_uri.(path)}
+                      end)
+                    )
+                    |> Map.merge(
+                      Enum.into(@hero_mini_paths, %{}, fn path ->
+                        {"hero-" <> Path.basename(path, ".svg") <> "-mini", load_data_uri.(path)}
+                      end)
+                    )
+                    |> Map.merge(
+                      Enum.into(@simple_icon_paths, %{}, fn path ->
+                        {"si-" <> Path.basename(path, ".svg"), load_data_uri.(path)}
+                      end)
+                    )
+                  )
+
   @doc """
   Renders a modal.
 
@@ -844,8 +888,8 @@ defmodule PinchflatWeb.CoreComponents do
   You can customize the size and colors of the icons by setting
   width, height, and background color classes.
 
-  Icons are extracted from your `assets/vendor/heroicons` directory and bundled
-  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
+  Icons are loaded from `assets/vendor/heroicons` and `assets/vendor/simple-icons`
+  and rendered with CSS masks, so they no longer depend on Tailwind plugin-generated classes.
 
   ## Examples
 
@@ -857,8 +901,11 @@ defmodule PinchflatWeb.CoreComponents do
   attr :rest, :global
 
   def icon(assigns) do
+    assigns =
+      assign(assigns, :style_attr, icon_style(assigns.name))
+
     ~H"""
-    <span class={[@name, @class]} {@rest} />
+    <span class={["h-5 w-5", @class, "inline-block align-middle"]} data-icon={@name} style={@style_attr} {@rest} />
     """
   end
 
@@ -958,5 +1005,33 @@ defmodule PinchflatWeb.CoreComponents do
       _ ->
         nil
     end)
+  end
+
+  defp icon_style(name) do
+    data_uri = icon_data_uri(name)
+
+    Enum.join(
+      [
+        "display:inline-block",
+        "vertical-align:middle",
+        "background-color:currentColor",
+        "-webkit-mask-repeat:no-repeat",
+        "mask-repeat:no-repeat",
+        "-webkit-mask-position:center",
+        "mask-position:center",
+        "-webkit-mask-size:contain",
+        "mask-size:contain",
+        "-webkit-mask-image:#{data_uri}",
+        "mask-image:#{data_uri}"
+      ],
+      ";"
+    )
+  end
+
+  defp icon_data_uri(name) do
+    case Map.fetch(@icon_data_uris, name) do
+      {:ok, data_uri} -> data_uri
+      :error -> raise ArgumentError, "unknown icon #{inspect(name)}"
+    end
   end
 end
