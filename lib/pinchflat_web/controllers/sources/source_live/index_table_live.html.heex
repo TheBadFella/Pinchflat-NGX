@@ -99,6 +99,15 @@
           </.form>
 
           <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+          <.icon_link
+            href={~p"/sources/#{source.id}"}
+            icon="hero-trash"
+            method="delete"
+            data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
+            aria-label={"Delete #{source.custom_name}"}
+            title="Delete source"
+            class="mx-1 hover:text-theme-error"
+          />
         </div>
       </div>
 
@@ -269,6 +278,15 @@
       <:col :let={source} label="" class="align-middle">
         <div class="flex h-full items-center justify-center">
           <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+          <.icon_link
+            href={~p"/sources/#{source.id}"}
+            icon="hero-trash"
+            method="delete"
+            data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
+            aria-label={"Delete #{source.custom_name}"}
+            title="Delete source"
+            class="mx-1 hover:text-theme-error"
+          />
         </div>
       </:col>
     </.table>

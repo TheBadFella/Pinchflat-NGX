@@ -78,6 +78,16 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Pause downloads for Controllable Source?"
       assert response =~ "Stop downloads for Controllable Source?"
     end
+
+    test "renders source delete control with non-destructive confirmation copy", %{conn: conn} do
+      source_fixture(%{custom_name: "Deletable Source"})
+
+      conn = get(conn, ~p"/sources")
+      response = html_response(conn, 200)
+
+      assert response =~ "Delete Deletable Source? This deletes the source only and does not delete files."
+      assert response =~ "Delete source"
+    end
   end
 
   describe "new source" do
