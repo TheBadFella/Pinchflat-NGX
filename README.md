@@ -5,6 +5,7 @@
 
 > [!NOTE]
 > PinchYT keeps the core Pinchflat model, then layers on a more Material-style interface, stronger source controls, and a few workflow improvements for day-to-day downloading.
+> Fork releases use calendar-style tags such as `2026.3.28`.
 
 For installation, configuration, and the base feature set, use the actual upstream Pinchflat docs:
 
