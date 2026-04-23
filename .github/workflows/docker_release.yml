@@ -12,13 +12,13 @@ on:
           - 'linux/amd64'
       docker_tags:
         type: string
-        description: 'Docker Tags'
+        description: 'Docker tag to publish alongside latest'
         required: true
         default: 'dev'
 
   push:
-    branches:
-      - master
+    tags:
+      - '*'
   release:
     types:
       - published
@@ -47,7 +47,7 @@ jobs:
         id: set-matrix
         run: |
           # Release events build amd64 only to control Actions usage
-          # Push to master also builds amd64 only
+          # Pushes to tags also build amd64 only
           # workflow_dispatch uses the selected platforms input
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
@@ -63,7 +63,7 @@ jobs:
               echo "is_multi_arch=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            # Push to master - only amd64 for faster dev builds
+            # Tag pushes - only amd64 for faster versioned builds
             echo 'matrix={"include":[{"platform":"linux/amd64","runner":"ubuntu-latest"}]}' >> "$GITHUB_OUTPUT"
             echo "is_multi_arch=false" >> "$GITHUB_OUTPUT"
           fi
@@ -163,11 +163,11 @@ jobs:
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # All non-release actions will be tagged as `dev` (ie: push, workflow_dispatch)
+          # Versioned pushes/releases publish their version plus latest.
+          # Manual runs publish the requested tag plus latest.
           tags: |
             type=ref,event=tag
-            type=raw,value=dev,enable=${{ github.event_name != 'release' && github.event_name != 'workflow_dispatch' }}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ inputs.docker_tags }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Create manifest list and push
