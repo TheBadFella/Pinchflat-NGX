@@ -547,10 +547,11 @@ defmodule Pinchflat.Sources do
     if same_path?(old_series_directory, new_series_directory) do
       source
     else
-      with :ok <- move_directory_contents(old_series_directory, new_series_directory) do
-        update_media_filepaths_for_source(old_source, old_series_directory, new_series_directory)
-        Repo.reload!(source)
-      else
+      case move_directory_contents(old_series_directory, new_series_directory) do
+        :ok ->
+          update_media_filepaths_for_source(old_source, old_series_directory, new_series_directory)
+          Repo.reload!(source)
+
         {:error, reason} ->
           Logger.warning(
             "source_directory_move_failed source_id=#{source.id} old_directory=#{old_series_directory} " <>
