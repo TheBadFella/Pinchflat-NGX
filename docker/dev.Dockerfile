@@ -85,6 +85,18 @@ RUN curl -sL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
+# Install PowerShell for repository scripts that run under Docker
+RUN set -eux; \
+  . /etc/os-release; \
+  curl -fsSL "https://packages.microsoft.com/config/debian/${VERSION_ID}/packages-microsoft-prod.deb" -o /tmp/packages-microsoft-prod.deb; \
+  dpkg -i /tmp/packages-microsoft-prod.deb; \
+  rm /tmp/packages-microsoft-prod.deb; \
+  apt-get update -qq; \
+  apt-get install -y --no-install-recommends powershell; \
+  ln -sf /usr/bin/pwsh /usr/bin/powershell; \
+  apt-get clean; \
+  rm -rf /var/lib/apt/lists/*
+
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 ENV LANG=en_US.UTF-8

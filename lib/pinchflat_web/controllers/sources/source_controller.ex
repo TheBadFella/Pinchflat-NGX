@@ -219,45 +219,13 @@ defmodule PinchflatWeb.Sources.SourceController do
     ]
   )
 
-  def update(conn, %{"id" => id, "source" => source_params}) do
+  def update(conn, %{"id" => id, "source" => source_params} = params) do
     source = Sources.get_source!(id)
 
-    case Sources.update_source(source, source_params) do
-      {:ok, source} ->
-        case get_format(conn) do
-          "json" ->
-            source = Sources.preload_api_assocs(source)
-            conn |> put_status(:ok) |> json(source)
-
-          _ ->
-            conn
-            |> put_flash(:info, "Source updated successfully.")
-            |> redirect(to: ~p"/sources/#{source}")
-        end
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        case get_format(conn) do
-          "json" ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(%{errors: format_changeset_errors(changeset)})
-
-          _ ->
-            render(
-              conn,
-              :edit,
-              Keyword.merge(
-                [
-                  source: source,
-                  changeset: changeset,
-                  media_profiles: media_profiles(),
-                  available_folders: available_media_directories(),
-                  current_path: ~p"/sources/#{source}/edit"
-                ],
-                cookie_file_assigns()
-              )
-            )
-        end
+    if should_confirm_directory_move?(conn, params, source, source_params) do
+      render_directory_move_confirmation(conn, source, source_params)
+    else
+      do_update(conn, source, source_params)
     end
   end
 
@@ -497,6 +465,80 @@ defmodule PinchflatWeb.Sources.SourceController do
         conn
         |> put_flash(:error, inspect(changeset.errors))
         |> redirect(to: ~p"/sources/#{source}?#{[tab: "selection"]}")
+    end
+  end
+
+  defp do_update(conn, source, source_params) do
+    case Sources.update_source(source, source_params) do
+      {:ok, source} ->
+        case get_format(conn) do
+          "json" ->
+            source = Sources.preload_api_assocs(source)
+            conn |> put_status(:ok) |> json(source)
+
+          _ ->
+            conn
+            |> put_flash(:info, "Source updated successfully.")
+            |> redirect(to: ~p"/sources/#{source}")
+        end
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        case get_format(conn) do
+          "json" ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{errors: format_changeset_errors(changeset)})
+
+          _ ->
+            render(
+              conn,
+              :edit,
+              Keyword.merge(
+                [
+                  source: source,
+                  changeset: changeset,
+                  media_profiles: media_profiles(),
+                  available_folders: available_media_directories(),
+                  current_path: ~p"/sources/#{source}/edit"
+                ],
+                cookie_file_assigns()
+              )
+            )
+        end
+    end
+  end
+
+  defp should_confirm_directory_move?(conn, params, _source, _source_params) do
+    get_format(conn) != "json" && !truthy_param?(Map.get(params, "confirm_directory_move"))
+  end
+
+  defp render_directory_move_confirmation(conn, source, source_params) do
+    case Sources.preview_source_directory_move(source, source_params) do
+      {:ok, nil} ->
+        do_update(conn, source, source_params)
+
+      {:ok, directory_move_plan} ->
+        render(conn, :confirm_directory_move,
+          source: source,
+          source_params: source_params,
+          directory_move_plan: directory_move_plan
+        )
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render(
+          conn,
+          :edit,
+          Keyword.merge(
+            [
+              source: source,
+              changeset: changeset,
+              media_profiles: media_profiles(),
+              available_folders: available_media_directories(),
+              current_path: ~p"/sources/#{source}/edit"
+            ],
+            cookie_file_assigns()
+          )
+        )
     end
   end
 
