@@ -660,6 +660,66 @@ defmodule Pinchflat.SourcesTest do
       assert source.collection_name == "some updated name"
     end
 
+    test "moves existing source files when the download subdirectory changes" do
+      media_root = Application.get_env(:pinchflat, :media_directory)
+      old_subdirectory = Path.join(["TV Shows", "Old Source #{System.unique_integer([:positive])}"])
+      new_subdirectory = Path.join(["TV Shows", "New Source #{System.unique_integer([:positive])}"])
+      old_directory = Path.join(media_root, old_subdirectory)
+      new_directory = Path.join(media_root, new_subdirectory)
+
+      old_nfo_filepath = Path.join(old_directory, "tvshow.nfo")
+      old_poster_filepath = Path.join(old_directory, "poster.jpg")
+      old_media_filepath = Path.join([old_directory, "Season 1", "episode.mkv"])
+      old_thumbnail_filepath = Path.join([old_directory, "Season 1", "episode-thumb.jpg"])
+      old_subtitle_filepath = Path.join([old_directory, "Season 1", "episode.en.srt"])
+
+      File.mkdir_p!(Path.join(new_directory, "Season 1"))
+      FilesystemUtils.write_p!(old_nfo_filepath, "source nfo")
+      FilesystemUtils.write_p!(old_poster_filepath, "poster")
+      FilesystemUtils.write_p!(old_media_filepath, "media")
+      FilesystemUtils.write_p!(old_thumbnail_filepath, "thumb")
+      FilesystemUtils.write_p!(old_subtitle_filepath, "subtitle")
+
+      source =
+        source_fixture(%{
+          download_subdirectory: old_subdirectory,
+          series_directory: old_directory,
+          nfo_filepath: old_nfo_filepath,
+          poster_filepath: old_poster_filepath
+        })
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: old_media_filepath,
+          thumbnail_filepath: old_thumbnail_filepath,
+          subtitle_filepaths: [["en", old_subtitle_filepath]]
+        })
+
+      assert {:ok, %Source{} = source} = Sources.update_source(source, %{download_subdirectory: new_subdirectory})
+
+      new_nfo_filepath = Path.join(new_directory, "tvshow.nfo")
+      new_poster_filepath = Path.join(new_directory, "poster.jpg")
+      new_media_filepath = Path.join([new_directory, "Season 1", "episode.mkv"])
+      new_thumbnail_filepath = Path.join([new_directory, "Season 1", "episode-thumb.jpg"])
+      new_subtitle_filepath = Path.join([new_directory, "Season 1", "episode.en.srt"])
+
+      assert source.series_directory == new_directory
+      assert source.nfo_filepath == new_nfo_filepath
+      assert source.poster_filepath == new_poster_filepath
+      assert File.exists?(new_nfo_filepath)
+      assert File.exists?(new_poster_filepath)
+      assert File.exists?(new_media_filepath)
+      assert File.exists?(new_thumbnail_filepath)
+      assert File.exists?(new_subtitle_filepath)
+      refute File.exists?(old_directory)
+
+      media_item = Repo.reload!(media_item)
+      assert media_item.media_filepath == new_media_filepath
+      assert media_item.thumbnail_filepath == new_thumbnail_filepath
+      assert media_item.subtitle_filepaths == [["en", new_subtitle_filepath]]
+    end
+
     test "updates with invalid data fails fast and does not call the runner" do
       expect(YtDlpRunnerMock, :run, 0, &channel_mock/5)
 
