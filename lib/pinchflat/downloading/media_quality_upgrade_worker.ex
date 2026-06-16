@@ -3,7 +3,7 @@ defmodule Pinchflat.Downloading.MediaQualityUpgradeWorker do
 
   use Oban.Worker,
     queue: :media_fetching,
-    unique: [period: :infinity, states: [:available, :scheduled, :retryable, :executing]],
+    unique: [period: :infinity, states: [:available, :scheduled, :retryable, :executing, :suspended]],
     tags: ["media_item", "media_fetching", "show_in_dashboard"]
 
   require Logger

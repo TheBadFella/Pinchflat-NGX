@@ -3,7 +3,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingWorker do
 
   use Oban.Worker,
     queue: :fast_indexing,
-    unique: [period: :infinity, states: [:available, :scheduled, :retryable, :executing]],
+    unique: [period: :infinity, states: [:available, :scheduled, :retryable, :executing, :suspended]],
     tags: ["media_source", "fast_indexing", "show_in_dashboard"]
 
   require Logger
