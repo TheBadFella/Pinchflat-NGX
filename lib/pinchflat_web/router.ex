@@ -51,8 +51,12 @@ defmodule PinchflatWeb.Router do
     resources "/search", Searches.SearchController, only: [:show], singleton: true
 
     resources "/settings", Settings.SettingController, only: [:show, :update], singleton: true
-    get "/app_info", Settings.SettingController, :app_info
     get "/download_logs", Settings.SettingController, :download_logs
+
+    get "/diagnostics", Settings.DiagnosticsController, :show
+    post "/diagnostics/reset_retryable_jobs", Settings.DiagnosticsController, :reset_retryable_jobs
+    post "/diagnostics/reset_job/:id", Settings.DiagnosticsController, :reset_job
+    post "/diagnostics/cancel_job/:id", Settings.DiagnosticsController, :cancel_job
 
     resources "/sources", Sources.SourceController do
       post "/restore_automatic_downloads", Sources.SourceController, :restore_automatic_downloads

@@ -24,10 +24,6 @@ defmodule PinchflatWeb.Settings.SettingController do
     end
   end
 
-  def app_info(conn, _params) do
-    render(conn, "app_info.html")
-  end
-
   def download_logs(conn, _params) do
     log_path = Application.get_env(:pinchflat, :log_path)
 
@@ -36,7 +32,7 @@ defmodule PinchflatWeb.Settings.SettingController do
     else
       conn
       |> put_flash(:error, "Log file couldn't be found")
-      |> redirect(to: ~p"/app_info")
+      |> redirect(to: ~p"/diagnostics")
     end
   end
 end

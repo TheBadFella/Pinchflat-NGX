@@ -24,14 +24,6 @@ defmodule PinchflatWeb.SettingControllerTest do
     end
   end
 
-  describe "app_info" do
-    test "renders the page", %{conn: conn} do
-      conn = get(conn, ~p"/app_info")
-
-      assert html_response(conn, 200) =~ "App Info"
-    end
-  end
-
   describe "download_logs" do
     test "downloads logs", %{conn: conn} do
       log_path = Path.join([System.tmp_dir!(), "pinchflat", "data", "pinchflat.log"])
@@ -48,7 +40,7 @@ defmodule PinchflatWeb.SettingControllerTest do
     test "redirects when log file is not found", %{conn: conn} do
       conn = get(conn, ~p"/download_logs")
 
-      assert redirected_to(conn) == ~p"/app_info"
+      assert redirected_to(conn) == ~p"/diagnostics"
       assert conn.assigns[:flash]["error"] == "Log file couldn't be found"
     end
   end
