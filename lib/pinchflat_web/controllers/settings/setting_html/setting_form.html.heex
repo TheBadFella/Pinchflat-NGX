@@ -65,6 +65,13 @@
         label="Restrict Filenames"
         help="Restrict filenames to only ASCII characters and avoid ampersands/spaces in filenames"
       />
+
+      <.input
+        field={f[:ignore_unavailable_media]}
+        type="toggle"
+        label="Ignore Unavailable Media"
+        help="Mark members-only, private, and removed videos as skipped instead of repeatedly erroring. They stay in the database but won't be retried"
+      />
     </section>
   </section>
 

@@ -12,9 +12,11 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   alias Pinchflat.Repo
   alias Pinchflat.Tasks
   alias Pinchflat.Sources
+  alias Pinchflat.Settings
   alias Pinchflat.Utils.StringUtils
   alias Pinchflat.Metadata.NfoBuilder
   alias Pinchflat.YtDlp.MediaCollection
+  alias Pinchflat.YtDlp.UnavailableMedia
   alias Pinchflat.Metadata.SourceImageParser
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Downloading.DownloadOptionBuilder
@@ -86,7 +88,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   defp fetch_source_metadata_and_images(series_directory, source) do
     metadata_directory = MetadataFileHelpers.metadata_directory_for(source)
 
-    with {:ok, metadata} <- fetch_metadata_for_source(source) do
+    with {:ok, metadata} <- maybe_ignore_unavailable_source_metadata(source, fetch_metadata_for_source(source)) do
       metadata_image_attrs = SourceImageParser.store_source_images(metadata_directory, metadata)
 
       if source.media_profile.download_source_images && series_directory do
@@ -98,6 +100,26 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
       end
     end
   end
+
+  # The metadata/thumbnail fetch samples a single video (the first item for playlists)
+  # and, unlike indexing, doesn't pass `ignore_no_formats_error`. If that sampled video is
+  # members-only/private/removed, yt-dlp exits non-zero and the fetch returns an error.
+  #
+  # When the "ignore unavailable media" setting is enabled we fall back to empty metadata
+  # (skipping source images) so the source can still be set up, rather than letting the
+  # `{:ok, metadata}` match crash and discard the job. Otherwise the original error is passed
+  # through unchanged, preserving the prior crash-and-retry behaviour.
+  defp maybe_ignore_unavailable_source_metadata(source, {:error, message, _exit_code} = err) do
+    if Settings.get!(:ignore_unavailable_media) && UnavailableMedia.error?(message) do
+      Logger.info("Ignoring unavailable media while fetching metadata for source ##{source.id}: #{inspect(message)}")
+
+      {:ok, %{}}
+    else
+      err
+    end
+  end
+
+  defp maybe_ignore_unavailable_source_metadata(_source, result), do: result
 
   defp determine_series_directory(source) do
     output_path = DownloadOptionBuilder.build_output_path_for(source)

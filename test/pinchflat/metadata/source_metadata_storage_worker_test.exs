@@ -5,8 +5,11 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
   import Pinchflat.ProfilesFixtures
 
   alias Pinchflat.Sources
+  alias Pinchflat.Settings
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+
+  @members_only_error "ERROR: [youtube] 6k10GWVyk4M: This video is available to this channel's members on level: VIP Member!"
 
   describe "kickoff_with_task/1" do
     test "enqueues a new worker for the source" do
@@ -54,6 +57,51 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       assert {:error, %Jason.DecodeError{data: ""}} =
                perform_job(SourceMetadataStorageWorker, %{id: source.id})
+    end
+  end
+
+  describe "perform/1 when the metadata fetch hits unavailable media" do
+    test "completes without crashing when ignore_unavailable_media is enabled" do
+      Settings.set(ignore_unavailable_media: true)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:error, @members_only_error, 1}
+      end)
+
+      source = source_fixture()
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+    end
+
+    test "still crashes for unavailable media when the setting is disabled" do
+      Settings.set(ignore_unavailable_media: false)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:error, @members_only_error, 1}
+      end)
+
+      source = source_fixture()
+
+      assert_raise MatchError, fn ->
+        perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      end
+    end
+
+    test "still crashes for unrelated errors even when the setting is enabled" do
+      Settings.set(ignore_unavailable_media: true)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:error, "Some unrelated error", 1}
+      end)
+
+      source = source_fixture()
+
+      assert_raise MatchError, fn ->
+        perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      end
     end
   end
 

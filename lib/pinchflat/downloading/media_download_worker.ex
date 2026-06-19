@@ -13,7 +13,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Tasks
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Settings
   alias Pinchflat.Media.FileSyncing
+  alias Pinchflat.YtDlp.UnavailableMedia
   alias Pinchflat.Downloading.MediaDownloader
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
@@ -141,7 +143,25 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         {:ok, :non_retry}
 
       {:error, _error_atom, message} ->
-        action_on_error(job_id, message)
+        maybe_ignore_unavailable_media(media_item, job_id, message)
+    end
+  end
+
+  # If the "ignore unavailable media" setting is enabled and the error indicates the
+  # media is permanently inaccessible (members-only, private, or removed), mark the
+  # item as prevent_download so it drops out of the pending set and isn't retried.
+  # The error is cleared so it reads as intentionally skipped rather than failed.
+  defp maybe_ignore_unavailable_media(media_item, job_id, message) do
+    if Settings.get!(:ignore_unavailable_media) && UnavailableMedia.error?(message) do
+      Logger.info("Ignoring unavailable media item ##{media_item.id}: #{inspect(message)}")
+
+      # Reload first: download_for_media_item already persisted last_error, but the
+      # in-memory struct still has the old value, so clearing it would be a no-op change.
+      {:ok, _} = media_item |> Repo.reload() |> Media.update_media_item(%{prevent_download: true, last_error: nil})
+
+      {:ok, :non_retry}
+    else
+      action_on_error(job_id, message)
     end
   end
 
