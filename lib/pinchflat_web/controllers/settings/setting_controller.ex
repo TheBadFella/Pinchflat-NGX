@@ -2,6 +2,7 @@ defmodule PinchflatWeb.Settings.SettingController do
   use PinchflatWeb, :controller
 
   alias Pinchflat.Settings
+  alias Pinchflat.Settings.CookieFile
 
   def show(conn, _params) do
     setting = Settings.record()
@@ -21,6 +22,16 @@ defmodule PinchflatWeb.Settings.SettingController do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "show.html", changeset: changeset)
+    end
+  end
+
+  def download_cookies(conn, _params) do
+    if CookieFile.present?() do
+      send_download(conn, {:file, CookieFile.filepath()}, filename: "cookies.txt")
+    else
+      conn
+      |> put_flash(:error, "No cookies file has been uploaded")
+      |> redirect(to: ~p"/settings")
     end
   end
 

@@ -5,22 +5,44 @@ defmodule Pinchflat.Settings.YoutubeApiKeyLive do
 
   def render(assigns) do
     ~H"""
-    <.input
-      type="text"
-      id="setting_youtube_api_key"
-      name="setting[youtube_api_key]"
-      value={@value}
-      label="YouTube API Key(s)"
-      help={SettingHTML.youtube_api_help()}
-      html_help={true}
-      inputclass="font-mono text-sm mr-4"
-      placeholder="ABC123,DEF456"
-      phx-change="youtube_api_key_changed"
-    >
-      <:input_append>
-        <.icon_button icon_name={@icon_name} class="h-12 w-12" phx-click="test_youtube_api_key" tooltip={@tooltip} />
-      </:input_append>
-    </.input>
+    <div x-data="{ revealed: false }">
+      <.input
+        type="password"
+        x-bind:type="revealed ? 'text' : 'password'"
+        autocomplete="off"
+        id="setting_youtube_api_key"
+        name="setting[youtube_api_key]"
+        value={@value}
+        label="YouTube API Key(s)"
+        help={SettingHTML.youtube_api_help()}
+        html_help={true}
+        inputclass="font-mono text-sm mr-4"
+        placeholder="ABC123,DEF456"
+        phx-change="youtube_api_key_changed"
+      >
+        <:input_append>
+          <.icon_button
+            x-cloak
+            x-show="!revealed"
+            x-on:click="revealed = true"
+            icon_name="hero-eye"
+            class="h-12 w-12 mr-2"
+            tooltip="Reveal"
+            type="button"
+          />
+          <.icon_button
+            x-cloak
+            x-show="revealed"
+            x-on:click="revealed = false"
+            icon_name="hero-eye-slash"
+            class="h-12 w-12 mr-2"
+            tooltip="Hide"
+            type="button"
+          />
+          <.icon_button icon_name={@icon_name} class="h-12 w-12" phx-click="test_youtube_api_key" tooltip={@tooltip} />
+        </:input_append>
+      </.input>
+    </div>
     """
   end
 
