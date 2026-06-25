@@ -125,17 +125,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Status</dt>
               <dd class="text-right text-theme-on-surface">
-                <.tooltip :if={media_item.unavailable_at} tooltip={unavailable_tooltip(media_item)} position="bottom-right">
-                  <span class="flex items-center space-x-1 text-amber-400">
-                    <.icon name="hero-no-symbol" />
-                    <span>Skipped &mdash; Unavailable</span>
+                <% status = media_status(media_item) %>
+                <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
+                  <span class={["flex items-center gap-1.5", status.class]}>
+                    <.icon name={status.icon} class="w-5 h-5 shrink-0" />
+                    <span>{status.label}</span>
                   </span>
                 </.tooltip>
-                <span :if={is_nil(media_item.unavailable_at) && media_item.prevent_download} class="flex items-center space-x-1">
-                  <.icon name="hero-check" />
-                  <span>Manually Ignored</span>
-                </span>
-                <.icon :if={is_nil(media_item.unavailable_at) && !media_item.prevent_download} name="hero-x-mark" />
               </dd>
             </div>
           </dl>
@@ -174,17 +170,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </:col>
 
           <:col :let={media_item} :if={@media_state == "other"} label="Status">
-            <.tooltip :if={media_item.unavailable_at} tooltip={unavailable_tooltip(media_item)} position="bottom-right">
-              <span class="flex items-center space-x-1 text-amber-400">
-                <.icon name="hero-no-symbol" />
-                <span>Skipped &mdash; Unavailable</span>
+            <% status = media_status(media_item) %>
+            <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
+              <span class={["flex items-center gap-1.5", status.class]}>
+                <.icon name={status.icon} class="w-5 h-5 shrink-0" />
+                <span>{status.label}</span>
               </span>
             </.tooltip>
-            <span :if={is_nil(media_item.unavailable_at) && media_item.prevent_download} class="flex items-center space-x-1">
-              <.icon name="hero-check" />
-              <span>Manually Ignored</span>
-            </span>
-            <.icon :if={is_nil(media_item.unavailable_at) && !media_item.prevent_download} name="hero-x-mark" />
           </:col>
 
           <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
@@ -789,11 +781,40 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     ]
   end
 
-  defp unavailable_tooltip(%{unavailable_reason: reason}) when is_binary(reason) and reason != "" do
-    "Skipped: #{reason}"
+  # Explains why a media item is in the "Other" tab (neither downloaded nor pending).
+  # Order matters: a retention-culled item has both `culled_at` and `prevent_download`
+  # set, so `culled_at` must be checked before `prevent_download`.
+  defp media_status(%{unavailable_at: at, unavailable_reason: reason}) when not is_nil(at) do
+    tooltip = if reason, do: "Skipped: #{reason}", else: "Skipped: members-only, private, or removed"
+    %{label: "Unavailable", icon: "hero-no-symbol", class: "text-amber-400", tooltip: tooltip}
   end
 
-  defp unavailable_tooltip(_media_item) do
-    "Skipped: members-only, private, or removed"
+  defp media_status(%{culled_at: at, prevent_download: prevent_download}) when not is_nil(at) do
+    tooltip =
+      if prevent_download do
+        "Downloaded, then deleted after its retention period. It won't be re-downloaded"
+      else
+        "Downloaded, then deleted because it's before the source's cutoff date. It may be re-downloaded if the cutoff changes"
+      end
+
+    %{label: "Removed", icon: "hero-trash", class: "text-slate-300", tooltip: tooltip}
+  end
+
+  defp media_status(%{prevent_download: true}) do
+    %{
+      label: "Ignored",
+      icon: "hero-eye-slash",
+      class: "text-slate-300",
+      tooltip: "Manually marked to not download"
+    }
+  end
+
+  defp media_status(_media_item) do
+    %{
+      label: "Filtered Out",
+      icon: "hero-funnel",
+      class: "text-slate-300",
+      tooltip: "Excluded by this source's profile rules (duration, format, title, or cutoff date)"
+    }
   end
 end
