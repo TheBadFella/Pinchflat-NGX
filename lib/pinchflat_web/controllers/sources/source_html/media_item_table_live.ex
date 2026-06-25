@@ -77,7 +77,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               </div>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2">
+            <div class="flex items-center gap-2">
               <.icon_button
                 :if={@media_state != "downloaded"}
                 icon_name="hero-arrow-down-tray"
@@ -123,14 +123,20 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               </dd>
             </div>
             <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Prevent Download</dt>
+              <dt class="text-theme-on-surface-muted">Status</dt>
               <dd class="text-right text-theme-on-surface">
-                <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
+                <.tooltip :if={media_item.unavailable_at} tooltip={unavailable_tooltip(media_item)} position="bottom-right">
+                  <span class="flex items-center space-x-1 text-amber-400">
+                    <.icon name="hero-no-symbol" />
+                    <span>Skipped &mdash; Unavailable</span>
+                  </span>
+                </.tooltip>
+                <span :if={is_nil(media_item.unavailable_at) && media_item.prevent_download} class="flex items-center space-x-1">
+                  <.icon name="hero-check" />
+                  <span>Manually Ignored</span>
+                </span>
+                <.icon :if={is_nil(media_item.unavailable_at) && !media_item.prevent_download} name="hero-x-mark" />
               </dd>
-            </div>
-            <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Excluded Reason</dt>
-              <dd class="max-w-[60%] text-right text-theme-on-surface">{excluded_reason(media_item, @source)}</dd>
             </div>
           </dl>
         </article>
@@ -167,12 +173,18 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             </section>
           </:col>
 
-          <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
-            <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
-          </:col>
-
-          <:col :let={media_item} :if={@media_state == "other"} label="Excluded Reason">
-            {excluded_reason(media_item, @source)}
+          <:col :let={media_item} :if={@media_state == "other"} label="Status">
+            <.tooltip :if={media_item.unavailable_at} tooltip={unavailable_tooltip(media_item)} position="bottom-right">
+              <span class="flex items-center space-x-1 text-amber-400">
+                <.icon name="hero-no-symbol" />
+                <span>Skipped &mdash; Unavailable</span>
+              </span>
+            </.tooltip>
+            <span :if={is_nil(media_item.unavailable_at) && media_item.prevent_download} class="flex items-center space-x-1">
+              <.icon name="hero-check" />
+              <span>Manually Ignored</span>
+            </span>
+            <.icon :if={is_nil(media_item.unavailable_at) && !media_item.prevent_download} name="hero-x-mark" />
           </:col>
 
           <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
@@ -207,7 +219,6 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </:col>
         </.table>
       </div>
-
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>
@@ -471,7 +482,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :duration_seconds,
       :livestream,
       :short_form_content,
-      :media_size_bytes
+      :media_size_bytes,
+      :unavailable_at,
+      :unavailable_reason,
+      :culled_at
     ]
   end
 
@@ -536,33 +550,37 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   defp build_pagination_attrs(attrs, media_state, queue_base_query) do
     tasks_by_media_item_id = fetch_download_tasks(attrs.records)
-    ordered_records = order_records_for_display(attrs.records, tasks_by_media_item_id, media_state)
+    queue_positions = build_queue_positions(queue_base_query, attrs.records, media_state)
 
-    attrs
-    |> Map.put(:records, ordered_records)
-    |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
-    |> Map.put(:queue_positions, build_queue_positions(queue_base_query, ordered_records, media_state))
+    Map.merge(attrs, %{
+      tasks_by_media_item_id: tasks_by_media_item_id,
+      queue_positions: queue_positions
+    })
   end
 
   defp fetch_download_tasks(records) do
-    media_item_ids = Enum.map(records, & &1.id)
+    record_ids = Enum.map(records, & &1.id)
 
-    if media_item_ids == [] do
-      %{}
-    else
+    # Oban keeps jobs for a while after they're completed, so we want to make sure
+    # we get the latest one.
+    latest_task_ids =
       from(t in Task,
-        join: j in assoc(t, :job),
-        where: t.media_item_id in ^media_item_ids,
-        where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
-        where: j.state in ^["available", "scheduled", "retryable", "executing"],
-        preload: [job: j],
-        order_by: [desc: t.inserted_at]
+        where: t.media_item_id in ^record_ids,
+        group_by: t.media_item_id,
+        select: %{media_item_id: t.media_item_id, task_id: max(t.id)}
       )
-      |> Repo.all()
-      |> Enum.reduce(%{}, fn task, acc ->
-        Map.put_new(acc, task.media_item_id, task)
-      end)
-    end
+
+    from(t in Task,
+      join: latest_task in subquery(latest_task_ids),
+      on: latest_task.task_id == t.id,
+      join: j in assoc(t, :job),
+      preload: [job: j],
+      order_by: [desc: t.inserted_at]
+    )
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn task, acc ->
+      Map.put_new(acc, task.media_item_id, task)
+    end)
   end
 
   defp order_records_for_display(records, tasks_by_media_item_id, "pending") do
@@ -769,5 +787,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :progress_speed_bytes_per_second,
       :progress_updated_at
     ]
+  end
+
+  defp unavailable_tooltip(%{unavailable_reason: reason}) when is_binary(reason) and reason != "" do
+    "Skipped: #{reason}"
+  end
+
+  defp unavailable_tooltip(_media_item) do
+    "Skipped: members-only, private, or removed"
   end
 end

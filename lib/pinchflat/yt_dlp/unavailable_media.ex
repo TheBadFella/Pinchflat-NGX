@@ -36,4 +36,14 @@ defmodule Pinchflat.YtDlp.UnavailableMedia do
   def error?(message) do
     String.contains?(to_string(message), @error_strings)
   end
+
+  @doc """
+  Returns the first matched unavailable-media substring in the given message,
+  or nil if none match. Useful for recording a human-readable reason.
+  """
+  def matched_reason(message) do
+    string = to_string(message)
+
+    Enum.find(@error_strings, fn substring -> String.contains?(string, substring) end)
+  end
 end

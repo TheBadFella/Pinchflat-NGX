@@ -368,6 +368,19 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.last_error == nil
     end
 
+    test "records when and why the item was skipped", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+        _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload(media_item)
+      assert media_item.unavailable_at != nil
+      assert media_item.unavailable_reason == "Video unavailable"
+    end
+
     test "ignores members-only content", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :get_downloadable_status, _opts, _ot, _addl ->
@@ -378,7 +391,10 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       end)
 
       assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
-      assert Repo.reload(media_item).prevent_download == true
+
+      media_item = Repo.reload(media_item)
+      assert media_item.prevent_download == true
+      assert media_item.unavailable_reason == "Join this channel to get access to members-only content"
     end
 
     test "does not ignore unrelated download errors", %{media_item: media_item} do
@@ -388,7 +404,10 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       end)
 
       assert {:error, :download_failed} = perform_job(MediaDownloadWorker, %{id: media_item.id})
-      assert Repo.reload(media_item).prevent_download == false
+
+      media_item = Repo.reload(media_item)
+      assert media_item.prevent_download == false
+      assert media_item.unavailable_at == nil
     end
   end
 

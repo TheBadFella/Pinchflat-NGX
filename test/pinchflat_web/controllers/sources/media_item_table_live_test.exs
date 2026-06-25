@@ -72,30 +72,30 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       refute html =~ pending_media_item.title
     end
 
-    test "shows 'Prevent Download' column when other", %{conn: conn, source: source} do
+    test "shows 'Manually Ignored' status when other", %{conn: conn, source: source} do
       _media_item = media_item_fixture(source_id: source.id, prevent_download: true, media_filepath: nil)
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
 
-      assert html =~ "Prevent Download?"
-      assert html =~ "Excluded Reason"
-      assert html =~ "Prevented"
+      assert html =~ "Status"
+      assert html =~ "Manually Ignored"
     end
 
-    test "shows cutoff reason for excluded media", %{conn: conn} do
-      source = source_fixture(download_cutoff_date: ~D[2024-01-01])
-
-      excluded_media_item =
+    test "shows 'Skipped — Unavailable' status for unavailable media when other", %{conn: conn, source: source} do
+      _media_item =
         media_item_fixture(
           source_id: source.id,
           media_filepath: nil,
-          uploaded_at: ~U[2023-01-01 00:00:00Z]
+          prevent_download: true,
+          unavailable_at: DateTime.utc_now(),
+          unavailable_reason: "members-only content"
         )
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
 
-      assert html =~ excluded_media_item.title
-      assert html =~ "Before cutoff"
+      assert html =~ "Status"
+      assert html =~ "Skipped"
+      assert html =~ "Unavailable"
     end
 
     test "shows phase text for active downloads before total size is known", %{conn: conn, source: source} do
@@ -170,6 +170,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
 
       assert html =~ older_executing_item.title
+=======
+      assert html =~ "Skipped"
+      assert html =~ "Unavailable"
+      refute html =~ "Manually Ignored"
+>>>>>>> e88d403 (feat: surface auto-skipped unavailable media as a distinct status)
     end
   end
 

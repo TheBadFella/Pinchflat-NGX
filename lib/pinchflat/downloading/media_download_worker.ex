@@ -155,9 +155,16 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     if Settings.get!(:ignore_unavailable_media) && UnavailableMedia.error?(message) do
       Logger.info("Ignoring unavailable media item ##{media_item.id}: #{inspect(message)}")
 
+      attrs = %{
+        prevent_download: true,
+        last_error: nil,
+        unavailable_at: DateTime.utc_now(),
+        unavailable_reason: UnavailableMedia.matched_reason(message)
+      }
+
       # Reload first: download_for_media_item already persisted last_error, but the
       # in-memory struct still has the old value, so clearing it would be a no-op change.
-      {:ok, _} = media_item |> Repo.reload() |> Media.update_media_item(%{prevent_download: true, last_error: nil})
+      {:ok, _} = media_item |> Repo.reload() |> Media.update_media_item(attrs)
 
       {:ok, :non_retry}
     else
