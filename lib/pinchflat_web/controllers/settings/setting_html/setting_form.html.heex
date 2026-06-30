@@ -71,6 +71,23 @@
     </section>
   </section>
 
+  <section class="mt-8">
+    <section>
+      <h3 class="text-2xl text-black dark:text-white">
+        yt-dlp
+      </h3>
+
+      {live_render(
+        @conn,
+        Pinchflat.Settings.YtDlpVersionLive,
+        session: %{
+          "policy" => f[:yt_dlp_update_policy].value,
+          "pinned_version" => f[:yt_dlp_pinned_version].value
+        }
+      )}
+    </section>
+  </section>
+
   <section class="mt-8" x-show="advancedMode">
     <section>
       <h3 class="text-2xl text-theme-on-surface">Codec Options</h3>

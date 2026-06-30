@@ -188,11 +188,35 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     end
   end
 
-  describe "update/0" do
-    test "adds the update arg" do
-      assert {:ok, output} = Runner.update()
+  describe "update/1" do
+    test "adds the update arg for the stable target" do
+      assert {:ok, output} = Runner.update("stable")
 
       assert String.contains?(output, "--update-to nightly")
+    end
+
+    test "targets the nightly channel" do
+      assert {:ok, output} = Runner.update("nightly")
+
+      assert String.contains?(output, "--update-to nightly")
+    end
+
+    test "pins to an exact version" do
+      assert {:ok, output} = Runner.update("2025.12.08")
+
+      assert String.contains?(output, "--update-to yt-dlp/yt-dlp@2025.12.08")
+    end
+
+    test "pins to an exact nightly build via the nightly channel alias" do
+      assert {:ok, output} = Runner.update("nightly@2025.12.08.123456")
+
+      assert String.contains?(output, "--update-to nightly@2025.12.08.123456")
+    end
+
+    test "treats a 100 exit code (yt-dlp's update error code) as a failure" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/100_exit_code.sh", fn ->
+        assert {:error, _output} = Runner.update("nightly")
+      end)
     end
   end
 

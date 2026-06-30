@@ -7,6 +7,7 @@ config :pinchflat,
   media_directory: Path.join([System.tmp_dir!(), "test", "media"]),
   metadata_directory: Path.join([System.tmp_dir!(), "test", "metadata"]),
   tmpfile_directory: Path.join([System.tmp_dir!(), "test", "tmpfiles"]),
+  extras_directory: Path.join([System.tmp_dir!(), "test", "extras"]),
   file_watcher_poll_interval: 50
 
 config :pinchflat, Oban, testing: :manual

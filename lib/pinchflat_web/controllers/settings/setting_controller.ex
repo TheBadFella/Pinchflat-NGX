@@ -3,6 +3,9 @@ defmodule PinchflatWeb.Settings.SettingController do
 
   alias Pinchflat.Settings
   alias Pinchflat.Settings.CookieFile
+  alias Pinchflat.YtDlp.UpdateWorker
+
+  @yt_dlp_policy_fields [:yt_dlp_update_policy, :yt_dlp_pinned_version]
 
   def show(conn, _params) do
     setting = Settings.record()
@@ -15,7 +18,9 @@ defmodule PinchflatWeb.Settings.SettingController do
     setting = Settings.record()
 
     case Settings.update_setting(setting, setting_params) do
-      {:ok, _} ->
+      {:ok, updated_setting} ->
+        maybe_apply_yt_dlp_policy(setting, updated_setting)
+
         conn
         |> put_flash(:info, "Settings updated successfully.")
         |> redirect(to: ~p"/settings")
@@ -23,6 +28,15 @@ defmodule PinchflatWeb.Settings.SettingController do
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "show.html", changeset: changeset)
     end
+  end
+
+  # Performs the one-shot yt-dlp update (jump to the chosen channel/version) only
+  # when the policy or pinned version actually changed, so saving unrelated
+  # settings doesn't trigger an update.
+  defp maybe_apply_yt_dlp_policy(old_setting, new_setting) do
+    changed? = Enum.any?(@yt_dlp_policy_fields, &(Map.get(old_setting, &1) != Map.get(new_setting, &1)))
+
+    if changed?, do: UpdateWorker.kickoff_apply()
   end
 
   def download_cookies(conn, _params) do

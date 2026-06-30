@@ -98,5 +98,21 @@ defmodule Pinchflat.SettingsTest do
 
       assert %Ecto.Changeset{valid?: true} = Settings.change_setting(setting, %{extractor_sleep_interval_seconds: 0})
     end
+
+    test "only allows known yt-dlp update policies" do
+      setting = Settings.record()
+
+      assert %Ecto.Changeset{valid?: true} = Settings.change_setting(setting, %{yt_dlp_update_policy: "nightly"})
+      assert %Ecto.Changeset{valid?: false} = Settings.change_setting(setting, %{yt_dlp_update_policy: "bogus"})
+    end
+
+    test "requires a pinned version when the policy is pinned" do
+      setting = Settings.record()
+
+      assert %Ecto.Changeset{valid?: false} = Settings.change_setting(setting, %{yt_dlp_update_policy: "pinned"})
+
+      assert %Ecto.Changeset{valid?: true} =
+               Settings.change_setting(setting, %{yt_dlp_update_policy: "pinned", yt_dlp_pinned_version: "2025.12.08"})
+    end
   end
 end

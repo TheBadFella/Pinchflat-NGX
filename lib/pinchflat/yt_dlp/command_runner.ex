@@ -87,22 +87,36 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   end
 
   @doc """
-  Updates yt-dlp to the latest version
+  Updates yt-dlp to the given target.
+
+  The target can be:
+    - "stable" - updates to the latest stable release
+    - "nightly" - updates to the latest nightly build
+    - "nightly@2025.12.08.123456" - pins to that exact nightly build
+    - a specific version like "2025.12.08" - pins to that exact stable release
 
   Returns {:ok, binary()} | {:error, binary()}
   """
   @impl YtDlpCommandRunner
-  def update do
+  def update(target) do
     command = backend_executable()
 
-    case retry_self_update(command) do
+    case retry_self_update(command, target) do
       {:ok, output} ->
         {:ok, output}
 
       {:error, output} ->
-        maybe_fallback_to_direct_download(command, output)
+        maybe_fallback_to_direct_download(command, output, target)
     end
   end
+
+  defp build_update_args("stable"), do: ["--update"]
+  defp build_update_args("nightly"), do: ["--update-to", "nightly"]
+  # `nightly` is yt-dlp's channel alias for the yt-dlp/yt-dlp-nightly-builds repo;
+  # `<channel>@<tag>` pins to an exact build. Naming the repo directly (e.g.
+  # `yt-dlp/yt-dlp_nightly@<tag>`) fails because that repo doesn't exist.
+  defp build_update_args("nightly@" <> version), do: ["--update-to", "nightly@#{version}"]
+  defp build_update_args(version), do: ["--update-to", "yt-dlp/yt-dlp@#{version}"]
 
   defp generate_output_filepath(addl_opts) do
     case Keyword.get(addl_opts, :output_filepath) do
@@ -342,10 +356,10 @@ defmodule Pinchflat.YtDlp.CommandRunner do
     Application.get_env(:pinchflat, :yt_dlp_executable)
   end
 
-  defp retry_self_update(command) do
+  defp retry_self_update(command, target) do
     1..3
     |> Enum.reduce_while({:error, ""}, fn attempt, _acc ->
-      case run_self_update(command) do
+      case run_self_update(command, target) do
         {:ok, output} ->
           {:halt, {:ok, output}}
 
@@ -360,15 +374,15 @@ defmodule Pinchflat.YtDlp.CommandRunner do
     end)
   end
 
-  defp run_self_update(command) do
-    case CliUtils.wrap_cmd(command, ["--update-to", "nightly"]) do
+  defp run_self_update(command, target) do
+    case CliUtils.wrap_cmd(command, build_update_args(target)) do
       {output, 0} -> {:ok, String.trim(output)}
       {output, _} -> {:error, String.trim(output)}
     end
   end
 
-  defp maybe_fallback_to_direct_download(command, output) do
-    if transient_update_error?(output) do
+  defp maybe_fallback_to_direct_download(command, output, target) do
+    if transient_update_error?(output) and target == "nightly" do
       Logger.warning("yt-dlp self-update failed with a transient network error, attempting direct nightly download")
 
       case direct_download_latest_nightly(command) do
