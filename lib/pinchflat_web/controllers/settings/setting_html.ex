@@ -28,16 +28,6 @@ defmodule PinchflatWeb.Settings.SettingHTML do
     ~s(API key for YouTube Data API v3. Greatly improves the accuracy of Fast Indexing. See <a href="#{url}" class="#{help_link_classes()}" target="_blank">here</a> for details on generating an API key)
   end
 
-  def diagnostic_info_string do
-    """
-    - App Version: #{Application.spec(:pinchflat)[:vsn]}
-    - yt-dlp Version: #{Settings.get!(:yt_dlp_version)}
-    - Apprise Version: #{Settings.get!(:apprise_version)}
-    - System Architecture: #{to_string(:erlang.system_info(:system_architecture))}
-    - Timezone: #{Application.get_env(:pinchflat, :timezone)}
-    """
-  end
-
   defp help_link_classes do
     "underline decoration-theme-on-surface-muted/70 decoration-1 hover:text-theme-on-surface hover:decoration-theme-on-surface"
   end
