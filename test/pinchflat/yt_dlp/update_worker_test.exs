@@ -32,7 +32,8 @@ defmodule Pinchflat.YtDlp.UpdateWorkerTest do
     end
 
     test "keeps going when the yt-dlp update fails but version lookup still works" do
-      expect(YtDlpRunnerMock, :update, fn -> {:error, "tls eof"} end)
+      stub_latest_stable("2025.07.01")
+      expect(YtDlpRunnerMock, :update, fn _target -> {:error, "tls eof"} end)
       expect(YtDlpRunnerMock, :version, fn -> {:ok, "1.2.3"} end)
 
       assert :ok = perform_job(UpdateWorker, %{})
@@ -40,7 +41,8 @@ defmodule Pinchflat.YtDlp.UpdateWorkerTest do
     end
 
     test "returns ok when both update and version lookup fail" do
-      expect(YtDlpRunnerMock, :update, fn -> {:error, "tls eof"} end)
+      stub_latest_stable("2025.07.01")
+      expect(YtDlpRunnerMock, :update, fn _target -> {:error, "tls eof"} end)
       expect(YtDlpRunnerMock, :version, fn -> {:error, "still broken"} end)
 
       assert :ok = perform_job(UpdateWorker, %{})

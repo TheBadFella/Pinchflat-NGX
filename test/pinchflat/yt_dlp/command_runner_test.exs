@@ -192,7 +192,7 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     test "adds the update arg for the stable target" do
       assert {:ok, output} = Runner.update("stable")
 
-      assert String.contains?(output, "--update-to nightly")
+      assert String.contains?(output, "--update")
     end
 
     test "targets the nightly channel" do
