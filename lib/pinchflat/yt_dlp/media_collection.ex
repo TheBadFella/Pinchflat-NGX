@@ -8,6 +8,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
 
   alias Pinchflat.Sources.Source
   alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.YtDlp.ResponseDecoder
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
   @doc """
@@ -94,11 +95,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     action = :get_source_details
 
     with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
-         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
+         {:ok, parsed_json} <- ResponseDecoder.decode(output, action) do
       {:ok, format_source_details(parsed_json)}
-    else
-      {:error, %Jason.DecodeError{}} -> {:error, "Error decoding JSON response"}
-      err -> err
     end
   end
 
@@ -154,11 +152,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     output_template = "playlist:%()j"
     action = :get_source_metadata
 
-    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
-         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
-      {:ok, parsed_json}
-    else
-      err -> err
+    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts) do
+      ResponseDecoder.decode(output, action)
     end
   end
 

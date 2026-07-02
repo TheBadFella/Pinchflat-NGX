@@ -29,7 +29,7 @@ defmodule Pinchflat.YtDlp.Media do
   ]
 
   alias __MODULE__
-  alias Pinchflat.Utils.FunctionUtils
+  alias Pinchflat.YtDlp.ResponseDecoder
   alias Pinchflat.Metadata.MetadataFileHelpers
 
   @doc """
@@ -41,11 +41,8 @@ defmodule Pinchflat.YtDlp.Media do
   def download(url, command_opts \\ [], addl_opts \\ []) do
     all_command_opts = [:no_simulate] ++ command_opts
 
-    with {:ok, output} <- backend_runner().run(url, :download, all_command_opts, "after_move:%()j", addl_opts),
-         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
-      {:ok, parsed_json}
-    else
-      err -> err
+    with {:ok, output} <- backend_runner().run(url, :download, all_command_opts, "after_move:%()j", addl_opts) do
+      ResponseDecoder.decode(output, :download)
     end
   end
 
@@ -59,14 +56,9 @@ defmodule Pinchflat.YtDlp.Media do
     action = :get_downloadable_status
     command_opts = [:simulate, :skip_download]
 
-    case backend_runner().run(url, action, command_opts, "%(.{live_status})j", addl_opts) do
-      {:ok, output} ->
-        output
-        |> Phoenix.json_library().decode!()
-        |> parse_downloadable_status()
-
-      err ->
-        err
+    with {:ok, output} <- backend_runner().run(url, action, command_opts, "%(.{live_status})j", addl_opts),
+         {:ok, parsed_json} <- ResponseDecoder.decode(output, action) do
+      parse_downloadable_status(parsed_json)
     end
   end
 
@@ -95,15 +87,9 @@ defmodule Pinchflat.YtDlp.Media do
     all_command_opts = [:simulate, :skip_download] ++ command_opts
     output_template = indexing_output_template()
 
-    case backend_runner().run(url, :get_media_attributes, all_command_opts, output_template, addl_opts) do
-      {:ok, output} ->
-        output
-        |> Phoenix.json_library().decode!()
-        |> response_to_struct()
-        |> FunctionUtils.wrap_ok()
-
-      err ->
-        err
+    with {:ok, output} <- backend_runner().run(url, :get_media_attributes, all_command_opts, output_template, addl_opts),
+         {:ok, parsed_json} <- ResponseDecoder.decode(output, :get_media_attributes) do
+      {:ok, response_to_struct(parsed_json)}
     end
   end
 

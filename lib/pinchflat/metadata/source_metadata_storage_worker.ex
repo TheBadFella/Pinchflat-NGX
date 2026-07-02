@@ -16,6 +16,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   alias Pinchflat.Utils.StringUtils
   alias Pinchflat.Metadata.NfoBuilder
   alias Pinchflat.YtDlp.MediaCollection
+  alias Pinchflat.YtDlp.ResponseDecoder
   alias Pinchflat.YtDlp.UnavailableMedia
   alias Pinchflat.Metadata.SourceImageParser
   alias Pinchflat.Metadata.MetadataFileHelpers
@@ -49,44 +50,47 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"id" => source_id}}) do
     source = Repo.preload(Sources.get_source!(source_id), [:metadata, :media_profile])
-    series_directory = determine_series_directory(source)
 
-    case fetch_source_metadata_and_images(series_directory, source) do
-      {:ok, {source_metadata, source_image_attrs, metadata_image_attrs}} ->
-        source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
+    with {:ok, series_directory} <- determine_series_directory(source),
+         {:ok, source_metadata, source_image_attrs, metadata_image_attrs} <-
+           fetch_source_metadata_and_images(series_directory, source) do
+      source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
 
-        Sources.update_source(
-          source,
-          Map.merge(
-            %{
-              series_directory: series_directory,
-              nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
-              description: source_metadata["description"],
-              metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
-            },
-            source_image_attrs
-          ),
-          # `run_post_commit_tasks: false` prevents this from running in an infinite loop
-          run_post_commit_tasks: false
+      Sources.update_source(
+        source,
+        Map.merge(
+          %{
+            series_directory: series_directory,
+            nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+            description: source_metadata["description"],
+            metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
+          },
+          source_image_attrs
+        ),
+        # `run_post_commit_tasks: false` prevents this from running in an infinite loop
+        run_post_commit_tasks: false
+      )
+
+      :ok
+    else
+      # A failed metadata/details fetch used to blow up here via a strict `{:ok, _} =` match,
+      # producing an opaque MatchError crash-loop. Instead, surface source context and let the
+      # job fail (and retry) cleanly. For decode errors, `ResponseDecoder` has already logged
+      # the raw yt-dlp response.
+      error ->
+        decode_hint =
+          if ResponseDecoder.decode_error?(error) do
+            " See the preceding yt-dlp log line for the raw response."
+          else
+            ""
+          end
+
+        Logger.error(
+          "#{__MODULE__} could not fetch metadata for source ##{source_id} (#{source.original_url}): " <>
+            "#{inspect(error)}." <> decode_hint
         )
 
-        :ok
-
-      {:error, message, exit_code} ->
-        Logger.warning(
-          "#{__MODULE__} failed to fetch metadata for source #{source.id} " <>
-            "(#{source.original_url}): #{message} (exit code #{exit_code})"
-        )
-
-        {:error, {message, exit_code}}
-
-      {:error, reason} ->
-        Logger.warning(
-          "#{__MODULE__} failed to fetch metadata for source #{source.id} " <>
-            "(#{source.original_url}): #{Exception.message(reason)}"
-        )
-
-        {:error, reason}
+        {:error, :source_metadata_fetch_failed}
     end
   rescue
     Ecto.NoResultsError -> Logger.info("#{__MODULE__} discarded: source #{source_id} not found")
@@ -102,21 +106,21 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
       if source.media_profile.download_source_images && series_directory do
         source_image_attrs = SourceImageParser.store_source_images(series_directory, metadata)
 
-        {:ok, {metadata, source_image_attrs, metadata_image_attrs}}
+        {:ok, metadata, source_image_attrs, metadata_image_attrs}
       else
-        {:ok, {metadata, %{}, metadata_image_attrs}}
+        {:ok, metadata, %{}, metadata_image_attrs}
       end
     end
   end
 
-  # The metadata/thumbnail fetch samples a single video (the first item for playlists)
-  # and, unlike indexing, doesn't pass `ignore_no_formats_error`. If that sampled video is
-  # members-only/private/removed, yt-dlp exits non-zero and the fetch returns an error.
+  # Both the details fetch and the metadata/thumbnail fetch sample a single video (the
+  # first item for playlists). If that sampled video is members-only/private/removed,
+  # yt-dlp exits non-zero and the fetch returns an error.
   #
   # When the "ignore unavailable media" setting is enabled we fall back to empty metadata
-  # (skipping source images) so the source can still be set up, rather than letting the
-  # `{:ok, metadata}` match crash and discard the job. Otherwise the original error is passed
-  # through unchanged, preserving the prior crash-and-retry behaviour.
+  # (skipping source images and the series directory) so the source can still be set up,
+  # rather than failing the job. Otherwise the original error is passed through unchanged,
+  # preserving the fail-and-retry behaviour.
   defp maybe_ignore_unavailable_source_metadata(source, {:error, message, _exit_code} = err) do
     if Settings.get!(:ignore_unavailable_media) && UnavailableMedia.error?(message) do
       Logger.info("Ignoring unavailable media while fetching metadata for source ##{source.id}: #{inspect(message)}")
@@ -133,11 +137,22 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     output_path = DownloadOptionBuilder.build_output_path_for(source)
     runner_opts = [output: output_path]
     addl_opts = [use_cookies: Sources.use_cookies?(source, :metadata)]
-    {:ok, %{filepath: filepath}} = MediaCollection.get_source_details(source.original_url, runner_opts, addl_opts)
+    details_result = MediaCollection.get_source_details(source.original_url, runner_opts, addl_opts)
 
-    case MetadataFileHelpers.series_directory_from_media_filepath(filepath) do
-      {:ok, series_directory} -> series_directory
-      {:error, _} -> nil
+    case maybe_ignore_unavailable_source_metadata(source, details_result) do
+      {:ok, %{filepath: filepath}} when is_binary(filepath) ->
+        case MetadataFileHelpers.series_directory_from_media_filepath(filepath) do
+          {:ok, series_directory} -> {:ok, series_directory}
+          {:error, _} -> {:ok, nil}
+        end
+
+      # Either the ignored-unavailable fallback (`{:ok, %{}}`) or a parseable response
+      # that's missing `filename` - there's no filepath to derive a series directory from
+      {:ok, _} ->
+        {:ok, nil}
+
+      err ->
+        err
     end
   end
 
