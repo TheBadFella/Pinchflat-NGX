@@ -1,27 +1,49 @@
 version: 2
 
+multi-ecosystem-groups:
+  dependencies:
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Regina"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
 updates:
-  - package-ecosystem: 'github-actions'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "dependencies"
+    rebase-strategy: "auto"
 
-  - package-ecosystem: 'mix'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
+  - package-ecosystem: "mix"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "dependencies"
+    rebase-strategy: "auto"
 
-  - package-ecosystem: 'npm'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
+  - package-ecosystem: "npm"
+    directory: "/"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "dependencies"
+    rebase-strategy: "auto"
 
-  - package-ecosystem: 'npm'
-    directory: '/assets'
-    schedule:
-      interval: 'weekly'
+  - package-ecosystem: "npm"
+    directory: "/assets"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "dependencies"
+    rebase-strategy: "auto"
 
-  - package-ecosystem: 'docker'
-    directory: '/docker'
-    schedule:
-      interval: 'weekly'
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    patterns:
+      - "*"
+    multi-ecosystem-group: "dependencies"
+    rebase-strategy: "auto"
