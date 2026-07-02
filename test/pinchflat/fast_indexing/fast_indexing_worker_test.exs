@@ -54,6 +54,26 @@ defmodule Pinchflat.FastIndexing.FastIndexingWorkerTest do
       assert [_] = all_enqueued(worker: FastIndexingWorker)
     end
 
+    test "reschedules even though the current job is still executing" do
+      expect(HTTPClientMock, :get, fn _url -> {:ok, ""} end)
+      source = source_fixture(fast_index: true)
+
+      # The worker dedupes against the :incomplete states (which include :executing).
+      # Simulate the real Oban executor by leaving the current job in the :executing
+      # state while perform/1 runs - the reschedule must not see it as a duplicate of
+      # its own successor and silently skip rescheduling.
+      {:ok, job} = Oban.insert(FastIndexingWorker.new(%{id: source.id}))
+      Repo.update!(Ecto.Changeset.change(job, state: "executing"))
+
+      perform_job(FastIndexingWorker, %{id: source.id})
+
+      assert_enqueued(
+        worker: FastIndexingWorker,
+        args: %{"id" => source.id},
+        scheduled_at: now_plus(Source.fast_index_frequency(), :minutes)
+      )
+    end
+
     test "does not call out to Youtube RSS if disabled" do
       expect(HTTPClientMock, :get, 0, fn _url -> {:ok, ""} end)
       source = source_fixture(fast_index: false)

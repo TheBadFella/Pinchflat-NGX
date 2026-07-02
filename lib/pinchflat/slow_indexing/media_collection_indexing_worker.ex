@@ -115,12 +115,22 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorker do
     next_run_in = source.index_frequency_minutes * 60
 
     %{id: source.id}
-    |> MediaCollectionIndexingWorker.new(schedule_in: next_run_in)
+    |> MediaCollectionIndexingWorker.new(schedule_in: next_run_in, unique: reschedule_unique_opts())
     |> Tasks.create_job_with_task(source)
     |> case do
       {:ok, task} -> {:ok, task}
       {:error, :duplicate_job} -> {:ok, :job_exists}
     end
+  end
+
+  # The worker dedupes new jobs against the `:incomplete` states, which include
+  # `:executing`, to prevent concurrent indexing of the same source. This reschedule,
+  # however, runs from _inside_ the executing job, so deduping against `:executing`
+  # would treat the still-running job as a duplicate of its own successor and silently
+  # skip rescheduling. Override the insert to dedupe against pending states only so the
+  # next run is always enqueued (while still preventing duplicate pending jobs).
+  defp reschedule_unique_opts do
+    [period: :infinity, states: [:available, :scheduled, :retryable]]
   end
 
   defp maybe_enqueue_fast_indexing_task(source) do
