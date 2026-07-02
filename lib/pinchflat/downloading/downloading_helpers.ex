@@ -130,6 +130,8 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
       )
     )
     |> Repo.all()
-    |> Enum.map(&MediaDownloadWorker.kickoff_with_task/1)
+    # `force: true` is required because these media items have already been downloaded.
+    # Without it the worker's pending-download check fails and the job no-ops.
+    |> Enum.map(&MediaDownloadWorker.kickoff_with_task(&1, %{force: true}))
   end
 end

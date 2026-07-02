@@ -21,7 +21,7 @@ defmodule Pinchflat.DataCase do
     quote do
       alias Pinchflat.Repo
 
-      use Oban.Testing, repo: Repo
+      use Oban.Testing, repo: Repo, engine: Oban.Engines.Lite
 
       import Mox
       import Ecto
