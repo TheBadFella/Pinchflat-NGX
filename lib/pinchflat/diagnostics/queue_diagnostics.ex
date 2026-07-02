@@ -24,7 +24,7 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   """
   def get_all_queue_stats do
     Enum.map(queue_names(), fn queue_name ->
-      queue_info = Oban.check_queue(queue: queue_name)
+      queue_info = Oban.check_queue(queue: queue_name) || %{}
       job_counts = get_job_counts_for_queue(queue_name)
 
       %{

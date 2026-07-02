@@ -63,7 +63,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
     Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S")
   end
 
-  def extract_last_error(errors) when is_list(errors) and length(errors) > 0 do
+  def extract_last_error(errors) when is_list(errors) and errors != [] do
     errors
     |> List.last()
     |> Map.get("error", "Unknown error")
