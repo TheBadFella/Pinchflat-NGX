@@ -61,7 +61,7 @@ RUN curl -sL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
     if [ "$attempt" -eq 5 ]; then exit 1; fi; \
     sleep 5; \
   done && \
-  npm install -g yarn prettier@3.8.1 sqleton@^4.0.0 && \
+  npm install -g yarn prettier@3.9.4 sqleton@^4.0.0 && \
   # Install baseline Elixir packages
   mix local.hex --force && \
   mix local.rebar --force && \
