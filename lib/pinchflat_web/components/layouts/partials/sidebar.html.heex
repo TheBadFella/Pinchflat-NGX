@@ -121,44 +121,42 @@
           </span>
         </li>
 
-        <li>
-          <span
-            class="group relative flex items-center gap-2.5 px-4 pt-1 text-sm lg:pt-2"
+        <li
+          class="space-y-2 px-4 pt-2 text-xs text-theme-on-surface"
+          x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
+        >
+          <div
+            class="flex min-w-0 items-center justify-between gap-2"
             x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
-            x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
-            <span>PinchYT {Application.spec(:pinchflat)[:vsn]}</span>
+            <span class="min-w-0 truncate">PinchYT {Application.spec(:pinchflat)[:vsn]}</span>
             <a
               href="https://github.com/TheBadFella/PinchYT/releases"
               target="_blank"
-              class="rounded-full bg-theme-primary px-1.5 text-xs text-theme-on-primary"
+              class="shrink-0 rounded-full bg-theme-primary px-2 py-0.5 text-[0.6875rem] font-medium leading-none text-theme-on-primary"
               x-cloak
               x-show={"!isVersionSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
             >
               NEW
             </a>
-          </span>
-          <div
-            class="group relative flex items-center gap-2.5 px-4 pt-1 text-sm"
-            x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
-          >
+          </div>
+          <div class="flex min-w-0 items-start justify-between gap-2">
             <.link
               href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
               target="_blank"
-              class="underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
+              class="min-w-0 underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
             >
-              yt-dlp {Settings.get!(:yt_dlp_version)}
+              <span class="block leading-tight text-theme-on-surface-muted">yt-dlp</span>
+              <span class="block truncate font-mono text-[0.6875rem] leading-tight text-theme-on-surface">
+                {Settings.get!(:yt_dlp_version)}
+              </span>
             </.link>
             <span
               :if={Settings.get!(:yt_dlp_update_policy) != "stable"}
-              class="whitespace-nowrap rounded-full bg-theme-primary px-1.5 text-center text-xs leading-tight text-theme-on-primary"
+              class="shrink-0 rounded-full bg-theme-primary px-2 py-0.5 text-center text-[0.6875rem] font-medium leading-none text-theme-on-primary"
               title="yt-dlp update behavior"
             >
-              {Phoenix.HTML.raw(
-                Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))
-                |> String.replace(" until ", " until<br />")
-                |> String.replace(", ", ",<br />")
-              )}
+              {Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
             </span>
           </div>
         </li>
