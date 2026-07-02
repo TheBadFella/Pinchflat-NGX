@@ -74,7 +74,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
       assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
 
-    test "still crashes for unavailable media when the setting is disabled" do
+    test "still fails for unavailable media when the setting is disabled" do
       Settings.set(ignore_unavailable_media: false)
 
       stub(YtDlpRunnerMock, :run, fn
@@ -84,12 +84,10 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       source = source_fixture()
 
-      assert_raise MatchError, fn ->
-        perform_job(SourceMetadataStorageWorker, %{id: source.id})
-      end
+      assert {:error, _} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
 
-    test "still crashes for unrelated errors even when the setting is enabled" do
+    test "still fails for unrelated errors even when the setting is enabled" do
       Settings.set(ignore_unavailable_media: true)
 
       stub(YtDlpRunnerMock, :run, fn
@@ -99,9 +97,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       source = source_fixture()
 
-      assert_raise MatchError, fn ->
-        perform_job(SourceMetadataStorageWorker, %{id: source.id})
-      end
+      assert {:error, _} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
   end
 

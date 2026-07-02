@@ -599,8 +599,7 @@ defmodule PinchflatWeb.CoreComponents do
               class="truncate"
               x-bind:class="selectedLabel ? 'text-theme-on-surface' : 'text-theme-on-surface-muted'"
               x-text="selectedLabel || prompt"
-            >
-            </span>
+            ></span>
             <.icon
               name="hero-chevron-down"
               class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"

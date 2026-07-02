@@ -72,6 +72,14 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
 
         :ok
 
+      {:error, message, exit_code} ->
+        Logger.warning(
+          "#{__MODULE__} failed to fetch metadata for source #{source.id} " <>
+            "(#{source.original_url}): #{message} (exit code #{exit_code})"
+        )
+
+        {:error, {message, exit_code}}
+
       {:error, reason} ->
         Logger.warning(
           "#{__MODULE__} failed to fetch metadata for source #{source.id} " <>

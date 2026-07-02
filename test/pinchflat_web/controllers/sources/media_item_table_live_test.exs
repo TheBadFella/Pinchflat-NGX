@@ -165,7 +165,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       # Setup multiple downloads
       older_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days))
       newer_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(1, :days))
-      older_executing_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(3, :days))
+
+      older_executing_item =
+        media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(3, :days))
 
       # Enqueue newer first, then older
       {:ok, _task} = MediaDownloadWorker.kickoff_with_task(newer_item)
