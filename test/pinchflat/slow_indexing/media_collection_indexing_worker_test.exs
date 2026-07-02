@@ -203,6 +203,25 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
       )
     end
 
+    test "reschedules even though the current job is still executing" do
+      source = source_fixture(index_frequency_minutes: 10)
+
+      # The worker dedupes against the :incomplete states (which include :executing).
+      # Simulate the real Oban executor by leaving the current job in the :executing
+      # state while perform/1 runs - the reschedule must not see it as a duplicate of
+      # its own successor and silently skip rescheduling.
+      {:ok, job} = Oban.insert(MediaCollectionIndexingWorker.new(%{id: source.id}))
+      Repo.update!(Ecto.Changeset.change(job, state: "executing"))
+
+      perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+
+      assert_enqueued(
+        worker: MediaCollectionIndexingWorker,
+        args: %{"id" => source.id},
+        scheduled_at: now_plus(source.index_frequency_minutes, :minutes)
+      )
+    end
+
     test "creates a task for the rescheduled job" do
       source = source_fixture(index_frequency_minutes: 10)
 
