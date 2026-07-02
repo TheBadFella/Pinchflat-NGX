@@ -33,11 +33,15 @@ For installation, configuration, and the base feature set, use the actual upstre
 ### Downloads
 
 - **Cookie Management UI:** Upload, paste, and inspect the shared `cookies.txt` file directly from the app.
+- **YouTube API Key Testing:** Validate your API key from the settings page before relying on it for indexing.
+- **Ignore Unavailable Media:** Automatically skip and mark members-only, private, or removed videos instead of endlessly retrying them.
+- **Media Status Clarity:** The Other tab now shows distinct statuses — Unavailable, Removed, Ignored, or Filtered Out — so you always know why an item isn't downloading.
 - **Download Speed Visibility:** See live download speed in the jobs dashboard and media tables.
 - **Smarter Retry Behavior:** Retry flows clear stale errors properly and keep task state more accurate.
 - **Control yt-dlp Updates:** Track nightly, nightly-until-stable, or pinned versions instead of always auto-updating.
 
 ### Operations
 
+- **Queue Diagnostics Page:** Inspect running, retryable, and discarded Oban jobs, reset or cancel individual jobs, and clear discarded queues from a single page.
 - **Extra Diagnostics:** More structured logging around source creation, indexing, enqueueing, and skipped downloads.
 - **Ongoing Fork Tweaks:** Small workflow, UI, and reliability improvements that are useful in self-hosted daily use.
