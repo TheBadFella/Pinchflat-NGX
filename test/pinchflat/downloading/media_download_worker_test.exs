@@ -356,8 +356,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "marks unavailable media as prevent_download and clears the error", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, 2, fn
-        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+      expect(YtDlpRunnerMock, :run, 1, fn
         _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
       end)
 
@@ -369,8 +368,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "records when and why the item was skipped", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, 2, fn
-        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+      expect(YtDlpRunnerMock, :run, 1, fn
         _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
       end)
 
@@ -382,10 +380,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "ignores members-only content", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, 2, fn
-        _url, :get_downloadable_status, _opts, _ot, _addl ->
-          {:ok, "{}"}
-
+      expect(YtDlpRunnerMock, :run, 1, fn
         _url, :download, _opts, _ot, _addl ->
           {:error, "ERROR: [youtube] Join this channel to get access to members-only content like this video", 1}
       end)
@@ -398,8 +393,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "does not ignore unrelated download errors", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, 2, fn
-        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+      expect(YtDlpRunnerMock, :run, 1, fn
         _url, :download, _opts, _ot, _addl -> {:error, "Some unrelated error", 1}
       end)
 
@@ -415,8 +409,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     test "leaves unavailable media as an error without preventing download", %{media_item: media_item} do
       Settings.set(ignore_unavailable_media: false)
 
-      expect(YtDlpRunnerMock, :run, 2, fn
-        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+      expect(YtDlpRunnerMock, :run, 1, fn
         _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
       end)
 
