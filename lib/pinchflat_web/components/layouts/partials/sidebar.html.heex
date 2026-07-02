@@ -121,43 +121,46 @@
           </span>
         </li>
 
-        <li
-          class="space-y-2 px-4 pt-2 text-xs text-theme-on-surface"
-          x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
-        >
-          <div
-            class="flex min-w-0 items-center justify-between gap-2"
-            x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
-          >
-            <span class="min-w-0 truncate">PinchYT {Application.spec(:pinchflat)[:vsn]}</span>
-            <a
-              href="https://github.com/TheBadFella/PinchYT/releases"
-              target="_blank"
-              class="shrink-0 rounded-full bg-theme-primary px-2 py-0.5 text-[0.6875rem] font-medium leading-none text-theme-on-primary"
-              x-cloak
-              x-show={"!isVersionSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
+        <li class="px-4 pt-2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
+          <div class="space-y-2 rounded-m3-sm border border-theme-outline/60 bg-theme-surface-2/70 p-3 text-xs">
+            <div
+              class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
+              x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
             >
-              NEW
-            </a>
-          </div>
-          <div class="flex min-w-0 items-start justify-between gap-2">
-            <.link
-              href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
-              target="_blank"
-              class="min-w-0 underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
-            >
-              <span class="block leading-tight text-theme-on-surface-muted">yt-dlp</span>
-              <span class="block truncate font-mono text-[0.6875rem] leading-tight text-theme-on-surface">
-                {Settings.get!(:yt_dlp_version)}
+              <.link
+                href="https://github.com/TheBadFella/PinchYT/releases"
+                target="_blank"
+                class="min-w-0 truncate font-medium text-theme-on-surface transition hover:text-theme-primary"
+              >
+                PinchYT {Application.spec(:pinchflat)[:vsn]}
+              </.link>
+              <span
+                class="shrink-0 rounded-full bg-theme-primary px-2 py-0.5 text-[0.6875rem] font-medium leading-none text-theme-on-primary"
+                x-cloak
+                x-show={"!isVersionSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
+              >
+                NEW
               </span>
-            </.link>
-            <span
-              :if={Settings.get!(:yt_dlp_update_policy) != "stable"}
-              class="shrink-0 rounded-full bg-theme-primary px-2 py-0.5 text-center text-[0.6875rem] font-medium leading-none text-theme-on-primary"
-              title="yt-dlp update behavior"
-            >
-              {Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
-            </span>
+            </div>
+            <div class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+              <.link
+                href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
+                target="_blank"
+                class="min-w-0 transition hover:text-theme-primary"
+              >
+                <span class="block leading-tight text-theme-on-surface-muted">yt-dlp</span>
+                <span class="block truncate font-mono text-[0.6875rem] leading-tight text-theme-on-surface">
+                  {Settings.get!(:yt_dlp_version)}
+                </span>
+              </.link>
+              <span
+                :if={Settings.get!(:yt_dlp_update_policy) != "stable"}
+                class="shrink-0 rounded-full bg-theme-primary px-2 py-0.5 text-center text-[0.6875rem] font-medium leading-none text-theme-on-primary"
+                title="yt-dlp update behavior"
+              >
+                {Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
+              </span>
+            </div>
           </div>
         </li>
       </ul>
