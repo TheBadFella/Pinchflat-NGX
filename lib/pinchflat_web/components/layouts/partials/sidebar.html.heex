@@ -131,7 +131,7 @@
             <a
               href="https://github.com/TheBadFella/PinchYT/releases"
               target="_blank"
-              class="bg-meta-2 text-boxdark px-1.5 rounded-full text-xs"
+              class="rounded-full bg-theme-primary px-1.5 text-xs text-theme-on-primary"
               x-cloak
               x-show={"!isVersionSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
             >
@@ -151,7 +151,7 @@
             </.link>
             <span
               :if={Settings.get!(:yt_dlp_update_policy) != "stable"}
-              class="bg-meta-2 text-boxdark px-1.5 rounded-full text-xs whitespace-nowrap text-center leading-tight"
+              class="whitespace-nowrap rounded-full bg-theme-primary px-1.5 text-center text-xs leading-tight text-theme-on-primary"
               title="yt-dlp update behavior"
             >
               {Phoenix.HTML.raw(

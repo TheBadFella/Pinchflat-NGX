@@ -116,9 +116,13 @@ end
 ### UI Theming Guardrails
 
 - Follow Material Design 3 tokens and design foundations for UI work.
+- Treat UI work ported from other forks, upstream, or generated patches as unfinished until it has been adapted to PinchYT's current design system.
+- Before adding or changing a screen, inspect nearby pages and shared components to match the existing layout density, surfaces, spacing, typography, buttons, tabs, badges, tables, and empty states.
 - Use shared semantic theme classes from `assets/css/app.css` instead of page-local hardcoded palette combinations.
 - Do not introduce raw palette classes like `text-red-*`, `bg-red-*`, `border-green-*`, or `zinc-*` in `lib/pinchflat_web`.
+- Do not copy legacy theme classes such as `bg-white`, `dark:bg-boxdark`, `text-white`, `text-bodydark`, `bg-meta-*`, `border-strokedark`, or `bg-form-input` into `lib/pinchflat_web`; translate them to semantic theme surfaces, text, status, badge, input, and button classes.
 - When a new UI state is needed, add a semantic class or token rather than styling a single screen inline.
+- After UI ports or redesigns, scan `lib/pinchflat_web` for raw or legacy palette classes and fix neighboring pages that would visibly clash with the changed screen.
 - Run `yarn run ui:check-theme` after UI changes that touch `lib/pinchflat_web`.
 - Tailwind is configured in CSS, not `tailwind.config.js`. Keep Tailwind v4 theme tokens in `assets/css/theme/tokens.css`.
 - Keep raw palette variables in `assets/css/theme/palette.css`. Keep semantic component classes in `assets/css/app.css`.

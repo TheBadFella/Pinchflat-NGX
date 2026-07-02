@@ -8,10 +8,13 @@ defmodule Pinchflat.Settings.CookieFileLive do
     <div>
       <.label>
         Cookies File
-        <span :if={@present} class="ml-2 rounded-full bg-meta-3 bg-opacity-20 px-3 py-1 text-xs font-medium text-meta-3">
+        <span :if={@present} class="theme-badge-success ml-2 rounded-full px-3 py-1 text-xs font-medium">
           Populated
         </span>
-        <span :if={!@present} class="ml-2 rounded-full bg-meta-4 px-3 py-1 text-xs font-medium text-bodydark">
+        <span
+          :if={!@present}
+          class="ml-2 rounded-full bg-theme-surface-4 px-3 py-1 text-xs font-medium text-theme-on-surface-muted"
+        >
           Empty
         </span>
       </.label>
@@ -27,8 +30,8 @@ defmodule Pinchflat.Settings.CookieFileLive do
         <label
           phx-drop-target={@uploads.cookies.ref}
           class={[
-            "flex cursor-pointer items-center gap-2 rounded-lg border-[1.5px] border-form-strokedark",
-            "bg-form-input px-5 py-3 text-sm text-white hover:bg-meta-4"
+            "theme-outline-button flex cursor-pointer items-center gap-2 px-5 py-3 text-sm",
+            "hover:border-theme-outline-strong hover:bg-theme-surface-2"
           ]}
         >
           <.icon name="hero-arrow-up-tray" class="h-5 w-5" />
@@ -44,8 +47,8 @@ defmodule Pinchflat.Settings.CookieFileLive do
           :if={@present}
           href={~p"/settings/cookies"}
           class={[
-            "flex items-center gap-2 rounded-lg border-2 border-strokedark bg-form-input",
-            "px-5 py-3 text-sm text-white hover:bg-meta-4"
+            "theme-outline-button flex items-center gap-2 px-5 py-3 text-sm",
+            "hover:border-theme-outline-strong hover:bg-theme-surface-2"
           ]}
         >
           <.icon name="hero-arrow-down-tray" class="h-5 w-5" /> Download
@@ -66,8 +69,7 @@ defmodule Pinchflat.Settings.CookieFileLive do
           phx-click="clear_cookies"
           data-confirm="Clear the cookies file?"
           class={[
-            "flex items-center gap-2 rounded-lg border-2 border-strokedark bg-form-input",
-            "px-5 py-3 text-sm text-meta-1 hover:bg-meta-4"
+            "theme-danger-button flex items-center gap-2 rounded-m3-sm border px-5 py-3 text-sm"
           ]}
         >
           <.icon name="hero-trash" class="h-5 w-5" /> Clear
@@ -150,7 +152,7 @@ defmodule Pinchflat.Settings.CookieFileLive do
     url = "https://github.com/kieraneglin/pinchflat/wiki/Cookies"
 
     ~s(Upload a Netscape-format <span class="font-mono">cookies.txt</span> to let yt-dlp access age-restricted, ) <>
-      ~s(members-only, or bot-gated content. See <a href="#{url}" class="underline decoration-bodydark ) <>
-      ~s(decoration-1 hover:decoration-white" target="_blank">the wiki</a> for how to export one)
+      ~s(members-only, or bot-gated content. See <a href="#{url}" class="underline decoration-theme-on-surface-muted ) <>
+      ~s(decoration-1 hover:text-theme-on-surface hover:decoration-theme-on-surface" target="_blank">the wiki</a> for how to export one)
   end
 end

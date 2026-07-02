@@ -75,10 +75,18 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
 
   def queue_health_class(stats) do
     cond do
-      stats.paused -> "bg-yellow-500/20 border-yellow-500"
-      stats.retryable > 0 -> "bg-red-500/20 border-red-500"
-      stats.running >= stats.limit and stats.available > 0 -> "bg-blue-500/20 border-blue-500"
-      true -> "bg-green-500/20 border-green-500"
+      stats.paused -> "theme-status-card-warning bg-theme-warning/10"
+      stats.retryable > 0 -> "theme-status-card-error bg-theme-error/10"
+      stats.running >= stats.limit and stats.available > 0 -> "theme-status-card-info bg-theme-primary/10"
+      true -> "theme-status-card-success bg-theme-success/10"
+    end
+  end
+
+  def queue_status_class(stats) do
+    cond do
+      stats.paused -> "theme-badge-warning"
+      stats.retryable > 0 -> "theme-danger-panel"
+      true -> "bg-theme-surface-4 text-theme-on-surface-muted"
     end
   end
 
