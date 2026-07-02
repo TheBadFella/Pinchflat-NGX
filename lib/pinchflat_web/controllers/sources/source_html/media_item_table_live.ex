@@ -77,7 +77,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               </div>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2">
+            <div class="flex items-center gap-2">
               <.icon_button
                 :if={@media_state != "downloaded"}
                 icon_name="hero-arrow-down-tray"
@@ -123,14 +123,16 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               </dd>
             </div>
             <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Prevent Download</dt>
+              <dt class="text-theme-on-surface-muted">Status</dt>
               <dd class="text-right text-theme-on-surface">
-                <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
+                <% status = media_status(media_item) %>
+                <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
+                  <span class={["flex items-center gap-1.5", status.class]}>
+                    <.icon name={status.icon} class="w-5 h-5 shrink-0" />
+                    <span>{status.label}</span>
+                  </span>
+                </.tooltip>
               </dd>
-            </div>
-            <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Excluded Reason</dt>
-              <dd class="max-w-[60%] text-right text-theme-on-surface">{excluded_reason(media_item, @source)}</dd>
             </div>
           </dl>
         </article>
@@ -167,12 +169,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             </section>
           </:col>
 
-          <:col :let={media_item} :if={@media_state == "other"} label="Prevent Download?">
-            <.icon name={if media_item.prevent_download, do: "hero-check", else: "hero-x-mark"} />
-          </:col>
-
-          <:col :let={media_item} :if={@media_state == "other"} label="Excluded Reason">
-            {excluded_reason(media_item, @source)}
+          <:col :let={media_item} :if={@media_state == "other"} label="Status">
+            <% status = media_status(media_item) %>
+            <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
+              <span class={["flex items-center gap-1.5", status.class]}>
+                <.icon name={status.icon} class="w-5 h-5 shrink-0" />
+                <span>{status.label}</span>
+              </span>
+            </.tooltip>
           </:col>
 
           <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
@@ -207,7 +211,6 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </:col>
         </.table>
       </div>
-
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>
@@ -471,68 +474,12 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :duration_seconds,
       :livestream,
       :short_form_content,
-      :media_size_bytes
+      :media_size_bytes,
+      :unavailable_at,
+      :unavailable_reason,
+      :culled_at
     ]
   end
-
-  defp excluded_reason(media_item, source) do
-    cond do
-      media_item.prevent_download ->
-        if source.selection_mode == :manual do
-          "Not selected in delayed downloads mode"
-        else
-          "Prevented"
-        end
-
-      before_cutoff?(media_item, source) ->
-        "Before cutoff"
-
-      too_short?(media_item, source) ->
-        "Too short"
-
-      too_long?(media_item, source) ->
-        "Too long"
-
-      source.media_profile.shorts_behaviour == :exclude and media_item.short_form_content ->
-        "Shorts excluded"
-
-      source.media_profile.shorts_behaviour == :only and not media_item.short_form_content ->
-        "Only shorts"
-
-      source.media_profile.livestream_behaviour == :exclude and media_item.livestream ->
-        "Livestreams excluded"
-
-      source.media_profile.livestream_behaviour == :only and not media_item.livestream ->
-        "Only livestreams"
-
-      is_binary(source.title_filter_regex) ->
-        "Filtered by title"
-
-      true ->
-        "Filtered by source rules"
-    end
-  end
-
-  defp before_cutoff?(media_item, %{download_cutoff_date: cutoff_date})
-       when not is_nil(cutoff_date) and not is_nil(media_item.uploaded_at) do
-    Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
-  end
-
-  defp before_cutoff?(_media_item, _source), do: false
-
-  defp too_short?(media_item, %{min_duration_seconds: min_duration})
-       when not is_nil(min_duration) and not is_nil(media_item.duration_seconds) do
-    media_item.duration_seconds < min_duration
-  end
-
-  defp too_short?(_media_item, _source), do: false
-
-  defp too_long?(media_item, %{max_duration_seconds: max_duration})
-       when not is_nil(max_duration) and not is_nil(media_item.duration_seconds) do
-    media_item.duration_seconds > max_duration
-  end
-
-  defp too_long?(_media_item, _source), do: false
 
   defp build_pagination_attrs(attrs, media_state, queue_base_query) do
     tasks_by_media_item_id = fetch_download_tasks(attrs.records)
@@ -769,5 +716,42 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :progress_speed_bytes_per_second,
       :progress_updated_at
     ]
+  end
+
+  # Explains why a media item is in the "Other" tab (neither downloaded nor pending).
+  # Order matters: a retention-culled item has both `culled_at` and `prevent_download`
+  # set, so `culled_at` must be checked before `prevent_download`.
+  defp media_status(%{unavailable_at: at, unavailable_reason: reason}) when not is_nil(at) do
+    tooltip = if reason, do: "Skipped: #{reason}", else: "Skipped: members-only, private, or removed"
+    %{label: "Unavailable", icon: "hero-no-symbol", class: "text-amber-400", tooltip: tooltip}
+  end
+
+  defp media_status(%{culled_at: at, prevent_download: prevent_download}) when not is_nil(at) do
+    tooltip =
+      if prevent_download do
+        "Downloaded, then deleted after its retention period. It won't be re-downloaded"
+      else
+        "Downloaded, then deleted because it's before the source's cutoff date. It may be re-downloaded if the cutoff changes"
+      end
+
+    %{label: "Removed", icon: "hero-trash", class: "text-slate-300", tooltip: tooltip}
+  end
+
+  defp media_status(%{prevent_download: true}) do
+    %{
+      label: "Ignored",
+      icon: "hero-eye-slash",
+      class: "text-slate-300",
+      tooltip: "Manually marked to not download"
+    }
+  end
+
+  defp media_status(_media_item) do
+    %{
+      label: "Filtered Out",
+      icon: "hero-funnel",
+      class: "text-slate-300",
+      tooltip: "Excluded by this source's profile rules (duration, format, title, or cutoff date)"
+    }
   end
 end

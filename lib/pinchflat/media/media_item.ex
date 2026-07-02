@@ -45,6 +45,8 @@ defmodule Pinchflat.Media.MediaItem do
     :prevent_download,
     :prevent_culling,
     :culled_at,
+    :unavailable_at,
+    :unavailable_reason,
     :media_redownloaded_at
   ]
   # Pretty much all the fields captured at index are required.
@@ -93,6 +95,11 @@ defmodule Pinchflat.Media.MediaItem do
     field :prevent_download, :boolean, default: false
     field :prevent_culling, :boolean, default: false
     field :culled_at, :utc_datetime
+    # Set when the item is auto-skipped because it's permanently unavailable
+    # (members-only, private, removed) and the `ignore_unavailable_media` setting
+    # is enabled. `unavailable_reason` holds the matched yt-dlp reason for display.
+    field :unavailable_at, :utc_datetime
+    field :unavailable_reason, :string
 
     field :matching_search_term, :string, virtual: true
 

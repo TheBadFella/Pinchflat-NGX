@@ -72,30 +72,46 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       refute html =~ pending_media_item.title
     end
 
-    test "shows 'Prevent Download' column when other", %{conn: conn, source: source} do
+    test "shows 'Ignored' status for manually prevented media when other", %{conn: conn, source: source} do
       _media_item = media_item_fixture(source_id: source.id, prevent_download: true, media_filepath: nil)
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
 
-      assert html =~ "Prevent Download?"
-      assert html =~ "Excluded Reason"
-      assert html =~ "Prevented"
+      assert html =~ "Status"
+      assert html =~ "Ignored"
+      refute html =~ "Removed"
     end
 
-    test "shows cutoff reason for excluded media", %{conn: conn} do
-      source = source_fixture(download_cutoff_date: ~D[2024-01-01])
-
-      excluded_media_item =
+    test "shows 'Removed' status for culled media even when prevent_download is set", %{conn: conn, source: source} do
+      _media_item =
         media_item_fixture(
           source_id: source.id,
           media_filepath: nil,
-          uploaded_at: ~U[2023-01-01 00:00:00Z]
+          prevent_download: true,
+          culled_at: DateTime.utc_now()
         )
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
 
-      assert html =~ excluded_media_item.title
-      assert html =~ "Before cutoff"
+      assert html =~ "Removed"
+      refute html =~ "Ignored"
+    end
+
+    test "shows 'Unavailable' status for unavailable media when other", %{conn: conn, source: source} do
+      _media_item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          unavailable_at: DateTime.utc_now(),
+          unavailable_reason: "members-only content"
+        )
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
+
+      assert html =~ "Unavailable"
+      refute html =~ "Ignored"
+      refute html =~ "Removed"
     end
 
     test "shows phase text for active downloads before total size is known", %{conn: conn, source: source} do
@@ -142,24 +158,20 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
 
       assert html =~ media_item.title
-      assert html =~ media_item.last_error
+      assert html =~ "HTTP Error 429"
     end
 
-    test "shows executing downloads before later queued pending items across pages", %{conn: conn, source: source} do
-      older_executing_item =
-        media_item_fixture(
-          source_id: source.id,
-          media_filepath: nil,
-          uploaded_at: ~U[2024-01-01 00:00:00Z]
-        )
+    test "sorts pending downloads by state and then task inserted_at", %{conn: conn, source: source} do
+      # Setup multiple downloads
+      older_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days))
+      newer_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(1, :days))
 
-      for day <- 2..22 do
-        media_item_fixture(
-          source_id: source.id,
-          media_filepath: nil,
-          uploaded_at: DateTime.add(~U[2024-01-01 00:00:00Z], day * 86_400, :second)
-        )
-      end
+      older_executing_item =
+        media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(3, :days))
+
+      # Enqueue newer first, then older
+      {:ok, _task} = MediaDownloadWorker.kickoff_with_task(newer_item)
+      {:ok, _task} = MediaDownloadWorker.kickoff_with_task(older_item)
 
       {:ok, task} = MediaDownloadWorker.kickoff_with_task(older_executing_item)
 
@@ -170,6 +182,16 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
 
       assert html =~ older_executing_item.title
+    end
+
+    test "shows 'Filtered Out' status for media excluded by profile rules when other", %{conn: conn} do
+      media_profile = media_profile_fixture(shorts_behaviour: :exclude)
+      source = source_fixture(media_profile_id: media_profile.id)
+      _media_item = media_item_fixture(source_id: source.id, media_filepath: nil, short_form_content: true)
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
+
+      assert html =~ "Filtered Out"
     end
   end
 

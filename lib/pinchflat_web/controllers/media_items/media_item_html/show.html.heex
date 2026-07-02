@@ -31,6 +31,18 @@
             <span>{@media_item.last_error}</span>
           </section>
 
+          <section :if={@media_item.unavailable_at} class="mt-6">
+            <div class="flex items-center gap-1 mb-2">
+              <.icon name="hero-no-symbol" class="text-amber-400" />
+              <h3 class="font-bold text-xl">Unavailable</h3>
+            </div>
+            <span>
+              This item was skipped because it is permanently unavailable{if @media_item.unavailable_reason,
+                do: ": #{@media_item.unavailable_reason}",
+                else: " (members-only, private, or removed)"}.
+            </span>
+          </section>
+
           <%= if media_file_exists?(@media_item) do %>
             <section class="grid grid-cols-1 xl:gap-6 mt-6">
               <div><.media_preview media_item={@media_item} /></div>

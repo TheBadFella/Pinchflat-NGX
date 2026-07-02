@@ -8,6 +8,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
 
   alias Pinchflat.Media
   alias Pinchflat.Sources
+  alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.MediaDownloadWorker
 
@@ -344,6 +345,79 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       Media.update_media_item(media_item, %{media_filepath: "foo.mp4"})
 
       perform_job(MediaDownloadWorker, %{id: media_item.id})
+    end
+  end
+
+  describe "perform/1 when ignore_unavailable_media is enabled" do
+    setup %{media_item: media_item} do
+      Settings.set(ignore_unavailable_media: true)
+
+      {:ok, %{media_item: media_item}}
+    end
+
+    test "marks unavailable media as prevent_download and clears the error", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 1, fn
+        _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload(media_item)
+      assert media_item.prevent_download == true
+      assert media_item.last_error == nil
+    end
+
+    test "records when and why the item was skipped", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 1, fn
+        _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload(media_item)
+      assert media_item.unavailable_at != nil
+      assert media_item.unavailable_reason == "Video unavailable"
+    end
+
+    test "ignores members-only content", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 1, fn
+        _url, :download, _opts, _ot, _addl ->
+          {:error, "ERROR: [youtube] Join this channel to get access to members-only content like this video", 1}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload(media_item)
+      assert media_item.prevent_download == true
+      assert media_item.unavailable_reason == "Join this channel to get access to members-only content"
+    end
+
+    test "does not ignore unrelated download errors", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, 1, fn
+        _url, :download, _opts, _ot, _addl -> {:error, "Some unrelated error", 1}
+      end)
+
+      assert {:error, :download_failed} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload(media_item)
+      assert media_item.prevent_download == false
+      assert media_item.unavailable_at == nil
+    end
+  end
+
+  describe "perform/1 when ignore_unavailable_media is disabled" do
+    test "leaves unavailable media as an error without preventing download", %{media_item: media_item} do
+      Settings.set(ignore_unavailable_media: false)
+
+      expect(YtDlpRunnerMock, :run, 1, fn
+        _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
+      end)
+
+      perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload(media_item)
+      assert media_item.prevent_download == false
+      assert media_item.last_error =~ "Video unavailable"
     end
   end
 

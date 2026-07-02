@@ -231,8 +231,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
         <span class={[
           "absolute -z-10 h-2 w-2 rotate-45 rounded-[2px] border-l border-t border-theme-outline/80 bg-theme-surface-3",
           @tooltip_arrow_class
-        ]}>
-        </span>
+        ]}></span>
         <div class="px-3">{@tooltip}</div>
       </div>
     </div>
