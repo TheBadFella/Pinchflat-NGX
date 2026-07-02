@@ -164,10 +164,9 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     {num, suffix} = NumberUtils.human_byte_size(assigns.byte_size, precision: 2)
 
     assigns =
-      Map.merge(assigns, %{
-        num: num,
-        suffix: suffix
-      })
+      assigns
+      |> assign(:num, num)
+      |> assign(:suffix, suffix)
 
     ~H"""
     <.localized_number number={@num} /> {@suffix}

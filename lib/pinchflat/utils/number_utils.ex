@@ -25,7 +25,7 @@ defmodule Pinchflat.Utils.NumberUtils do
 
   def human_byte_size(number, opts) do
     precision = Keyword.get(opts, :precision, 2)
-    suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    suffixes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
     base = 1024
 
     Enum.reduce_while(suffixes, {number / 1.0, "B"}, fn suffix, {value, _} ->

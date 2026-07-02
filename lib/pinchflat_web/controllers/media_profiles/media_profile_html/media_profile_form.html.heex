@@ -179,7 +179,7 @@
         field={f[:download_metadata]}
         type="toggle"
         label="Download Metadata"
-        help="Downloads metadata file alongside media file"
+        help="Downloads a .info.json metadata file alongside media file"
         x-init="$watch('selectedPreset', p => p && (enabled = presets[p]))"
       />
     </section>
@@ -269,9 +269,9 @@
       <.input
         field={f[:download_nfo]}
         type="toggle"
-        label="Download NFO data"
+        label="Create NFO data"
         label_suffix="(pro)"
-        help="Downloads NFO data alongside media file for use with Jellyfin, Kodi, etc."
+        help="Creates a .nfo file alongside media file for use with Jellyfin, Kodi, etc."
         x-init="$watch('selectedPreset', p => p && (enabled = presets[p]))"
       />
     </section>

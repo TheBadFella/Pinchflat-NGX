@@ -144,7 +144,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
 
-      assert html =~ "512.0 B / 1.0 KB (512.0 B left) at 256.0 B/s"
+      assert html =~ "512.0 B / 1.0 KiB (512.0 B left) at 256.0 B/s"
     end
 
     test "shows wrapped full errors inline", %{conn: conn, source: source} do
