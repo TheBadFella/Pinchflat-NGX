@@ -7,3 +7,11 @@
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="max-w-full"><.setting_form conn={@conn} changeset={@changeset} action={~p"/settings"} /></div>
 </div>
+<div class="mt-6 rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5">
+  <div class="max-w-full">
+    <h3 class="text-2xl text-black dark:text-white mb-2">
+      Cookies
+    </h3>
+    {live_render(@conn, Pinchflat.Settings.CookieFileLive, id: "cookie-file-live")}
+  </div>
+</div>

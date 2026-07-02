@@ -6,10 +6,15 @@ defmodule Pinchflat.Settings.Setting do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Pinchflat.YtDlp.UpdateManager
+
   @allowed_fields [
     :onboarding,
     :pro_enabled,
     :yt_dlp_version,
+    :yt_dlp_update_policy,
+    :yt_dlp_pinned_version,
+    :yt_dlp_nightly_baseline,
     :apprise_version,
     :apprise_server,
     :external_base_url,
@@ -34,6 +39,9 @@ defmodule Pinchflat.Settings.Setting do
     field :onboarding, :boolean, default: true
     field :pro_enabled, :boolean, default: false
     field :yt_dlp_version, :string
+    field :yt_dlp_update_policy, :string, default: "stable"
+    field :yt_dlp_pinned_version, :string
+    field :yt_dlp_nightly_baseline, :string
     field :apprise_version, :string
     field :apprise_server, :string
     field :external_base_url, :string
@@ -55,5 +63,15 @@ defmodule Pinchflat.Settings.Setting do
     |> cast(attrs, @allowed_fields)
     |> validate_required(@required_fields)
     |> validate_number(:extractor_sleep_interval_seconds, greater_than_or_equal_to: 0)
+    |> validate_inclusion(:yt_dlp_update_policy, UpdateManager.policies())
+    |> validate_pinned_version()
+  end
+
+  defp validate_pinned_version(changeset) do
+    if get_field(changeset, :yt_dlp_update_policy) == "pinned" do
+      validate_required(changeset, [:yt_dlp_pinned_version])
+    else
+      changeset
+    end
   end
 end

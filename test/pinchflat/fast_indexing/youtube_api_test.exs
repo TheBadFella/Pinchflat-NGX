@@ -118,4 +118,34 @@ defmodule Pinchflat.FastIndexing.YoutubeApiTest do
       assert {:error, "error"} = YoutubeApi.get_recent_media_ids(source)
     end
   end
+
+  describe "test_api_key/1" do
+    test "calls the test endpoint with the provided key" do
+      expect(HTTPClientMock, :get, fn url, _headers ->
+        assert url =~ "https://youtube.googleapis.com/youtube/v3/playlistItems"
+        assert url =~ "part=id"
+        assert url =~ "maxResults=1"
+        assert url =~ "key=test_key"
+
+        {:ok, "{}"}
+      end)
+
+      assert :ok = YoutubeApi.test_api_key("test_key")
+    end
+
+    test "returns :ok when the API accepts the key" do
+      expect(HTTPClientMock, :get, fn _url, _headers -> {:ok, ~s({"items": []})} end)
+
+      assert :ok = YoutubeApi.test_api_key("good_key")
+    end
+
+    test "returns an error when the request is rejected" do
+      expect(HTTPClientMock, :get, fn _url, _headers ->
+        {:error, "HTTP request failed with status code 400: Bad Request"}
+      end)
+
+      assert {:error, "HTTP request failed with status code 400: Bad Request"} =
+               YoutubeApi.test_api_key("bad_key")
+    end
+  end
 end

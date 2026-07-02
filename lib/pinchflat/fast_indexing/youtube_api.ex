@@ -14,6 +14,10 @@ defmodule Pinchflat.FastIndexing.YoutubeApi do
 
   @agent_name {:global, __MODULE__.KeyIndex}
 
+  # A well-known public playlist (YouTube's "Popular Right Now" uploads playlist)
+  # used to verify that an API key is accepted by the YouTube API.
+  @test_playlist_id "PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf"
+
   @doc """
   Determines if the YouTube API is enabled for fast indexing by checking
   if the user has an API key set
@@ -22,6 +26,23 @@ defmodule Pinchflat.FastIndexing.YoutubeApi do
   """
   @impl YoutubeBehaviour
   def enabled?, do: Enum.any?(api_keys())
+
+  @doc """
+  Tests if a YouTube API key is accepted by making a simple API request.
+
+  A successful (HTTP 200) response means the key is valid. Any other response
+  is surfaced as an error since the underlying HTTP client only returns the
+  body on success.
+
+  Returns :ok | {:error, binary()}
+  """
+  @impl YoutubeBehaviour
+  def test_api_key(api_key) when is_binary(api_key) do
+    case http_client().get(construct_test_endpoint(api_key), accept: "application/json") do
+      {:ok, _response} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   @doc """
   Fetches the recent media IDs from the YouTube API for a given source.
@@ -123,6 +144,12 @@ defmodule Pinchflat.FastIndexing.YoutubeApi do
     max_results = 50
 
     "#{api_base}?part=#{property_type}&maxResults=#{max_results}&playlistId=#{playlist_id}&key=#{next_api_key()}"
+  end
+
+  defp construct_test_endpoint(api_key) do
+    api_base = "https://youtube.googleapis.com/youtube/v3/playlistItems"
+
+    "#{api_base}?part=id&maxResults=1&playlistId=#{@test_playlist_id}&key=#{api_key}"
   end
 
   defp http_client do

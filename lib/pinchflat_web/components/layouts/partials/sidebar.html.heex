@@ -127,16 +127,40 @@
             x-on:click={"markVersionAsSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
             x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
-            <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">PinchYT {Application.spec(:pinchflat)[:vsn]}</span>
+            <span>PinchYT {Application.spec(:pinchflat)[:vsn]}</span>
+            <a
+              href="https://github.com/TheBadFella/PinchYT/releases"
+              target="_blank"
+              class="bg-meta-2 text-boxdark px-1.5 rounded-full text-xs"
+              x-cloak
+              x-show={"!isVersionSeen('#{Application.spec(:pinchflat)[:vsn]}')"}
+            >
+              NEW
+            </a>
           </span>
-          <.link
-            href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
-            target="_blank"
-            class="group relative flex items-center gap-2.5 px-4 pt-1 text-sm underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface lg:pt-2"
+          <div
+            class="group relative flex items-center gap-2.5 px-4 pt-1 text-sm"
             x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
           >
-            <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">yt-dlp {Settings.get!(:yt_dlp_version)}</span>
-          </.link>
+            <.link
+              href="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases"
+              target="_blank"
+              class="underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
+            >
+              yt-dlp {Settings.get!(:yt_dlp_version)}
+            </.link>
+            <span
+              :if={Settings.get!(:yt_dlp_update_policy) != "stable"}
+              class="bg-meta-2 text-boxdark px-1.5 rounded-full text-xs whitespace-nowrap text-center leading-tight"
+              title="yt-dlp update behavior"
+            >
+              {Phoenix.HTML.raw(
+                Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))
+                |> String.replace(" until ", " until<br />")
+                |> String.replace(", ", ",<br />")
+              )}
+            </span>
+          </div>
         </li>
       </ul>
     </nav>

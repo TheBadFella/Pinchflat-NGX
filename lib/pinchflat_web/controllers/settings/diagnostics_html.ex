@@ -29,6 +29,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
     """
     - App Version: #{Application.spec(:pinchflat)[:vsn]}
     - yt-dlp Version: #{Settings.get!(:yt_dlp_version)}
+    - yt-dlp Update Behavior: #{Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
     - Apprise Version: #{Settings.get!(:apprise_version)}
     - System Architecture: #{to_string(:erlang.system_info(:system_architecture))}
     - Timezone: #{Application.get_env(:pinchflat, :timezone)}

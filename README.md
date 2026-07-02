@@ -35,7 +35,7 @@ For installation, configuration, and the base feature set, use the actual upstre
 - **Cookie Management UI:** Upload, paste, and inspect the shared `cookies.txt` file directly from the app.
 - **Download Speed Visibility:** See live download speed in the jobs dashboard and media tables.
 - **Smarter Retry Behavior:** Retry flows clear stale errors properly and keep task state more accurate.
-- **Nightly yt-dlp Builds:** Track newer yt-dlp builds for faster compatibility with upstream extractor changes.
+- **Control yt-dlp Updates:** Track nightly, nightly-until-stable, or pinned versions instead of always auto-updating.
 
 ### Operations
 

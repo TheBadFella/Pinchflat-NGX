@@ -105,6 +105,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :icon_class, :string, default: nil
   attr :variant, :string, default: "outline", values: ["outline", "primary", "warning", "danger", "danger-solid"]
   attr :type, :string, default: "button"
+  attr :disabled, :boolean, default: false
   attr :rest, :global
 
   def icon_button(assigns) do
@@ -125,6 +126,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           @class
         ]}
         type={@type}
+        disabled={@disabled}
         {@rest}
       >
         <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} />

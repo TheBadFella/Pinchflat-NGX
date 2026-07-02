@@ -80,4 +80,11 @@ defmodule Pinchflat.FastIndexing.YoutubeRssTest do
       assert {:ok, ["test_1"]} = YoutubeRss.get_recent_media_ids(source)
     end
   end
+
+  describe "test_api_key/1" do
+    test "always returns :ok since RSS feeds don't use API keys" do
+      assert :ok = YoutubeRss.test_api_key("anything")
+      assert :ok = YoutubeRss.test_api_key("")
+    end
+  end
 end
