@@ -46,6 +46,21 @@ defmodule Pinchflat.Metadata.NfoBuilderTest do
       assert String.contains?(nfo, "hello&#39; &amp; &lt;world&gt;")
     end
 
+    test "renders the aired date as a plain date with no time or timezone", %{filepath: filepath} do
+      metadata = %{
+        "title" => "title",
+        "uploader" => "uploader",
+        "id" => "id",
+        "description" => "description",
+        "upload_date" => "20210101"
+      }
+
+      result = NfoBuilder.build_and_store_for_media_item(filepath, metadata)
+      nfo = File.read!(result)
+
+      assert String.contains?(nfo, "<aired>2021-01-01</aired>")
+    end
+
     test "uses the season and episode number from the filepath if it can be determined" do
       metadata = %{
         "title" => "title",

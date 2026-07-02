@@ -26,7 +26,7 @@ defmodule PinchflatWeb.ConnCase do
       alias Pinchflat.Repo
 
       use PinchflatWeb, :verified_routes
-      use Oban.Testing, repo: Repo
+      use Oban.Testing, repo: Repo, engine: Oban.Engines.Lite
 
       # Import conveniences for testing with connections
 
