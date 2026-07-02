@@ -19,14 +19,14 @@ defmodule Pinchflat.Utils.NumberUtilsTest do
 
   describe "human_byte_size/1" do
     test "converts byte size to human readable format" do
-      assert NumberUtils.human_byte_size(1024) == {1, "KB"}
-      assert NumberUtils.human_byte_size(1024 * 1024) == {1, "MB"}
-      assert NumberUtils.human_byte_size(1024 * 1024 * 1024) == {1, "GB"}
-      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024) == {1, "TB"}
-      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024) == {1, "PB"}
-      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024 * 1024) == {1, "EB"}
-      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024) == {1, "ZB"}
-      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024) == {1, "YB"}
+      assert NumberUtils.human_byte_size(1024) == {1, "KiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024) == {1, "MiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024 * 1024) == {1, "GiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024) == {1, "TiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024) == {1, "PiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024 * 1024) == {1, "EiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024) == {1, "ZiB"}
+      assert NumberUtils.human_byte_size(1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024) == {1, "YiB"}
     end
 
     test "returns the number when it is less than 1024" do
@@ -34,9 +34,9 @@ defmodule Pinchflat.Utils.NumberUtilsTest do
     end
 
     test "optionally takes a precision" do
-      assert NumberUtils.human_byte_size(1234 * 1024, precision: 0) == {1, "MB"}
-      assert NumberUtils.human_byte_size(1234 * 1024, precision: 1) == {1.2, "MB"}
-      assert NumberUtils.human_byte_size(1234 * 1024, precision: 2) == {1.21, "MB"}
+      assert NumberUtils.human_byte_size(1234 * 1024, precision: 0) == {1, "MiB"}
+      assert NumberUtils.human_byte_size(1234 * 1024, precision: 1) == {1.2, "MiB"}
+      assert NumberUtils.human_byte_size(1234 * 1024, precision: 2) == {1.21, "MiB"}
     end
 
     test "handles 0's well" do
