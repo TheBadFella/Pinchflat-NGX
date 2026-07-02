@@ -108,7 +108,7 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
 
       assert html =~ "37.5%"
       assert html =~ "Downloading"
-      assert html =~ "512.0 B of 1.0 KB done, 512.0 B remaining at 256.0 B/s"
+      assert html =~ "512.0 B of 1.0 KiB done, 512.0 B remaining at 256.0 B/s"
       assert html =~ "ETA 30s"
       assert html =~ "Stop"
     end
@@ -140,7 +140,7 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})
 
       assert html =~ "Downloading without known total"
-      assert html =~ "2.0 KB downloaded"
+      assert html =~ "2.0 KiB downloaded"
     end
 
     test "listens for job:progress change events", %{conn: conn} do
