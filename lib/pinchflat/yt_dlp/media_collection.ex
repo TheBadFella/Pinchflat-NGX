@@ -21,6 +21,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
       file that will be written to when yt-dlp is done. This is useful for
       setting up a file watcher to know when the file is ready to be read.
     - :use_cookies - whether or not to use user-provided cookies when fetching the media details
+    - :expected_exit_codes - passed through to the runner; non-zero exit codes the
+      caller treats as a normal outcome (logged at debug instead of error)
 
   Returns {:ok, [map()]} | {:error, any, ...}.
   """
@@ -33,7 +35,11 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     output_template = YtDlpMedia.indexing_output_template()
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     file_listener_handler = Keyword.get(addl_opts, :file_listener_handler, false)
-    runner_opts = [output_filepath: output_filepath, use_cookies: use_cookies]
+
+    runner_opts =
+      [output_filepath: output_filepath, use_cookies: use_cookies] ++
+        Keyword.take(addl_opts, [:expected_exit_codes])
+
     action = :get_media_attributes_for_collection
 
     if file_listener_handler do

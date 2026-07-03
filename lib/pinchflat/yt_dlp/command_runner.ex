@@ -26,6 +26,9 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       attach a cookie file if the user hasn't set one up.
     - :skip_sleep_interval - if true, will not add the sleep interval options to the command.
       Usually only used for commands that would be UI-blocking
+    - :expected_exit_codes - additional non-zero exit codes the caller treats as a
+      normal outcome and handles itself. These (plus 101, which this runner already
+      treats as success) get logged at debug instead of error.
 
   Returns {:ok, binary()} | {:error, output, status}.
   """
@@ -45,12 +48,15 @@ defmodule Pinchflat.YtDlp.CommandRunner do
     # These must stay in exactly this order, hence why I'm giving it its own variable.
     all_opts = command_opts ++ print_to_file_opts ++ user_configured_opts ++ global_options(addl_opts)
     formatted_command_opts = [url] ++ CliUtils.parse_options(all_opts)
+    expected_exit_codes = [101] ++ Keyword.get(addl_opts, :expected_exit_codes, [])
+
+    wrap_cmd_opts = [expected_exit_codes: expected_exit_codes]
 
     command_result =
       if action_name == :download && Keyword.has_key?(addl_opts, :progress_handler) do
         wrap_streaming_cmd(backend_executable(), formatted_command_opts, addl_opts)
       else
-        CliUtils.wrap_cmd(backend_executable(), formatted_command_opts, stderr_to_stdout: true)
+        CliUtils.wrap_cmd(backend_executable(), formatted_command_opts, [stderr_to_stdout: true], wrap_cmd_opts)
       end
 
     case command_result do

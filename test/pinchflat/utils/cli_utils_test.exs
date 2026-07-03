@@ -1,6 +1,8 @@
 defmodule Pinchflat.Utils.CliUtilsTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
+
   alias Pinchflat.Utils.CliUtils
 
   describe "wrap_cmd/3" do
@@ -10,6 +12,31 @@ defmodule Pinchflat.Utils.CliUtilsTest do
 
     test "sets the current directory to the tmp dir" do
       assert {"/tmp/test/tmpfiles\n", 0} = CliUtils.wrap_cmd("pwd", [])
+    end
+  end
+
+  describe "wrap_cmd/3 when logging results" do
+    setup do
+      # The test env logger level suppresses everything below :critical,
+      # so it needs to be loosened for log output to be capturable
+      original_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: original_level) end)
+    end
+
+    test "logs non-zero exits at the error level by default" do
+      log = capture_log([level: :error], fn -> CliUtils.wrap_cmd("false", []) end)
+
+      assert log =~ "exited: 1"
+    end
+
+    test "logs expected exit codes at the debug level instead" do
+      log =
+        capture_log([level: :error], fn ->
+          CliUtils.wrap_cmd("false", [], [], expected_exit_codes: [1])
+        end)
+
+      refute log =~ "exited: 1"
     end
   end
 

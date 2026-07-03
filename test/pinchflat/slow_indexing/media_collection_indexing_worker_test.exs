@@ -58,7 +58,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "indexes the source if it should be indexed" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, ""}
       end)
 
@@ -68,7 +68,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "indexes the source no matter what if the source has never been indexed before" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, ""}
       end)
 
@@ -78,7 +78,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "indexes the source no matter what if the 'force' arg is passed" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, ""}
       end)
 
@@ -88,7 +88,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "doesn't use a download archive if the index has been forced" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute :break_on_existing in opts
         refute Keyword.has_key?(opts, :download_archive)
 
@@ -121,7 +121,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "kicks off a download job for each pending media item" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}
       end)
 
@@ -168,7 +168,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "starts a job for any pending media item even if it's from another run" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}
       end)
 
@@ -180,7 +180,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "does not kick off a job for media items that could not be saved" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}
       end)
 
@@ -263,7 +263,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     end
 
     test "creates the basic media_item records" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}
       end)
 
@@ -296,7 +296,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
     test "sends a notification if new media was found" do
       source = source_fixture()
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, source_attributes_return_fixture()}
       end)
 
