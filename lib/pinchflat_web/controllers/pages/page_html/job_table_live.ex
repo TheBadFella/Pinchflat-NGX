@@ -114,8 +114,10 @@ defmodule Pinchflat.Pages.JobTableLive do
   end
 
   def mount(_params, session, socket) do
-    PinchflatWeb.Endpoint.subscribe("job:state")
-    PinchflatWeb.Endpoint.subscribe("job:progress")
+    if connected?(socket) do
+      PinchflatWeb.Endpoint.subscribe("job:state")
+      PinchflatWeb.Endpoint.subscribe("job:progress")
+    end
 
     source_id = Map.get(session, "source_id")
     source_id = if is_binary(source_id), do: String.to_integer(source_id), else: source_id
