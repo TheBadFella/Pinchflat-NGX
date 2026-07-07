@@ -5,8 +5,20 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
 
   import Ecto.Query
 
+  alias Pinchflat.Media.MediaItem
   alias Pinchflat.Media.MediaQuery
   alias Pinchflat.Repo
+  alias Pinchflat.Sources.Source
+  alias Pinchflat.Tasks
+
+  # Worker (short) names grouped by the kind of record their "id" arg points at,
+  # so a diagnostics row can show what a job is actually working on.
+  @media_item_workers ~w(MediaDownloadWorker MediaQualityUpgradeWorker)
+  @source_workers ~w(
+    MediaCollectionIndexingWorker FastIndexingWorker
+    SourceMetadataStorageWorker SourceDeletionWorker FileSyncingWorker
+  )
+  @media_profile_workers ~w(MediaProfileDeletionWorker)
 
   @doc """
   Returns a list of all queue names, derived from the Oban configuration so it
@@ -144,12 +156,83 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   end
 
   @doc """
-  Cancels a specific job by ID.
+  Requeues a job by ID: cancels the current job (killing its running process if
+  it's executing) and enqueues a fresh copy of the same worker + args at the back
+  of the queue, so any other jobs already waiting get to run first.
+
+  This is the safe replacement for a bare cancel. A plain cancel silently drops
+  the work — which is especially painful for setups running a single worker
+  (`YT_DLP_WORKER_CONCURRENCY=1`), where a long slow-index holds the only slot and
+  the user just wants to yield it to other jobs without losing the index entirely.
+
+  When the target resolves to a Source or MediaItem, the new job is created through
+  `Tasks.create_job_with_task/2` so it keeps its Task linkage (and is therefore
+  still cancelled by the deletion cascade). Other workers fall back to a plain
+  insert. The requeued job is enqueued as `available`, so Oban's `priority`,
+  `scheduled_at`, then `id` ordering naturally places it behind work already in the
+  queue.
+
+  Returns {:ok, :requeued} | {:error, term()}.
   """
-  def cancel_job(job_id) do
-    case Oban.cancel_job(job_id) do
-      :ok -> {:ok, :cancelled}
+  def requeue_job(job_id) do
+    case Repo.get(Oban.Job, job_id) do
+      nil -> {:error, :not_found}
+      job -> requeue_existing_job(job)
+    end
+  end
+
+  defp requeue_existing_job(job) do
+    changeset = Module.safe_concat([job.worker]).new(job.args)
+
+    :ok = Oban.cancel_job(job.id)
+
+    result =
+      case requeue_target(job) do
+        %Source{} = record -> Tasks.create_job_with_task(changeset, record)
+        %MediaItem{} = record -> Tasks.create_job_with_task(changeset, record)
+        _ -> Oban.insert(changeset)
+      end
+
+    case result do
+      # A duplicate means an equivalent job is already queued, which satisfies the
+      # intent (the work will still run) — so treat it as a successful requeue.
+      {:ok, _} -> {:ok, :requeued}
+      {:error, :duplicate_job} -> {:ok, :requeued}
       {:error, reason} -> {:error, reason}
+    end
+  rescue
+    ArgumentError -> {:error, :unknown_worker}
+  end
+
+  # Resolves the record a job targets so the requeued copy can be re-linked to a
+  # Task. Mirrors the worker→record grouping used by `describe_job/2`.
+  defp requeue_target(job) do
+    short_name = job.worker |> String.split(".") |> List.last()
+    id = job.args["id"]
+
+    cond do
+      is_nil(id) -> nil
+      short_name in @media_item_workers -> Repo.get(MediaItem, id)
+      short_name in @source_workers -> Repo.get(Source, id)
+      true -> nil
+    end
+  end
+
+  @doc """
+  Permanently deletes a discarded job by ID so it stops showing up in diagnostics.
+
+  Scoped to `discarded` jobs only: deleting an available/scheduled/retryable job
+  would silently drop work that's still meant to run, and Oban won't delete an
+  executing job anyway.
+  """
+  def delete_discarded_job(job_id) do
+    case Repo.get_by(Oban.Job, id: job_id, state: "discarded") do
+      nil ->
+        {:error, :not_found}
+
+      job ->
+        :ok = Oban.delete_job(job)
+        {:ok, :deleted}
     end
   end
 
