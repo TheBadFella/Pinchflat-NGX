@@ -21,7 +21,12 @@ defmodule PinchflatWeb.Endpoint do
     at: "/",
     from: :pinchflat,
     gzip: Application.compile_env(:pinchflat, :env) == :prod,
-    only: PinchflatWeb.static_paths()
+    only: PinchflatWeb.static_paths(),
+    # `only:` matches path segments literally, so it rejects the digested
+    # filenames (eg: /apple-touch-icon-<hash>.png) that `~p` emits in prod —
+    # every such request fell through to the router and 404'd. Prefix-match
+    # the digestable top-level files so Plug.Static serves them.
+    only_matching: ~w(favicon apple-touch-icon)
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

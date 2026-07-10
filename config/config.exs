@@ -68,8 +68,10 @@ config :pinchflat, PinchflatWeb.Endpoint,
   adapter: Phoenix.Endpoint.Cowboy2Adapter,
   render_errors: [
     formats: [html: PinchflatWeb.ErrorHTML, json: PinchflatWeb.ErrorJSON],
-    root_layout: {PinchflatWeb.Layouts, :root},
-    layout: {PinchflatWeb.Layouts, :app}
+    # Error pages use a dedicated standalone layout (no `layout:` — inner layout
+    # stays disabled). The app/root layouts need assigns (flash) and database
+    # access that the error-rendering conn doesn't have.
+    root_layout: {PinchflatWeb.Layouts, :error}
   ],
   pubsub_server: Pinchflat.PubSub,
   live_view: [signing_salt: "/t5878kO"]

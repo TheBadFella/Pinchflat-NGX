@@ -15,12 +15,14 @@ defmodule PinchflatWeb.JobStateThrottle do
   use GenServer
 
   @broadcast_interval_ms 1_000
+  @topic "job:state"
 
   def start_link(opts \\ []) do
     interval = Keyword.get(opts, :broadcast_interval_ms, @broadcast_interval_ms)
+    topic = Keyword.get(opts, :topic, @topic)
     name = Keyword.get(opts, :name, __MODULE__)
 
-    GenServer.start_link(__MODULE__, interval, name: name)
+    GenServer.start_link(__MODULE__, %{interval: interval, topic: topic}, name: name)
   end
 
   @doc """
@@ -34,8 +36,8 @@ defmodule PinchflatWeb.JobStateThrottle do
   end
 
   @impl true
-  def init(interval) do
-    {:ok, %{interval: interval, flush_scheduled: false}}
+  def init(%{interval: interval, topic: topic}) do
+    {:ok, %{interval: interval, topic: topic, flush_scheduled: false}}
   end
 
   @impl true
@@ -51,7 +53,7 @@ defmodule PinchflatWeb.JobStateThrottle do
 
   @impl true
   def handle_info(:flush, state) do
-    PinchflatWeb.Endpoint.broadcast("job:state", "change", nil)
+    PinchflatWeb.Endpoint.broadcast(state.topic, "change", nil)
 
     {:noreply, %{state | flush_scheduled: false}}
   end
