@@ -30,6 +30,22 @@ defmodule Pinchflat.Downloading.QualityOptionBuilderTest do
 
       assert {:format, "bestvideo+bestaudio[language^=en]/bestvideo*+bestaudio/best"} in res
     end
+
+    test "excludes AI-upscaled formats from video and fallback selectors" do
+      media_profile =
+        media_profile_fixture(%{
+          audio_track: "original",
+          ignore_youtube_super_resolution: true
+        })
+
+      assert res = QualityOptionBuilder.build(media_profile)
+
+      filter = "[format_note!*=?AI-upscaled]"
+
+      assert {:format,
+              "bestvideo#{filter}+bestaudio[format_note*=original]#{filter}/" <>
+                "bestvideo*#{filter}+bestaudio#{filter}/best#{filter}"} in res
+    end
   end
 
   describe "build/1 when testing audio profiles" do
@@ -59,6 +75,30 @@ defmodule Pinchflat.Downloading.QualityOptionBuilderTest do
       assert res = QualityOptionBuilder.build(media_profile)
 
       assert {:format, "bestaudio/best"} in res
+    end
+
+    test "excludes AI-upscaled formats from audio selectors", %{media_profile: media_profile} do
+      {:ok, media_profile} =
+        Profiles.update_media_profile(media_profile, %{ignore_youtube_super_resolution: true})
+
+      assert res = QualityOptionBuilder.build(media_profile)
+
+      filter = "[format_note!*=?AI-upscaled]"
+      assert {:format, "bestaudio#{filter}/best#{filter}"} in res
+    end
+
+    test "combines the AI-upscaled filter with an audio track preference", %{media_profile: media_profile} do
+      {:ok, media_profile} =
+        Profiles.update_media_profile(media_profile, %{
+          audio_track: "original",
+          ignore_youtube_super_resolution: true
+        })
+
+      assert res = QualityOptionBuilder.build(media_profile)
+
+      filter = "[format_note!*=?AI-upscaled]"
+
+      assert {:format, "bestaudio[format_note*=original]#{filter}/bestaudio#{filter}/best#{filter}"} in res
     end
   end
 
@@ -104,6 +144,16 @@ defmodule Pinchflat.Downloading.QualityOptionBuilderTest do
       assert res = QualityOptionBuilder.build(media_profile)
 
       assert {:format, "bestvideo*+bestaudio/best"} in res
+    end
+
+    test "excludes AI-upscaled formats from video selectors", %{media_profile: media_profile} do
+      {:ok, media_profile} =
+        Profiles.update_media_profile(media_profile, %{ignore_youtube_super_resolution: true})
+
+      assert res = QualityOptionBuilder.build(media_profile)
+
+      filter = "[format_note!*=?AI-upscaled]"
+      assert {:format, "bestvideo*#{filter}+bestaudio#{filter}/best#{filter}"} in res
     end
   end
 end

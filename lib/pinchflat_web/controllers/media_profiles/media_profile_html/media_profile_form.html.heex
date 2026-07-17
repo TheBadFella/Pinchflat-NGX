@@ -231,6 +231,16 @@
       />
     </section>
 
+    <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: false } }">
+      <.input
+        field={f[:ignore_youtube_super_resolution]}
+        type="toggle"
+        label="Ignore YouTube Super Resolution"
+        help="Excludes YouTube's AI-upscaled video formats and downloads the best available non-AI-upscaled format instead"
+        x-init="$watch('selectedPreset', p => p && (enabled = presets[p]))"
+      />
+    </section>
+
     <section x-show="advancedMode">
       <.input
         field={f[:media_container]}

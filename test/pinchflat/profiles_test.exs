@@ -16,6 +16,12 @@ defmodule Pinchflat.ProfilesTest do
 
       assert {:ok, _} = Phoenix.json_library().encode(profile)
     end
+
+    test "does not ignore YouTube Super Resolution by default" do
+      profile = media_profile_fixture()
+
+      refute profile.ignore_youtube_super_resolution
+    end
   end
 
   describe "list_media_profiles/0" do
@@ -60,6 +66,16 @@ defmodule Pinchflat.ProfilesTest do
 
       assert media_profile.name == "some updated name"
       assert media_profile.output_path_template == "new_output_template.{{ ext }}"
+    end
+
+    test "updates the YouTube Super Resolution preference" do
+      media_profile = media_profile_fixture()
+
+      assert {:ok, %MediaProfile{} = media_profile} =
+               Profiles.update_media_profile(media_profile, %{ignore_youtube_super_resolution: true})
+
+      assert media_profile.ignore_youtube_super_resolution
+      assert Profiles.get_media_profile!(media_profile.id).ignore_youtube_super_resolution
     end
 
     test "updating with invalid data returns error changeset" do

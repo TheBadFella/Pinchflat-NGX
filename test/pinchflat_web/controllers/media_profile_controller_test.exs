@@ -39,7 +39,11 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
   describe "new media_profile" do
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/media_profiles/new")
-      assert html_response(conn, 200) =~ "New Media Profile"
+      html = html_response(conn, 200)
+
+      assert html =~ "New Media Profile"
+      assert html =~ "Ignore YouTube Super Resolution"
+      assert html =~ ~s(name="media_profile[ignore_youtube_super_resolution]")
     end
 
     test "renders correct layout when onboarding", %{conn: conn} do
@@ -111,6 +115,16 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
 
       conn = get(conn, ~p"/media_profiles/#{media_profile}")
       assert html_response(conn, 200) =~ "some updated name"
+    end
+
+    test "persists the YouTube Super Resolution preference", %{conn: conn, media_profile: media_profile} do
+      conn =
+        put(conn, ~p"/media_profiles/#{media_profile}",
+          media_profile: Map.put(@update_attrs, :ignore_youtube_super_resolution, true)
+        )
+
+      assert redirected_to(conn) == ~p"/media_profiles/#{media_profile}"
+      assert Repo.reload!(media_profile).ignore_youtube_super_resolution
     end
 
     test "renders errors when data is invalid", %{conn: conn, media_profile: media_profile} do

@@ -38,21 +38,36 @@ defmodule Pinchflat.Downloading.QualityOptionBuilder do
     ]
   end
 
-  defp build_format_string(%MediaProfile{preferred_resolution: :audio, audio_track: audio_track}) do
+  defp build_format_string(%MediaProfile{preferred_resolution: :audio, audio_track: audio_track} = media_profile) do
+    super_resolution_filter = super_resolution_filter(media_profile)
+
     if audio_track do
-      "bestaudio[#{build_format_modifier(audio_track)}]/bestaudio/best"
+      "bestaudio[#{build_format_modifier(audio_track)}]#{super_resolution_filter}" <>
+        "/bestaudio#{super_resolution_filter}/best#{super_resolution_filter}"
     else
-      "bestaudio/best"
+      "bestaudio#{super_resolution_filter}/best#{super_resolution_filter}"
     end
   end
 
-  defp build_format_string(%MediaProfile{audio_track: audio_track}) do
+  defp build_format_string(%MediaProfile{audio_track: audio_track} = media_profile) do
+    super_resolution_filter = super_resolution_filter(media_profile)
+
     if audio_track do
-      "bestvideo+bestaudio[#{build_format_modifier(audio_track)}]/bestvideo*+bestaudio/best"
+      "bestvideo#{super_resolution_filter}+" <>
+        "bestaudio[#{build_format_modifier(audio_track)}]#{super_resolution_filter}/" <>
+        "bestvideo*#{super_resolution_filter}+bestaudio#{super_resolution_filter}/" <>
+        "best#{super_resolution_filter}"
     else
-      "bestvideo*+bestaudio/best"
+      "bestvideo*#{super_resolution_filter}+bestaudio#{super_resolution_filter}/" <>
+        "best#{super_resolution_filter}"
     end
   end
+
+  defp super_resolution_filter(%MediaProfile{ignore_youtube_super_resolution: true}) do
+    "[format_note!*=?AI-upscaled]"
+  end
+
+  defp super_resolution_filter(%MediaProfile{}), do: ""
 
   # Reminder to self: this conflicts with `--extractor-args "youtube:lang=<LANG>"`
   # since that will translate the format_notes as well, which means they may not match.
