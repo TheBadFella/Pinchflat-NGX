@@ -1,7 +1,9 @@
 defmodule PinchflatWeb.Settings.DiagnosticsController do
   use PinchflatWeb, :controller
 
+  alias Pinchflat.Settings
   alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Diagnostics.DatabaseMaintenanceWorker
 
   def show(conn, _params) do
     render(conn, "show.html")
@@ -64,6 +66,41 @@ defmodule PinchflatWeb.Settings.DiagnosticsController do
         |> put_flash(:error, "Job ##{job_id} could not be deleted. Only discarded jobs can be deleted.")
         |> redirect(to: ~p"/diagnostics")
     end
+  end
+
+  def vacuum_database(conn, _params) do
+    case DatabaseMaintenanceWorker.kickoff() do
+      {:ok, %Oban.Job{conflict?: true}} ->
+        conn
+        |> put_flash(:info, "A database compaction is already queued or running.")
+        |> redirect(to: ~p"/diagnostics")
+
+      {:ok, _job} ->
+        conn
+        |> put_flash(:info, "Database compaction queued. Its progress and outcome will show in the Database section.")
+        |> redirect(to: ~p"/diagnostics")
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Could not queue the database compaction job.")
+        |> redirect(to: ~p"/diagnostics")
+    end
+  end
+
+  def toggle_scheduled_compaction(conn, _params) do
+    now_enabled = !Settings.get!(:database_maintenance_enabled)
+    Settings.set(database_maintenance_enabled: now_enabled)
+
+    message =
+      if now_enabled do
+        "Scheduled compaction turned on. It runs monthly on the 1st at 03:00."
+      else
+        "Scheduled compaction turned off. You can still compact manually with the Compact Now button."
+      end
+
+    conn
+    |> put_flash(:info, message)
+    |> redirect(to: ~p"/diagnostics")
   end
 
   # Guards against non-integer ids in the URL (which would otherwise raise).

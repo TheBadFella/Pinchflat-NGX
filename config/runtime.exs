@@ -78,7 +78,10 @@ config :pinchflat, Oban,
      crontab: [
        {"#{current_minute} #{current_hour} * * *", Pinchflat.YtDlp.UpdateWorker},
        {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
-       {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker}
+       {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker},
+       # Monthly, after retention (1AM) and quality upgrades (2AM) have had a
+       # chance to delete records whose space the VACUUM can then reclaim
+       {"0 3 1 * *", Pinchflat.Diagnostics.DatabaseMaintenanceWorker}
      ]}
   ]
 

@@ -8,7 +8,8 @@ config :pinchflat,
   metadata_directory: Path.join([System.tmp_dir!(), "test", "metadata"]),
   tmpfile_directory: Path.join([System.tmp_dir!(), "test", "tmpfiles"]),
   extras_directory: Path.join([System.tmp_dir!(), "test", "extras"]),
-  file_watcher_poll_interval: 50
+  file_watcher_poll_interval: 50,
+  db_maintenance_poll_interval: 5
 
 config :pinchflat, Oban, testing: :manual
 

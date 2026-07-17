@@ -101,4 +101,43 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
       assert conn.assigns[:flash]["error"] == "invalid is not a valid job ID."
     end
   end
+
+  describe "vacuum_database" do
+    test "enqueues a maintenance job and redirects", %{conn: conn} do
+      conn = post(conn, ~p"/diagnostics/vacuum_database")
+
+      assert redirected_to(conn) == ~p"/diagnostics"
+      assert conn.assigns[:flash]["info"] =~ "Database compaction queued"
+      assert [_] = all_enqueued(worker: Pinchflat.Diagnostics.DatabaseMaintenanceWorker)
+    end
+
+    test "reports when a maintenance job is already queued", %{conn: conn} do
+      post(conn, ~p"/diagnostics/vacuum_database")
+      conn = post(conn, ~p"/diagnostics/vacuum_database")
+
+      assert redirected_to(conn) == ~p"/diagnostics"
+      assert conn.assigns[:flash]["info"] =~ "already queued or running"
+      assert [_] = all_enqueued(worker: Pinchflat.Diagnostics.DatabaseMaintenanceWorker)
+    end
+  end
+
+  describe "toggle_scheduled_compaction" do
+    test "turns scheduled compaction on", %{conn: conn} do
+      conn = post(conn, ~p"/diagnostics/toggle_scheduled_compaction")
+
+      assert redirected_to(conn) == ~p"/diagnostics"
+      assert conn.assigns[:flash]["info"] =~ "Scheduled compaction turned on"
+      assert Pinchflat.Settings.get!(:database_maintenance_enabled) == true
+    end
+
+    test "turns scheduled compaction off when it is on", %{conn: conn} do
+      Pinchflat.Settings.set(database_maintenance_enabled: true)
+
+      conn = post(conn, ~p"/diagnostics/toggle_scheduled_compaction")
+
+      assert redirected_to(conn) == ~p"/diagnostics"
+      assert conn.assigns[:flash]["info"] =~ "Scheduled compaction turned off"
+      assert Pinchflat.Settings.get!(:database_maintenance_enabled) == false
+    end
+  end
 end

@@ -25,6 +25,7 @@ defmodule Pinchflat.Settings.Setting do
     :download_throughput_limit,
     :restrict_filenames,
     :ignore_unavailable_media,
+    :database_maintenance_enabled,
     :default_cookie_behaviour,
     :time_format
   ]
@@ -57,6 +58,7 @@ defmodule Pinchflat.Settings.Setting do
     field :download_throughput_limit, :string
     field :restrict_filenames, :boolean, default: false
     field :ignore_unavailable_media, :boolean, default: false
+    field :database_maintenance_enabled, :boolean, default: false
 
     # The cookie behaviour pre-selected when adding a new source:
     # "disabled" | "when_needed" | "all_operations"

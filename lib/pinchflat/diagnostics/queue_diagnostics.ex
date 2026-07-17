@@ -290,8 +290,8 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
     %{
       total_pending_downloads: count_pending_downloads(),
       total_downloaded: count_downloaded_media(),
-      total_sources: count_sources(),
-      database_size: get_database_size()
+      total_media_items: count_media_items(),
+      total_sources: count_sources()
     }
   end
 
@@ -331,30 +331,7 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
     Repo.aggregate(Pinchflat.Sources.Source, :count)
   end
 
-  defp get_database_size do
-    db_path = Application.get_env(:pinchflat, Pinchflat.Repo)[:database]
-
-    if db_path && File.exists?(db_path) do
-      # Include the WAL/SHM sidecar files so the figure reflects on-disk usage
-      # rather than just the main database file.
-      [db_path, db_path <> "-wal", db_path <> "-shm"]
-      |> Enum.map(&file_size/1)
-      |> Enum.sum()
-      |> format_bytes()
-    else
-      "Unknown"
-    end
+  defp count_media_items do
+    Repo.aggregate(Pinchflat.Media.MediaItem, :count)
   end
-
-  defp file_size(path) do
-    case File.stat(path) do
-      {:ok, %{size: size}} -> size
-      _ -> 0
-    end
-  end
-
-  defp format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-  defp format_bytes(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 1)} KiB"
-  defp format_bytes(bytes) when bytes < 1024 * 1024 * 1024, do: "#{Float.round(bytes / 1024 / 1024, 1)} MiB"
-  defp format_bytes(bytes), do: "#{Float.round(bytes / 1024 / 1024 / 1024, 2)} GiB"
 end
