@@ -220,17 +220,11 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     }
   end
 
-  # I don't love the string manipulation here, but what can ya' do.
-  # It's dependent on the output_path_template being a string ending `.{{ ext }}`
-  # (or equivalent), but that's validated by the MediaProfile schema.
+  # The thumbnail must share the media file's basename (differing only in
+  # extension) for media center apps to pick it up as the episode thumbnail -
+  # Plex in particular only matches an exactly-named sidecar image
   defp determine_thumbnail_location(media_item_with_preloads) do
-    output_path_template = Sources.output_path_template(media_item_with_preloads.source)
-
-    output_path_template
-    |> String.split(~r{\.}, include_captures: true)
-    |> List.insert_at(-3, "-thumb")
-    |> Enum.join()
-    |> build_output_path(media_item_with_preloads)
+    build_output_path_for(media_item_with_preloads)
   end
 
   defp pad_int(integer, count \\ 2, padding \\ "0") do
