@@ -698,6 +698,84 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     end
   end
 
+  describe "index_and_enqueue_download_for_media_items when testing the indexing cutoff date" do
+    test "a channel with an indexing cutoff date passes break filters to every tab" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        break_filters = for {:break_match_filters, filter} <- opts, do: filter
+
+        assert break_filters == ["upload_date >= 20260701", "!upload_date"]
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the cutoff applies even when the index is forced" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          last_indexed_at: now(),
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, was_forced: true)
+    end
+
+    test "the cutoff is not applied when the source has no indexing cutoff date" do
+      source = source_fixture(%{collection_type: :channel, index_cutoff_date: nil})
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the cutoff is not applied to playlists" do
+      source = source_fixture(%{collection_type: :playlist, index_cutoff_date: ~D[2026-07-01]})
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the cutoff is not applied to non-YouTube channels" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          original_url: "https://example.com/some-channel",
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+  end
+
   describe "index_and_enqueue_download_for_media_items/2 when splitting channels into tabs" do
     test "indexes a channel's videos, shorts, and streams tabs separately" do
       source = source_fixture(%{collection_type: :channel})

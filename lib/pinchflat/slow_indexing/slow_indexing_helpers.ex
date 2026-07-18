@@ -153,7 +153,10 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
     results =
       Enum.map(indexing_urls_for(source), fn {url, content_type} ->
-        command_opts = base_command_opts ++ build_download_archive_options(source, was_forced, content_type)
+        command_opts =
+          base_command_opts ++
+            build_download_archive_options(source, was_forced, content_type) ++
+            build_index_cutoff_options(source, content_type)
 
         run_indexing_command(source, url, command_opts, should_use_cookies)
       end)
@@ -340,6 +343,32 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   defp content_type_filter(:shorts), do: dynamic([mi], mi.short_form_content == true)
   defp content_type_filter(:streams), do: dynamic([mi], mi.livestream == true)
   defp content_type_filter(:all), do: dynamic(true)
+
+  # `--break-match-filters` aborts the crawl the moment it reaches a video older
+  # than the source's indexing cutoff date. Unlike the download archive (which is
+  # skipped on first/forced indexes), this applies to every index — the first crawl
+  # of a large channel is exactly where it saves the most time.
+  #
+  # Early abort is only safe when the listing is newest-first, which is only
+  # guaranteed for YouTube channel tabs — playlists are ordered arbitrarily and
+  # non-YouTube sources make no ordering promise. Both of those index with an
+  # `:all` content type, so matching on tab content types gates this to YouTube
+  # channels.
+  #
+  # yt-dlp ORs repeated match filters, so this breaks only when a video HAS an
+  # upload date and it's older than the cutoff. The `!upload_date` clause keeps
+  # entries without one (eg: upcoming premieres) from tripping the break.
+  defp build_index_cutoff_options(%Source{index_cutoff_date: %Date{} = cutoff_date}, content_type)
+       when content_type in [:videos, :shorts, :streams] do
+    formatted_date = Calendar.strftime(cutoff_date, "%Y%m%d")
+
+    [
+      break_match_filters: "upload_date >= #{formatted_date}",
+      break_match_filters: "!upload_date"
+    ]
+  end
+
+  defp build_index_cutoff_options(_source, _content_type), do: []
 
   # The download archive isn't useful for playlists (since those are ordered arbitrarily)
   # and we don't want to use it if the indexing was forced by the user. In other words,

@@ -34,6 +34,7 @@ defmodule Pinchflat.Sources.Source do
     last_indexed_at
     original_url
     download_cutoff_date
+    index_cutoff_date
     retention_period_days
     title_filter_regex
     download_subdirectory
@@ -86,6 +87,11 @@ defmodule Pinchflat.Sources.Source do
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date
+    # Stop indexing a channel once it reaches media published before this date.
+    # Only applied to YouTube channels — their tab listings are newest-first,
+    # which is what makes an early abort on an old video safe. Playlists are
+    # ordered arbitrarily so this is ignored for them (see SlowIndexingHelpers)
+    field :index_cutoff_date, :date
     field :retention_period_days, :integer
     field :original_url, :string
     field :title_filter_regex, :string
@@ -133,6 +139,7 @@ defmodule Pinchflat.Sources.Source do
     |> normalize_download_subdirectory()
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
+    |> validate_index_cutoff_date()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
@@ -285,6 +292,20 @@ defmodule Pinchflat.Sources.Source do
   end
 
   defp validate_title_regex(changeset), do: changeset
+
+  # An indexing cutoff after the download cutoff would stop indexing before
+  # reaching media the download cutoff still allows — that media would never be
+  # indexed, so it could never be downloaded
+  defp validate_index_cutoff_date(changeset) do
+    index_cutoff = get_field(changeset, :index_cutoff_date)
+    download_cutoff = get_field(changeset, :download_cutoff_date)
+
+    if index_cutoff && download_cutoff && Date.compare(index_cutoff, download_cutoff) == :gt do
+      add_error(changeset, :index_cutoff_date, "must be on or before the download cutoff date")
+    else
+      changeset
+    end
+  end
 
   defp validate_min_and_max_durations(changeset) do
     min_duration = get_change(changeset, :min_duration_seconds)

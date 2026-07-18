@@ -1249,6 +1249,44 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "change_source/3 when testing index cutoff date validation" do
+    test "succeeds if either cutoff date is nil" do
+      source = source_fixture()
+
+      assert %{errors: []} = Sources.change_source(source, %{index_cutoff_date: nil, download_cutoff_date: nil})
+      assert %{errors: []} = Sources.change_source(source, %{index_cutoff_date: ~D[2026-07-01]})
+      assert %{errors: []} = Sources.change_source(source, %{download_cutoff_date: ~D[2026-07-01]})
+    end
+
+    test "succeeds if the index cutoff is on or before the download cutoff" do
+      source = source_fixture()
+
+      assert %{errors: []} =
+               Sources.change_source(source, %{
+                 index_cutoff_date: ~D[2026-06-24],
+                 download_cutoff_date: ~D[2026-07-01]
+               })
+
+      assert %{errors: []} =
+               Sources.change_source(source, %{
+                 index_cutoff_date: ~D[2026-07-01],
+                 download_cutoff_date: ~D[2026-07-01]
+               })
+    end
+
+    test "fails if the index cutoff is after the download cutoff" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{
+          index_cutoff_date: ~D[2026-07-15],
+          download_cutoff_date: ~D[2026-07-01]
+        })
+
+      assert "must be on or before the download cutoff date" in errors_on(changeset).index_cutoff_date
+    end
+  end
+
   describe "change_source/3 when testing original_url validation" do
     test "succeeds when an original URL is valid" do
       source = source_fixture()
