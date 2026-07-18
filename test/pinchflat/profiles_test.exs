@@ -52,6 +52,68 @@ defmodule Pinchflat.ProfilesTest do
     end
   end
 
+  describe "create_media_profile/1 when testing sponsorblock categories" do
+    test "different categories can be marked and removed at the same time" do
+      attrs = %{
+        name: "sponsorblock test",
+        output_path_template: "output.{{ ext }}",
+        sponsorblock_remove_categories: ["sponsor", "selfpromo", "hook"],
+        sponsorblock_mark_categories: ["intro", "outro"]
+      }
+
+      assert {:ok, %MediaProfile{} = media_profile} = Profiles.create_media_profile(attrs)
+      assert media_profile.sponsorblock_remove_categories == ["sponsor", "selfpromo", "hook"]
+      assert media_profile.sponsorblock_mark_categories == ["intro", "outro"]
+    end
+
+    test "a category can't be both marked and removed" do
+      attrs = %{
+        name: "sponsorblock test",
+        output_path_template: "output.{{ ext }}",
+        sponsorblock_remove_categories: ["sponsor", "intro"],
+        sponsorblock_mark_categories: ["intro"]
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} = Profiles.create_media_profile(attrs)
+      assert "can't mark and remove the same category: intro" in errors_on(changeset).sponsorblock_mark_categories
+    end
+
+    test "unknown categories are rejected" do
+      attrs = %{
+        name: "sponsorblock test",
+        output_path_template: "output.{{ ext }}",
+        sponsorblock_remove_categories: ["sponsor", "not_a_category"]
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} = Profiles.create_media_profile(attrs)
+      assert errors_on(changeset).sponsorblock_remove_categories != []
+    end
+
+    test "empty-string entries from the form's hidden input are discarded" do
+      attrs = %{
+        name: "sponsorblock test",
+        output_path_template: "output.{{ ext }}",
+        sponsorblock_remove_categories: [""],
+        sponsorblock_mark_categories: ["", "intro"]
+      }
+
+      assert {:ok, %MediaProfile{} = media_profile} = Profiles.create_media_profile(attrs)
+      assert media_profile.sponsorblock_remove_categories == []
+      assert media_profile.sponsorblock_mark_categories == ["intro"]
+    end
+
+    test "unchecking every category clears a previously-set list" do
+      media_profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor", "intro"]})
+
+      # A fully-unchecked checkbox group submits only the hidden input's empty string
+      assert {:ok, %MediaProfile{} = media_profile} =
+               Profiles.update_media_profile(media_profile, %{"sponsorblock_remove_categories" => [""]})
+
+      assert media_profile.sponsorblock_remove_categories == []
+      assert Profiles.get_media_profile!(media_profile.id).sponsorblock_remove_categories == []
+    end
+  end
+
   describe "update_media_profile/2" do
     test "updating with valid data updates the media_profile" do
       media_profile = media_profile_fixture()

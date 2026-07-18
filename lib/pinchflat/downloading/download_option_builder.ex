@@ -148,16 +148,14 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     QualityOptionBuilder.build(media_profile)
   end
 
+  # yt-dlp accepts both flags in one invocation, so each category can be
+  # removed or marked as a chapter independently
   defp sponsorblock_options(media_profile) do
-    categories = media_profile.sponsorblock_categories
-    behaviour = media_profile.sponsorblock_behaviour
-
-    case {behaviour, categories} do
-      {_, []} -> []
-      {:remove, _} -> [sponsorblock_remove: Enum.join(categories, ",")]
-      {:mark, _} -> [sponsorblock_mark: Enum.join(categories, ",")]
-      {:disabled, _} -> []
-    end
+    [
+      sponsorblock_remove: Enum.join(media_profile.sponsorblock_remove_categories, ","),
+      sponsorblock_mark: Enum.join(media_profile.sponsorblock_mark_categories, ",")
+    ]
+    |> Enum.reject(fn {_flag, categories} -> categories == "" end)
   end
 
   # This is put here instead of the CommandRunner module because it should only

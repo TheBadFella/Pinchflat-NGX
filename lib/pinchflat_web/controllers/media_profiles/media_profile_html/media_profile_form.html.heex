@@ -298,31 +298,30 @@
 
     <h3 class="mt-10 text-2xl text-theme-on-surface">SponsorBlock Options</h3>
 
-    <section x-data="{ sponsorblockBehaviour: null }">
-      <section x-data="{ presets: { default: 'disabled', media_center: 'disabled', audio: 'disabled', archiving: 'disabled' } }">
-        <.input
-          field={f[:sponsorblock_behaviour]}
-          options={friendly_sponsorblock_options()}
-          type="select"
-          label="SponsorBlock Behaviour"
-          help="Action to take when SponsorBlock segments are found. 'Disabled' won't take any action"
-          x-model="sponsorblockBehaviour"
-          x-init="
-            sponsorblockBehaviour = $el.value
-          $watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))
-          "
-        />
-      </section>
+    <p class="mb-4 text-sm text-theme-on-surface-muted">
+      Not sure what a category covers? See the
+      <.subtle_link href="https://wiki.sponsor.ajay.app/w/Guidelines#Category_breakdown" target="_blank">
+        SponsorBlock category breakdown
+      </.subtle_link>
+      for a description of each one.
+    </p>
 
-      <section x-show="sponsorblockBehaviour !== 'disabled'" x-transition>
-        <.input
-          field={f[:sponsorblock_categories]}
-          options={frieldly_sponsorblock_categories()}
-          type="checkbox_group"
-          label="SponsorBlock Categories"
-        />
-      </section>
-    </section>
+    <.input
+      field={f[:sponsorblock_remove_categories]}
+      options={friendly_sponsorblock_categories()}
+      type="checkbox_group"
+      label="Remove These Segments"
+      help="Segments in these categories are cut out of the downloaded file entirely"
+    />
+
+    <.input
+      field={f[:sponsorblock_mark_categories]}
+      options={friendly_sponsorblock_categories()}
+      type="checkbox_group"
+      label="Mark These Segments as Chapters"
+      help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal above. Leave everything unchecked to disable SponsorBlock"
+    />
+
     <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Media profile</.button>
   </section>
 

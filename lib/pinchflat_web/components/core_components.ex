@@ -353,7 +353,8 @@ defmodule PinchflatWeb.CoreComponents do
       <.label for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
-
+      <%!-- Ensures the field is submitted (as an empty list) even when no boxes are checked --%>
+      <input type="hidden" name={"#{@name}[]"} value="" />
       <section class="grid grid-cols-1 gap-2 md:grid-cols-2 max-w-prose mb-4 ml-1">
         <div :for={{option_name, option_value} <- @options} class="flex items-center">
           <input

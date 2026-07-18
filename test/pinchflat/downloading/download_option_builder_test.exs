@@ -278,45 +278,46 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
     test "includes :sponsorblock_remove option when specified", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{
-          sponsorblock_behaviour: :remove,
-          sponsorblock_categories: ["sponsor", "intro"]
+          sponsorblock_remove_categories: ["sponsor", "intro"]
         })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
       assert {:sponsorblock_remove, "sponsor,intro"} in res
+      refute Keyword.has_key?(res, :sponsorblock_mark)
     end
 
     test "includes :sponsorblock_mark option when specified", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{
-          sponsorblock_behaviour: :mark,
-          sponsorblock_categories: ["sponsor", "intro"]
+          sponsorblock_mark_categories: ["sponsor", "intro"]
         })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
       assert {:sponsorblock_mark, "sponsor,intro"} in res
+      refute Keyword.has_key?(res, :sponsorblock_remove)
     end
 
-    test "does not include any sponsorblock option without categories", %{media_item: media_item} do
+    test "includes both options when different categories use different actions", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{
-          sponsorblock_behaviour: :remove,
-          sponsorblock_categories: []
+          sponsorblock_remove_categories: ["sponsor", "selfpromo"],
+          sponsorblock_mark_categories: ["intro", "outro"]
         })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
-      refute Keyword.has_key?(res, :sponsorblock_remove)
-      refute Keyword.has_key?(res, :sponsorblock_mark)
-      refute :sponsorblock_remove in res
-      refute :sponsorblock_mark in res
+      assert {:sponsorblock_remove, "sponsor,selfpromo"} in res
+      assert {:sponsorblock_mark, "intro,outro"} in res
     end
 
-    test "does not include any sponsorblock options when disabled", %{media_item: media_item} do
+    test "does not include any sponsorblock options without categories", %{media_item: media_item} do
       media_item =
-        update_media_profile_attribute(media_item, %{sponsorblock_behaviour: :disabled})
+        update_media_profile_attribute(media_item, %{
+          sponsorblock_remove_categories: [],
+          sponsorblock_mark_categories: []
+        })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
