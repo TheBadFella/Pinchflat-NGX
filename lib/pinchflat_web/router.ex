@@ -54,6 +54,10 @@ defmodule PinchflatWeb.Router do
     get "/settings/cookies", Settings.SettingController, :download_cookies
     get "/download_logs", Settings.SettingController, :download_logs
 
+    get "/reconciliation", Settings.ReconciliationController, :show
+    post "/reconciliation", Settings.ReconciliationController, :build
+    post "/reconciliation/apply/:plan_id", Settings.ReconciliationController, :apply
+
     get "/diagnostics", Settings.DiagnosticsController, :show
     post "/diagnostics/reset_retryable_jobs", Settings.DiagnosticsController, :reset_retryable_jobs
     post "/diagnostics/reset_job/:id", Settings.DiagnosticsController, :reset_job

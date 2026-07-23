@@ -347,6 +347,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Editing \"#{source.custom_name}\""
     end
 
+<<<<<<< HEAD
     test "previews a source directory move before saving", %{conn: conn} do
       media_root = Application.get_env(:pinchflat, :media_directory)
       old_subdirectory = Path.join(["TV Shows", "Preview Old #{System.unique_integer([:positive])}"])
@@ -434,6 +435,15 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert Repo.reload!(source).download_subdirectory == old_subdirectory
       assert File.exists?(old_filepath)
       assert File.read!(conflicting_filepath) == "existing nfo"
+=======
+    test "marks a staged reconcile plan stale", %{conn: conn, source: source, update_attrs: update_attrs} do
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
+      {:ok, plan} = Pinchflat.Reconciliation.create_plan(%{mode: :local, status: :ready})
+
+      put(conn, ~p"/sources/#{source}", source: update_attrs)
+
+      assert Pinchflat.Reconciliation.get_plan!(plan.id).status == :stale
+>>>>>>> ad2a66e (feat: relocate and true up downloaded files after settings changes, without re-downloading)
     end
   end
 

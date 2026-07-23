@@ -9,6 +9,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Media
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
+  alias Pinchflat.Reconciliation
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
@@ -190,11 +191,32 @@ defmodule PinchflatWeb.Sources.SourceController do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)
 
+<<<<<<< HEAD
     render(
       conn,
       :edit,
       Keyword.merge(
         [
+=======
+    render(conn, :edit, source: source, changeset: changeset, media_profiles: media_profiles())
+  end
+
+  def update(conn, %{"id" => id, "source" => source_params}) do
+    source = Sources.get_source!(id)
+
+    case Sources.update_source(source, source_params) do
+      {:ok, source} ->
+        # Source changes (e.g. an output-path override) can alter predicted paths,
+        # invalidating any staged reconcile plan
+        Reconciliation.mark_ready_plans_stale()
+
+        conn
+        |> put_flash(:info, "Source updated successfully.")
+        |> redirect(to: ~p"/sources/#{source}")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render(conn, :edit,
+>>>>>>> ad2a66e (feat: relocate and true up downloaded files after settings changes, without re-downloading)
           source: source,
           changeset: changeset,
           media_profiles: media_profiles(),

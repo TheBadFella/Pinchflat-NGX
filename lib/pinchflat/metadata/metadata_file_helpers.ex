@@ -50,7 +50,12 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
   Returns {:ok, map()} | {:error, any}
   """
   def read_compressed_metadata(filepath) do
-    {:ok, json} = File.open(filepath, [:read, :compressed], &IO.read(&1, :eof))
+    # Read the decompressed bytes verbatim. `IO.read` on a non-utf8 device
+    # reinterprets each raw byte as a latin1 codepoint and re-encodes it as
+    # UTF-8, double-encoding every non-ASCII character (an emoji title comes
+    # back as mojibake). `IO.binread` returns the stored UTF-8 bytes as-is for
+    # Jason to decode.
+    {:ok, json} = File.open(filepath, [:read, :compressed, :binary], &IO.binread(&1, :eof))
 
     Phoenix.json_library().decode(json)
   end
