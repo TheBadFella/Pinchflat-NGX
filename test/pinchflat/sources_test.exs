@@ -945,6 +945,46 @@ defmodule Pinchflat.SourcesTest do
       assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
       refute_enqueued(worker: MediaCollectionIndexingWorker)
     end
+
+    test "widening the index cutoff further into the past forces a re-index" do
+      source = source_fixture(index_cutoff_date: ~D[2026-06-01])
+      update_attrs = %{index_cutoff_date: ~D[2026-01-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      assert_enqueued(worker: MediaCollectionIndexingWorker, args: %{"id" => source.id, "force" => true})
+    end
+
+    test "removing the index cutoff entirely forces a re-index" do
+      source = source_fixture(index_cutoff_date: ~D[2026-06-01])
+      update_attrs = %{index_cutoff_date: nil}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      assert_enqueued(worker: MediaCollectionIndexingWorker, args: %{"id" => source.id, "force" => true})
+    end
+
+    test "narrowing the index cutoff closer to the present will not re-index" do
+      source = source_fixture(index_cutoff_date: ~D[2026-01-01])
+      update_attrs = %{index_cutoff_date: ~D[2026-06-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      refute_enqueued(worker: MediaCollectionIndexingWorker)
+    end
+
+    test "adding a cutoff to a previously unbounded source will not re-index" do
+      source = source_fixture(index_cutoff_date: nil)
+      update_attrs = %{index_cutoff_date: ~D[2026-06-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      refute_enqueued(worker: MediaCollectionIndexingWorker)
+    end
+
+    test "widening the index cutoff will not re-index a disabled source" do
+      source = source_fixture(enabled: false, index_cutoff_date: ~D[2026-06-01])
+      update_attrs = %{index_cutoff_date: ~D[2026-01-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      refute_enqueued(worker: MediaCollectionIndexingWorker)
+    end
   end
 
   describe "update_source/3 when testing fast indexing" do
