@@ -69,6 +69,49 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnosticsTest do
     end
   end
 
+  describe "run_integrity_check/1" do
+    test "reports no findings for a healthy database in quick mode" do
+      assert {:ok, []} = DatabaseDiagnostics.run_integrity_check(:quick)
+    end
+
+    test "reports no findings for a healthy database in full mode" do
+      assert {:ok, []} = DatabaseDiagnostics.run_integrity_check(:full)
+    end
+
+    test "sees the FTS5 search index" do
+      media_item_fixture(title: "integrity check subject")
+
+      # The check calls each virtual table's xIntegrity method, so a healthy
+      # result here means the search index was checked and is intact
+      assert {:ok, []} = DatabaseDiagnostics.run_integrity_check(:quick)
+    end
+
+    test "does not modify the database" do
+      before_count = Map.new(DatabaseDiagnostics.table_row_counts())
+
+      DatabaseDiagnostics.run_integrity_check(:full)
+
+      assert Map.new(DatabaseDiagnostics.table_row_counts()) == before_count
+    end
+
+    test "returns SQLite's findings verbatim when the search index is corrupt" do
+      media_item_fixture(title: "a title to index")
+      corrupt_search_index()
+
+      assert {:ok, findings} = DatabaseDiagnostics.run_integrity_check(:quick)
+      assert findings != []
+      assert Enum.any?(findings, &String.contains?(&1, "media_items_search_index"))
+    end
+
+    test "a full check also reports search index corruption" do
+      media_item_fixture(title: "a title to index")
+      corrupt_search_index()
+
+      assert {:ok, findings} = DatabaseDiagnostics.run_integrity_check(:full)
+      assert Enum.any?(findings, &String.contains?(&1, "media_items_search_index"))
+    end
+  end
+
   describe "format_bytes/1" do
     test "formats byte counts in binary units" do
       assert DatabaseDiagnostics.format_bytes(512) == "512 B"

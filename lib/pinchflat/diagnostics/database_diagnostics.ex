@@ -1,8 +1,9 @@
 defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
   @moduledoc """
   Insight into the SQLite database itself: on-disk size (including the WAL/SHM
-  sidecar files), space reclaimable by VACUUM, row counts for key tables, and
-  the status of the most recent database maintenance run.
+  sidecar files), space reclaimable by VACUUM, row counts for key tables, the
+  results of integrity checks, and the status of the most recent database
+  maintenance run.
 
   Powers the "Database" section of the diagnostics page.
   """
@@ -14,6 +15,10 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
 
   # Sorted roughly by how interesting they are on a diagnostics page
   @tracked_tables ~w(media_items sources media_profiles tasks oban_jobs)
+
+  # An integrity check reads every page of the database, which on weak hardware
+  # with a large database is minutes rather than seconds
+  @integrity_check_timeout :timer.minutes(30)
 
   @doc """
   Returns size and page statistics for the database.
@@ -71,6 +76,38 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
   end
 
   @doc """
+  Runs a SQLite integrity check and returns whatever problems it reports.
+
+  `:quick` runs `PRAGMA quick_check`, which verifies page structure but skips
+  the expensive cross-check of every index entry against its table. `:full`
+  runs `PRAGMA integrity_check`, which does that cross-check too and is
+  correspondingly slower.
+
+  Both are read-only and take only a read transaction, so in WAL mode they
+  never block writers — the cost is disk I/O, not contention. Both also call
+  each virtual table's `xIntegrity` method, so they report FTS5 corruption
+  (eg: "malformed inverted index for FTS5 table main.media_items_search_index")
+  alongside ordinary b-tree damage.
+
+  Findings are returned verbatim: SQLite's wording is what a user needs in
+  order to work out which table is damaged and how to repair it. An empty list
+  means the database is healthy — SQLite reports a single "ok" row in that
+  case, which is filtered out. Nothing here repairs anything.
+
+  Returns {:ok, [binary()]} | {:error, binary()}
+  """
+  def run_integrity_check(mode) when mode in [:quick, :full] do
+    pragma = if mode == :quick, do: "quick_check", else: "integrity_check"
+
+    case Repo.query("PRAGMA #{pragma}", [], timeout: @integrity_check_timeout) do
+      {:ok, %{rows: rows}} -> {:ok, extract_findings(rows)}
+      {:error, error} -> {:error, Exception.message(error)}
+    end
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
+  @doc """
   Returns the most recent `DatabaseMaintenanceWorker` job record (in any
   state), or nil if none exists. Used to surface the outcome of both manual
   and scheduled maintenance runs in the UI.
@@ -119,6 +156,15 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
   def format_bytes(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 1)} KiB"
   def format_bytes(bytes) when bytes < 1024 * 1024 * 1024, do: "#{Float.round(bytes / 1024 / 1024, 1)} MiB"
   def format_bytes(bytes), do: "#{Float.round(bytes / 1024 / 1024 / 1024, 2)} GiB"
+
+  # SQLite reports a healthy database as a single "ok" row; everything else is
+  # a problem description meant to be read as-is.
+  defp extract_findings(rows) do
+    rows
+    |> List.flatten()
+    |> Enum.map(&to_string/1)
+    |> Enum.reject(&(&1 == "ok"))
+  end
 
   defp pragma_number(pragma) do
     case pragma_value(pragma) do
