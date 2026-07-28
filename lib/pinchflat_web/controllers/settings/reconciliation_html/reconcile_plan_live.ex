@@ -9,6 +9,9 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
 
   @limit 20
   @filters ~w(all move backfill delete redownload skip collision)
+  # No Oban job:state broadcasts fire while a single apply job runs, so poll the
+  # DB-backed progress ourselves while a plan is applying (stops once it isn't)
+  @poll_interval_ms 2_000
 
   def render(%{plan: nil} = assigns) do
     ~H"""
@@ -47,6 +50,18 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
         <span class="text-bodydark">Status:</span>
         <span class={status_class(@plan.status)}>{status_line(@plan)}</span>
       </p>
+
+      <div :if={@plan.status == :applying && @progress.total > 0} class="mb-4">
+        <div class="flex justify-between text-sm mb-1">
+          <span class="text-bodydark">Progress</span>
+          <span class="text-white font-medium">
+            {@progress.processed} of {@progress.total} finished ({@progress.percent}%)
+          </span>
+        </div>
+        <div class="w-full bg-meta-4 rounded-full h-2.5">
+          <div class="bg-primary h-2.5 rounded-full transition-all" style={"width: #{@progress.percent}%"}></div>
+        </div>
+      </div>
 
       <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
         <div class="bg-meta-4 rounded-lg p-4">
@@ -138,6 +153,12 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
     {:noreply, load_assigns(socket, assigns.filter, assigns.page)}
   end
 
+  # Self-poll tick while a plan is applying — reload, then reschedule only if
+  # it's still applying (maybe_schedule_tick handles the stop condition)
+  def handle_info(:tick, %{assigns: assigns} = socket) do
+    {:noreply, load_assigns(assign(socket, tick_scheduled: false), assigns.filter, assigns.page)}
+  end
+
   def handle_event("reload", _params, %{assigns: assigns} = socket) do
     {:noreply, load_assigns(socket, assigns.filter, assigns.page)}
   end
@@ -155,7 +176,7 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
   defp load_assigns(socket, filter, page) do
     case Reconciliation.latest_plan() do
       nil ->
-        assign(socket, plan: nil, filter: "all", page: 1, records: [], total_pages: 1)
+        assign(socket, plan: nil, filter: "all", page: 1, records: [], total_pages: 1, progress: nil)
 
       plan ->
         plan = Repo.preload(plan, :source)
@@ -165,7 +186,29 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
         page = NumberUtils.clamp(page, 1, total_pages)
         records = query |> limit(^@limit) |> offset(^((page - 1) * @limit)) |> Repo.all()
 
-        assign(socket, plan: plan, filter: filter, page: page, records: records, total_pages: total_pages)
+        socket
+        |> assign(
+          plan: plan,
+          filter: filter,
+          page: page,
+          records: records,
+          total_pages: total_pages,
+          progress: Reconciliation.apply_progress(plan)
+        )
+        |> maybe_schedule_tick()
+    end
+  end
+
+  # Schedules one progress-poll tick while a plan is applying, guarding against
+  # stacking timers (job:state reloads and ticks both flow through load_assigns)
+  defp maybe_schedule_tick(socket) do
+    applying? = socket.assigns.plan && socket.assigns.plan.status == :applying
+
+    if connected?(socket) && applying? && !socket.assigns[:tick_scheduled] do
+      Process.send_after(self(), :tick, @poll_interval_ms)
+      assign(socket, tick_scheduled: true)
+    else
+      socket
     end
   end
 

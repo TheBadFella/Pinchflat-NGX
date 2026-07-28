@@ -145,6 +145,30 @@ defmodule Pinchflat.Reconciliation do
     })
   end
 
+  # Rows that `PlanApplier` actually executes (skip/collision rows are reported
+  # only), so apply progress is measured against these.
+  @applyable_actions ~w(move backfill delete redownload)a
+
+  @doc """
+  Apply progress for a plan: how many applyable rows have been processed
+  (marked done/skipped/failed) out of the total, plus the rounded percentage.
+  `total` is 0 for a plan with nothing to apply, in which case `percent` is 100.
+
+  Returns %{processed: integer(), total: integer(), percent: integer()}
+  """
+  def apply_progress(%ReconcilePlan{} = plan) do
+    base =
+      ReconcilePlanItem
+      |> where(reconcile_plan_id: ^plan.id)
+      |> where([rpi], rpi.action in ^@applyable_actions)
+
+    total = Repo.aggregate(base, :count, :id)
+    processed = base |> where([rpi], rpi.status != :planned) |> Repo.aggregate(:count, :id)
+    percent = if total > 0, do: round(processed / total * 100), else: 100
+
+    %{processed: processed, total: total, percent: percent}
+  end
+
   @doc """
   Marks any still-reviewable (ready) plans as stale. Used when a new plan
   supersedes them or path-affecting records change.
