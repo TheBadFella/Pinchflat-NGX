@@ -81,7 +81,15 @@ defmodule Pinchflat.Reconciliation.ReconcileWorkerTest do
       {:ok, plan} = Reconciliation.create_plan(%{mode: :local, status: :stale})
 
       assert {:cancel, message} = perform_job(ReconcileWorker, %{"op" => "apply", "plan_id" => plan.id})
-      assert message =~ "only a ready plan can be applied"
+      assert message =~ "only a ready or resuming plan can be applied"
+    end
+
+    test "resumes an interrupted apply (plan left in :applying)" do
+      {:ok, plan} = Reconciliation.create_plan(%{mode: :local, status: :applying})
+
+      assert :ok = perform_job(ReconcileWorker, %{"op" => "apply", "plan_id" => plan.id})
+
+      assert Repo.reload(plan).status == :applied
     end
   end
 end

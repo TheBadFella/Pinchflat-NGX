@@ -42,6 +42,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
   def init(state) do
     ensure_tmpfile_directory()
     reset_executing_jobs()
+    revive_stalled_reconcile_jobs()
     create_blank_yt_dlp_files()
     create_blank_user_script_file()
     apply_default_settings()
@@ -68,6 +69,26 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
       |> Repo.update_all(set: [state: "retryable"])
 
     Logger.info("Reset #{count} executing jobs")
+  end
+
+  # ReconcileWorker is `max_attempts: 1`, so an apply/build job that was `executing`
+  # at an ungraceful shutdown gets flipped to `retryable` by reset_executing_jobs/0
+  # above already at its attempt ceiling (`attempt >= max_attempts`). Oban's SQLite
+  # engine only ever fetches `available` jobs with `attempt < max_attempts`, so such
+  # a job is never picked up again — an apply is stranded with its plan stuck
+  # `:applying` forever (which also blocks new plans, since the worker's uniqueness
+  # dedupes against the incomplete job). Hand these a fresh attempt so Oban re-runs
+  # them; both ops are idempotent (a build re-scans read-only, an apply resumes only
+  # the rows the interrupted run didn't reach).
+  defp revive_stalled_reconcile_jobs do
+    {count, _} =
+      Oban.Job
+      |> where(worker: "Pinchflat.Reconciliation.ReconcileWorker")
+      |> where([j], j.state in ["available", "scheduled", "retryable"])
+      |> where([j], j.attempt >= j.max_attempts)
+      |> Repo.update_all(set: [state: "available", attempt: 0, errors: [], scheduled_at: DateTime.utc_now()])
+
+    if count > 0, do: Logger.info("Revived #{count} stalled reconcile job(s)")
   end
 
   defp create_blank_yt_dlp_files do

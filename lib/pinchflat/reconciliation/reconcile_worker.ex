@@ -118,7 +118,11 @@ defmodule Pinchflat.Reconciliation.ReconcileWorker do
   def perform(%Oban.Job{args: %{"op" => "apply", "plan_id" => plan_id}, id: job_id}) do
     plan = Reconciliation.get_plan!(plan_id)
 
-    if plan.status == :ready do
+    # `:applying` means a previous run was interrupted (eg: an ungraceful shutdown
+    # left the plan mid-apply). Resuming is safe: `apply_plan/1` only touches rows
+    # still `:planned` and skips anything stale, so it finishes exactly the work the
+    # interrupted run didn't reach without redoing what already landed.
+    if plan.status in [:ready, :applying] do
       {:ok, _} = Reconciliation.update_plan(plan, %{status: :applying})
 
       with_paused_queues(fn ->
@@ -128,7 +132,7 @@ defmodule Pinchflat.Reconciliation.ReconcileWorker do
 
       :ok
     else
-      {:cancel, "Plan ##{plan_id} is #{plan.status} — only a ready plan can be applied"}
+      {:cancel, "Plan ##{plan_id} is #{plan.status} — only a ready or resuming plan can be applied"}
     end
   rescue
     exception ->
