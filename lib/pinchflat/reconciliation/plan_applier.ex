@@ -48,14 +48,41 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
 
     media_item_rows
     |> Enum.group_by(& &1.media_item_id)
-    |> Enum.each(fn {media_item_id, item_rows} -> apply_media_item_rows(media_item_id, item_rows) end)
+    |> apply_groups(fn {media_item_id, item_rows} -> apply_media_item_rows(media_item_id, item_rows) end)
 
+    # Source-level rows are few; keep them serial (they run after the media items)
     source_rows
     |> Enum.group_by(& &1.source_id)
     |> Enum.each(fn {source_id, src_rows} -> apply_source_rows(source_id, src_rows) end)
 
     kickoff_podcast_exports(rows)
     finalize_plan(plan)
+  end
+
+  # Media-item groups are independent (keyed by media_item_id, each ending in its
+  # own isolated DB write, with target collisions already filtered out at plan
+  # time), so they can be applied in parallel. The expensive work is the
+  # network-bound online/full backfills — parallelizing them is what turns a
+  # 20-minute serial thumbnail/subtitle backfill into minutes. Concurrency is
+  # bounded (tied to YT_DLP_WORKER_CONCURRENCY) so we don't hammer YouTube.
+  #
+  # At concurrency 1 we stay in-process rather than spawning a Task: the reconcile
+  # apply runs inside the Ecto SQL sandbox in tests, and a spawned process
+  # wouldn't share the sandbox connection. SQLite serializes writes regardless.
+  defp apply_groups(groups, fun) do
+    case backfill_concurrency() do
+      1 ->
+        Enum.each(groups, fun)
+
+      max ->
+        groups
+        |> Task.async_stream(fun, max_concurrency: max, timeout: :infinity, ordered: false)
+        |> Stream.run()
+    end
+  end
+
+  defp backfill_concurrency do
+    Application.get_env(:pinchflat, :reconcile_backfill_concurrency, 1)
   end
 
   # ---- Per-media-item application ----

@@ -54,6 +54,10 @@ config :pinchflat, Pinchflat.Repo,
 {yt_dlp_remote_metadata_worker_count, _} =
   Integer.parse(System.get_env("YT_DLP_REMOTE_METADATA_WORKER_CONCURRENCY", Integer.to_string(yt_dlp_worker_count)))
 
+# Reconcile applies network-bound backfills (thumbnails/subtitles) in parallel;
+# tie its ceiling to the same politeness knob as the yt-dlp queues so a big
+# online/full reconcile doesn't hammer YouTube any harder than normal downloads
+config :pinchflat, reconcile_backfill_concurrency: max(yt_dlp_worker_count, 1)
 # Used to set the cron for the yt-dlp update worker. The reason for this is
 # to avoid all instances of PF updating yt-dlp at the same time, which 1)
 # could result in rate limiting and 2) gives me time to react if an update

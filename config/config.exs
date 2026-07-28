@@ -29,6 +29,11 @@ config :pinchflat,
   expose_feed_endpoints: false,
   file_watcher_poll_interval: 1000,
   db_maintenance_poll_interval: 15_000,
+  # How many media items reconcile applies in parallel. Only matters for the
+  # network-bound online/full backfills (thumbnails/subtitles) — local moves are
+  # instant. Kept low by default (and tied to YT_DLP_WORKER_CONCURRENCY at runtime)
+  # so we don't hammer YouTube and earn a rate-limit/IP ban. Overridden in runtime.exs.
+  reconcile_backfill_concurrency: 2,
   timezone: "UTC",
   base_route_path: "/"
 
