@@ -71,7 +71,10 @@ config :pinchflat, Oban,
     media_collection_indexing: yt_dlp_index_worker_count,
     media_fetching: yt_dlp_download_worker_count,
     remote_metadata: yt_dlp_remote_metadata_worker_count,
-    local_data: 8
+    local_data: 8,
+    # Reconciliation and database compaction both reserve a full quiet window.
+    # Serializing them here prevents each from waiting for the other to finish.
+    maintenance: 1
   ],
   plugins: [
     # Keep old jobs for 30 days for display in the UI

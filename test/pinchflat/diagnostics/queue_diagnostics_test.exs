@@ -3,8 +3,10 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
 
   alias Pinchflat.Tasks
   alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Diagnostics.DatabaseMaintenanceWorker
   alias Pinchflat.JobFixtures.TestJobWorker
   alias Pinchflat.FastIndexing.FastIndexingWorker
+  alias Pinchflat.Reconciliation.ReconcileWorker
 
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
@@ -15,6 +17,13 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
     test "returns the queue names from the Oban config" do
       assert :default in QueueDiagnostics.queue_names()
       assert :media_fetching in QueueDiagnostics.queue_names()
+      assert :maintenance in QueueDiagnostics.queue_names()
+    end
+
+    test "serializes workers that reserve a full quiet window" do
+      assert Ecto.Changeset.get_change(ReconcileWorker.new(%{}), :queue) == "maintenance"
+      assert Ecto.Changeset.get_change(DatabaseMaintenanceWorker.new(%{}), :queue) == "maintenance"
+      assert Application.fetch_env!(:pinchflat, Oban)[:queues][:maintenance] == 1
     end
 
     test "returns an empty list when no queues are configured" do

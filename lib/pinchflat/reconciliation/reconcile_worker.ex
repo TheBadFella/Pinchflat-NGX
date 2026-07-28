@@ -2,12 +2,16 @@ defmodule Pinchflat.Reconciliation.ReconcileWorker do
   @moduledoc false
 
   use Oban.Worker,
-    queue: :local_data,
+    # Reconciliation and database maintenance both pause every queue and wait
+    # for executing jobs. They must share this single-concurrency queue: if
+    # they started together, each would see the other as executing and wait
+    # forever.
+    queue: :maintenance,
     # Dedupe on worker alone (not args) so a build and an apply can't run
     # alongside each other — either would invalidate the other's view of disk
     unique: [period: :infinity, states: :incomplete, fields: [:worker, :queue]],
     max_attempts: 1,
-    tags: ["local_data", "reconciliation", "show_in_dashboard"]
+    tags: ["maintenance", "reconciliation", "show_in_dashboard"]
 
   import Ecto.Query, warn: false
 

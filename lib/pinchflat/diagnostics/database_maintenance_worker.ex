@@ -2,12 +2,15 @@ defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorker do
   @moduledoc false
 
   use Oban.Worker,
-    queue: :local_data,
+    # Keep all full quiet-window operations in one queue. Otherwise this and
+    # ReconcileWorker can each pause queues, see the other executing, and wait
+    # forever.
+    queue: :maintenance,
     # Dedupe on worker alone (not args) so a manual run and a scheduled run
     # can't be queued alongside each other
     unique: [period: :infinity, states: :incomplete, fields: [:worker, :queue]],
     max_attempts: 3,
-    tags: ["local_data", "maintenance"]
+    tags: ["maintenance"]
 
   import Ecto.Query, warn: false
 
