@@ -120,9 +120,15 @@ if config_env() == :prod do
 
   config :tzdata, :data_dir, tz_data_path
 
+  # WAL lets readers run concurrently, so a larger pool mainly buys headroom for
+  # the web UI / other jobs while a long op (reconcile, compaction) holds
+  # connections. Bump this if you see "connection not available" under load.
+  {db_pool_size, _} = Integer.parse(System.get_env("DATABASE_POOL_SIZE", "10"))
+
   config :pinchflat, Pinchflat.Repo,
     database: db_path,
-    journal_mode: journal_mode
+    journal_mode: journal_mode,
+    pool_size: db_pool_size
 
   config :pinchflat, Pinchflat.PromEx, disabled: !enable_prometheus
 
