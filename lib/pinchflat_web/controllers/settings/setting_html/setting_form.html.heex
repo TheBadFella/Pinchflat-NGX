@@ -68,6 +68,13 @@
         label="Ignore Unavailable Media"
         help="Mark members-only, private, and removed videos as skipped instead of repeatedly erroring. They stay in the database but won't be retried"
       />
+      <.input
+        field={f[:time_format]}
+        type="select"
+        options={[{"24-hour (14:30)", "24h"}, {"12-hour (2:30 PM)", "12h"}]}
+        label="Time Format"
+        help="Clock used when displaying timestamps in the UI"
+      />
     </section>
   </section>
 

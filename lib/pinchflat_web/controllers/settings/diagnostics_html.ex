@@ -1,6 +1,7 @@
 defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   use PinchflatWeb, :html
 
+  alias Pinchflat.Settings
   alias Pinchflat.Diagnostics.QueueDiagnostics
 
   embed_templates "diagnostics_html/*"
@@ -61,7 +62,23 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   def format_datetime(nil), do: "-"
 
   def format_datetime(datetime) do
-    Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S")
+    # Oban stores these timestamps in UTC; convert to the configured timezone
+    # (TIMEZONE / TZ env var) before rendering so the page reads in local time.
+    # The 12h/24h clock follows the `time_format` setting.
+    datetime
+    |> to_utc_datetime()
+    |> Timex.Timezone.convert(Application.get_env(:pinchflat, :timezone))
+    |> Calendar.strftime(datetime_format())
+  end
+
+  defp to_utc_datetime(%DateTime{} = dt), do: dt
+  defp to_utc_datetime(%NaiveDateTime{} = ndt), do: DateTime.from_naive!(ndt, "Etc/UTC")
+
+  defp datetime_format do
+    case Settings.get!(:time_format) do
+      "12h" -> "%Y-%m-%d %I:%M:%S %p"
+      _ -> "%Y-%m-%d %H:%M:%S"
+    end
   end
 
   def extract_last_error(errors) when is_list(errors) and errors != [] do

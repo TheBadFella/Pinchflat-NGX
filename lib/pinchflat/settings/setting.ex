@@ -25,9 +25,11 @@ defmodule Pinchflat.Settings.Setting do
     :download_throughput_limit,
     :restrict_filenames,
     :ignore_unavailable_media,
-    :default_cookie_behaviour
+    :default_cookie_behaviour,
+    :time_format
   ]
 
+  @time_formats ~w(24h 12h)
   @cookie_behaviours ~w(disabled when_needed all_operations)
 
   @required_fields [
@@ -60,6 +62,9 @@ defmodule Pinchflat.Settings.Setting do
     # "disabled" | "when_needed" | "all_operations"
     field :default_cookie_behaviour, :string, default: "disabled"
 
+    # Clock used when rendering timestamps in the UI: "24h" | "12h"
+    field :time_format, :string, default: "24h"
+
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
   end
@@ -73,6 +78,7 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_inclusion(:yt_dlp_update_policy, UpdateManager.policies())
     |> validate_pinned_version()
     |> validate_inclusion(:default_cookie_behaviour, @cookie_behaviours)
+    |> validate_inclusion(:time_format, @time_formats)
   end
 
   @doc """

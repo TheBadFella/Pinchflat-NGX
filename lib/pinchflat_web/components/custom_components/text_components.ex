@@ -2,6 +2,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   @moduledoc false
   use Phoenix.Component
 
+  alias Pinchflat.Settings
   alias Pinchflat.Utils.NumberUtils
   alias PinchflatWeb.CoreComponents
 
@@ -115,7 +116,11 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   end
 
   @doc """
-  Renders a UTC datetime in the specified format and timezone
+  Renders a UTC datetime in the specified format and timezone.
+
+  The clock portion of the format follows the `time_format` setting: when it's
+  "12h" the 24-hour tokens in the format string are swapped for 12-hour ones,
+  so every caller honours the preference without passing it explicitly.
   """
   attr :datetime, :any, required: true
   attr :format, :string, default: "%Y-%m-%d %H:%M:%S"
@@ -123,11 +128,26 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def datetime_in_zone(assigns) do
     timezone = assigns.timezone || Application.get_env(:pinchflat, :timezone)
-    assigns = Map.put(assigns, :timezone, timezone)
+    assigns = assigns |> Map.put(:timezone, timezone) |> Map.put(:format, localize_clock(assigns.format))
 
     ~H"""
     <time>{Calendar.strftime(DateTime.shift_zone!(@datetime, @timezone), @format)}</time>
     """
+  end
+
+  # Swap 24-hour clock tokens for their 12-hour (+ AM/PM) equivalents when the
+  # user has chosen a 12-hour clock. The longer token is replaced first so the
+  # ":%S" tail isn't stranded by the "%H:%M" replacement.
+  defp localize_clock(format) do
+    case Settings.get!(:time_format) do
+      "12h" ->
+        format
+        |> String.replace("%H:%M:%S", "%I:%M:%S %p")
+        |> String.replace("%H:%M", "%I:%M %p")
+
+      _ ->
+        format
+    end
   end
 
   @doc """
