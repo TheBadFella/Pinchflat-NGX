@@ -45,8 +45,10 @@ defmodule PinchflatWeb.Sources.SourceController do
     # This lets me preload the settings from another source for more efficient creation
     cs_struct =
       case to_string(params["template_id"]) do
-        "" -> %Source{}
-        template_id -> Repo.get(Source, template_id) || %Source{}
+        # A fresh source pre-selects the configured default cookie behaviour;
+        # cloning from a template keeps that template's cookie behaviour instead
+        "" -> %Source{cookie_behaviour: default_cookie_behaviour()}
+        template_id -> Repo.get(Source, template_id) || %Source{cookie_behaviour: default_cookie_behaviour()}
       end
 
     render(
@@ -562,6 +564,10 @@ defmodule PinchflatWeb.Sources.SourceController do
     MediaProfile
     |> order_by(asc: :name)
     |> Repo.all()
+  end
+
+  defp default_cookie_behaviour do
+    String.to_existing_atom(Settings.get!(:default_cookie_behaviour))
   end
 
   defp get_onboarding_layout do

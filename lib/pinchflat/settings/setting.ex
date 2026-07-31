@@ -24,8 +24,11 @@ defmodule Pinchflat.Settings.Setting do
     :extractor_sleep_interval_seconds,
     :download_throughput_limit,
     :restrict_filenames,
-    :ignore_unavailable_media
+    :ignore_unavailable_media,
+    :default_cookie_behaviour
   ]
+
+  @cookie_behaviours ~w(disabled when_needed all_operations)
 
   @required_fields [
     :onboarding,
@@ -53,6 +56,10 @@ defmodule Pinchflat.Settings.Setting do
     field :restrict_filenames, :boolean, default: false
     field :ignore_unavailable_media, :boolean, default: false
 
+    # The cookie behaviour pre-selected when adding a new source:
+    # "disabled" | "when_needed" | "all_operations"
+    field :default_cookie_behaviour, :string, default: "disabled"
+
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
   end
@@ -65,6 +72,58 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_number(:extractor_sleep_interval_seconds, greater_than_or_equal_to: 0)
     |> validate_inclusion(:yt_dlp_update_policy, UpdateManager.policies())
     |> validate_pinned_version()
+    |> validate_inclusion(:default_cookie_behaviour, @cookie_behaviours)
+  end
+
+  @doc """
+  The allowed cookie behaviours (matching Source.cookie_behaviour).
+  """
+  def cookie_behaviours, do: @cookie_behaviours
+
+  @doc """
+  The allowed time formats.
+  """
+  def time_formats, do: @time_formats
+
+  # In "manual" mode a proxy URL is required and must be a well-formed proxy URL.
+  # yt-dlp accepts http, https, socks4, and socks5 schemes. In other modes the
+  # field is ignored, so it isn't validated.
+  defp validate_proxy_url(changeset) do
+    if get_field(changeset, :proxy_mode) == "manual" do
+      changeset
+      |> validate_required([:proxy_url])
+      |> validate_change(:proxy_url, fn :proxy_url, value ->
+        case URI.new(value) do
+          {:ok, %URI{scheme: scheme, host: host}}
+          when scheme in ["http", "https", "socks4", "socks5", "socks5h"] and is_binary(host) and host != "" ->
+            []
+
+          _ ->
+            [proxy_url: "must be a valid http(s)/socks proxy URL (eg: http://user:pass@host:8080)"]
+        end
+      end)
+    else
+      changeset
+    end
+  end
+
+  # The URL base is user-supplied free text that gets concatenated with paths
+  # to build feed/enclosure URLs, so it must be a clean absolute http(s) origin.
+  # `URI.new/1` (unlike `URI.parse/1`) rejects illegal characters such as the
+  # quotes that would otherwise break/inject XML attributes, and we additionally
+  # reject query strings and fragments since appending a path to them is invalid.
+  defp validate_podcast_url_base(changeset) do
+    validate_change(changeset, :podcast_url_base, fn :podcast_url_base, value ->
+      case URI.new(value) do
+        {:ok, %URI{scheme: scheme, host: host, query: nil, fragment: nil}}
+        when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+          []
+
+        _ ->
+          [podcast_url_base: "must be an absolute http(s) URL with no query string or fragment"]
+      end
+    end)
+>>>>>>> 42f2245 (feat: let new sources default to a configurable Cookie Behavior)
   end
 
   defp validate_pinned_version(changeset) do
