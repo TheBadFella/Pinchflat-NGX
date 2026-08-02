@@ -181,7 +181,14 @@ if config_env() == :prod do
          max_no_files: 5,
          max_no_bytes: 10_000_000
        },
-       formatter: Logger.Formatter.new()
+       # Match the console formatter: render timestamps in the configured
+       # timezone (see Pinchflat.LoggerFormatter), not OS local time.
+       formatter:
+         Logger.Formatter.new(
+           format: {Pinchflat.LoggerFormatter, :format},
+           metadata: [:request_id],
+           utc_log: true
+         )
      }}
   ]
 end

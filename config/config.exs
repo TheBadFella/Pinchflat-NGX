@@ -111,10 +111,13 @@ config :tailwind,
     cd: Path.expand("../assets", __DIR__)
   ]
 
-# Configures Elixir's Logger
+# Configures Elixir's Logger. Timestamps are rendered in the app's configured
+# timezone by Pinchflat.LoggerFormatter (utc_log: true so it receives UTC and
+# converts) rather than the BEAM's OS-derived local time, which didn't honour TZ.
 config :logger, :default_formatter,
-  format: "$date $time $metadata[$level] | $message\n",
-  metadata: [:request_id]
+  format: {Pinchflat.LoggerFormatter, :format},
+  metadata: [:request_id],
+  utc_log: true
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
