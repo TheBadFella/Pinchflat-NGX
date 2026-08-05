@@ -137,6 +137,325 @@ defmodule Pinchflat.Sources do
   """
   def get_source!(id), do: Repo.get!(Source, id)
 
+<<<<<<< HEAD
+=======
+  @image_fields %{banner: :banner_filepath, poster: :poster_filepath, fanart: :fanart_filepath}
+
+  @doc """
+  Resolves the on-disk path for a source's artwork of the given type
+  (`:banner`, `:poster`, or `:fanart`). Prefers the source's own copy (written
+  when `download_source_images` is enabled) and falls back to the copy stored
+  alongside the source metadata. Returns the path string, or nil when neither is
+  set. Does not check that the file actually exists on disk.
+
+  Returns binary() | nil
+  """
+  def image_filepath(%Source{} = source, type) when is_map_key(@image_fields, type) do
+    field = @image_fields[type]
+    source = Repo.preload(source, :metadata)
+
+    Map.get(source, field) || (source.metadata && Map.get(source.metadata, field))
+  end
+
+  @doc """
+  Returns the media-item counts for each tab on the source show page, plus the
+  total on-disk byte size of the downloaded (Library) items, in a single round
+  trip: `%{pending: n, library: n, skipped: n, library_bytes: b}`.
+
+  Each count uses the exact same predicate as the tab it labels (the `pending`
+  and `library` tabs share `MediaQuery.pending/0` and `MediaQuery.downloaded/0`,
+  and `skipped` is everything that is neither) so a badge can never disagree with
+  its list. `library_bytes` sums the stored `media_size_bytes` (no filesystem
+  calls).
+
+  Note `pending` is an *eligibility* count — media this source's rules say should
+  be downloaded — not a count of live Oban jobs. An eligible item with no download
+  job (downloads disabled, job cancelled/pruned) still counts, which is why the UI
+  says "Pending" rather than "Queued".
+
+  Returns %{pending: integer(), library: integer(), skipped: integer(), library_bytes: integer()}
+  """
+  def tab_counts(%Source{} = source) do
+    pending = MediaQuery.pending()
+    downloaded = MediaQuery.downloaded()
+    skipped = dynamic(not (^downloaded) and not (^pending))
+
+    base =
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:media_profile)
+      |> where(^MediaQuery.for_source(source))
+
+    # ONE pass over the source's media items: each tab is a conditional aggregate
+    # over the same scan rather than its own query (or its own branch of a union,
+    # which would still read the rows three times).
+    library_bytes =
+      dynamic(
+        [mi],
+        fragment("COALESCE(SUM(CASE WHEN ? THEN ? ELSE 0 END), 0)", ^downloaded, mi.media_size_bytes)
+      )
+
+    counts = %{
+      pending: count_where(pending),
+      library: count_where(downloaded),
+      skipped: count_where(skipped),
+      library_bytes: library_bytes
+    }
+
+    Repo.one(select(base, ^counts))
+  end
+
+  defp count_where(condition) do
+    dynamic(fragment("COALESCE(SUM(CASE WHEN ? THEN 1 ELSE 0 END), 0)", ^condition))
+  end
+
+  @doc """
+  Returns a coarse health status for the source, used by the header status pill:
+
+    - `:paused` — the source is disabled (indexing/downloads won't run)
+    - `:error` — enabled, but an indexing or download job for it is currently
+      failing (in a `retryable` or `discarded` state)
+    - `:active` — enabled and nothing is failing
+
+  `:indexing_failed?` can be injected via `opts` by a caller that has already
+  resolved it (the source page renders the pill and the blocking-conditions
+  banner from the same request, and both need the answer).
+
+  Returns :active | :paused | :error
+  """
+  def status(source, opts \\ [])
+
+  def status(%Source{enabled: false}, _opts), do: :paused
+
+  def status(%Source{} = source, opts) do
+    indexing_failed? = Keyword.get_lazy(opts, :indexing_failed?, fn -> indexing_failing?(source) end)
+
+    if indexing_failed? or download_failing?(source), do: :error, else: :active
+  end
+
+  @doc """
+  Whether the most recent job of either indexing chain (fast or slow) is failing.
+
+  Public because both `status/1` and `blocking_conditions/2` need it and it costs
+  a query — a caller rendering both can resolve it once and inject it.
+
+  Returns boolean()
+  """
+  # Indexing tasks are attached to the source directly. The slow/fast indexing
+  # chains are self-perpetuating, so a discarded job can linger for weeks (until
+  # Oban prunes it) even after a newer run recovered — only the LATEST indexing
+  # job's state reflects current health.
+  #
+  # Fast and slow indexing are INDEPENDENT chains, so health is judged per worker:
+  # a successful RSS fast index must not paper over a dead slow-indexing chain (or
+  # vice versa). The source is failing if either chain's most recent job is bad.
+  def indexing_failing?(%Source{} = source) do
+    latest_per_worker =
+      from(t in Task,
+        join: j in assoc(t, :job),
+        where: t.source_id == ^source.id,
+        where: fragment("? LIKE '%IndexingWorker'", j.worker),
+        group_by: j.worker,
+        select: %{latest_job_id: max(j.id)}
+      )
+
+    from(sub in subquery(latest_per_worker),
+      join: j in Oban.Job,
+      on: j.id == sub.latest_job_id,
+      where: j.state in ["retryable", "discarded"]
+    )
+    |> Repo.exists?()
+  end
+
+  # Download tasks are attached through media items (their own `source_id` is
+  # null), so join through `media_items`. For each item only its most recent
+  # download job matters — a successful re-download must not stay overshadowed by
+  # an earlier discarded attempt.
+  defp download_failing?(%Source{} = source) do
+    latest_per_item =
+      from(t in Task,
+        join: j in assoc(t, :job),
+        join: mi in assoc(t, :media_item),
+        where: mi.source_id == ^source.id,
+        where: fragment("? LIKE '%.MediaDownloadWorker'", j.worker),
+        group_by: mi.id,
+        select: %{latest_job_id: max(j.id)}
+      )
+
+    from(sub in subquery(latest_per_item),
+      join: j in Oban.Job,
+      on: j.id == sub.latest_job_id,
+      where: j.state in ["retryable", "discarded"]
+    )
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Everything currently standing between this source and a downloaded file, in
+  order of how fundamental it is. Powers the "why is nothing downloading?" banner
+  on the source page, which renders only the first entry.
+
+  Returns `[%{code: atom(), message: binary()}, ...]`, **empty for a healthy
+  source** — no news is good news, there is deliberately no `:all_good` code.
+
+  A **paused source returns no conditions at all**. Being paused isn't a problem
+  to diagnose — it's a state the user chose, and the header already says so with
+  a status pill and a resume button. Everything downstream of it (nothing
+  indexed, nothing downloaded) is a consequence rather than a cause, so a banner
+  there would only restate the pill.
+
+  Checked in order:
+
+    - `:downloads_disabled` — indexes, but `download_media` is off
+    - `:indexing_failed` — the latest run of an indexing chain is failing. Ranked
+      **above** the nothing-indexed conditions because it explains them: a first
+      index that is retrying or gave up would otherwise be reported as "being
+      indexed, please wait" or "hasn't been indexed yet", hiding the actual error
+      and the diagnostics link behind a description of its symptom
+    - `:index_pending` — nothing indexed yet, but an index is already queued or
+      running (and not failing). Distinct from `:never_indexed` because there's
+      nothing to do but wait; offering a "check for new videos" button here just
+      invites a duplicate of the job that's already on its way
+    - `:never_indexed` — nothing indexed and no index job in flight either
+    - `:index_found_nothing` — an index ran and turned up nothing
+    - `:cutoff_excludes_everything` — everything indexed was excluded, and
+      specifically by the download cutoff date, which is worth naming separately
+      since it's the usual culprit
+    - `:all_filtered_out` — ...or by the other filters
+    - `:queue_paused` — the download queue is paused (a reconcile or database
+      compaction reserving its quiet window)
+    - `:storage_directory_unwritable` — nothing can be written to disk
+
+  The two cutoff/filter conditions are mutually exclusive, as are the three
+  nothing-indexed ones, so their relative order doesn't matter.
+
+  The two conditions that probe the world outside the database (the queue state
+  and the filesystem) are injectable via `opts` (`:queue_paused?`,
+  `:storage_directory_writable?`) so this stays a pure function of its inputs
+  under test. Callers in the app pass nothing and get the real probes.
+  `:tab_counts` and `:indexing_failed?` are injectable for the same reason a
+  caller would want to: the source page has already paid for both.
+  """
+  def blocking_conditions(source, opts \\ [])
+
+  def blocking_conditions(%Source{enabled: false}, _opts), do: []
+
+  def blocking_conditions(%Source{} = source, opts) do
+    counts = Keyword.get_lazy(opts, :tab_counts, fn -> tab_counts(source) end)
+    queue_paused? = Keyword.get_lazy(opts, :queue_paused?, &download_queue_paused?/0)
+
+    directory_writable? =
+      Keyword.get_lazy(opts, :storage_directory_writable?, fn -> storage_directory_writable?(source) end)
+
+    total = counts.pending + counts.library + counts.skipped
+    nothing_indexed_yet = total == 0 && is_nil(source.last_indexed_at)
+    # Each of these costs a query, so they're resolved once up front rather than
+    # inline in the (eagerly evaluated) list below — including `index_in_flight?`,
+    # which two mutually exclusive entries would otherwise each ask for
+    indexing_failed? = Keyword.get_lazy(opts, :indexing_failed?, fn -> indexing_failing?(source) end)
+    index_in_flight? = nothing_indexed_yet && not indexing_failed? && indexing_in_flight?(source)
+    nothing_downloadable? = total > 0 && counts.pending == 0 && counts.library == 0
+    cutoff_excludes_everything? = nothing_downloadable? && everything_before_cutoff?(source, counts)
+
+    [
+      not source.download_media &&
+        "This source is set to index only — new media is catalogged but never downloaded."
+        |> then(&{:downloads_disabled, &1}),
+      indexing_failed? &&
+        {:indexing_failed, "The most recent indexing run for this source failed, so new media isn't being discovered."},
+      index_in_flight? &&
+        {:index_pending,
+         "This source is being indexed for the first time. Media will start appearing here as it's found — large channels can take a while."},
+      nothing_indexed_yet && not indexing_failed? && not index_in_flight? &&
+        {:never_indexed, "This source hasn't been indexed yet, so there's nothing to download."},
+      total == 0 && source.last_indexed_at &&
+        {:index_found_nothing,
+         "The last index of this source found no media at all. Check that its URL still points at a channel or playlist with content."},
+      cutoff_excludes_everything? &&
+        {:cutoff_excludes_everything,
+         "Every indexed item was published before this source's download cutoff date, so nothing qualifies for download."},
+      nothing_downloadable? && not cutoff_excludes_everything? &&
+        {:all_filtered_out,
+         "All #{counts.skipped} indexed items were excluded by this source's filters. The Skipped tab says why for each one."},
+      queue_paused? &&
+        {:queue_paused,
+         "The download queue is paused. This happens while a file reconcile or database compaction reserves a quiet window, and lifts on its own when that finishes."},
+      not directory_writable? &&
+        {:storage_directory_unwritable,
+         "Pinchflat can't write to #{storage_directory(source)}, so no download can be saved. Check the volume's permissions."}
+    ]
+    |> Enum.filter(&is_tuple/1)
+    |> Enum.map(fn {code, message} -> %{code: code, message: message} end)
+  end
+
+  # Whether an indexing run is already queued, scheduled, or underway. A source
+  # kicks off its first index on creation, so this is true for essentially every
+  # freshly-added source — which is exactly when a "check for new videos" prompt
+  # would be worst: the work is already on its way.
+  defp indexing_in_flight?(%Source{} = source) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      where: t.source_id == ^source.id,
+      where: fragment("? LIKE '%IndexingWorker'", j.worker),
+      where: j.state in ["available", "scheduled", "executing", "retryable"]
+    )
+    |> Repo.exists?()
+  end
+
+  # Only meaningful when everything is already skipped: is the download cutoff
+  # date the thing doing the excluding, rather than the duration/title/format
+  # filters? Reuses the same query fragment the Skipped tab's reason filter uses,
+  # so this can't disagree with the per-row reason shown there.
+  defp everything_before_cutoff?(%Source{download_cutoff_date: nil}, _counts), do: false
+
+  defp everything_before_cutoff?(%Source{} = source, counts) do
+    before_cutoff_count =
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:media_profile)
+      |> where(^MediaQuery.for_source(source))
+      |> where(^MediaQuery.skip_reason_is(:before_cutoff))
+      |> Repo.aggregate(:count)
+
+    before_cutoff_count > 0 and before_cutoff_count == counts.skipped
+  end
+
+  # Oban's queue state lives in memory, not the database. In test (and any other
+  # environment without running queues) `check_queue` raises, which is not a
+  # blocked download — treat anything unanswerable as "not paused".
+  defp download_queue_paused?() do
+    case Oban.check_queue(queue: :media_fetching) do
+      %{paused: paused} -> !!paused
+      _ -> false
+    end
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
+
+  # Where this source's downloads actually land. A podcast-publishing source
+  # downloads into `podcast_directory` (see `DownloadOptionBuilder.base_directory/1`),
+  # which is often a separate volume — checking `media_directory` for it would
+  # diagnose the wrong disk.
+  defp storage_directory(%Source{} = source) do
+    if PodcastExport.enabled?(source) do
+      Application.get_env(:pinchflat, :podcast_directory)
+    else
+      Application.get_env(:pinchflat, :media_directory)
+    end
+  end
+
+  # One `stat` per page render, not per media item. This reports the mode bits
+  # rather than attempting a probe write, which would mean touching the media
+  # volume every time someone opens a source page.
+  defp storage_directory_writable?(%Source{} = source) do
+    case File.stat(storage_directory(source)) do
+      {:ok, %{access: access}} -> access in [:write, :read_write]
+      # A missing or unreadable directory is its own kind of unwritable
+      _ -> false
+    end
+  end
+
+>>>>>>> 7e8331f (feat-fix: show whether a source is a channel / playlist; UI fixes)
   @doc """
   Creates a source. May attempt to pull additional source details from the
   original_url (if provided). Will attempt to start indexing the source's

@@ -60,6 +60,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp sort_attr(:media_profile_name), do: dynamic([s, mp], fragment("? COLLATE NOCASE", mp.name))
   defp sort_attr(:custom_name), do: dynamic([s], fragment("? COLLATE NOCASE", s.custom_name))
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
+  defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 
   defp set_sources(%{assigns: assigns} = socket) do
     sources =
