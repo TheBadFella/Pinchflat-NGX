@@ -39,6 +39,22 @@ defmodule Pinchflat.Utils.NumberUtilsTest do
       assert NumberUtils.human_byte_size(1234 * 1024, precision: 2) == {1.21, "MiB"}
     end
 
+    test "picks the precision from the unit by default" do
+      kib = 1024
+      mib = 1024 * kib
+      gib = 1024 * mib
+      tib = 1024 * gib
+
+      assert NumberUtils.human_byte_size(round(1.25 * kib)) == {1, "KiB"}
+      assert NumberUtils.human_byte_size(round(1.25 * mib)) == {1, "MiB"}
+      assert NumberUtils.human_byte_size(round(1.25 * gib)) == {1.3, "GiB"}
+      assert NumberUtils.human_byte_size(round(1.25 * tib)) == {1.25, "TiB"}
+    end
+
+    test "steps up a unit when rounding carries" do
+      assert NumberUtils.human_byte_size(1023.7 * 1024 * 1024) == {1.0, "GiB"}
+    end
+
     test "handles 0's well" do
       assert NumberUtils.human_byte_size(0) == {0, "B"}
     end
