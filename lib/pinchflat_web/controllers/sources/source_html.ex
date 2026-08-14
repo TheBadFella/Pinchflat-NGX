@@ -108,7 +108,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     do: %{label: "Edit source", href: ~p"/sources/#{source}/edit", method: "get"}
 
   defp condition_action(:never_indexed, source),
-    do: %{label: "Check for new videos", href: ~p"/sources/#{source}/check_for_new_videos", method: "post"}
+    do: %{label: "Check for new videos", href: ~p"/sources/#{source}/force_index", method: "post"}
 
   # An index is already on its way — the only thing to do is wait, so offering a
   # button would just enqueue a duplicate of the job that's already running

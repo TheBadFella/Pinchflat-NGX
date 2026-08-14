@@ -77,6 +77,8 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_number(:extractor_sleep_interval_seconds, greater_than_or_equal_to: 0)
     |> validate_inclusion(:yt_dlp_update_policy, UpdateManager.policies())
     |> validate_pinned_version()
+    |> validate_proxy_url()
+    |> validate_podcast_url_base()
     |> validate_inclusion(:default_cookie_behaviour, @cookie_behaviours)
     |> validate_inclusion(:time_format, @time_formats)
   end

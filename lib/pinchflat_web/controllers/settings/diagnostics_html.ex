@@ -65,10 +65,19 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
     # Oban stores these timestamps in UTC; convert to the configured timezone
     # (TIMEZONE / TZ env var) before rendering so the page reads in local time.
     # The 12h/24h clock follows the `time_format` setting.
+    tz = Application.get_env(:pinchflat, :timezone) || "Etc/UTC"
+
     datetime
     |> to_utc_datetime()
-    |> Timex.Timezone.convert(Application.get_env(:pinchflat, :timezone))
+    |> shift_timezone(tz)
     |> Calendar.strftime(datetime_format())
+  end
+
+  defp shift_timezone(dt, tz) do
+    case DateTime.shift_zone(dt, tz) do
+      {:ok, shifted} -> shifted
+      _ -> dt
+    end
   end
 
   defp to_utc_datetime(%DateTime{} = dt), do: dt

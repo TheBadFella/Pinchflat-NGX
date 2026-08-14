@@ -55,9 +55,13 @@ defmodule Pinchflat.LoggerFormatter do
             time_zone: "Etc/UTC"
           }
 
-        local = Timex.Timezone.convert(utc, tz)
+        case DateTime.shift_zone(utc, tz) do
+          {:ok, local} ->
+            {{local.year, local.month, local.day}, {local.hour, local.minute, local.second, millisecond}}
 
-        {{local.year, local.month, local.day}, {local.hour, local.minute, local.second, millisecond}}
+          _ ->
+            timestamp
+        end
     end
   rescue
     # tzdata not started yet (very early boot), an invalid/ambiguous zone, etc.

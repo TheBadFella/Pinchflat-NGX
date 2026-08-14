@@ -11,15 +11,13 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Tasks
 
-  # Worker (short) names grouped by the kind of record their "id" arg points at,
-  # so a diagnostics row can show what a job is actually working on.
   @media_item_workers ~w(MediaDownloadWorker MediaQualityUpgradeWorker)
   @source_workers ~w(
     MediaCollectionIndexingWorker FastIndexingWorker
     SourceMetadataStorageWorker SourceDeletionWorker FileSyncingWorker
   )
-  @media_profile_workers ~w(MediaProfileDeletionWorker)
 
+  # Worker (short) names grouped by the kind of record their "id" arg points at,
   @doc """
   Returns a list of all queue names, derived from the Oban configuration so it
   can't silently drift from the queues that actually run.

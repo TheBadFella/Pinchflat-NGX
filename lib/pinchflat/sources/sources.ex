@@ -10,6 +10,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Tasks
+  alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
@@ -406,11 +407,13 @@ defmodule Pinchflat.Sources do
   defp everything_before_cutoff?(%Source{download_cutoff_date: nil}, _counts), do: false
 
   defp everything_before_cutoff?(%Source{} = source, counts) do
+    cutoff = source.download_cutoff_date
+
     before_cutoff_count =
-      MediaQuery.new()
-      |> MediaQuery.require_assoc(:media_profile)
-      |> where(^MediaQuery.for_source(source))
-      |> where(^MediaQuery.skip_reason_is(:before_cutoff))
+      from(mi in MediaItem,
+        where: mi.source_id == ^source.id,
+        where: mi.published_at < ^cutoff and is_nil(mi.media_downloaded_at)
+      )
       |> Repo.aggregate(:count)
 
     before_cutoff_count > 0 and before_cutoff_count == counts.skipped
@@ -435,7 +438,9 @@ defmodule Pinchflat.Sources do
   # which is often a separate volume — checking `media_directory` for it would
   # diagnose the wrong disk.
   defp storage_directory(%Source{} = source) do
-    if PodcastExport.enabled?(source) do
+    source = Repo.preload(source, :media_profile)
+
+    if source.media_profile && source.media_profile.podcast_enabled do
       Application.get_env(:pinchflat, :podcast_directory)
     else
       Application.get_env(:pinchflat, :media_directory)
