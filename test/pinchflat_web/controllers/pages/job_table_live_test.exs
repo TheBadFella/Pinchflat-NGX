@@ -72,7 +72,6 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
       assert html =~ ~p"/sources/#{source.id}"
     end
 
-<<<<<<< HEAD
     test "shows subject and source ids alongside names", %{conn: conn} do
       {source, media_item, _task, _job} = create_media_item_job()
       {:ok, _view, html} = live_isolated(conn, JobTableLive, session: %{})

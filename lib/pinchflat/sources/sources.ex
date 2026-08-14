@@ -137,8 +137,6 @@ defmodule Pinchflat.Sources do
   """
   def get_source!(id), do: Repo.get!(Source, id)
 
-<<<<<<< HEAD
-=======
   @image_fields %{banner: :banner_filepath, poster: :poster_filepath, fanart: :fanart_filepath}
 
   @doc """
@@ -455,7 +453,6 @@ defmodule Pinchflat.Sources do
     end
   end
 
->>>>>>> 7e8331f (feat-fix: show whether a source is a channel / playlist; UI fixes)
   @doc """
   Creates a source. May attempt to pull additional source details from the
   original_url (if provided). Will attempt to start indexing the source's

@@ -430,7 +430,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def redownload_library_label(1), do: "Replace 1 existing file at current profile quality"
   def redownload_library_label(count), do: "Replace #{count} existing files at current profile quality"
 
->>>>>>> 7e8331f (feat-fix: show whether a source is a channel / playlist; UI fixes)
   def friendly_index_frequencies do
     [
       {"Only once when first created", -1},
@@ -465,8 +464,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
-<<<<<<< HEAD
-=======
   @doc """
   The Settings tab's grouped view of a source, replacing the old raw attribute
   dump. Returns a list of `%{title, icon, fields}` groups, where each field is a
@@ -774,7 +771,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   def source_url_label(_), do: nil
 
->>>>>>> 7e8331f (feat-fix: show whether a source is a channel / playlist; UI fixes)
   def rss_feed_url(conn, source) do
     # NOTE: The reason for this concatenation is to avoid what appears to be a bug in Phoenix
     # See: https://github.com/phoenixframework/phoenix/issues/6033

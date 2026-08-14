@@ -169,13 +169,8 @@
       <%= if length(retryable) == 0 do %>
         <p class="text-theme-on-surface-muted">No retryable jobs. Everything is running smoothly!</p>
       <% else %>
-<<<<<<< HEAD
         <p class="mb-4 text-sm text-theme-on-surface-muted">
-          These jobs have failed and are waiting to be retried automatically. You can reset them to retry immediately or cancel them.
-=======
-        <p class="text-bodydark text-sm mb-4">
           These jobs have failed and are waiting to be retried automatically. You can reset them to retry immediately, or requeue them to run again after other queued jobs.
->>>>>>> cbabc68 (feat: requeue stuck jobs from the Diagnostics page instead of cancelling them)
         </p>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -210,13 +205,8 @@
                     <.link
                       href={~p"/diagnostics/requeue_job/#{job.id}"}
                       method="post"
-<<<<<<< HEAD
-                      class="theme-danger-text-button hover:underline"
-                      data-confirm="Cancel this job?"
-=======
-                      class="text-primary hover:underline"
+                      class="text-theme-primary hover:underline"
                       data-confirm="Requeue this job? It moves to the back of the queue so other jobs can run first."
->>>>>>> cbabc68 (feat: requeue stuck jobs from the Diagnostics page instead of cancelling them)
                     >
                       Requeue
                     </.link>

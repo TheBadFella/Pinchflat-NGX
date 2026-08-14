@@ -118,8 +118,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
-<<<<<<< HEAD
-=======
   describe "when sorting by the other columns" do
     test "sorts by pending count", %{conn: conn} do
       source1 = source_fixture(custom_name: "Has_Pending")
@@ -197,7 +195,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
->>>>>>> 7e8331f (feat-fix: show whether a source is a channel / playlist; UI fixes)
   describe "when testing pagination" do
     test "moving to the next page loads new records", %{conn: conn} do
       source1 = source_fixture(custom_name: "Source_A")
