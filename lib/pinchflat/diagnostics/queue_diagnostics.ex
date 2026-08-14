@@ -51,6 +51,55 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   end
 
   @doc """
+  Returns jobs sitting in the given queue, ordered by state (executing first) and then inserted_at.
+  """
+  def get_jobs_for_queue(queue_name, limit \\ 50) do
+    from(j in Oban.Job,
+      where: j.queue == ^to_string(queue_name),
+      where: j.state in ["executing", "available", "scheduled", "retryable"],
+      order_by: [
+        asc:
+          fragment(
+            "CASE ? WHEN 'executing' THEN 0 WHEN 'available' THEN 1 WHEN 'scheduled' THEN 2 ELSE 3 END",
+            j.state
+          ),
+        desc: j.attempted_at,
+        desc: j.inserted_at
+      ],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Resolves the target record and type for a worker + args.
+  """
+  def describe_job(worker, args) do
+    short_name = worker |> String.split(".") |> List.last()
+    id = args["id"]
+
+    cond do
+      is_nil(id) ->
+        nil
+
+      short_name in @media_item_workers ->
+        case Repo.get(MediaItem, id) do
+          nil -> %{type: :media_item, id: id, source_id: nil, name: nil}
+          media_item -> %{type: :media_item, id: id, source_id: media_item.source_id, name: media_item.title}
+        end
+
+      short_name in @source_workers ->
+        case Repo.get(Source, id) do
+          nil -> %{type: :source, id: id, name: nil}
+          source -> %{type: :source, id: id, name: source.custom_name}
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  @doc """
   Returns jobs that are in a retryable state (failed but will retry).
   """
   def get_retryable_jobs(limit \\ 50) do

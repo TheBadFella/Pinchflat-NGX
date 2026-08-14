@@ -243,8 +243,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   defp cell_text(view, selector) do
     view
     |> render_element(selector)
-    |> LazyHTML.raw()
-    |> Floki.text()
+    |> String.replace(~r/<[^>]*>/, "")
     |> String.trim()
   end
 

@@ -87,7 +87,11 @@
           >
             <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
             <div class="relative h-8 w-14">
-              <div x-bind:class="is12h ? 'bg-theme-primary' : 'bg-theme-surface-4'" class="block h-8 w-14 rounded-full transition-colors duration-200"></div>
+              <div
+                x-bind:class="is12h ? 'bg-theme-primary' : 'bg-theme-surface-4'"
+                class="block h-8 w-14 rounded-full transition-colors duration-200"
+              >
+              </div>
               <div
                 x-bind:class="is12h ? 'right-1 translate-x-full' : 'left-1'"
                 class="absolute top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface transition-transform duration-200"
