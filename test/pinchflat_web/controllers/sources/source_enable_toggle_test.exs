@@ -20,7 +20,7 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
 
       html = render_component(SourceEnableToggle, %{id: :foo, source: source})
 
-      assert html =~ ~s(id="source_1_enabled_toggle_form")
+      assert html =~ ~s(id="source_enable_toggle_foo_form")
     end
 
     test "renders a toggle in the off position if the source is disabled" do

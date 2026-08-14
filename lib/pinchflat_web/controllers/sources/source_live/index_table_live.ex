@@ -99,7 +99,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       on: d.source_id == s.id,
       left_join: p in subquery(pending_subquery),
       on: p.source_id == s.id,
-      on: d.source_id == s.id,
       where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at),
       preload: [media_profile: mp],
       select: map(s, ^Source.__schema__(:fields)),

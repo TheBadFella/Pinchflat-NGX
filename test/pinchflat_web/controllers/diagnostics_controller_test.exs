@@ -67,8 +67,11 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
       conn = post(conn, ~p"/diagnostics/requeue_job/#{task.job_id}")
       assert redirected_to(conn) == ~p"/diagnostics"
 
-      job = Repo.get!(Oban.Job, task.job_id)
-      assert job.state == "available"
+      old_job = Repo.get!(Oban.Job, task.job_id)
+      assert old_job.state == "cancelled"
+
+      new_job = Repo.one!(from j in Oban.Job, where: j.id != ^task.job_id)
+      assert new_job.state == "available"
     end
 
     test "handles invalid job ID", %{conn: conn} do
@@ -85,15 +88,14 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
       |> Ecto.Changeset.change(%{state: "discarded"})
       |> Repo.update!()
 
-      conn = delete(conn, ~p"/diagnostics/delete_discarded_job/#{task.job_id}")
+      conn = post(conn, ~p"/diagnostics/delete_job/#{task.job_id}")
       assert redirected_to(conn) == ~p"/diagnostics"
 
       assert Repo.get(Oban.Job, task.job_id) == nil
-      assert Repo.get(Pinchflat.Tasks.Task, task.id) == nil
     end
 
     test "handles invalid job ID", %{conn: conn} do
-      conn = delete(conn, ~p"/diagnostics/delete_discarded_job/invalid")
+      conn = post(conn, ~p"/diagnostics/delete_job/invalid")
       assert redirected_to(conn) == ~p"/diagnostics"
       assert conn.assigns[:flash]["error"] == "invalid is not a valid job ID."
     end

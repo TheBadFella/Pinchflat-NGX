@@ -148,6 +148,7 @@ defmodule PinchflatWeb.Pages.JobTableLiveTest do
 
     test "listens for job:progress change events", %{conn: conn} do
       {_source, _media_item, _task, _job} = create_media_item_job()
+      PinchflatWeb.Endpoint.subscribe("job:progress")
       {:ok, _view, _html} = live_isolated(conn, JobTableLive, session: %{})
 
       PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: 123})
