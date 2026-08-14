@@ -129,7 +129,6 @@ defmodule Pinchflat.Settings.Setting do
           [podcast_url_base: "must be an absolute http(s) URL with no query string or fragment"]
       end
     end)
->>>>>>> 42f2245 (feat: let new sources default to a configurable Cookie Behavior)
   end
 
   defp validate_pinned_version(changeset) do
