@@ -68,6 +68,41 @@
         label="Ignore Unavailable Media"
         help="Mark members-only, private, and removed videos as skipped instead of repeatedly erroring. They stay in the database but won't be retried"
       />
+      <div
+        x-data={"{ is12h: #{f[:time_format].value == "12h"} }"}
+        phx-update="ignore"
+        id="time-format-wrapper"
+      >
+        <.label for={f[:time_format].id}>Time Format</.label>
+        <div class="relative flex flex-col">
+          <input
+            type="hidden"
+            id={f[:time_format].id}
+            name={f[:time_format].name}
+            x-bind:value="is12h ? '12h' : '24h'"
+          />
+          <div
+            class="inline-flex items-center gap-3 cursor-pointer"
+            @click={"is12h = !is12h; dispatchFor('#{f[:time_format].id}', 'change')"}
+          >
+            <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
+            <div class="relative h-8 w-14">
+              <div
+                x-bind:class="is12h ? 'bg-theme-primary' : 'bg-theme-surface-4'"
+                class="block h-8 w-14 rounded-full transition-colors duration-200"
+              >
+              </div>
+              <div
+                x-bind:class="is12h ? 'right-1 translate-x-full' : 'left-1'"
+                class="absolute top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface transition-transform duration-200"
+              >
+              </div>
+            </div>
+            <span x-bind:class="is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">12hr</span>
+          </div>
+          <.help>Clock used when displaying timestamps in the UI</.help>
+        </div>
+      </div>
     </section>
   </section>
 

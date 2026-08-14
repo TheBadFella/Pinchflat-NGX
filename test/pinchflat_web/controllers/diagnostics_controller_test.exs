@@ -2,6 +2,7 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
   use PinchflatWeb.ConnCase
 
   alias Pinchflat.Repo
+  import Ecto.Query
   import Pinchflat.MediaFixtures
   import Pinchflat.Downloading.MediaDownloadWorker
 
@@ -57,17 +58,45 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
     end
   end
 
-  describe "cancel_job" do
-    test "cancels a job", %{conn: conn, task: task} do
-      conn = post(conn, ~p"/diagnostics/cancel_job/#{task.job_id}")
+  describe "requeue_job" do
+    test "requeues a job", %{conn: conn, task: task} do
+      Oban.Job
+      |> Repo.get!(task.job_id)
+      |> Ecto.Changeset.change(%{state: "retryable"})
+      |> Repo.update!()
+
+      conn = post(conn, ~p"/diagnostics/requeue_job/#{task.job_id}")
       assert redirected_to(conn) == ~p"/diagnostics"
 
-      job = Repo.get!(Oban.Job, task.job_id)
-      assert job.state == "cancelled"
+      old_job = Repo.get!(Oban.Job, task.job_id)
+      assert old_job.state == "cancelled"
+
+      new_job = Repo.one!(from j in Oban.Job, where: j.id != ^task.job_id)
+      assert new_job.state == "available"
     end
 
     test "handles invalid job ID", %{conn: conn} do
-      conn = post(conn, ~p"/diagnostics/cancel_job/invalid")
+      conn = post(conn, ~p"/diagnostics/requeue_job/invalid")
+      assert redirected_to(conn) == ~p"/diagnostics"
+      assert conn.assigns[:flash]["error"] == "invalid is not a valid job ID."
+    end
+  end
+
+  describe "delete_job" do
+    test "deletes a discarded job and task", %{conn: conn, task: task} do
+      Oban.Job
+      |> Repo.get!(task.job_id)
+      |> Ecto.Changeset.change(%{state: "discarded"})
+      |> Repo.update!()
+
+      conn = post(conn, ~p"/diagnostics/delete_job/#{task.job_id}")
+      assert redirected_to(conn) == ~p"/diagnostics"
+
+      assert Repo.get(Oban.Job, task.job_id) == nil
+    end
+
+    test "handles invalid job ID", %{conn: conn} do
+      conn = post(conn, ~p"/diagnostics/delete_job/invalid")
       assert redirected_to(conn) == ~p"/diagnostics"
       assert conn.assigns[:flash]["error"] == "invalid is not a valid job ID."
     end

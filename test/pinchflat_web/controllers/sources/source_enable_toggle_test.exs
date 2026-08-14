@@ -15,6 +15,14 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
                ~s(<input type="checkbox" id="source_enable_toggle_foo_input" name="source[enabled]" value="true" checked)
     end
 
+    test "renders the form with an id so LiveView can recover it on reconnect" do
+      source = %{id: 1, enabled: true}
+
+      html = render_component(SourceEnableToggle, %{id: :foo, source: source})
+
+      assert html =~ ~s(id="source_enable_toggle_foo_form")
+    end
+
     test "renders a toggle in the off position if the source is disabled" do
       source = %{id: 1, enabled: false}
 

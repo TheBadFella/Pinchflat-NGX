@@ -32,10 +32,33 @@ config :pinchflat,
 
 config :pinchflat, Pinchflat.Repo,
   journal_mode: :wal,
-  pool_size: 5,
-  # Set busy_timeout to 5 seconds to prevent "Database busy" errors during concurrent operations.
-  # Without this, queries fail immediately when the database is locked instead of waiting.
-  busy_timeout: 5000
+  # Explicit (matches exqlite's default): NORMAL is safe under WAL — only a
+  # transaction can be lost on OS/power loss, never corruption — and avoids a
+  # per-write fsync. Pinned here so a future driver-default change can't regress it.
+  synchronous: :normal,
+  # BEGIN IMMEDIATE for every transaction. The default DEFERRED mode starts as a
+  # read transaction and upgrades to a write on the first write statement — under
+  # WAL that upgrade fails instantly with SQLITE_BUSY (busy_timeout never runs)
+  # whenever another connection committed since the read snapshot was taken, which
+  # is constant under an active queue (Oban's stager does exactly this
+  # select-then-update shape every second). IMMEDIATE takes the write lock at
+  # BEGIN, so contending writers queue on busy_timeout instead of erroring.
+  default_transaction_mode: :immediate,
+  # Explicit (matches ecto_sqlite3's defaults — negative = KiB, so ~64 MB page
+  # cache per connection): keeps the reconcile working set off the disk
+  # and pins us against a future driver-default change.
+  cache_size: -64_000,
+  temp_store: :memory,
+  # Generous so slow writes on weak hardware (or a database VACUUM) surface as
+  # brief waits instead of "database is locked" errors
+  busy_timeout: 30_000,
+  # Must exceed busy_timeout: Ecto's default per-query timeout is 15s, which
+  # would kill a write while it's still legitimately queued on the busy handler
+  timeout: 45_000,
+  # Small pools starved the LiveView/other jobs while a reconcile held connections.
+  # WAL lets extra readers run without blocking, so a larger pool is cheap.
+  # Overridable at runtime via DATABASE_POOL_SIZE.
+  pool_size: 10
 
 # Configures the endpoint
 config :pinchflat, PinchflatWeb.Endpoint,
@@ -45,8 +68,10 @@ config :pinchflat, PinchflatWeb.Endpoint,
   adapter: Phoenix.Endpoint.Cowboy2Adapter,
   render_errors: [
     formats: [html: PinchflatWeb.ErrorHTML, json: PinchflatWeb.ErrorJSON],
-    root_layout: {PinchflatWeb.Layouts, :root},
-    layout: {PinchflatWeb.Layouts, :app}
+    # Error pages use a dedicated standalone layout (no `layout:` — inner layout
+    # stays disabled). The app/root layouts need assigns (flash) and database
+    # access that the error-rendering conn doesn't have.
+    root_layout: {PinchflatWeb.Layouts, :error}
   ],
   pubsub_server: Pinchflat.PubSub,
   live_view: [signing_salt: "/t5878kO"]
@@ -86,10 +111,13 @@ config :tailwind,
     cd: Path.expand("../assets", __DIR__)
   ]
 
-# Configures Elixir's Logger
+# Configures Elixir's Logger. Timestamps are rendered in the app's configured
+# timezone by Pinchflat.LoggerFormatter (utc_log: true so it receives UTC and
+# converts) rather than the BEAM's OS-derived local time, which didn't honour TZ.
 config :logger, :default_formatter,
-  format: "$date $time $metadata[$level] | $message\n",
-  metadata: [:request_id]
+  format: {Pinchflat.LoggerFormatter, :format},
+  metadata: [:request_id],
+  utc_log: true
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

@@ -80,20 +80,30 @@ defmodule Pinchflat.Settings.YoutubeApiKeyLive do
   defp test_api_key(""), do: {:error, "No API key provided"}
 
   defp test_api_key(keys_string) do
-    # Test the first API key provided
-    first_key =
+    keys =
       keys_string
       |> String.split(",")
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
-      |> List.first()
 
-    case first_key do
-      nil ->
+    case keys do
+      [] ->
         {:error, "No API key provided"}
 
-      key ->
-        youtube_api().test_api_key(key)
+      keys ->
+        # Test every key so a bad key beyond the first (which is still used at
+        # indexing time via round-robin) is caught here too.
+        failed_indexes =
+          keys
+          |> Enum.with_index(1)
+          |> Enum.filter(fn {key, _index} -> match?({:error, _}, youtube_api().test_api_key(key)) end)
+          |> Enum.map(fn {_key, index} -> index end)
+
+        case failed_indexes do
+          [] -> :ok
+          [index] -> {:error, "Key #{index} failed"}
+          indexes -> {:error, "Keys #{Enum.join(indexes, ", ")} failed"}
+        end
     end
   end
 

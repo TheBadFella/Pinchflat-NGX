@@ -105,7 +105,9 @@
       These jobs have been executing for more than 30 minutes. Orphaned jobs left behind by an
       ungraceful shutdown are automatically recovered the next time Pinchflat restarts, so a job
       here is usually just long-running (for example indexing a large channel or downloading a
-      long video). If one is genuinely hung, you can cancel it.
+      long video). If one is genuinely hung — or it's holding up other work on a single-worker
+      setup — you can requeue it. That stops the current run and sends a fresh copy to the back
+      of the queue, so other jobs get to run first.
     </p>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
@@ -127,12 +129,12 @@
               <td class="py-2 text-theme-on-surface">{format_datetime(job.attempted_at)}</td>
               <td class="py-2">
                 <.link
-                  href={~p"/diagnostics/cancel_job/#{job.id}"}
+                  href={~p"/diagnostics/requeue_job/#{job.id}"}
                   method="post"
-                  class="theme-danger-text-button hover:underline"
-                  data-confirm="Cancel this job?"
+                  class="text-theme-primary hover:underline"
+                  data-confirm="Requeue this job? It stops the current run and moves to the back of the queue so other jobs can run first."
                 >
-                  Cancel
+                  Requeue
                 </.link>
               </td>
             </tr>
@@ -168,7 +170,7 @@
         <p class="text-theme-on-surface-muted">No retryable jobs. Everything is running smoothly!</p>
       <% else %>
         <p class="mb-4 text-sm text-theme-on-surface-muted">
-          These jobs have failed and are waiting to be retried automatically. You can reset them to retry immediately or cancel them.
+          These jobs have failed and are waiting to be retried automatically. You can reset them to retry immediately, or requeue them to run again after other queued jobs.
         </p>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -201,12 +203,12 @@
                       Reset
                     </.link>
                     <.link
-                      href={~p"/diagnostics/cancel_job/#{job.id}"}
+                      href={~p"/diagnostics/requeue_job/#{job.id}"}
                       method="post"
-                      class="theme-danger-text-button hover:underline"
-                      data-confirm="Cancel this job?"
+                      class="text-theme-primary hover:underline"
+                      data-confirm="Requeue this job? It moves to the back of the queue so other jobs can run first."
                     >
-                      Cancel
+                      Requeue
                     </.link>
                   </td>
                 </tr>

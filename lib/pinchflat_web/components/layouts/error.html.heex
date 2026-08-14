@@ -1,0 +1,23 @@
+<%!--
+  Standalone layout for 404/500 error pages. Deliberately minimal: no sidebar,
+  no flash, no LiveView, and no `Settings.get!` calls — the app/root layouts
+  hit the database, so rendering errors through them crashes again whenever
+  the original error was database-related.
+--%>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pinchflat</title>
+    <link rel="stylesheet" href={~p"/assets/app.css"} />
+    <link rel="icon" type="image/x-icon" href={~p"/favicon.ico"} />
+  </head>
+  <body class="theme-app-shell dark bg-theme-bg text-theme-on-surface">
+    <main>
+      <div class="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">
+        {@inner_content}
+      </div>
+    </main>
+  </body>
+</html>

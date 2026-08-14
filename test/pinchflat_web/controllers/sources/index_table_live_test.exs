@@ -2,6 +2,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   use PinchflatWeb.ConnCase
 
   import Phoenix.LiveViewTest
+  import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
 
@@ -32,6 +33,38 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       refute html =~ source.custom_name
+    end
+
+    test "shows the pending count for sources with no downloaded media", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "2"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "0"
+    end
+
+    test "names the collection type of each source", %{conn: conn} do
+      source_fixture(custom_name: "A_Channel", collection_type: "channel")
+      source_fixture(custom_name: "B_Playlist", collection_type: "playlist")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(2)") =~ "Channel"
+      assert cell_text(view, "tbody tr:last-child td:nth-of-type(2)") =~ "Playlist"
+    end
+
+    test "shows pending and downloaded counts for sources with downloaded media", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      media_item_fixture(%{source_id: source.id})
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "1"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
     end
   end
 
@@ -87,6 +120,83 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
+  describe "when sorting by the other columns" do
+    test "sorts by pending count", %{conn: conn} do
+      source1 = source_fixture(custom_name: "Has_Pending")
+      source2 = source_fixture(custom_name: "No_Pending")
+      media_item_fixture(%{source_id: source1.id, media_filepath: nil})
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      click_element(view, "th", "Pending")
+
+      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
+      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+    end
+
+    test "sorts by downloaded count", %{conn: conn} do
+      source1 = source_fixture(custom_name: "Has_Downloads")
+      source2 = source_fixture(custom_name: "No_Downloads")
+      media_item_fixture(%{source_id: source1.id})
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      click_element(view, "th", "Downloaded")
+
+      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
+      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+    end
+
+    test "sorts by media size", %{conn: conn} do
+      source1 = source_fixture(custom_name: "Big_Source")
+      source2 = source_fixture(custom_name: "Small_Source")
+      media_item_fixture(%{source_id: source1.id, media_size_bytes: 2_000})
+      media_item_fixture(%{source_id: source2.id, media_size_bytes: 1_000})
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      # media_item_fixture creates stray zero-size sources, so only the biggest
+      # source has a deterministic position: last when ascending, first when
+      # descending
+      click_element(view, "th", "Size")
+      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+
+      click_element(view, "th", "Size")
+      assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
+    end
+
+    test "sorts by collection type", %{conn: conn} do
+      source1 = source_fixture(custom_name: "Source_A", collection_type: "channel")
+      source2 = source_fixture(custom_name: "Source_B", collection_type: "playlist")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      click_element(view, "th", "Type")
+
+      assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
+      assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
+
+      click_element(view, "th", "Type")
+
+      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
+      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+    end
+
+    test "sorts by media profile name without case sensitivity", %{conn: conn} do
+      profile1 = media_profile_fixture(name: "zebra profile")
+      profile2 = media_profile_fixture(name: "Apple Profile")
+      source1 = source_fixture(custom_name: "Source_Z", media_profile_id: profile1.id)
+      source2 = source_fixture(custom_name: "Source_A", media_profile_id: profile2.id)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      click_element(view, "th", "Media Profile")
+
+      assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
+      assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
+    end
+  end
+
   describe "when testing pagination" do
     test "moving to the next page loads new records", %{conn: conn} do
       source1 = source_fixture(custom_name: "Source_A")
@@ -128,6 +238,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     view
     |> element(selector)
     |> render()
+  end
+
+  defp cell_text(view, selector) do
+    view
+    |> render_element(selector)
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.trim()
   end
 
   defp create_session do

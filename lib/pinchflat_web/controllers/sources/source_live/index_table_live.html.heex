@@ -247,6 +247,10 @@
         </div>
       </:col>
 
+      <:col :let={source} label="Type" sort_key="collection_type">
+        <PinchflatWeb.Sources.SourceHTML.collection_type_badge collection_type={source.collection_type} />
+      </:col>
+
       <:col :let={source} label="Pending" sort_key="pending_count">
         <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
           <.localized_number number={source.pending_count} />

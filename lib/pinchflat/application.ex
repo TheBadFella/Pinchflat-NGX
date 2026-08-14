@@ -30,6 +30,11 @@ defmodule Pinchflat.Application do
       # {Pinchflat.Worker, arg},
       # Start to serve requests, typically the last entry (except for the post-boot tasks)
       PinchflatWeb.Endpoint,
+      # Coalesces job state-change telemetry into throttled "job:state" broadcasts.
+      # Must start after the Endpoint: its flush calls Endpoint.broadcast/3, which
+      # raises if the endpoint isn't running. Casts sent before this child exists
+      # are silently dropped, so no job telemetry can crash the boot sequence.
+      PinchflatWeb.JobStateThrottle,
       Pinchflat.Boot.PostBootStartupTasks
     ]
     |> Supervisor.start_link(strategy: :one_for_one, name: Pinchflat.Supervisor)

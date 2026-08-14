@@ -60,6 +60,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp sort_attr(:media_profile_name), do: dynamic([s, mp], fragment("? COLLATE NOCASE", mp.name))
   defp sort_attr(:custom_name), do: dynamic([s], fragment("? COLLATE NOCASE", s.custom_name))
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
+  defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 
   defp set_sources(%{assigns: assigns} = socket) do
     sources =
@@ -98,7 +99,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       on: d.source_id == s.id,
       left_join: p in subquery(pending_subquery),
       on: p.source_id == s.id,
-      on: d.source_id == s.id,
       where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at),
       preload: [media_profile: mp],
       select: map(s, ^Source.__schema__(:fields)),
