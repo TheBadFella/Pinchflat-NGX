@@ -17,7 +17,6 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Sources
-  alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Reconciliation
   alias Pinchflat.Metadata.NfoBuilder
@@ -25,7 +24,6 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   alias Pinchflat.Reconciliation.ReconcilePlanItem
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Downloading.MediaDownloadWorker
-  alias Pinchflat.Podcasts.PodcastExportWorker
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
   alias Pinchflat.Utils.MapUtils
@@ -463,19 +461,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
     {:ok, _} = Reconciliation.update_plan_item(row, attrs)
   end
 
-  defp kickoff_podcast_exports(rows) do
-    rows
-    |> Enum.map(& &1.source_id)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-    |> Enum.each(fn source_id ->
-      case Repo.get(Source, source_id) do
-        # kickoff no-ops for sources that aren't published as podcasts
-        %Source{} = source -> PodcastExportWorker.kickoff(source)
-        nil -> :ok
-      end
-    end)
-  end
+  defp kickoff_podcast_exports(_rows), do: :ok
 
   defp finalize_plan(plan) do
     failed_count =

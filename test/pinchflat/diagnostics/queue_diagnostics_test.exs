@@ -11,8 +11,6 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
 
-<<<<<<< HEAD
-=======
   describe "queue_names/0" do
     test "returns the queue names from the Oban config" do
       assert :default in QueueDiagnostics.queue_names()
@@ -241,7 +239,6 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
     DateTime.add(DateTime.utc_now(), -hours * 60 * 60, :second)
   end
 
->>>>>>> ee741db (feat: add database insights and safe compaction maintenance to the diagnostics page)
   describe "get_jobs_for_queue/2" do
     test "returns jobs sitting in the given queue" do
       {:ok, job} = Oban.insert(TestJobWorker.new(%{"id" => 42}))

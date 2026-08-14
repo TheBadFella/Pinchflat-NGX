@@ -1,17 +1,17 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex gap-3 items-center">
-    <h2 class="text-title-md2 font-bold text-white ml-4">
+    <h2 class="text-title-md2 font-bold text-theme-on-surface ml-4">
       Reconcile
     </h2>
   </div>
 </div>
 
-<div class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5 mb-6">
-  <h3 class="text-lg font-semibold text-white mb-2">True up files after settings changes</h3>
-  <p class="text-sm text-bodydark mb-4">
+<div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
+  <h3 class="text-lg font-semibold text-theme-on-surface mb-2">True up files after settings changes</h3>
+  <p class="text-sm text-theme-on-surface-muted mb-4">
     Changing an output path template, toggling podcast mode, or changing sidecar/filename settings
     doesn't touch files that are already downloaded. A reconcile run trues them up <strong>without explicitly re-downloading all media</strong>: it moves and renames existing files to match the
-    current settings, rebuilds missing NFO/info.json sidecars from stored metadata, and <span class="text-red-400">deletes sidecar files whose setting is now turned off</span>.
+    current settings, rebuilds missing NFO/info.json sidecars from stored metadata, and <span class="theme-status-error">deletes sidecar files whose setting is now turned off</span>.
     Nothing changes until you review the report below and apply it. YouTube API is not used for any steps.
   </p>
   <.form :let={f} for={%{}} as={:plan} action={~p"/reconciliation"} method="post" class="max-w-2xl">
@@ -24,7 +24,7 @@
           options={mode_options()}
           value="local"
         />
-        <ul class="mt-2 list-disc pl-5 text-sm text-bodydark flex flex-col gap-1.5">
+        <ul class="mt-2 list-disc pl-5 text-sm text-theme-on-surface-muted flex flex-col gap-1.5">
           <li>
             <strong>Local only</strong> — moves and renames existing files and rebuilds NFO/info.json sidecars
             from stored metadata. No network.
@@ -33,7 +33,7 @@
             <strong>Online mode</strong>
             — everything Local does, plus backfills sidecars that were never downloaded (missing
             thumbnails and subtitles) with one yt-dlp fetch per affected video per missing item.
-            <span class="text-red-400">Note:</span>
+            <span class="theme-status-error">Note:</span>
             Subtitles are rarely available and can easily double the time and effort required to
             implement your plan—consider whether they’re truly necessary.
           </li>
@@ -43,8 +43,8 @@
             format no longer matches the profile (an audio-only vs video switch, or a container change
             — e.g. the profile now produces .mkv but the file is .mp4; a video profile with no explicit
             container produces .mp4). Re-downloads run after the reconcile finishes and
-            <span class="text-red-400">do use bandwidth</span>
-            — review the Re-downloads list before applying. <span class="text-red-400">Note:</span>
+            <span class="theme-status-error">do use bandwidth</span>
+            — review the Re-downloads list before applying. <span class="theme-status-error">Note:</span>
             Changes to resolution or embedded features are not detected; the only way to address this is to force a
             <strong>Redownload Everything</strong>
             at the source level.
@@ -60,7 +60,7 @@
         help="Reconcile one source, or everything at once (e.g. after changing a global setting like restricted filenames)."
       />
       <div>
-        <.button color="bg-primary" rounding="rounded-lg">
+        <.button color="theme-primary-button" rounding="rounded-m3-sm">
           <.icon name="hero-magnifying-glass" class="h-4 w-4 mr-1" /> Scan and Build Plan
         </.button>
       </div>
@@ -72,11 +72,11 @@
 
 <div
   :if={@plans != []}
-  class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5 mb-6"
+  class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5"
 >
-  <h3 class="text-lg font-semibold text-white mb-4">Past Runs</h3>
+  <h3 class="text-lg font-semibold text-theme-on-surface mb-4">Past Runs</h3>
   <div class="max-w-full overflow-x-auto">
-    <.table rows={@plans} table_class="text-white">
+    <.table rows={@plans} table_class="text-theme-on-surface">
       <:col :let={plan} label="ID">{plan.id}</:col>
       <:col :let={plan} label="Scope">{plan_scope_name(plan)}</:col>
       <:col :let={plan} label="Mode">{humanize_mode(plan.mode)}</:col>

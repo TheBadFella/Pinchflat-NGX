@@ -68,28 +68,28 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
     ~H"""
     <%= case @job do %>
       <% nil -> %>
-        <span class="text-bodydark">
+        <span class="text-theme-on-surface-muted">
           Never run. Compaction runs monthly on a schedule, or on demand via the Compact Now button.
         </span>
       <% %{state: "completed"} = job -> %>
-        <span class="text-green-400">
+        <span class="theme-status-success">
           Succeeded at {format_datetime(job.completed_at)}, reclaimed {format_bytes(job.meta["reclaimed_bytes"] || 0)}.
         </span>
       <% %{state: state} = job when state in ["retryable", "discarded"] -> %>
-        <span class="text-red-400">
+        <span class="theme-status-error">
           Failed at {format_datetime(job.attempted_at)}: {extract_last_error(job.errors)}
         </span>
-        <span class="text-bodydark">
+        <span class="text-theme-on-surface-muted">
           {if state == "retryable",
             do: "It will be retried automatically — see Failed Jobs below.",
             else: "It has exhausted its retries — see the Discarded tab under Failed Jobs below."}
         </span>
       <% %{state: "executing"} = job -> %>
-        <span class="text-blue-400">
+        <span class="text-theme-primary">
           In progress since {format_datetime(job.attempted_at)} — waiting for running jobs to finish, then compacting.
         </span>
       <% %{state: "cancelled"} = job -> %>
-        <span class="text-bodydark">
+        <span class="text-theme-on-surface-muted">
           Skipped at {format_datetime(job.cancelled_at)} — {extract_last_error(job.errors)}
         </span>
       <% job -> %>

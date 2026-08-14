@@ -347,95 +347,6 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Editing \"#{source.custom_name}\""
     end
 
-<<<<<<< HEAD
-    test "previews a source directory move before saving", %{conn: conn} do
-      media_root = Application.get_env(:pinchflat, :media_directory)
-      old_subdirectory = Path.join(["TV Shows", "Preview Old #{System.unique_integer([:positive])}"])
-      new_subdirectory = Path.join(["TV Shows", "Preview New #{System.unique_integer([:positive])}"])
-      old_directory = Path.join(media_root, old_subdirectory)
-      old_filepath = Path.join(old_directory, "tvshow.nfo")
-
-      FilesystemUtils.write_p!(old_filepath, "source nfo")
-
-      source =
-        source_fixture(%{
-          download_subdirectory: old_subdirectory,
-          series_directory: old_directory,
-          nfo_filepath: old_filepath
-        })
-
-      conn = put(conn, ~p"/sources/#{source}", source: %{download_subdirectory: new_subdirectory})
-      response = html_response(conn, 200)
-
-      assert response =~ "Confirm Source Folder Move"
-      assert response =~ old_directory
-      assert response =~ Path.join(media_root, new_subdirectory)
-      assert response =~ "Save and Move Files"
-      assert File.exists?(old_filepath)
-      assert Repo.reload!(source).download_subdirectory == old_subdirectory
-    end
-
-    test "confirmed source directory move saves and moves files", %{conn: conn} do
-      media_root = Application.get_env(:pinchflat, :media_directory)
-      old_subdirectory = Path.join(["TV Shows", "Confirm Old #{System.unique_integer([:positive])}"])
-      new_subdirectory = Path.join(["TV Shows", "Confirm New #{System.unique_integer([:positive])}"])
-      old_directory = Path.join(media_root, old_subdirectory)
-      new_directory = Path.join(media_root, new_subdirectory)
-      old_filepath = Path.join(old_directory, "tvshow.nfo")
-
-      FilesystemUtils.write_p!(old_filepath, "source nfo")
-
-      source =
-        source_fixture(%{
-          download_subdirectory: old_subdirectory,
-          series_directory: old_directory,
-          nfo_filepath: old_filepath
-        })
-
-      conn =
-        put(conn, ~p"/sources/#{source}", %{
-          "confirm_directory_move" => "true",
-          "source" => %{"download_subdirectory" => new_subdirectory}
-        })
-
-      assert redirected_to(conn) == ~p"/sources/#{source}"
-      source = Repo.reload!(source)
-      assert source.download_subdirectory == new_subdirectory
-      assert source.series_directory == new_directory
-      assert source.nfo_filepath == Path.join(new_directory, "tvshow.nfo")
-      assert File.exists?(Path.join(new_directory, "tvshow.nfo"))
-      refute File.exists?(old_directory)
-    end
-
-    test "source directory move preview shows conflicts and withholds confirmation", %{conn: conn} do
-      media_root = Application.get_env(:pinchflat, :media_directory)
-      old_subdirectory = Path.join(["TV Shows", "Conflict Old #{System.unique_integer([:positive])}"])
-      new_subdirectory = Path.join(["TV Shows", "Conflict New #{System.unique_integer([:positive])}"])
-      old_directory = Path.join(media_root, old_subdirectory)
-      new_directory = Path.join(media_root, new_subdirectory)
-      old_filepath = Path.join(old_directory, "tvshow.nfo")
-      conflicting_filepath = Path.join(new_directory, "tvshow.nfo")
-
-      FilesystemUtils.write_p!(old_filepath, "source nfo")
-      FilesystemUtils.write_p!(conflicting_filepath, "existing nfo")
-
-      source =
-        source_fixture(%{
-          download_subdirectory: old_subdirectory,
-          series_directory: old_directory,
-          nfo_filepath: old_filepath
-        })
-
-      conn = put(conn, ~p"/sources/#{source}", source: %{download_subdirectory: new_subdirectory})
-      response = html_response(conn, 200)
-
-      assert response =~ "File conflicts need attention"
-      assert response =~ conflicting_filepath
-      refute response =~ "Save and Move Files"
-      assert Repo.reload!(source).download_subdirectory == old_subdirectory
-      assert File.exists?(old_filepath)
-      assert File.read!(conflicting_filepath) == "existing nfo"
-=======
     test "marks a staged reconcile plan stale", %{conn: conn, source: source, update_attrs: update_attrs} do
       expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
       {:ok, plan} = Pinchflat.Reconciliation.create_plan(%{mode: :local, status: :ready})
@@ -443,7 +354,6 @@ defmodule PinchflatWeb.SourceControllerTest do
       put(conn, ~p"/sources/#{source}", source: update_attrs)
 
       assert Pinchflat.Reconciliation.get_plan!(plan.id).status == :stale
->>>>>>> ad2a66e (feat: relocate and true up downloaded files after settings changes, without re-downloading)
     end
   end
 

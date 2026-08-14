@@ -28,7 +28,6 @@
       <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
         <.icon name="hero-arrow-left" class="fill-current" />
       </button>
-<<<<<<< HEAD
       <button
         type="button"
         class="theme-outline-button hidden p-1.5 text-theme-on-surface lg:block"
@@ -42,31 +41,6 @@
           x-bind:class="sidebarCollapsed ? 'rotate-180' : ''"
         />
       </button>
-=======
-    </div>
-    <div class="no-scrollbar flex flex-col overflow-y-auto duration-300 ease-linear">
-      <nav class="mt-3 px-4 py-4 lg:px-6">
-        <h3 class="mb-4 ml-4 text-sm font-medium text-bodydark2">
-          <span>MENU</span>
-        </h3>
-        <div class="flex flex-col justify-between">
-          <ul class="mb-6 flex flex-col gap-1.5">
-            <.sidebar_item icon="hero-home" text="Home" href={~p"/"} />
-            <.sidebar_item icon="hero-tv" text="Sources" href={~p"/sources"} />
-            <.sidebar_item icon="hero-adjustments-vertical" text="Media Profiles" href={~p"/media_profiles"} />
-            <.sidebar_submenu
-              icon="hero-cog-6-tooth"
-              text="Tools"
-              current_path={Phoenix.Controller.current_path(@conn)}
-            >
-              <:submenu text="Settings" href={~p"/settings"} />
-              <:submenu text="Reconcile" href={~p"/reconciliation"} />
-              <:submenu text="Diagnostics" href={~p"/diagnostics"} />
-            </.sidebar_submenu>
-          </ul>
-        </div>
-      </nav>
->>>>>>> ad2a66e (feat: relocate and true up downloaded files after settings changes, without re-downloading)
     </div>
   </section>
 
@@ -98,7 +72,7 @@
             current_path={current_path}
           >
             <:submenu text="Settings" href={~p"/settings"} />
-            <:submenu text="File Reconciliation" href={~p"/settings/reconciliation"} />
+            <:submenu text="File Reconciliation" href={~p"/reconciliation"} />
             <:submenu text="Diagnostics" href={~p"/diagnostics"} />
           </.sidebar_submenu>
         </ul>

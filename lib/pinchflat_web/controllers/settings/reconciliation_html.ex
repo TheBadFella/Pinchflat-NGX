@@ -18,10 +18,10 @@ defmodule PinchflatWeb.Settings.ReconciliationHTML do
   def plan_scope_name(%{source: %{custom_name: name}}) when is_binary(name), do: name
   def plan_scope_name(_plan), do: "All sources"
 
-  def plan_status_class(:ready), do: "text-blue-400"
-  def plan_status_class(:applied), do: "text-green-400"
-  def plan_status_class(:failed), do: "text-red-400"
-  def plan_status_class(_status), do: "text-bodydark"
+  def plan_status_class(:ready), do: "text-theme-primary"
+  def plan_status_class(:applied), do: "theme-status-success"
+  def plan_status_class(:failed), do: "theme-status-error"
+  def plan_status_class(_status), do: "text-theme-on-surface-muted"
 
   def humanize_mode(:local), do: "Local only"
   def humanize_mode(:online), do: "Online mode"

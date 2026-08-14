@@ -191,32 +191,11 @@ defmodule PinchflatWeb.Sources.SourceController do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)
 
-<<<<<<< HEAD
     render(
       conn,
       :edit,
       Keyword.merge(
         [
-=======
-    render(conn, :edit, source: source, changeset: changeset, media_profiles: media_profiles())
-  end
-
-  def update(conn, %{"id" => id, "source" => source_params}) do
-    source = Sources.get_source!(id)
-
-    case Sources.update_source(source, source_params) do
-      {:ok, source} ->
-        # Source changes (e.g. an output-path override) can alter predicted paths,
-        # invalidating any staged reconcile plan
-        Reconciliation.mark_ready_plans_stale()
-
-        conn
-        |> put_flash(:info, "Source updated successfully.")
-        |> redirect(to: ~p"/sources/#{source}")
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :edit,
->>>>>>> ad2a66e (feat: relocate and true up downloaded files after settings changes, without re-downloading)
           source: source,
           changeset: changeset,
           media_profiles: media_profiles(),
@@ -495,6 +474,8 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp do_update(conn, source, source_params) do
     case Sources.update_source(source, source_params) do
       {:ok, source} ->
+        Reconciliation.mark_ready_plans_stale()
+
         case get_format(conn) do
           "json" ->
             source = Sources.preload_api_assocs(source)

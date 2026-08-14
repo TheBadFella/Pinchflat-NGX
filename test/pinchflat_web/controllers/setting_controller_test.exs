@@ -86,7 +86,6 @@ defmodule PinchflatWeb.SettingControllerTest do
 
       assert redirected_to(conn) == ~p"/settings"
       assert conn.assigns[:flash]["error"] == "No cookies file has been uploaded"
->>>>>>> ad2a66e (feat: relocate and true up downloaded files after settings changes, without re-downloading)
     end
   end
 

@@ -15,9 +15,9 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
 
   def render(%{plan: nil} = assigns) do
     ~H"""
-    <div class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5 mb-6">
-      <h3 class="text-lg font-semibold text-white mb-2">Latest Run</h3>
-      <p class="text-bodydark text-sm">
+    <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
+      <h3 class="text-lg font-semibold text-theme-on-surface mb-2">Latest Run</h3>
+      <p class="text-theme-on-surface-muted text-sm">
         No reconcile runs yet — scan and build a plan above to see what would change.
       </p>
     </div>
@@ -26,10 +26,11 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
 
   def render(assigns) do
     ~H"""
-    <div class="rounded-sm border border-stroke bg-white px-5 py-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5 mb-6">
+    <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
       <div class="flex justify-between items-center mb-2 flex-wrap gap-3">
-        <h3 class="text-lg font-semibold text-white">
-          Latest Run — {scope_name(@plan)} <span class="text-bodydark text-sm">({humanize_mode(@plan.mode)})</span>
+        <h3 class="text-lg font-semibold text-theme-on-surface">
+          Latest Run — {scope_name(@plan)}
+          <span class="text-theme-on-surface-muted text-sm">({humanize_mode(@plan.mode)})</span>
         </h3>
         <div class="flex items-center gap-3">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload" tooltip="Refresh" />
@@ -39,7 +40,7 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
             method="post"
             data-confirm={apply_confirmation(@plan)}
           >
-            <.button color="bg-primary" rounding="rounded-lg">
+            <.button color="theme-primary-button" rounding="rounded-m3-sm">
               <.icon name="hero-play" class="h-4 w-4 mr-1" /> Apply This Plan
             </.button>
           </.link>
@@ -47,52 +48,52 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
       </div>
 
       <p class="text-sm mb-4">
-        <span class="text-bodydark">Status:</span>
+        <span class="text-theme-on-surface-muted">Status:</span>
         <span class={status_class(@plan.status)}>{status_line(@plan)}</span>
       </p>
 
       <div :if={@plan.status == :applying && @progress.total > 0} class="mb-4">
         <div class="flex justify-between text-sm mb-1">
-          <span class="text-bodydark">Progress</span>
-          <span class="text-white font-medium">
+          <span class="text-theme-on-surface-muted">Progress</span>
+          <span class="text-theme-on-surface font-medium">
             {@progress.processed} of {@progress.total} finished ({@progress.percent}%)
           </span>
         </div>
-        <div class="w-full bg-meta-4 rounded-full h-2.5">
-          <div class="bg-primary h-2.5 rounded-full transition-all" style={"width: #{@progress.percent}%"}></div>
+        <div class="w-full bg-theme-surface-4 rounded-full h-2.5">
+          <div class="bg-theme-primary h-2.5 rounded-full transition-all" style={"width: #{@progress.percent}%"}></div>
         </div>
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
-        <div class="bg-meta-4 rounded-lg p-4">
-          <p class="text-sm text-bodydark">Moves</p>
-          <p class="text-2xl font-bold text-white">{@plan.move_count}</p>
+        <div class="theme-surface-accent p-4">
+          <p class="text-sm text-theme-on-surface-muted">Moves</p>
+          <p class="text-2xl font-bold text-theme-on-surface">{@plan.move_count}</p>
         </div>
-        <div class="bg-meta-4 rounded-lg p-4">
-          <p class="text-sm text-bodydark">Backfills</p>
-          <p class="text-2xl font-bold text-white">{@plan.backfill_count}</p>
+        <div class="theme-surface-accent p-4">
+          <p class="text-sm text-theme-on-surface-muted">Backfills</p>
+          <p class="text-2xl font-bold text-theme-on-surface">{@plan.backfill_count}</p>
         </div>
-        <div class="bg-meta-4 rounded-lg p-4">
-          <p class="text-sm text-bodydark">Deletions</p>
-          <p class={"text-2xl font-bold #{if @plan.delete_count > 0, do: "text-red-400", else: "text-white"}"}>
+        <div class="theme-surface-accent p-4">
+          <p class="text-sm text-theme-on-surface-muted">Deletions</p>
+          <p class={"text-2xl font-bold #{if @plan.delete_count > 0, do: "theme-status-error", else: "text-theme-on-surface"}"}>
             {@plan.delete_count}
           </p>
-          <p :if={@plan.delete_count > 0} class="text-xs text-red-400 mt-1">Files will be permanently deleted</p>
+          <p :if={@plan.delete_count > 0} class="text-xs theme-status-error mt-1">Files will be permanently deleted</p>
         </div>
-        <div class="bg-meta-4 rounded-lg p-4">
-          <p class="text-sm text-bodydark">Re-downloads</p>
-          <p class={"text-2xl font-bold #{if @plan.redownload_count > 0, do: "text-yellow-500", else: "text-white"}"}>
+        <div class="theme-surface-accent p-4">
+          <p class="text-sm text-theme-on-surface-muted">Re-downloads</p>
+          <p class={"text-2xl font-bold #{if @plan.redownload_count > 0, do: "theme-status-warning", else: "text-theme-on-surface"}"}>
             {@plan.redownload_count}
           </p>
-          <p :if={@plan.redownload_count > 0} class="text-xs text-yellow-500 mt-1">Uses bandwidth</p>
+          <p :if={@plan.redownload_count > 0} class="text-xs theme-status-warning mt-1">Uses bandwidth</p>
         </div>
-        <div class="bg-meta-4 rounded-lg p-4">
-          <p class="text-sm text-bodydark">Skipped</p>
-          <p class="text-2xl font-bold text-white">{@plan.skip_count}</p>
+        <div class="theme-surface-accent p-4">
+          <p class="text-sm text-theme-on-surface-muted">Skipped</p>
+          <p class="text-2xl font-bold text-theme-on-surface">{@plan.skip_count}</p>
         </div>
-        <div class="bg-meta-4 rounded-lg p-4">
-          <p class="text-sm text-bodydark">Collisions</p>
-          <p class={"text-2xl font-bold #{if @plan.collision_count > 0, do: "text-yellow-500", else: "text-white"}"}>
+        <div class="theme-surface-accent p-4">
+          <p class="text-sm text-theme-on-surface-muted">Collisions</p>
+          <p class={"text-2xl font-bold #{if @plan.collision_count > 0, do: "theme-status-warning", else: "text-theme-on-surface"}"}>
             {@plan.collision_count}
           </p>
         </div>
@@ -106,8 +107,8 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
           class={[
             "px-3 py-1 rounded-full text-sm border",
             if(@filter == filter,
-              do: "bg-primary text-white border-primary",
-              else: "text-bodydark border-strokedark hover:border-primary"
+              do: "bg-theme-primary text-theme-on-primary border-theme-primary",
+              else: "text-theme-on-surface-muted border-theme-outline hover:border-theme-primary"
             )
           ]}
         >
@@ -115,10 +116,10 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
         </button>
       </div>
 
-      <p :if={@records == []} class="text-bodydark text-sm">Nothing here for this filter.</p>
+      <p :if={@records == []} class="text-theme-on-surface-muted text-sm">Nothing here for this filter.</p>
 
       <div :if={@records != []} class="max-w-full overflow-x-auto">
-        <.table rows={@records} table_class="text-white text-sm">
+        <.table rows={@records} table_class="text-theme-on-surface text-sm">
           <:col :let={item} label="Action">
             <span class={action_class(item.action)}>{item.action}</span>
           </:col>
@@ -131,7 +132,7 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
           </:col>
           <:col :let={item} label="Status">{item.status}</:col>
           <:col :let={item} label="Detail" class="max-w-xs">
-            <span class="text-xs text-bodydark">{item.detail}</span>
+            <span class="text-xs text-theme-on-surface-muted">{item.detail}</span>
           </:col>
         </.table>
       </div>
@@ -280,15 +281,15 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
   defp status_line(%{status: :failed} = plan), do: "Failed: #{plan.error_message}"
   defp status_line(%{status: :stale}), do: "Stale — superseded by a newer run or a settings change"
 
-  defp status_class(:ready), do: "text-blue-400"
-  defp status_class(:applied), do: "text-green-400"
-  defp status_class(:failed), do: "text-red-400"
-  defp status_class(_status), do: "text-bodydark"
+  defp status_class(:ready), do: "text-theme-primary"
+  defp status_class(:applied), do: "theme-status-success"
+  defp status_class(:failed), do: "theme-status-error"
+  defp status_class(_status), do: "text-theme-on-surface-muted"
 
-  defp action_class(:move), do: "text-blue-400"
-  defp action_class(:backfill), do: "text-green-400"
-  defp action_class(:delete), do: "text-red-400"
-  defp action_class(:redownload), do: "text-yellow-500"
-  defp action_class(:collision), do: "text-yellow-500"
-  defp action_class(_action), do: "text-bodydark"
+  defp action_class(:move), do: "text-theme-primary"
+  defp action_class(:backfill), do: "theme-status-success"
+  defp action_class(:delete), do: "theme-status-error"
+  defp action_class(:redownload), do: "theme-status-warning"
+  defp action_class(:collision), do: "theme-status-warning"
+  defp action_class(_action), do: "text-theme-on-surface-muted"
 end

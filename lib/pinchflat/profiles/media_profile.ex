@@ -96,6 +96,13 @@ defmodule Pinchflat.Profiles.MediaProfile do
   end
 
   @doc """
+  Returns true if the media profile is configured for audio-only / podcast downloads.
+  """
+  def podcast?(%MediaProfile{preferred_resolution: :audio}), do: true
+  def podcast?(%MediaProfile{}), do: false
+  def podcast?(_), do: false
+
+  @doc """
   Returns the list of SponsorBlock category identifiers a profile can act on.
 
   Returns [binary()]
