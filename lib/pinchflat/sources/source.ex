@@ -196,10 +196,10 @@ defmodule Pinchflat.Sources.Source do
 
   def supported_youtube_url?(url) when is_binary(url) do
     supported_patterns = [
-      ~r<^https?://(?:www\.)?youtube\.com/channel/[^/?#]+(?:/(?:featured|videos))?$>,
-      ~r<^https?://(?:www\.)?youtube\.com/@[^/?#]+(?:/(?:featured|videos))?$>,
-      ~r<^https?://(?:www\.)?youtube\.com/c/[^/?#]+(?:/(?:featured|videos))?$>,
-      ~r<^https?://(?:www\.)?youtube\.com/user/[^/?#]+(?:/(?:featured|videos))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/channel/[^/?#]+(?:/(?:featured|videos|shorts|streams|live))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/@[^/?#]+(?:/(?:featured|videos|shorts|streams|live))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/c/[^/?#]+(?:/(?:featured|videos|shorts|streams|live))?$>,
+      ~r<^https?://(?:www\.)?youtube\.com/user/[^/?#]+(?:/(?:featured|videos|shorts|streams|live))?$>,
       ~r<^https?://(?:www\.)?youtube\.com/playlist\?list=[^&]+>
     ]
 

@@ -55,7 +55,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       source = source_fixture()
 
-      assert {:error, %Jason.DecodeError{data: ""}} =
+      assert {:error, :source_metadata_fetch_failed} =
                perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
   end
