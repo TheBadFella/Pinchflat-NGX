@@ -2,6 +2,7 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
   use PinchflatWeb.ConnCase
 
   alias Pinchflat.Repo
+  import Ecto.Query
   import Pinchflat.MediaFixtures
   import Pinchflat.Downloading.MediaDownloadWorker
 
