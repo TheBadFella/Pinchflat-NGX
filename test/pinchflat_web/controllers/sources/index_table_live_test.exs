@@ -2,6 +2,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   use PinchflatWeb.ConnCase
 
   import Phoenix.LiveViewTest
+  import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
 
@@ -33,6 +34,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       refute html =~ source.custom_name
     end
+
     test "shows the pending count for sources with no downloaded media", %{conn: conn} do
       source = source_fixture()
       media_item_fixture(%{source_id: source.id, media_filepath: nil})
@@ -236,6 +238,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     view
     |> element(selector)
     |> render()
+  end
+
+  defp cell_text(view, selector) do
+    view
+    |> render_element(selector)
+    |> LazyHTML.raw()
+    |> Floki.text()
+    |> String.trim()
   end
 
   defp create_session do
