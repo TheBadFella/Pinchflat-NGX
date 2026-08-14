@@ -945,6 +945,46 @@ defmodule Pinchflat.SourcesTest do
       assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
       refute_enqueued(worker: MediaCollectionIndexingWorker)
     end
+
+    test "widening the index cutoff further into the past forces a re-index" do
+      source = source_fixture(index_cutoff_date: ~D[2026-06-01])
+      update_attrs = %{index_cutoff_date: ~D[2026-01-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      assert_enqueued(worker: MediaCollectionIndexingWorker, args: %{"id" => source.id, "force" => true})
+    end
+
+    test "removing the index cutoff entirely forces a re-index" do
+      source = source_fixture(index_cutoff_date: ~D[2026-06-01])
+      update_attrs = %{index_cutoff_date: nil}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      assert_enqueued(worker: MediaCollectionIndexingWorker, args: %{"id" => source.id, "force" => true})
+    end
+
+    test "narrowing the index cutoff closer to the present will not re-index" do
+      source = source_fixture(index_cutoff_date: ~D[2026-01-01])
+      update_attrs = %{index_cutoff_date: ~D[2026-06-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      refute_enqueued(worker: MediaCollectionIndexingWorker)
+    end
+
+    test "adding a cutoff to a previously unbounded source will not re-index" do
+      source = source_fixture(index_cutoff_date: nil)
+      update_attrs = %{index_cutoff_date: ~D[2026-06-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      refute_enqueued(worker: MediaCollectionIndexingWorker)
+    end
+
+    test "widening the index cutoff will not re-index a disabled source" do
+      source = source_fixture(enabled: false, index_cutoff_date: ~D[2026-06-01])
+      update_attrs = %{index_cutoff_date: ~D[2026-01-01]}
+
+      assert {:ok, %Source{}} = Sources.update_source(source, update_attrs)
+      refute_enqueued(worker: MediaCollectionIndexingWorker)
+    end
   end
 
   describe "update_source/3 when testing fast indexing" do
@@ -1246,6 +1286,44 @@ defmodule Pinchflat.SourcesTest do
 
       assert %{errors: [_]} = Sources.change_source(source, %{min_duration_seconds: 200, max_duration_seconds: 100})
       assert %{errors: [_]} = Sources.change_source(source, %{min_duration_seconds: 100, max_duration_seconds: 100})
+    end
+  end
+
+  describe "change_source/3 when testing index cutoff date validation" do
+    test "succeeds if either cutoff date is nil" do
+      source = source_fixture()
+
+      assert %{errors: []} = Sources.change_source(source, %{index_cutoff_date: nil, download_cutoff_date: nil})
+      assert %{errors: []} = Sources.change_source(source, %{index_cutoff_date: ~D[2026-07-01]})
+      assert %{errors: []} = Sources.change_source(source, %{download_cutoff_date: ~D[2026-07-01]})
+    end
+
+    test "succeeds if the index cutoff is on or before the download cutoff" do
+      source = source_fixture()
+
+      assert %{errors: []} =
+               Sources.change_source(source, %{
+                 index_cutoff_date: ~D[2026-06-24],
+                 download_cutoff_date: ~D[2026-07-01]
+               })
+
+      assert %{errors: []} =
+               Sources.change_source(source, %{
+                 index_cutoff_date: ~D[2026-07-01],
+                 download_cutoff_date: ~D[2026-07-01]
+               })
+    end
+
+    test "fails if the index cutoff is after the download cutoff" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{
+          index_cutoff_date: ~D[2026-07-15],
+          download_cutoff_date: ~D[2026-07-01]
+        })
+
+      assert "must be on or before the download cutoff date" in errors_on(changeset).index_cutoff_date
     end
   end
 

@@ -8,6 +8,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
 
   alias Pinchflat.Sources.Source
   alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.YtDlp.ResponseDecoder
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
   @doc """
@@ -20,6 +21,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
       file that will be written to when yt-dlp is done. This is useful for
       setting up a file watcher to know when the file is ready to be read.
     - :use_cookies - whether or not to use user-provided cookies when fetching the media details
+    - :expected_exit_codes - passed through to the runner; non-zero exit codes the
+      caller treats as a normal outcome (logged at debug instead of error)
 
   Returns {:ok, [map()]} | {:error, any, ...}.
   """
@@ -32,7 +35,11 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     output_template = YtDlpMedia.indexing_output_template()
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     file_listener_handler = Keyword.get(addl_opts, :file_listener_handler, false)
-    runner_opts = [output_filepath: output_filepath, use_cookies: use_cookies]
+
+    runner_opts =
+      [output_filepath: output_filepath, use_cookies: use_cookies] ++
+        Keyword.take(addl_opts, [:expected_exit_codes])
+
     action = :get_media_attributes_for_collection
 
     if file_listener_handler do
@@ -94,11 +101,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     action = :get_source_details
 
     with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
-         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
+         {:ok, parsed_json} <- ResponseDecoder.decode(output, action) do
       {:ok, format_source_details(parsed_json)}
-    else
-      {:error, %Jason.DecodeError{}} -> {:error, "Error decoding JSON response"}
-      err -> err
     end
   end
 
@@ -154,11 +158,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     output_template = "playlist:%()j"
     action = :get_source_metadata
 
-    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
-         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
-      {:ok, parsed_json}
-    else
-      err -> err
+    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts) do
+      ResponseDecoder.decode(output, action)
     end
   end
 

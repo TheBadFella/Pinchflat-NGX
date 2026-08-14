@@ -8,7 +8,21 @@
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
-  <section x-data="{ mediaProfileId: null }">
+  <section x-data={
+    """
+    {
+      mediaProfileId: null,
+      sourceUrl: '',
+      cutoffDate: '#{f[:download_cutoff_date].value}',
+      indexCutoffDate: '#{f[:index_cutoff_date].value}',
+      isPlaylist: #{Ecto.Changeset.get_field(@changeset, :collection_type) == :playlist},
+      get looksLikePlaylist() { return this.isPlaylist || /[?&]list=|\\/playlist/.test(this.sourceUrl) },
+      get indexCutoffAfterDownloadCutoff() {
+        return !!(this.indexCutoffDate && this.cutoffDate && this.indexCutoffDate > this.cutoffDate)
+      }
+    }
+    """
+  }>
     <section class="flex justify-between items-center mt-4">
       <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
@@ -43,6 +57,7 @@
       label="Source URL"
       help="URL of a channel, playlist, or single video (required). Single video sources are indexed once and fast indexing is disabled automatically"
       x-init="$el.focus()"
+      x-model.fill="sourceUrl"
     />
     <.input
       field={f[:custom_name]}
@@ -86,7 +101,32 @@
       </div>
     </section>
 
-    <h3 class="mt-8 text-2xl text-theme-on-surface">Downloading Options</h3>
+    <.input
+      field={f[:index_cutoff_date]}
+      type="text"
+      label="Indexing Cutoff Date"
+      placeholder="YYYY-MM-DD"
+      maxlength="10"
+      pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
+      title="YYYY-MM-DD"
+      help="Stop indexing a channel once it reaches videos uploaded before this date — big time-saver for channels with a large back catalog. Set it a few days <em>before</em> the Download Cutoff Date for safety. Only applies to YouTube channels; ignored for playlists. A few videos from before this date may still be indexed (but not downloaded) — especially on channels with few videos or when Fast Indexing is enabled, since those checks look at the most recent videos regardless of date. Leave blank to index everything"
+      html_help={true}
+      x-model="indexCutoffDate"
+      x-bind:disabled="looksLikePlaylist"
+    />
+    <p x-cloak x-show="looksLikePlaylist" class="mt-1 text-sm text-theme-warning">
+      The Indexing Cutoff Date doesn't apply to playlists — they aren't ordered by upload date, so
+      indexing can't safely stop early.
+    </p>
+    <p x-cloak x-show="indexCutoffAfterDownloadCutoff" class="mt-1 text-sm text-theme-warning">
+      The Indexing Cutoff Date is after the Download Cutoff Date — media between the two dates would
+      never be indexed, so it could never be downloaded. Set it on or before the Download Cutoff
+      Date.
+    </p>
+
+    <h3 class="mt-8 text-2xl text-theme-on-surface">
+      Downloading Options
+    </h3>
 
     <.input
       field={f[:download_media]}
@@ -193,7 +233,7 @@
       />
     </section>
 
-    <section x-data={"{ cutoffDate: '#{f[:download_cutoff_date].value}' }"}>
+    <section>
       <.input
         field={f[:download_cutoff_date]}
         type="text"

@@ -35,15 +35,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
     ]
   end
 
-  def friendly_sponsorblock_options do
-    [
-      {"Disabled (default)", "disabled"},
-      {"Mark Segments as Chapters", "mark"},
-      {"Remove Segments", "remove"}
-    ]
-  end
-
-  def frieldly_sponsorblock_categories do
+  def friendly_sponsorblock_categories do
     [
       {"Sponsor", "sponsor"},
       {"Intro/Intermission", "intro"},
@@ -52,7 +44,8 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
       {"Preview/Recap", "preview"},
       {"Filler Tangent", "filler"},
       {"Interaction Reminder", "interaction"},
-      {"Non-music Section", "music_offtopic"}
+      {"Non-music Section", "music_offtopic"},
+      {"Hook/Greetings", "hook"}
     ]
   end
 

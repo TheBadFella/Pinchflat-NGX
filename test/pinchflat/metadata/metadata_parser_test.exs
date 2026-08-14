@@ -109,9 +109,6 @@ defmodule Pinchflat.Metadata.MetadataParserTest do
         metadata["thumbnails"]
         |> Enum.reverse()
         |> Enum.find_value(fn attrs -> attrs["filepath"] end)
-        |> String.split(~r{\.}, include_captures: true)
-        |> List.insert_at(-3, "-thumb")
-        |> Enum.join()
 
       :ok = File.cp(thumbnail_filepath_fixture(), thumbnail_filepath)
 
@@ -124,15 +121,6 @@ defmodule Pinchflat.Metadata.MetadataParserTest do
       result = Parser.parse_for_media_item(metadata)
 
       assert String.ends_with?(result.thumbnail_filepath, ".webp")
-    end
-
-    # NOTE: this can be removed once this bug is fixed
-    # https://github.com/yt-dlp/yt-dlp/issues/9445
-    # and the associated conditional in the parser is removed
-    test "automatically appends `-thumb` to the thumbnail filename", %{metadata: metadata} do
-      result = Parser.parse_for_media_item(metadata)
-
-      assert String.contains?(result.thumbnail_filepath, "-thumb.webp")
     end
 
     test "doesn't include thumbnail if the file doesn't exist on-disk", %{metadata: metadata, filepath: filepath} do

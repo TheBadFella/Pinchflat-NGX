@@ -794,6 +794,21 @@ defmodule Pinchflat.Sources do
     applied_changes = Ecto.Changeset.apply_changes(changeset)
 
     case {current_changes, applied_changes} do
+      # Widening the index cutoff further into the past means videos that were
+      # previously out of range are now in range, so we need to re-crawl. This
+      # must be a *forced* index: a normal scheduled index builds a
+      # `--break-on-existing` download archive that would halt at the first known
+      # video and never reach the newly-in-range older ones (see
+      # `SlowIndexingHelpers.build_download_archive_options/3`). Narrowing the
+      # cutoff needs no action since those items are already indexed.
+      {%{index_cutoff_date: _}, %{enabled: true, index_frequency_minutes: mins}}
+      when mins > 0 ->
+        if index_cutoff_widened?(changeset) do
+          SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
+        else
+          :ok
+        end
+
       {%{index_frequency_minutes: mins}, %{enabled: true}} when mins > 0 ->
         SlowIndexingHelpers.kickoff_indexing_task(source)
 
@@ -808,6 +823,21 @@ defmodule Pinchflat.Sources do
 
       _ ->
         :ok
+    end
+  end
+
+  # A cutoff is "widened" when the new date reaches further into the past than
+  # the old one (or is removed entirely, making indexing unbounded). Removing a
+  # cutoff (-> nil) always widens; adding one to a previously unbounded source
+  # (nil -> date) only narrows and needs no re-index.
+  defp index_cutoff_widened?(changeset) do
+    old_cutoff = changeset.data.index_cutoff_date
+    new_cutoff = Ecto.Changeset.get_field(changeset, :index_cutoff_date)
+
+    case {old_cutoff, new_cutoff} do
+      {_, nil} -> not is_nil(old_cutoff)
+      {nil, _} -> false
+      {old, new} -> Date.compare(new, old) == :lt
     end
   end
 

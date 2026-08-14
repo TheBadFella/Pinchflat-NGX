@@ -56,3 +56,8 @@ build.log
 /.codex-local-build-pr/
 /.gitattributes
 /.ai/mcp/mcp.json
+
+# SQLean SQLite extensions — fetched by tooling/fetch-sqlean.sh (pinned version),
+# not committed. Loaded at runtime via config/runtime.exs.
+/priv/repo/extensions/sqlean-linux-x86/
+/priv/repo/extensions/sqlean-linux-arm/

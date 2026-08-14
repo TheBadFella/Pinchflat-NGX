@@ -56,6 +56,14 @@ defmodule Pinchflat.YtDlp.MediaTest do
 
       assert {:error, "something"} = Media.download(@media_url)
     end
+
+    test "returns an error if the output is not JSON" do
+      expect(YtDlpRunnerMock, :run, fn _url, :download, _opt, _ot, _addl ->
+        {:ok, "Not JSON"}
+      end)
+
+      assert {:error, "Error decoding JSON response"} = Media.download(@media_url)
+    end
   end
 
   describe "get_downloadable_status/1" do
@@ -123,6 +131,14 @@ defmodule Pinchflat.YtDlp.MediaTest do
       end)
 
       assert {:ok, :downloadable} = Media.get_downloadable_status(@media_url, addl_arg: true)
+    end
+
+    test "returns an error (instead of raising) if the output is not JSON" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_downloadable_status, _opts, _ot, _addl ->
+        {:ok, ""}
+      end)
+
+      assert {:error, "Error decoding JSON response"} = Media.get_downloadable_status(@media_url)
     end
   end
 
@@ -210,6 +226,12 @@ defmodule Pinchflat.YtDlp.MediaTest do
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl -> {:error, "Big issue", 1} end)
 
       assert {:error, "Big issue", 1} = Media.get_media_attributes(@media_url)
+    end
+
+    test "returns an error (instead of raising) if the output is not JSON" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl -> {:ok, ""} end)
+
+      assert {:error, "Error decoding JSON response"} = Media.get_media_attributes(@media_url)
     end
   end
 

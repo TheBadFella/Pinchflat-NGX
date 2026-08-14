@@ -240,7 +240,8 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
     test "returns an error if the output is not JSON" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_metadata, _opts, _ot, _addl_opts -> {:ok, "Not JSON"} end)
 
-      assert {:error, %Jason.DecodeError{}} = MediaCollection.get_source_metadata(@channel_url, playlist_items: 0)
+      assert {:error, "Error decoding JSON response"} =
+               MediaCollection.get_source_metadata(@channel_url, playlist_items: 0)
     end
   end
 end

@@ -450,9 +450,6 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
             metadata["thumbnails"]
             |> Enum.reverse()
             |> Enum.find_value(fn attrs -> attrs["filepath"] end)
-            |> String.split(~r{\.}, include_captures: true)
-            |> List.insert_at(-3, "-thumb")
-            |> Enum.join()
 
           :ok = File.cp(thumbnail_filepath_fixture(), thumbnail_filepath)
 

@@ -166,15 +166,15 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert :write_thumbnail in res
     end
 
-    test "appends -thumb to the thumbnail name when download_thumbnail is true", %{media_item: media_item} do
+    test "matches the thumbnail name to the media name when download_thumbnail is true", %{media_item: media_item} do
       media_item = update_media_profile_attribute(media_item, %{download_thumbnail: true})
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
-      assert {:output, "thumbnail:/tmp/test/media/%(title)S-thumb.%(ext)s"} in res
+      assert {:output, "thumbnail:/tmp/test/media/%(title)S.%(ext)s"} in res
     end
 
-    test "appends -thumb to source's output path override, if present", %{media_item: media_item} do
+    test "matches the thumbnail name to the source's output path override, if present", %{media_item: media_item} do
       media_item = update_media_profile_attribute(media_item, %{download_thumbnail: true})
       {:ok, _} = Sources.update_source(media_item.source, %{output_path_template_override: "override.%(ext)s"})
 
@@ -185,7 +185,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
-      assert {:output, "thumbnail:/tmp/test/media/override-thumb.%(ext)s"} in res
+      assert {:output, "thumbnail:/tmp/test/media/override.%(ext)s"} in res
     end
 
     test "converts thumbnail to jpg when download_thumbnail is true", %{media_item: media_item} do
@@ -278,45 +278,46 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
     test "includes :sponsorblock_remove option when specified", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{
-          sponsorblock_behaviour: :remove,
-          sponsorblock_categories: ["sponsor", "intro"]
+          sponsorblock_remove_categories: ["sponsor", "intro"]
         })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
       assert {:sponsorblock_remove, "sponsor,intro"} in res
+      refute Keyword.has_key?(res, :sponsorblock_mark)
     end
 
     test "includes :sponsorblock_mark option when specified", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{
-          sponsorblock_behaviour: :mark,
-          sponsorblock_categories: ["sponsor", "intro"]
+          sponsorblock_mark_categories: ["sponsor", "intro"]
         })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
       assert {:sponsorblock_mark, "sponsor,intro"} in res
+      refute Keyword.has_key?(res, :sponsorblock_remove)
     end
 
-    test "does not include any sponsorblock option without categories", %{media_item: media_item} do
+    test "includes both options when different categories use different actions", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{
-          sponsorblock_behaviour: :remove,
-          sponsorblock_categories: []
+          sponsorblock_remove_categories: ["sponsor", "selfpromo"],
+          sponsorblock_mark_categories: ["intro", "outro"]
         })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
-      refute Keyword.has_key?(res, :sponsorblock_remove)
-      refute Keyword.has_key?(res, :sponsorblock_mark)
-      refute :sponsorblock_remove in res
-      refute :sponsorblock_mark in res
+      assert {:sponsorblock_remove, "sponsor,selfpromo"} in res
+      assert {:sponsorblock_mark, "intro,outro"} in res
     end
 
-    test "does not include any sponsorblock options when disabled", %{media_item: media_item} do
+    test "does not include any sponsorblock options without categories", %{media_item: media_item} do
       media_item =
-        update_media_profile_attribute(media_item, %{sponsorblock_behaviour: :disabled})
+        update_media_profile_attribute(media_item, %{
+          sponsorblock_remove_categories: [],
+          sponsorblock_mark_categories: []
+        })
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 

@@ -148,16 +148,14 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     QualityOptionBuilder.build(media_profile)
   end
 
+  # yt-dlp accepts both flags in one invocation, so each category can be
+  # removed or marked as a chapter independently
   defp sponsorblock_options(media_profile) do
-    categories = media_profile.sponsorblock_categories
-    behaviour = media_profile.sponsorblock_behaviour
-
-    case {behaviour, categories} do
-      {_, []} -> []
-      {:remove, _} -> [sponsorblock_remove: Enum.join(categories, ",")]
-      {:mark, _} -> [sponsorblock_mark: Enum.join(categories, ",")]
-      {:disabled, _} -> []
-    end
+    [
+      sponsorblock_remove: Enum.join(media_profile.sponsorblock_remove_categories, ","),
+      sponsorblock_mark: Enum.join(media_profile.sponsorblock_mark_categories, ",")
+    ]
+    |> Enum.reject(fn {_flag, categories} -> categories == "" end)
   end
 
   # This is put here instead of the CommandRunner module because it should only
@@ -220,17 +218,11 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     }
   end
 
-  # I don't love the string manipulation here, but what can ya' do.
-  # It's dependent on the output_path_template being a string ending `.{{ ext }}`
-  # (or equivalent), but that's validated by the MediaProfile schema.
+  # The thumbnail must share the media file's basename (differing only in
+  # extension) for media center apps to pick it up as the episode thumbnail -
+  # Plex in particular only matches an exactly-named sidecar image
   defp determine_thumbnail_location(media_item_with_preloads) do
-    output_path_template = Sources.output_path_template(media_item_with_preloads.source)
-
-    output_path_template
-    |> String.split(~r{\.}, include_captures: true)
-    |> List.insert_at(-3, "-thumb")
-    |> Enum.join()
-    |> build_output_path(media_item_with_preloads)
+    build_output_path_for(media_item_with_preloads)
   end
 
   defp pad_int(integer, count \\ 2, padding \\ "0") do

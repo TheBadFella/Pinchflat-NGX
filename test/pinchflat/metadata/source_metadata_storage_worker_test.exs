@@ -55,7 +55,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       source = source_fixture()
 
-      assert {:error, %Jason.DecodeError{data: ""}} =
+      assert {:error, :source_metadata_fetch_failed} =
                perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
   end
@@ -74,7 +74,21 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
       assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
 
-    test "still fails for unavailable media when the setting is disabled" do
+    test "completes without crashing when the details fetch also hits unavailable media" do
+      Settings.set(ignore_unavailable_media: true)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:error, @members_only_error, 1}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:error, @members_only_error, 1}
+      end)
+
+      source = source_fixture(%{series_directory: nil})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      refute Repo.reload(source).series_directory
+    end
+
+    test "fails cleanly (no crash) for unavailable media when the setting is disabled" do
       Settings.set(ignore_unavailable_media: false)
 
       stub(YtDlpRunnerMock, :run, fn
@@ -84,10 +98,10 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       source = source_fixture()
 
-      assert {:error, _} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      assert {:error, :source_metadata_fetch_failed} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
     end
 
-    test "still fails for unrelated errors even when the setting is enabled" do
+    test "fails cleanly (no crash) for unrelated errors even when the setting is enabled" do
       Settings.set(ignore_unavailable_media: true)
 
       stub(YtDlpRunnerMock, :run, fn
@@ -97,7 +111,44 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       source = source_fixture()
 
-      assert {:error, _} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      assert {:error, :source_metadata_fetch_failed} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+    end
+  end
+
+  describe "perform/1 when yt-dlp returns an unparseable response" do
+    test "fails cleanly (no crash) when the source metadata response can't be decoded" do
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}
+        # An empty/truncated response - eg. after a yt-dlp behaviour change - fails to decode
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      source = source_fixture()
+
+      assert {:error, :source_metadata_fetch_failed} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+    end
+
+    test "fails cleanly (no crash) when the source details response can't be decoded" do
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, ""}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:ok, "{}"}
+      end)
+
+      source = source_fixture()
+
+      assert {:error, :source_metadata_fetch_failed} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+    end
+
+    test "completes (with no series directory) when the details response is valid JSON missing the filename" do
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, "{}"}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:ok, "{}"}
+      end)
+
+      source = source_fixture(%{series_directory: nil})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      refute Repo.reload(source).series_directory
     end
   end
 

@@ -373,7 +373,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     end
 
     test "passes the source's download options to the yt-dlp runner", %{source: source} do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         assert {:output, "/tmp/test/media/%(title)S.%(ext)S"} in opts
         assert {:remux_video, "mp4"} in opts
         {:ok, source_attributes_return_fixture()}
@@ -385,7 +385,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
   describe "index_and_enqueue_download_for_media_items/2 when testing cookies" do
     test "sets use_cookies if the source uses cookies" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
         assert {:use_cookies, true} in addl_opts
         {:ok, source_attributes_return_fixture()}
       end)
@@ -396,7 +396,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     end
 
     test "sets use_cookies if the source uses cookies when needed" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
         assert {:use_cookies, true} in addl_opts
         {:ok, source_attributes_return_fixture()}
       end)
@@ -407,7 +407,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     end
 
     test "doesn't set use_cookies if the source doesn't use cookies" do
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
         assert {:use_cookies, false} in addl_opts
         {:ok, source_attributes_return_fixture()}
       end)
@@ -584,7 +584,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "a download archive is used if the source is a channel that has been indexed before" do
       source = source_fixture(%{collection_type: :channel, last_indexed_at: now()})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         assert :break_on_existing in opts
         assert Keyword.has_key?(opts, :download_archive)
 
@@ -610,7 +610,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "a download archive is not used if the source has never been indexed before" do
       source = source_fixture(%{collection_type: :channel, last_indexed_at: nil})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute :break_on_existing in opts
         refute Keyword.has_key?(opts, :download_archive)
 
@@ -623,7 +623,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "a download archive is not used if the index has been forced to run" do
       source = source_fixture(%{collection_type: :channel})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute :break_on_existing in opts
         refute Keyword.has_key?(opts, :download_archive)
 
@@ -642,11 +642,54 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
           media_item_fixture(%{source_id: source.id, uploaded_at: now_minus(n, :days)})
         end)
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         archive_file = Keyword.get(opts, :download_archive)
         last_media_item = List.last(media_items)
 
-        assert File.read!(archive_file) == "youtube #{last_media_item.media_id}"
+        if String.ends_with?(url, "/videos") do
+          assert File.read!(archive_file) == "youtube #{last_media_item.media_id}"
+        else
+          # The seeded media items are all regular videos, so the shorts and
+          # streams archives have nothing to hold
+          assert File.read!(archive_file) == ""
+        end
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "each tab's download archive only contains media of that tab's content type" do
+      source = source_fixture(%{collection_type: :channel, last_indexed_at: now()})
+
+      [oldest_video, oldest_short, oldest_stream] =
+        Enum.map(
+          [
+            %{short_form_content: false, livestream: false},
+            %{short_form_content: true, livestream: false},
+            %{short_form_content: false, livestream: true}
+          ],
+          fn content_attrs ->
+            1..21
+            |> Enum.map(fn n ->
+              media_item_fixture(Map.merge(content_attrs, %{source_id: source.id, uploaded_at: now_minus(n, :days)}))
+            end)
+            |> List.last()
+          end
+        )
+
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        archive_contents = opts |> Keyword.get(:download_archive) |> File.read!()
+
+        expected_media_item =
+          case Regex.run(~r{/(videos|shorts|streams)$}, url) do
+            [_, "videos"] -> oldest_video
+            [_, "shorts"] -> oldest_short
+            [_, "streams"] -> oldest_stream
+          end
+
+        assert archive_contents == "youtube #{expected_media_item.media_id}"
 
         {:ok, source_attributes_return_fixture()}
       end)
@@ -655,12 +698,261 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     end
   end
 
+  describe "index_and_enqueue_download_for_media_items when testing the indexing cutoff date" do
+    test "a channel with an indexing cutoff date passes break filters to every tab" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        break_filters = for {:break_match_filters, filter} <- opts, do: filter
+
+        assert break_filters == ["upload_date >= 20260701", "!upload_date"]
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the cutoff applies even when the index is forced" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          last_indexed_at: now(),
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, was_forced: true)
+    end
+
+    test "the cutoff is not applied when the source has no indexing cutoff date" do
+      source = source_fixture(%{collection_type: :channel, index_cutoff_date: nil})
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the cutoff is not applied to playlists" do
+      source = source_fixture(%{collection_type: :playlist, index_cutoff_date: ~D[2026-07-01]})
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the cutoff is not applied to non-YouTube channels" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          original_url: "https://example.com/some-channel",
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+  end
+
+  describe "index_and_enqueue_download_for_media_items/2 when splitting channels into tabs" do
+    test "indexes a channel's videos, shorts, and streams tabs separately" do
+      source = source_fixture(%{collection_type: :channel})
+      base_url = "https://www.youtube.com/channel/#{source.collection_id}"
+
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        send(self(), {:indexed_url, url})
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert_received {:indexed_url, url_1}
+      assert_received {:indexed_url, url_2}
+      assert_received {:indexed_url, url_3}
+
+      assert [url_1, url_2, url_3] == Enum.map(~w(videos shorts streams), fn tab -> "#{base_url}/#{tab}" end)
+    end
+
+    test "doesn't return duplicate media items if multiple tabs return the same media" do
+      source = source_fixture(%{collection_type: :channel})
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.count(media_items) == 3
+    end
+
+    test "uses the source's URL as-is if it already points at a specific tab" do
+      source = source_fixture(%{collection_type: :channel, original_url: "https://www.youtube.com/@foo/videos"})
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        assert url == "https://www.youtube.com/@foo/videos"
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "the archive for an explicit tab URL is filtered to that tab's content type" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          last_indexed_at: now(),
+          original_url: "https://www.youtube.com/@foo/shorts"
+        })
+
+      oldest_short =
+        1..21
+        |> Enum.map(fn n ->
+          media_item_fixture(%{source_id: source.id, short_form_content: true, uploaded_at: now_minus(n, :days)})
+        end)
+        |> List.last()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        archive_contents = opts |> Keyword.get(:download_archive) |> File.read!()
+
+        assert archive_contents == "youtube #{oldest_short.media_id}"
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "doesn't split non-YouTube channels into tabs" do
+      source = source_fixture(%{collection_type: :channel, original_url: "https://example.com/some-channel"})
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        assert url == "https://example.com/some-channel"
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "doesn't split playlists into tabs" do
+      source = source_fixture(%{collection_type: :playlist})
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        assert url == source.original_url
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "still indexes the other tabs if one tab fails" do
+      source = source_fixture(%{collection_type: :channel})
+
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        if String.ends_with?(url, "/shorts") do
+          {:error, "This channel does not have a shorts tab", 1}
+        else
+          {:ok, source_attributes_return_fixture()}
+        end
+      end)
+
+      assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.count(media_items) == 3
+    end
+
+    test "fails the indexing run if every tab fails" do
+      source = source_fixture(%{collection_type: :channel})
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:error, "Something went wrong", 1}
+      end)
+
+      assert_raise MatchError, fn ->
+        SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      end
+    end
+  end
+
+  describe "index_and_enqueue_download_for_media_items/2 when logging tab failures" do
+    setup do
+      # The test env logger level suppresses everything below :critical,
+      # so it needs to be loosened for log output to be capturable
+      original_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: original_level) end)
+    end
+
+    test "a channel missing a tab is not logged as a failure" do
+      source = source_fixture(%{collection_type: :channel})
+
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
+        assert {:expected_exit_codes, [1]} in addl_opts
+
+        if String.ends_with?(url, "/streams") do
+          {:error, "ERROR: [youtube:tab] UC123: This channel does not have a streams tab", 1}
+        else
+          {:ok, source_attributes_return_fixture()}
+        end
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :warning], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      refute log =~ "Indexing failed"
+    end
+
+    test "other tab failures are logged as warnings" do
+      source = source_fixture(%{collection_type: :channel})
+
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        if String.ends_with?(url, "/streams") do
+          {:error, "Something went wrong", 1}
+        else
+          {:ok, source_attributes_return_fixture()}
+        end
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :warning], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      assert log =~ "Indexing failed"
+    end
+  end
+
   describe "index_and_enqueue_download_for_media_items when testing dateafter options" do
     test "uses dateafter when download_cutoff_date is set" do
       cutoff_date = Date.utc_today() |> Date.add(-10)
       source = source_fixture(%{download_cutoff_date: cutoff_date})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         expected_dateafter = Date.to_iso8601(cutoff_date, :basic)
         assert {:dateafter, ^expected_dateafter} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
 
@@ -676,7 +968,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       # Retention of 5 days means we only need to scan ~8 days (5 + 3 buffer)
       source = source_fixture(%{download_cutoff_date: old_cutoff, retention_period_days: 5})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         {:dateafter, dateafter_value} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
 
         # Should be retention + buffer days ago (5 + 3 = 8 days ago)
@@ -696,7 +988,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       # Retention of 30 days would mean scanning 33 days (30 + 3 buffer)
       source = source_fixture(%{download_cutoff_date: recent_cutoff, retention_period_days: 30})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         expected_dateafter = Date.to_iso8601(recent_cutoff, :basic)
         assert {:dateafter, ^expected_dateafter} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
 
@@ -709,7 +1001,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "does not use dateafter when neither cutoff nor retention is set" do
       source = source_fixture(%{download_cutoff_date: nil, retention_period_days: nil})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute Keyword.has_key?(opts, :dateafter)
 
         {:ok, source_attributes_return_fixture()}
@@ -721,7 +1013,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "does not use dateafter when retention is 0 (keep forever) and no cutoff" do
       source = source_fixture(%{download_cutoff_date: nil, retention_period_days: 0})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute Keyword.has_key?(opts, :dateafter)
 
         {:ok, source_attributes_return_fixture()}
@@ -734,7 +1026,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       cutoff_date = Date.utc_today() |> Date.add(-10)
       source = source_fixture(%{download_cutoff_date: cutoff_date, retention_period_days: 0})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         expected_dateafter = Date.to_iso8601(cutoff_date, :basic)
         assert {:dateafter, ^expected_dateafter} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
 
@@ -747,7 +1039,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "uses retention-based date when cutoff is nil but retention is set" do
       source = source_fixture(%{download_cutoff_date: nil, retention_period_days: 7})
 
-      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         {:dateafter, dateafter_value} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
 
         # Should be retention + buffer days ago (7 + 3 = 10 days ago)
