@@ -131,6 +131,14 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       conn = put(conn, ~p"/media_profiles/#{media_profile}", media_profile: @invalid_attrs)
       assert html_response(conn, 200) =~ "Editing \"#{media_profile.name}\""
     end
+
+    test "marks a staged reconcile plan stale", %{conn: conn, media_profile: media_profile} do
+      {:ok, plan} = Pinchflat.Reconciliation.create_plan(%{mode: :local, status: :ready})
+
+      put(conn, ~p"/media_profiles/#{media_profile}", media_profile: @update_attrs)
+
+      assert Pinchflat.Reconciliation.get_plan!(plan.id).status == :stale
+    end
   end
 
   describe "delete media_profile in all cases" do

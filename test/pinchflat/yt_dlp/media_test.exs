@@ -183,6 +183,50 @@ defmodule Pinchflat.YtDlp.MediaTest do
     end
   end
 
+  describe "download_subtitles/3" do
+    test "calls the backend runner with the expected arguments and does not decode the response" do
+      expect(YtDlpRunnerMock, :run, fn @media_url, :download_subtitles, opts, ot, _addl ->
+        assert opts == [:no_simulate, :skip_download, :write_subs, {:convert_subs, "srt"}]
+        assert ot == "after_move:%()j"
+
+        # With --skip-download there's no after_move output; an empty response must
+        # NOT be treated as a decode failure the way `download/3` would
+        {:ok, ""}
+      end)
+
+      assert {:ok, ""} = Media.download_subtitles(@media_url)
+    end
+
+    test "passes along custom command args" do
+      expect(YtDlpRunnerMock, :run, fn _url, :download_subtitles, opts, _ot, _addl ->
+        assert {:sub_langs, "en"} in opts
+        assert :write_auto_subs in opts
+
+        {:ok, ""}
+      end)
+
+      assert {:ok, _} = Media.download_subtitles(@media_url, [:write_auto_subs, sub_langs: "en"])
+    end
+
+    test "passes along additional options" do
+      expect(YtDlpRunnerMock, :run, fn _url, :download_subtitles, _opts, _ot, addl ->
+        assert [addl_arg: true] = addl
+
+        {:ok, ""}
+      end)
+
+      assert {:ok, _} = Media.download_subtitles(@media_url, [], addl_arg: true)
+    end
+
+    test "returns errors" do
+      expect(YtDlpRunnerMock, :run, fn _url, :download_subtitles, _opt, _ot, _addl ->
+        {:error, "something"}
+      end)
+
+      assert {:error, "something"} = Media.download_subtitles(@media_url)
+    end
+  end
+
   describe "get_media_attributes/1" do
     test "returns a list of video attributes" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl ->

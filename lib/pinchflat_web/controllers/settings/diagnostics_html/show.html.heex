@@ -40,10 +40,96 @@
       <p class="text-2xl font-bold text-theme-on-surface">{stats.total_sources}</p>
     </div>
     <div class="theme-surface-accent p-4">
-      <p class="text-sm text-theme-on-surface-muted">Database Size</p>
-      <p class="text-2xl font-bold text-theme-on-surface">{stats.database_size}</p>
+      <p class="text-sm text-theme-on-surface-muted">Total Media Items</p>
+      <p class="text-2xl font-bold text-theme-on-surface">{stats.total_media_items}</p>
     </div>
   </div>
+</div>
+
+<!-- Database -->
+<% db = database_stats() %>
+<div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
+  <div class="mb-4 flex items-center justify-between">
+    <h3 class="text-lg font-semibold text-theme-on-surface">Database</h3>
+    <div class="flex items-center gap-3">
+      {live_render(@conn, Pinchflat.Settings.IntegrityCheckLive, id: "integrity-check-live")}
+      <.link
+        href={~p"/diagnostics/vacuum_database"}
+        method="post"
+        data-confirm="Compact the database now? Job queues are paused while any running jobs finish, then the database is compacted and the queues resume on their own. With long-running jobs this can take a while."
+      >
+        <.button color="theme-primary-button" rounding="rounded-m3-sm" class="text-sm">
+          <.icon name="hero-circle-stack" class="mr-1 h-4 w-4" /> Compact Now
+        </.button>
+      </.link>
+    </div>
+  </div>
+
+  <div class="mb-4 grid grid-cols-2 gap-4 md:grid-cols-5">
+    <div class="theme-surface-accent p-4">
+      <p class="text-sm text-theme-on-surface-muted">Size on Disk</p>
+      <p class="text-2xl font-bold text-theme-on-surface">{format_bytes(db.total_bytes)}</p>
+      <p class="mt-1 text-xs text-theme-on-surface-muted">
+        {format_bytes(db.main_file_bytes)} database + {format_bytes(db.wal_file_bytes + db.shm_file_bytes)} WAL
+      </p>
+    </div>
+    <div class="theme-surface-accent p-4">
+      <p class="text-sm text-theme-on-surface-muted">Reclaimable Space</p>
+      <p class="text-2xl font-bold text-theme-on-surface">{format_bytes(db.reclaimable_bytes)}</p>
+      <p class="mt-1 text-xs text-theme-on-surface-muted">Freed by compacting</p>
+    </div>
+    <div class="theme-surface-accent p-4">
+      <p class="text-sm text-theme-on-surface-muted">Journal Mode</p>
+      <p class="text-2xl font-bold uppercase text-theme-on-surface">{db.journal_mode}</p>
+    </div>
+    <div class="theme-surface-accent p-4">
+      <p class="text-sm text-theme-on-surface-muted">Orphaned Tasks</p>
+      <p class={"text-2xl font-bold #{if orphaned_task_count() > 0, do: "theme-status-error", else: "text-theme-on-surface"}"}>
+        {orphaned_task_count()}
+      </p>
+      <p class="mt-1 text-xs text-theme-on-surface-muted">Should always be 0</p>
+    </div>
+    <% compaction_enabled = scheduled_compaction_enabled?() %>
+    <div class="theme-surface-accent p-4">
+      <p class="text-sm text-theme-on-surface-muted">Scheduled Compaction</p>
+      <p class={"text-2xl font-bold #{if compaction_enabled, do: "theme-status-success", else: "text-theme-on-surface"}"}>
+        {if compaction_enabled, do: "On", else: "Off"}
+      </p>
+      <p class="mt-1 text-xs text-theme-on-surface-muted">
+        {if compaction_enabled, do: "Monthly on the 1st at 03:00", else: "Manual only"}
+        <.link
+          href={~p"/diagnostics/toggle_scheduled_compaction"}
+          method="post"
+          class="text-theme-primary hover:underline whitespace-nowrap"
+        >
+          Turn {if compaction_enabled, do: "off", else: "on"}
+        </.link>
+      </p>
+    </div>
+  </div>
+
+  <div class="mb-4 grid grid-cols-2 gap-4 md:grid-cols-5">
+    <%= for {table, count} <- table_row_counts() do %>
+      <div class="rounded-m3-sm border border-theme-outline/50 bg-theme-surface-2 p-3">
+        <p class="text-xs text-theme-on-surface-muted">{format_table_name(table)}</p>
+        <p class="text-lg font-semibold text-theme-on-surface">{count}</p>
+      </div>
+    <% end %>
+  </div>
+
+  <p class="text-sm text-theme-on-surface">
+    <span class="text-theme-on-surface-muted">Last compaction:</span>
+    <.maintenance_status job={latest_maintenance_job()} />
+  </p>
+  <p class="mt-2 text-xs text-theme-on-surface-muted">
+    Compacting (a SQLite VACUUM) shrinks the database by returning space left behind by deleted
+    records — old job history, removed media — to the filesystem. The Compact Now button compacts
+    on demand at any time. To avoid disturbing downloads and indexing, it
+    first pauses the job queues and waits for running jobs to finish (however long they take — a large
+    indexing run can be hours), then compacts and resumes the queues on its own. While it waits, the
+    queues above show as Paused. It refuses to compact — and reports an error here and under Failed
+    Jobs — if there isn't enough free disk space to do it safely.
+  </p>
 </div>
 
 <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">

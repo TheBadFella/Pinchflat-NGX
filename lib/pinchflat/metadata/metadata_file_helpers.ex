@@ -50,7 +50,12 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
   Returns {:ok, map()} | {:error, any}
   """
   def read_compressed_metadata(filepath) do
-    {:ok, json} = File.open(filepath, [:read, :compressed], &IO.read(&1, :eof))
+    # Read the decompressed bytes verbatim. `IO.read` on a non-utf8 device
+    # reinterprets each raw byte as a latin1 codepoint and re-encodes it as
+    # UTF-8, double-encoding every non-ASCII character (an emoji title comes
+    # back as mojibake). `IO.binread` returns the stored UTF-8 bytes as-is for
+    # Jason to decode.
+    {:ok, json} = File.open(filepath, [:read, :compressed, :binary], &IO.binread(&1, :eof))
 
     Phoenix.json_library().decode(json)
   end
@@ -90,6 +95,13 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
     end
   end
 
+  @series_root_marker "__PINCHFLAT_SERIES_ROOT__"
+
+  @doc """
+  Sentinel token placed in an output path template to locate the series directory.
+  """
+  def series_root_marker, do: @series_root_marker
+
   @doc """
   Attempts to determine the series directory from a media filepath.
   The series directory is the "root" directory for a given source
@@ -101,29 +113,34 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
   Returns {:ok, binary()} | {:error, :indeterminable}
   """
   def series_directory_from_media_filepath(media_filepath) do
-    # Matches "s" or "season" (case-insensitive)
-    # followed by an optional non-word character (. or _ or <space>, etc)
-    # followed by at least one digit
-    # followed immediately by the end of the string
-    # Example matches: s1, s.1, s01 season 1, Season.01, Season_1, Season 1, Season1
-    # Example non-matches: s01e01, season, series 1,
-    season_regex = ~r/^s(eason)?(\W|_)?\d{1,}$/i
-
-    {series_directory, found_series_directory} =
-      media_filepath
-      |> Path.split()
-      |> Enum.reduce_while({[], false}, fn part, {directory_acc, _} ->
-        if String.match?(part, season_regex) do
-          {:halt, {directory_acc, true}}
-        else
-          {:cont, {directory_acc ++ [part], false}}
-        end
-      end)
-
-    if found_series_directory do
-      {:ok, Path.join(series_directory)}
+    if String.contains?(media_filepath, series_root_marker()) do
+      [series_dir | _] = String.split(media_filepath, series_root_marker())
+      {:ok, String.trim_trailing(series_dir, "/")}
     else
-      {:error, :indeterminable}
+      # Matches "s" or "season" (case-insensitive)
+      # followed by an optional non-word character (. or _ or <space>, etc)
+      # followed by at least one digit
+      # followed immediately by the end of the string
+      # Example matches: s1, s.1, s01 season 1, Season.01, Season_1, Season 1, Season1
+      # Example non-matches: s01e01, season, series 1,
+      season_regex = ~r/^s(eason)?(\W|_)?\d{1,}$/i
+
+      {series_directory, found_series_directory} =
+        media_filepath
+        |> Path.split()
+        |> Enum.reduce_while({[], false}, fn part, {directory_acc, _} ->
+          if String.match?(part, season_regex) do
+            {:halt, {directory_acc, true}}
+          else
+            {:cont, {directory_acc ++ [part], false}}
+          end
+        end)
+
+      if found_series_directory do
+        {:ok, Path.join(series_directory)}
+      else
+        {:error, :indeterminable}
+      end
     end
   end
 

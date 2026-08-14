@@ -104,6 +104,40 @@ defmodule Pinchflat.Utils.FilesystemUtils do
   end
 
   @doc """
+  Moves a file, creating the destination's directories as needed and pruning
+  any directories the move left empty. Falls back to copy+delete when the
+  destination is on a different filesystem (`File.rename/2` returns :exdev,
+  e.g. a podcast library on its own volume).
+
+  Returns :ok | {:error, any()}
+  """
+  def move_p(source, destination) do
+    with :ok <- destination |> Path.dirname() |> File.mkdir_p(),
+         :ok <- rename_or_copy(source, destination) do
+      source
+      |> Path.dirname()
+      |> recursively_delete_empty_directories()
+
+      :ok
+    end
+  end
+
+  defp rename_or_copy(source, destination) do
+    case File.rename(source, destination) do
+      :ok ->
+        :ok
+
+      {:error, :exdev} ->
+        with {:ok, _bytes} <- File.copy(source, destination) do
+          File.rm(source)
+        end
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
   Fetches the file size of a media item and saves it to the database.
 
   Returns {:ok, media_item} | {:error, any()}

@@ -40,6 +40,40 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
     end
   end
 
+  describe "revive_stalled_reconcile_jobs" do
+    test "resets a stalled reconcile job left at its attempt ceiling" do
+      {:ok, job} =
+        %{"op" => "apply", "plan_id" => 1}
+        |> Pinchflat.Reconciliation.ReconcileWorker.new()
+        |> Oban.insert()
+
+      # Mimic an apply that was executing at an ungraceful shutdown: reset_executing_jobs
+      # will flip it executing -> retryable, leaving it at attempt == max_attempts (1)
+      Repo.update_all(Oban.Job, set: [state: "executing", attempt: 1])
+
+      PreJobStartupTasks.init(%{})
+
+      reloaded = Repo.reload!(job)
+      assert reloaded.state == "available"
+      assert reloaded.attempt == 0
+    end
+
+    test "leaves a healthy pending reconcile job untouched" do
+      {:ok, job} =
+        %{"op" => "build", "plan_id" => 1}
+        |> Pinchflat.Reconciliation.ReconcileWorker.new()
+        |> Oban.insert()
+
+      assert Repo.reload!(job).state == "available"
+      assert Repo.reload!(job).attempt == 0
+
+      PreJobStartupTasks.init(%{})
+
+      # attempt 0 < max_attempts 1, so it isn't stalled and isn't disturbed
+      assert Repo.reload!(job).state == "available"
+    end
+  end
+
   describe "create_blank_yt_dlp_files" do
     test "creates a blank cookie file" do
       base_dir = Application.get_env(:pinchflat, :extras_directory)

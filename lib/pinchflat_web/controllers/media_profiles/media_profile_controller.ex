@@ -5,6 +5,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
 
   alias Pinchflat.Repo
   alias Pinchflat.Profiles
+  alias Pinchflat.Reconciliation
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Profiles.MediaProfileDeletionWorker
@@ -93,6 +94,9 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
 
     case Profiles.update_media_profile(media_profile, media_profile_params) do
       {:ok, media_profile} ->
+        # Profile changes can alter predicted paths, invalidating any staged reconcile plan
+        Reconciliation.mark_ready_plans_stale()
+
         conn
         |> put_flash(:info, "Media profile updated successfully.")
         |> redirect(to: ~p"/media_profiles/#{media_profile}")

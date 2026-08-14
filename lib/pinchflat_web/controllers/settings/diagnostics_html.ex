@@ -3,6 +3,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
 
   alias Pinchflat.Settings
   alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Diagnostics.DatabaseDiagnostics
 
   embed_templates "diagnostics_html/*"
 
@@ -24,6 +25,77 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
 
   def system_stats do
     QueueDiagnostics.get_system_stats()
+  end
+
+  def database_stats do
+    DatabaseDiagnostics.get_database_stats()
+  end
+
+  def table_row_counts do
+    DatabaseDiagnostics.table_row_counts()
+  end
+
+  def orphaned_task_count do
+    DatabaseDiagnostics.orphaned_task_count()
+  end
+
+  def latest_maintenance_job do
+    DatabaseDiagnostics.latest_maintenance_job()
+  end
+
+  def scheduled_compaction_enabled? do
+    Settings.get!(:database_maintenance_enabled)
+  end
+
+  def format_bytes(bytes) do
+    DatabaseDiagnostics.format_bytes(bytes)
+  end
+
+  def format_table_name(table) do
+    table
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+
+  attr :job, :any, required: true
+
+  @doc """
+  Renders the outcome of the most recent database maintenance run (manual or
+  scheduled), so successful and failed runs are both visible without digging
+  through job records.
+  """
+  def maintenance_status(assigns) do
+    ~H"""
+    <%= case @job do %>
+      <% nil -> %>
+        <span class="text-theme-on-surface-muted">
+          Never run. Compaction runs monthly on a schedule, or on demand via the Compact Now button.
+        </span>
+      <% %{state: "completed"} = job -> %>
+        <span class="theme-status-success">
+          Succeeded at {format_datetime(job.completed_at)}, reclaimed {format_bytes(job.meta["reclaimed_bytes"] || 0)}.
+        </span>
+      <% %{state: state} = job when state in ["retryable", "discarded"] -> %>
+        <span class="theme-status-error">
+          Failed at {format_datetime(job.attempted_at)}: {extract_last_error(job.errors)}
+        </span>
+        <span class="text-theme-on-surface-muted">
+          {if state == "retryable",
+            do: "It will be retried automatically — see Failed Jobs below.",
+            else: "It has exhausted its retries — see the Discarded tab under Failed Jobs below."}
+        </span>
+      <% %{state: "executing"} = job -> %>
+        <span class="text-theme-primary">
+          In progress since {format_datetime(job.attempted_at)} — waiting for running jobs to finish, then compacting.
+        </span>
+      <% %{state: "cancelled"} = job -> %>
+        <span class="text-theme-on-surface-muted">
+          Skipped at {format_datetime(job.cancelled_at)} — {extract_last_error(job.errors)}
+        </span>
+      <% job -> %>
+        <span class="text-bodydark">Queued, will run at {format_datetime(job.scheduled_at)}.</span>
+    <% end %>
+    """
   end
 
   def diagnostic_info_string do

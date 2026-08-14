@@ -3,11 +3,241 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
 
   alias Pinchflat.Tasks
   alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Diagnostics.DatabaseMaintenanceWorker
   alias Pinchflat.JobFixtures.TestJobWorker
   alias Pinchflat.FastIndexing.FastIndexingWorker
+  alias Pinchflat.Reconciliation.ReconcileWorker
 
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
+
+  describe "queue_names/0" do
+    test "returns the queue names from the Oban config" do
+      assert :default in QueueDiagnostics.queue_names()
+      assert :media_fetching in QueueDiagnostics.queue_names()
+      assert :maintenance in QueueDiagnostics.queue_names()
+    end
+
+    test "serializes workers that reserve a full quiet window" do
+      assert Ecto.Changeset.get_change(ReconcileWorker.new(%{}), :queue) == "maintenance"
+      assert Ecto.Changeset.get_change(DatabaseMaintenanceWorker.new(%{}), :queue) == "maintenance"
+      assert Application.fetch_env!(:pinchflat, Oban)[:queues][:maintenance] == 1
+    end
+
+    test "returns an empty list when no queues are configured" do
+      original = Application.get_env(:pinchflat, Oban, [])
+      on_exit(fn -> Application.put_env(:pinchflat, Oban, original) end)
+
+      Application.put_env(:pinchflat, Oban, Keyword.delete(original, :queues))
+
+      assert QueueDiagnostics.queue_names() == []
+    end
+  end
+
+  describe "get_all_queue_stats/0" do
+    test "returns an entry per configured queue without crashing when queues aren't running" do
+      stats = QueueDiagnostics.get_all_queue_stats()
+
+      assert length(stats) == length(QueueDiagnostics.queue_names())
+      assert %{name: :default, running: 0, limit: 0, paused: false} = Enum.find(stats, &(&1.name == :default))
+    end
+
+    test "counts jobs in the queue by state" do
+      {:ok, _available} = Oban.insert(TestJobWorker.new(%{"id" => 1}))
+      {:ok, _also_available} = Oban.insert(TestJobWorker.new(%{"id" => 2}))
+      {:ok, retryable} = Oban.insert(TestJobWorker.new(%{"id" => 3}))
+      set_job_state(retryable, "retryable")
+
+      default_stats = Enum.find(QueueDiagnostics.get_all_queue_stats(), &(&1.name == :default))
+
+      assert %{available: 2, retryable: 1, scheduled: 0, executing: 0} = default_stats
+    end
+  end
+
+  describe "get_retryable_jobs/1" do
+    test "returns only retryable jobs" do
+      {:ok, retryable} = Oban.insert(TestJobWorker.new(%{"id" => 1}))
+      {:ok, _available} = Oban.insert(TestJobWorker.new(%{"id" => 2}))
+      set_job_state(retryable, "retryable")
+
+      assert [%{id: id, args: %{"id" => 1}, state: "retryable"}] = QueueDiagnostics.get_retryable_jobs()
+      assert id == retryable.id
+    end
+
+    test "orders jobs by most recently attempted first" do
+      {:ok, older} = Oban.insert(TestJobWorker.new(%{}))
+      {:ok, newer} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(older, "retryable", attempted_at: hours_ago(2))
+      set_job_state(newer, "retryable", attempted_at: hours_ago(1))
+
+      assert [%{id: first}, %{id: second}] = QueueDiagnostics.get_retryable_jobs()
+      assert first == newer.id
+      assert second == older.id
+    end
+
+    test "respects the limit" do
+      Enum.each(1..3, fn _ ->
+        {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+        set_job_state(job, "retryable")
+      end)
+
+      assert length(QueueDiagnostics.get_retryable_jobs(2)) == 2
+    end
+  end
+
+  describe "get_discarded_jobs/1" do
+    test "returns only discarded jobs" do
+      {:ok, discarded} = Oban.insert(TestJobWorker.new(%{"id" => 1}))
+      {:ok, _available} = Oban.insert(TestJobWorker.new(%{"id" => 2}))
+      set_job_state(discarded, "discarded")
+
+      assert [%{id: id, args: %{"id" => 1}, state: "discarded"}] = QueueDiagnostics.get_discarded_jobs()
+      assert id == discarded.id
+    end
+
+    test "orders jobs by most recently discarded first" do
+      {:ok, older} = Oban.insert(TestJobWorker.new(%{}))
+      {:ok, newer} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(older, "discarded", discarded_at: hours_ago(2))
+      set_job_state(newer, "discarded", discarded_at: hours_ago(1))
+
+      assert [%{id: first}, %{id: second}] = QueueDiagnostics.get_discarded_jobs()
+      assert first == newer.id
+      assert second == older.id
+    end
+
+    test "respects the limit" do
+      Enum.each(1..3, fn _ ->
+        {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+        set_job_state(job, "discarded")
+      end)
+
+      assert length(QueueDiagnostics.get_discarded_jobs(2)) == 2
+    end
+  end
+
+  describe "get_stuck_jobs/1" do
+    test "returns executing jobs older than the threshold" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "executing", attempted_at: hours_ago(1))
+
+      assert [%{id: id}] = QueueDiagnostics.get_stuck_jobs(30)
+      assert id == job.id
+    end
+
+    test "does not return executing jobs within the threshold" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "executing", attempted_at: DateTime.utc_now())
+
+      assert QueueDiagnostics.get_stuck_jobs(30) == []
+    end
+
+    test "does not return non-executing jobs no matter how old" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "retryable", attempted_at: hours_ago(10))
+
+      assert QueueDiagnostics.get_stuck_jobs(30) == []
+    end
+  end
+
+  describe "reset_retryable_jobs/0" do
+    test "makes retryable jobs available again and returns the count" do
+      {:ok, job_one} = Oban.insert(TestJobWorker.new(%{"id" => 1}))
+      {:ok, job_two} = Oban.insert(TestJobWorker.new(%{"id" => 2}))
+      set_job_state(job_one, "retryable", attempt: 3, errors: [%{"error" => "boom"}])
+      set_job_state(job_two, "retryable")
+
+      assert QueueDiagnostics.reset_retryable_jobs() == 2
+
+      assert %{state: "available", attempt: 1, errors: []} = Repo.get(Oban.Job, job_one.id)
+      assert %{state: "available"} = Repo.get(Oban.Job, job_two.id)
+    end
+
+    test "does not touch jobs in other states" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "discarded")
+
+      assert QueueDiagnostics.reset_retryable_jobs() == 0
+      assert %{state: "discarded"} = Repo.get(Oban.Job, job.id)
+    end
+  end
+
+  describe "reset_job/1" do
+    test "resets a retryable job" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "retryable", attempt: 5, errors: [%{"error" => "boom"}])
+
+      assert QueueDiagnostics.reset_job(job.id) == 1
+      assert %{state: "available", attempt: 1, errors: []} = Repo.get(Oban.Job, job.id)
+    end
+
+    test "resets a discarded job" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "discarded")
+
+      assert QueueDiagnostics.reset_job(job.id) == 1
+      assert %{state: "available"} = Repo.get(Oban.Job, job.id)
+    end
+
+    test "refuses to reset an executing job to prevent double execution" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "executing")
+
+      assert QueueDiagnostics.reset_job(job.id) == 0
+      assert %{state: "executing"} = Repo.get(Oban.Job, job.id)
+    end
+
+    test "returns 0 when the job does not exist" do
+      assert QueueDiagnostics.reset_job(-1) == 0
+    end
+  end
+
+  describe "get_system_stats/0" do
+    test "counts pending and downloaded media items separately" do
+      source = source_fixture()
+      _pending = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      _downloaded = media_item_fixture(%{source_id: source.id})
+
+      stats = QueueDiagnostics.get_system_stats()
+
+      assert stats.total_pending_downloads == 1
+      assert stats.total_downloaded == 1
+    end
+
+    test "excludes media that the profile's rules would never download from the pending count" do
+      source = source_fixture(title_filter_regex: "^Keep")
+      _matching = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Keep me"})
+      _filtered = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "Skip me"})
+
+      assert QueueDiagnostics.get_system_stats().total_pending_downloads == 1
+    end
+
+    test "counts sources" do
+      source_fixture()
+      source_fixture()
+
+      assert QueueDiagnostics.get_system_stats().total_sources == 2
+    end
+
+    test "counts all media items regardless of state" do
+      source = source_fixture()
+      media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      media_item_fixture(%{source_id: source.id})
+
+      assert QueueDiagnostics.get_system_stats().total_media_items == 2
+    end
+  end
+
+  defp set_job_state(job, state, extra_fields \\ []) do
+    Repo.update_all(
+      from(j in Oban.Job, where: j.id == ^job.id),
+      set: [{:state, state} | extra_fields]
+    )
+  end
+
+  defp hours_ago(hours) do
+    DateTime.add(DateTime.utc_now(), -hours * 60 * 60, :second)
+  end
 
   describe "get_jobs_for_queue/2" do
     test "returns jobs sitting in the given queue" do

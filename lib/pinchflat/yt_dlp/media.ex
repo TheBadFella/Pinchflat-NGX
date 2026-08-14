@@ -77,6 +77,24 @@ defmodule Pinchflat.YtDlp.Media do
   end
 
   @doc """
+  Downloads subtitles for a single piece of media without downloading the media
+  itself. Used to backfill subtitle sidecars for already-downloaded media.
+
+  Like `download_thumbnail/3`, this runs with `--skip-download`, so there is no
+  media file move to trigger `after_move` output — yt-dlp writes the subtitle
+  files and exits 0 with an empty response. The raw runner result is returned
+  rather than decoded as JSON (decoding an empty response would fail even though
+  the fetch succeeded).
+
+  Returns {:ok, ""} | {:error, any, ...}.
+  """
+  def download_subtitles(url, command_opts \\ [], addl_opts \\ []) do
+    all_command_opts = [:no_simulate, :skip_download, :write_subs, convert_subs: "srt"] ++ command_opts
+
+    backend_runner().run(url, :download_subtitles, all_command_opts, "after_move:%()j", addl_opts)
+  end
+
+  @doc """
   Returns a map representing the media at the given URL.
   Optionally takes a list of additional command options to pass to yt-dlp
   or configuration-related options to pass to the runner.
@@ -91,6 +109,27 @@ defmodule Pinchflat.YtDlp.Media do
            backend_runner().run(url, :get_media_attributes, all_command_opts, output_template, addl_opts),
          {:ok, parsed_json} <- ResponseDecoder.decode(output, :get_media_attributes) do
       {:ok, response_to_struct(parsed_json)}
+    end
+  end
+
+  @doc """
+  Renders the filename a media item would download to under the given output
+  template, using a previously-stored info.json instead of the network. yt-dlp
+  ignores positional URLs when `--load-info-json` is set, so the URL here is
+  informational only (logging/debugging) — no request is made. Sanitization
+  (`--windows-filenames`, the `restrict_filenames` setting) is applied by yt-dlp
+  itself exactly as it would be on a real download.
+
+  Returns {:ok, binary()} | {:error, any, ...}.
+  """
+  def predict_filepath_from_metadata(url, info_json_filepath, command_opts \\ [], addl_opts \\ []) do
+    action = :predict_filepath_from_metadata
+    all_command_opts = [:simulate, :skip_download, load_info_json: info_json_filepath] ++ command_opts
+    runner_opts = Keyword.put_new(addl_opts, :skip_sleep_interval, true)
+
+    with {:ok, output} <- backend_runner().run(url, action, all_command_opts, "%(.{filename})j", runner_opts),
+         {:ok, parsed_json} <- ResponseDecoder.decode(output, action) do
+      {:ok, parsed_json["filename"]}
     end
   end
 

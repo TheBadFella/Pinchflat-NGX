@@ -9,6 +9,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Media
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
+  alias Pinchflat.Reconciliation
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
@@ -473,6 +474,8 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp do_update(conn, source, source_params) do
     case Sources.update_source(source, source_params) do
       {:ok, source} ->
+        Reconciliation.mark_ready_plans_stale()
+
         case get_format(conn) do
           "json" ->
             source = Sources.preload_api_assocs(source)

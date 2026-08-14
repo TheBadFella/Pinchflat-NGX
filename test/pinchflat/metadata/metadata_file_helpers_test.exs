@@ -58,6 +58,17 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
 
       assert decoded_json == metadata_map
     end
+
+    test "round-trips non-ASCII characters without mangling them", %{media_item: media_item} do
+      # Regression: reading via a latin1 IO device double-encoded UTF-8, so an
+      # emoji title came back as mojibake and flowed into rendered filepaths
+      metadata_map = %{"title" => "EPISODE 100!!! Our SEXIEST Reveal Yet 🔥"}
+
+      filepath = Helpers.compress_and_store_metadata_for(media_item, metadata_map)
+      {:ok, decoded_json} = Helpers.read_compressed_metadata(filepath)
+
+      assert decoded_json == metadata_map
+    end
   end
 
   describe "download_and_store_thumbnail_for/2" do

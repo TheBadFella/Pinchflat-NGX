@@ -103,6 +103,13 @@
           <.help>Clock used when displaying timestamps in the UI</.help>
         </div>
       </div>
+
+      <.input
+        field={f[:database_maintenance_enabled]}
+        type="toggle"
+        label="Scheduled Database Compaction"
+        help="Automatically compact the database once a month to reclaim disk space. Job queues are paused while running jobs finish, then processing resumes. You can always compact manually from the Diagnostics page"
+      />
     </section>
   </section>
 

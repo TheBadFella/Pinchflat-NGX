@@ -41,14 +41,16 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
   Returns binary()
   """
-  def build_output_path_for(%Source{} = source_with_preloads) do
-    build_output_path_for(%MediaItem{source: source_with_preloads})
+  def build_output_path_for(struct, template_options \\ %{})
+
+  def build_output_path_for(%Source{} = source_with_preloads, template_options) do
+    build_output_path_for(%MediaItem{source: source_with_preloads}, template_options)
   end
 
-  def build_output_path_for(%MediaItem{} = media_item_with_preloads) do
+  def build_output_path_for(%MediaItem{} = media_item_with_preloads, template_options) do
     output_path_template = Sources.output_path_template(media_item_with_preloads.source)
 
-    build_output_path(output_path_template, media_item_with_preloads)
+    build_output_path(output_path_template, media_item_with_preloads, template_options)
   end
 
   @doc """
@@ -191,8 +193,8 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     ]
   end
 
-  defp build_output_path(string, media_item_with_preloads) do
-    additional_options_map = output_options_map(media_item_with_preloads)
+  defp build_output_path(string, media_item_with_preloads, template_options) do
+    additional_options_map = Map.merge(output_options_map(media_item_with_preloads), template_options)
     {:ok, output_path} = OutputPathBuilder.build(string, additional_options_map)
     relative_output_path = output_path |> String.trim_leading("/") |> String.trim_leading("\\")
     source_subdirectory = media_item_with_preloads.source.download_subdirectory

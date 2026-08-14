@@ -263,6 +263,7 @@ defmodule Pinchflat.Pages.JobTableLive do
   defp map_worker_to_task_name("MediaCollectionIndexingWorker"), do: "Indexing Source"
   defp map_worker_to_task_name("MediaQualityUpgradeWorker"), do: "Upgrading Media Quality"
   defp map_worker_to_task_name("SourceMetadataStorageWorker"), do: "Fetching Source Metadata"
+  defp map_worker_to_task_name("ReconcileWorker"), do: "File Reconciliation"
   defp map_worker_to_task_name(other), do: other <> " (Report to Devs)"
 
   defp task_to_record_name(%Task{} = task) do

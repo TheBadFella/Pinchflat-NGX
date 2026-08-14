@@ -54,6 +54,10 @@ config :pinchflat, Pinchflat.Repo,
 {yt_dlp_remote_metadata_worker_count, _} =
   Integer.parse(System.get_env("YT_DLP_REMOTE_METADATA_WORKER_CONCURRENCY", Integer.to_string(yt_dlp_worker_count)))
 
+# Reconcile applies network-bound backfills (thumbnails/subtitles) in parallel;
+# tie its ceiling to the same politeness knob as the yt-dlp queues so a big
+# online/full reconcile doesn't hammer YouTube any harder than normal downloads
+config :pinchflat, reconcile_backfill_concurrency: max(yt_dlp_worker_count, 1)
 # Used to set the cron for the yt-dlp update worker. The reason for this is
 # to avoid all instances of PF updating yt-dlp at the same time, which 1)
 # could result in rate limiting and 2) gives me time to react if an update
@@ -67,7 +71,10 @@ config :pinchflat, Oban,
     media_collection_indexing: yt_dlp_index_worker_count,
     media_fetching: yt_dlp_download_worker_count,
     remote_metadata: yt_dlp_remote_metadata_worker_count,
-    local_data: 8
+    local_data: 8,
+    # Reconciliation and database compaction both reserve a full quiet window.
+    # Serializing them here prevents each from waiting for the other to finish.
+    maintenance: 1
   ],
   plugins: [
     # Keep old jobs for 30 days for display in the UI
@@ -78,7 +85,10 @@ config :pinchflat, Oban,
      crontab: [
        {"#{current_minute} #{current_hour} * * *", Pinchflat.YtDlp.UpdateWorker},
        {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
-       {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker}
+       {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker},
+       # Monthly, after retention (1AM) and quality upgrades (2AM) have had a
+       # chance to delete records whose space the VACUUM can then reclaim
+       {"0 3 1 * *", Pinchflat.Diagnostics.DatabaseMaintenanceWorker}
      ]}
   ]
 
