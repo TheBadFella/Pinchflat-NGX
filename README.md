@@ -29,6 +29,7 @@ For installation, configuration, and the base feature set, use the actual upstre
 - **Cleaner Form UX:** Better toggles, custom selects, clearer source/profile editing states, and improved source creation guidance.
 - **Collapsible Sidebar:** Desktop navigation can collapse for a denser, more focused layout.
 - **Broader Mobile Polish:** Source, job, and history views have improved responsive layouts for smaller screens.
+- **Settings Search:** Filter the Settings page to jump to notifications, extractor, cookies, and yt-dlp options faster.
 
 ### Downloads
 
@@ -38,10 +39,17 @@ For installation, configuration, and the base feature set, use the actual upstre
 - **Media Status Clarity:** The Other tab now shows distinct statuses — Unavailable, Removed, Ignored, or Filtered Out — so you always know why an item isn't downloading.
 - **Download Speed Visibility:** See live download speed in the jobs dashboard and media tables.
 - **Smarter Retry Behavior:** Retry flows clear stale errors properly and keep task state more accurate.
-- **Control yt-dlp Updates:** Track nightly, nightly-until-stable, or pinned versions instead of always auto-updating.
+- **Control yt-dlp Updates:** Track stable, nightly, nightly-frozen, nightly-until-stable, or pinned versions instead of always auto-updating.
+- **yt-dlp Base Config:** Edit extra yt-dlp options from Settings (the same flags you would put in a yt-dlp config file).
+- **Failed Downloads Tab:** Review failed items on Home and retry one or all from history and source tables.
+- **Cookie-Aware Retries:** Forced retries still apply cookies even when livestream prechecks are skipped.
 
 ### Operations
 
 - **Queue Diagnostics Page:** Inspect running, retryable, and discarded Oban jobs, reset or cancel individual jobs, and clear discarded queues from a single page.
-- **Extra Diagnostics:** More structured logging around source creation, indexing, enqueueing, and skipped downloads.
+- **Worker Concurrency:** Cap yt-dlp download, index, and metadata workers from Settings. Compose `YT_DLP_*_WORKER_CONCURRENCY` env vars still override the UI when set.
+- **Release Indicator:** The sidebar shows whether PinchYT is on the latest GitHub release and which yt-dlp update policy is selected.
+- **Extra Diagnostics:** More structured logging around source creation, indexing, enqueueing, and skipped downloads. Integrity check and related tools wrap correctly on small screens.
+- **Compose Layout:** Docker Compose files live in `docker/`. A root `compose.yaml` keeps `docker compose up` working from the repo root.
+- **FFmpeg:** Container images install FFmpeg from [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds) `latest` (master builds, currently FFmpeg 9.x). That feed does not publish a separate `n9.0` tarball yet.
 - **Ongoing Fork Tweaks:** Small workflow, UI, and reliability improvements that are useful in self-hosted daily use.
