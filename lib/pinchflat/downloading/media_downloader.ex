@@ -175,7 +175,16 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
     if Keyword.get(override_opts, :skip_download_precheck, false) do
       maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Waiting for transfer to start"})
-      YtDlpMedia.download(url, options, runner_opts)
+
+      download_or_retry_with_cookies(
+        url,
+        item_with_preloads,
+        output_filepath,
+        override_opts,
+        options,
+        runner_opts,
+        should_use_cookies
+      )
     else
       maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Prechecking media"})
 
@@ -186,7 +195,15 @@ defmodule Pinchflat.Downloading.MediaDownloader do
             progress_status: "Waiting for transfer to start"
           })
 
-          YtDlpMedia.download(url, options, runner_opts)
+          download_or_retry_with_cookies(
+            url,
+            item_with_preloads,
+            output_filepath,
+            override_opts,
+            options,
+            runner_opts,
+            should_use_cookies
+          )
 
         {{:ok, :ignorable}, _} ->
           {:error, :unsuitable_for_download}
@@ -204,6 +221,27 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         {err, _} ->
           err
       end
+    end
+  end
+
+  # Cookie recovery used to live only on the precheck path. Non-livestream
+  # downloads skip that precheck, so age-gate / members-only errors have to
+  # be handled here after the actual download attempt as well.
+  defp download_or_retry_with_cookies(
+         url,
+         item_with_preloads,
+         output_filepath,
+         override_opts,
+         options,
+         runner_opts,
+         should_use_cookies
+       ) do
+    case {YtDlpMedia.download(url, options, runner_opts), should_use_cookies} do
+      {{:error, _message, _exit_code} = err, false} ->
+        maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
+
+      {result, _} ->
+        result
     end
   end
 

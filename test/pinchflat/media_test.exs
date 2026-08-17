@@ -407,6 +407,32 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_failed_media_items/0 and list_failed_media_items_for/1" do
+    test "returns pending items with a last_error" do
+      source = source_fixture()
+      other_source = source_fixture()
+      failed = media_item_fixture(%{source_id: source.id, media_filepath: nil, last_error: "Network is unreachable"})
+      _healthy = media_item_fixture(%{source_id: source.id, media_filepath: nil, last_error: nil})
+      _other_failed = media_item_fixture(%{source_id: other_source.id, media_filepath: nil, last_error: "timeout"})
+
+      assert Media.list_failed_media_items_for(source) == [failed]
+      assert failed in Media.list_failed_media_items()
+    end
+
+    test "does not return downloaded items even if last_error is set" do
+      source = source_fixture()
+
+      _downloaded =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/#{Faker.File.file_name(:video)}",
+          last_error: "old error"
+        })
+
+      assert Media.list_failed_media_items_for(source) == []
+    end
+  end
+
   describe "pending_download?/1" do
     test "returns true when the media hasn't been downloaded" do
       media_item = media_item_fixture(%{media_filepath: nil})

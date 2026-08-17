@@ -64,6 +64,29 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def retry_pending_download_tasks(%Source{download_media: false}), do: :ok
 
   @doc """
+  Re-enqueues download jobs for pending media items that have a recorded error.
+  Pass a source to limit the retry to that source; omit it to retry every failed item.
+
+  Returns integer()
+  """
+  def retry_failed_download_tasks(%Source{} = source) do
+    source
+    |> Media.list_failed_media_items_for()
+    |> do_retry_failed_download_tasks()
+  end
+
+  def retry_failed_download_tasks do
+    Media.list_failed_media_items()
+    |> do_retry_failed_download_tasks()
+  end
+
+  defp do_retry_failed_download_tasks(media_items) do
+    Enum.each(media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{"force" => true, "reset_last_error" => true}))
+
+    length(media_items)
+  end
+
+  @doc """
   Deletes pending download tasks for a source's media items.
 
   Options:

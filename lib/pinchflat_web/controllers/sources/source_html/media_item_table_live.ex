@@ -8,6 +8,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   alias Pinchflat.Media
   alias Pinchflat.Sources
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
 
@@ -33,22 +34,34 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </span>
         </span>
 
-        <div class="theme-surface-accent rounded-m3-sm">
-          <div class="relative">
-            <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
-              <.icon name="hero-magnifying-glass" />
-            </span>
-            <%!-- The id must be unique because this LiveView renders once per media-state tab --%>
-            <form id={"media-search-form-#{@media_state}"} phx-change="search_term" phx-submit="search_term">
-              <input
-                type="text"
-                name="q"
-                value={@search_term}
-                placeholder="Search in table..."
-                class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:ring-0 focus:outline-none"
-                phx-debounce="200"
-              />
-            </form>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <.button
+            :if={@media_state == "failed"}
+            type="button"
+            rounding="rounded-m3-sm"
+            class="w-full text-sm sm:w-auto"
+            phx-click="retry_all_failed"
+            data-confirm="Retry all failed downloads for this source? They go to the back of the queue."
+          >
+            <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
+          </.button>
+          <div class="theme-surface-accent rounded-m3-sm">
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
+                <.icon name="hero-magnifying-glass" />
+              </span>
+              <%!-- The id must be unique because this LiveView renders once per media-state tab --%>
+              <form id={"media-search-form-#{@media_state}"} phx-change="search_term" phx-submit="search_term">
+                <input
+                  type="text"
+                  name="q"
+                  value={@search_term}
+                  placeholder="Search in table..."
+                  class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:ring-0 focus:outline-none"
+                  phx-debounce="200"
+                />
+              </form>
+            </div>
           </div>
         </div>
       </header>
@@ -86,7 +99,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 phx-click="force_download"
                 phx-value-media-id={media_item.id}
                 data-confirm="Are you sure you want to force a download of this media?"
-                tooltip="Force Download"
+                tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
                 tooltip_position="bottom-left"
               />
               <.icon_button
@@ -156,7 +169,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   phx-click="force_download"
                   phx-value-media-id={media_item.id}
                   data-confirm="Are you sure you want to force a download of this media?"
-                  tooltip="Force Download"
+                  tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
                   tooltip_position="bottom-left"
                 />
                 <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
@@ -268,6 +281,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("force_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
     MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("retry_all_failed", _params, socket) do
+    DownloadingHelpers.retry_failed_download_tasks(socket.assigns.source)
     PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
 
     {:noreply, socket}
@@ -438,6 +458,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> select(^select_fields())
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
+  end
+
+  defp generate_base_query(source, "failed") do
+    MediaQuery.new()
+    |> select(^select_fields())
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.download_failed()))
   end
 
   defp generate_base_query(source, "downloaded") do

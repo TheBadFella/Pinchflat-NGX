@@ -6,6 +6,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Utils.NumberUtils
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
@@ -25,11 +26,23 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   def render(assigns) do
     ~H"""
     <div>
-      <span class="mb-4 flex items-center">
-        <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
-        <span class="ml-2">
-          Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
+      <span class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <span class="flex items-center">
+          <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
+          <span class="ml-2">
+            Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
+          </span>
         </span>
+        <.button
+          :if={@media_state == "failed"}
+          type="button"
+          rounding="rounded-m3-sm"
+          class="w-full text-sm sm:w-auto"
+          phx-click="retry_all_failed"
+          data-confirm="Retry all failed downloads? They go to the back of the queue."
+        >
+          <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
+        </.button>
       </span>
       <div class="space-y-4 md:hidden">
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
@@ -62,7 +75,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                 phx-click="force_download"
                 phx-value-media-id={media_item.id}
                 data-confirm="Are you sure you want to force a download of this media?"
-                tooltip="Force Download"
+                tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
                 tooltip_position="bottom-left"
               />
               <.icon_button
@@ -128,7 +141,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                       phx-click="force_download"
                       phx-value-media-id={media_item.id}
                       data-confirm="Are you sure you want to force a download of this media?"
-                      tooltip="Force Download"
+                      tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
                       tooltip_position="bottom-left"
                     />
                     <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
@@ -221,6 +234,13 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     {:noreply, assign(socket, new_assigns)}
   end
 
+  def handle_event("retry_all_failed", _params, %{assigns: assigns} = socket) do
+    DownloadingHelpers.retry_failed_download_tasks()
+    new_assigns = fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.media_state)
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
   def handle_event("stop_download", %{"task-id" => task_id}, %{assigns: assigns} = socket) do
     task = Repo.get(Task, task_id)
 
@@ -307,6 +327,26 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.pending()))
+    |> select(
+      [m],
+      struct(m, [
+        :id,
+        :title,
+        :uploaded_at,
+        :inserted_at,
+        :media_downloaded_at,
+        :source_id,
+        :last_error,
+        :media_size_bytes
+      ])
+    )
+    |> order_by(desc: :id)
+  end
+
+  defp generate_base_query("failed") do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.download_failed()))
     |> select(
       [m],
       struct(m, [

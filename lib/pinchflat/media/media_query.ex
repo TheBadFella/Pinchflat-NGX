@@ -137,6 +137,10 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  def download_failed do
+    dynamic([mi], not is_nil(mi.last_error) and ^pending())
+  end
+
   def upgradeable do
     dynamic(
       [mi, source],

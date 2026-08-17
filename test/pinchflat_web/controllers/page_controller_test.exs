@@ -29,6 +29,7 @@ defmodule PinchflatWeb.PageControllerTest do
 
       conn = get(conn, ~p"/")
       assert html_response(conn, 200) =~ "MENU"
+      assert html_response(conn, 200) =~ "Failed"
     end
   end
 end

@@ -39,4 +39,24 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       assert html =~ older_executing_item.title
     end
   end
+
+  describe "failed tab" do
+    test "lists pending items that have a last_error", %{conn: conn} do
+      source = source_fixture()
+      failed = media_item_fixture(%{source_id: source.id, media_filepath: nil, last_error: "Network is unreachable"})
+      _healthy = media_item_fixture(%{source_id: source.id, media_filepath: nil, last_error: nil})
+
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "failed"})
+
+      assert html =~ failed.title
+      refute html =~ "Nothing Here!"
+      assert html =~ "Retry All Failed"
+
+      view
+      |> element("button", "Retry All Failed")
+      |> render_click()
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => failed.id})
+    end
+  end
 end

@@ -19,7 +19,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :class, :string, default: ""
   attr :type, :string, default: "submit"
   attr :disabled, :boolean, default: false
-  attr :rest, :global
+  attr :rest, :global, include: ~w(form)
 
   slot :inner_block, required: true
 

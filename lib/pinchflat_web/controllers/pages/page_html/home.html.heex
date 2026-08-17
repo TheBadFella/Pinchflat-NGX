@@ -45,6 +45,14 @@
       )}
     </:tab>
 
+    <:tab title="Failed" id="failed">
+      {live_render(
+        @conn,
+        Pinchflat.Pages.HistoryTableLive,
+        session: %{"media_state" => "failed"}
+      )}
+    </:tab>
+
     <:tab title="Active Tasks" id="active-tasks">{live_render(@conn, Pinchflat.Pages.JobTableLive)}</:tab>
 
     <:tab title="Downloaded" id="downloaded">
