@@ -1,18 +1,37 @@
-<div class="mb-6 flex gap-3 flex-row items-center justify-between">
-  <div class="flex gap-3 items-center">
+<div x-data="settingsPage()" class="flex flex-col gap-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <h2 class="ml-4 text-title-md2 font-bold text-theme-on-surface">Settings</h2>
-  </div>
-</div>
 
-<div class="theme-surface-raised px-5 py-5 sm:px-7.5">
-  <div class="max-w-full"><.setting_form conn={@conn} changeset={@changeset} action={~p"/settings"} /></div>
-</div>
-<div class="theme-surface-raised mt-6 px-5 py-5 sm:px-7.5">
-  <div class="max-w-full">
-    <h3 class="mb-2 text-2xl text-theme-on-surface">
-      Cookies
-    </h3>
-    {live_render(@conn, Pinchflat.Settings.CookieFileLive, id: "cookie-file-live")}
-    {live_render(@conn, Pinchflat.Settings.DefaultCookieBehaviourLive, id: "default-cookie-behaviour-live")}
+    <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+      <div class="theme-surface-accent w-full rounded-m3-sm sm:w-80">
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
+            <.icon name="hero-magnifying-glass" />
+          </span>
+          <input
+            type="search"
+            x-model="query"
+            x-on:keydown.escape.window="query = ''"
+            placeholder="Search settings..."
+            autocomplete="off"
+            class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:outline-none focus:ring-0"
+          />
+        </div>
+      </div>
+
+      <span
+        class="cursor-pointer whitespace-nowrap text-sm text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline sm:text-right"
+        x-on:click="advancedMode = !advancedMode"
+      >
+        Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
+      </span>
+    </div>
   </div>
+
+  <.setting_form
+    conn={@conn}
+    changeset={@changeset}
+    action={~p"/settings"}
+    concurrency_fields={@concurrency_fields}
+  />
 </div>

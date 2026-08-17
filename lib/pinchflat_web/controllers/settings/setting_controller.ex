@@ -4,15 +4,16 @@ defmodule PinchflatWeb.Settings.SettingController do
   alias Pinchflat.Settings
   alias Pinchflat.Reconciliation
   alias Pinchflat.Settings.CookieFile
+  alias Pinchflat.Settings.QueueConcurrency
   alias Pinchflat.YtDlp.UpdateWorker
 
   @yt_dlp_policy_fields [:yt_dlp_update_policy, :yt_dlp_pinned_version]
 
   def show(conn, _params) do
     setting = Settings.record()
-    changeset = Settings.change_setting(setting)
+    changeset = Settings.change_setting(setting, QueueConcurrency.form_attrs(setting))
 
-    render(conn, "show.html", changeset: changeset)
+    render(conn, "show.html", changeset: changeset, concurrency_fields: QueueConcurrency.field_states(setting))
   end
 
   def update(conn, %{"setting" => setting_params}) do
@@ -21,6 +22,7 @@ defmodule PinchflatWeb.Settings.SettingController do
     case Settings.update_setting(setting, setting_params) do
       {:ok, updated_setting} ->
         maybe_apply_yt_dlp_policy(setting, updated_setting)
+        QueueConcurrency.apply!(updated_setting)
         # A settings change can alter predicted paths, so any staged reconcile
         # plan may no longer be accurate — mark it stale so it must be rebuilt
         Reconciliation.mark_ready_plans_stale()
@@ -30,7 +32,10 @@ defmodule PinchflatWeb.Settings.SettingController do
         |> redirect(to: ~p"/settings")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, "show.html", changeset: changeset)
+        render(conn, "show.html",
+          changeset: changeset,
+          concurrency_fields: QueueConcurrency.field_states(setting)
+        )
     end
   end
 

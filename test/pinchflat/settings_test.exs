@@ -106,6 +106,19 @@ defmodule Pinchflat.SettingsTest do
       assert %Ecto.Changeset{valid?: false} = Settings.change_setting(setting, %{yt_dlp_update_policy: "bogus"})
     end
 
+    test "requires worker concurrency to be between 1 and 20" do
+      setting = Settings.record()
+
+      assert %Ecto.Changeset{valid?: true} =
+               Settings.change_setting(setting, %{yt_dlp_download_worker_concurrency: 2})
+
+      assert %Ecto.Changeset{valid?: false} =
+               Settings.change_setting(setting, %{yt_dlp_download_worker_concurrency: 0})
+
+      assert %Ecto.Changeset{valid?: false} =
+               Settings.change_setting(setting, %{yt_dlp_download_worker_concurrency: 21})
+    end
+
     test "requires a pinned version when the policy is pinned" do
       setting = Settings.record()
 

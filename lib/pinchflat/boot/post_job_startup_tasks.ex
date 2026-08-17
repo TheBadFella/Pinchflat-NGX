@@ -40,6 +40,7 @@ defmodule Pinchflat.Boot.PostJobStartupTasks do
   end
 
   def init(state) do
+    Pinchflat.Settings.QueueConcurrency.apply!()
     reschedule_missing_indexing_tasks()
 
     {:ok, state}

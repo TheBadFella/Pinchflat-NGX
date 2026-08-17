@@ -6,14 +6,24 @@ defmodule PinchflatWeb.SettingControllerTest do
   describe "show settings" do
     test "renders the page", %{conn: conn} do
       conn = get(conn, ~p"/settings")
+      html = html_response(conn, 200)
 
-      assert html_response(conn, 200) =~ "Settings"
+      assert html =~ "Settings"
+      assert html =~ "Search settings..."
+      assert html =~ "Notification Settings"
+      assert html =~ "Extractor Settings"
+      assert html =~ "Cookies"
+      assert html =~ "Base yt-dlp Config"
     end
   end
 
   describe "update settings" do
     test "saves and redirects when data is valid", %{conn: conn} do
-      update_attrs = %{apprise_server: "test://server", external_base_url: "https://pinchflat.example.com"}
+      update_attrs = %{
+        apprise_server: "test://server",
+        external_base_url: "https://pinchflat.example.com",
+        yt_dlp_download_worker_concurrency: 2
+      }
 
       conn = put(conn, ~p"/settings", setting: update_attrs)
       assert redirected_to(conn) == ~p"/settings"
@@ -21,6 +31,20 @@ defmodule PinchflatWeb.SettingControllerTest do
       conn = get(conn, ~p"/settings")
       assert html_response(conn, 200) =~ update_attrs[:apprise_server]
       assert html_response(conn, 200) =~ update_attrs[:external_base_url]
+      assert html_response(conn, 200) =~ "Download Workers"
+      assert html_response(conn, 200) =~ "Base yt-dlp Config"
+    end
+
+    test "shows compose ownership when a worker env var is set", %{conn: conn} do
+      System.put_env("YT_DLP_DOWNLOAD_WORKER_CONCURRENCY", "1")
+
+      on_exit(fn -> System.delete_env("YT_DLP_DOWNLOAD_WORKER_CONCURRENCY") end)
+
+      conn = get(conn, ~p"/settings")
+      html = html_response(conn, 200)
+
+      assert html =~ "YT_DLP_DOWNLOAD_WORKER_CONCURRENCY"
+      assert html =~ "Remove that variable from your compose file"
     end
 
     test "re-renders the form when data is invalid", %{conn: conn} do

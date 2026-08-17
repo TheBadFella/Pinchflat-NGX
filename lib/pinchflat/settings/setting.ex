@@ -27,7 +27,10 @@ defmodule Pinchflat.Settings.Setting do
     :ignore_unavailable_media,
     :database_maintenance_enabled,
     :default_cookie_behaviour,
-    :time_format
+    :time_format,
+    :yt_dlp_download_worker_concurrency,
+    :yt_dlp_index_worker_concurrency,
+    :yt_dlp_remote_metadata_worker_concurrency
   ]
 
   @time_formats ~w(24h 12h)
@@ -67,6 +70,11 @@ defmodule Pinchflat.Settings.Setting do
     # Clock used when rendering timestamps in the UI: "24h" | "12h"
     field :time_format, :string, default: "24h"
 
+    # Oban worker limits for yt-dlp-backed queues. Nil means "use env vars".
+    field :yt_dlp_download_worker_concurrency, :integer
+    field :yt_dlp_index_worker_concurrency, :integer
+    field :yt_dlp_remote_metadata_worker_concurrency, :integer
+
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
   end
@@ -81,6 +89,12 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_pinned_version()
     |> validate_inclusion(:default_cookie_behaviour, @cookie_behaviours)
     |> validate_inclusion(:time_format, @time_formats)
+    |> validate_number(:yt_dlp_download_worker_concurrency, greater_than_or_equal_to: 1, less_than_or_equal_to: 20)
+    |> validate_number(:yt_dlp_index_worker_concurrency, greater_than_or_equal_to: 1, less_than_or_equal_to: 20)
+    |> validate_number(:yt_dlp_remote_metadata_worker_concurrency,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: 20
+    )
   end
 
   @doc """
