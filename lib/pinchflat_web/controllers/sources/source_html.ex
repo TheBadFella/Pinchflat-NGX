@@ -146,13 +146,13 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
     ~H"""
     <div :if={@headline} class="mt-2" x-data="{ open: false }">
-      <p class="break-words text-sm text-danger">{@headline}</p>
+      <p class="break-words text-sm theme-status-error">{@headline}</p>
       <button
         :if={@detail}
         type="button"
         x-on:click="open = !open"
         aria-controls={@id}
-        class="mt-1 inline-flex items-center gap-1 text-xs text-bodydark hover:text-black dark:hover:text-white"
+        class="mt-1 inline-flex items-center gap-1 text-xs text-theme-on-surface-muted hover:text-theme-on-surface"
       >
         <.icon name="hero-chevron-right" class="h-3 w-3 transition" x-bind:class="open && 'rotate-90'" />
         <span x-text="open ? 'Hide detail' : 'Show detail'">Show detail</span>
@@ -162,7 +162,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         id={@id}
         x-show="open"
         x-cloak
-        class="mt-2 max-h-64 overflow-auto rounded-xs bg-meta-4 p-3 font-mono text-xs text-white"
+        class="mt-2 max-h-64 overflow-auto rounded-xs bg-theme-surface-4 p-3 font-mono text-xs text-theme-on-surface"
       >{@detail}</pre>
     </div>
     """
@@ -184,20 +184,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ~H"""
     <div class="p-4">
       <div class="flex flex-wrap items-center gap-2">
-        <.icon name={@icon} class="h-5 w-5 text-bodydark" />
+        <.icon name={@icon} class="h-5 w-5 text-theme-on-surface-muted" />
         <h4 class="font-semibold">{@title}</h4>
         <span
           :if={@badge}
-          class="rounded-full bg-meta-4 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-bodydark1"
+          class="rounded-full bg-theme-surface-4 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted"
         >
           {@badge}
         </span>
       </div>
-      <p class="mt-1 max-w-prose text-sm text-bodydark">{render_slot(@description)}</p>
+      <p class="mt-1 max-w-prose text-sm text-theme-on-surface-muted">{render_slot(@description)}</p>
 
       <div
         :if={@url}
-        class="mt-3 flex items-center gap-2 rounded-md border border-stroke bg-whiter px-3 py-2 dark:border-strokedark dark:bg-meta-4"
+        class="mt-3 flex items-center gap-2 rounded-md border border-theme-outline bg-theme-surface-1 px-3 py-2"
         x-data="{ copied: false }"
         x-on:click={~s"
           copyWithCallbacks(
@@ -210,14 +210,17 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         role="button"
       >
         <code class="min-w-0 grow cursor-pointer break-all font-mono text-xs">{@url}</code>
-        <span class="shrink-0 text-bodydark">
+        <span class="shrink-0 text-theme-on-surface-muted">
           <.icon x-show="!copied" name="hero-clipboard-document" class="h-4 w-4" />
-          <.icon x-show="copied" x-cloak name="hero-check" class="h-4 w-4 text-success" />
+          <.icon x-show="copied" x-cloak name="hero-check" class="h-4 w-4 theme-status-success" />
         </span>
       </div>
 
-      <div :if={!@url && @unavailable != []} class="mt-3 rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
-        <p class="max-w-prose text-sm text-warning">{render_slot(@unavailable)}</p>
+      <div
+        :if={!@url && @unavailable != []}
+        class="mt-3 rounded-md border border-theme-warning/40 bg-theme-warning/5 px-3 py-2"
+      >
+        <p class="max-w-prose text-sm theme-status-warning">{render_slot(@unavailable)}</p>
       </div>
     </div>
     """
@@ -235,15 +238,15 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   def switch(assigns) do
     ~H"""
-    <label class="group flex cursor-pointer select-none items-center gap-2.5 text-sm text-bodydark hover:text-black dark:hover:text-white">
+    <label class="group flex cursor-pointer select-none items-center gap-2.5 text-sm text-theme-on-surface-muted hover:text-theme-on-surface">
       <input type="checkbox" x-model={@model} class="peer sr-only" />
       <span class="relative inline-block h-5 w-9 shrink-0">
         <span
-          class="block h-full w-full rounded-full bg-stroke transition peer-focus-visible:ring-2 peer-focus-visible:ring-primary dark:bg-strokedark"
-          x-bind:class={"#{@model} && 'bg-primary! dark:bg-primary!'"}
+          class="block h-full w-full rounded-full bg-theme-surface-4 transition peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary"
+          x-bind:class={"#{@model} && 'bg-theme-primary!'"}
         ></span>
         <span
-          class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition"
+          class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-theme-on-surface shadow transition"
           x-bind:class={"#{@model} && 'translate-x-4'"}
         ></span>
       </span>
@@ -266,13 +269,13 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     <div
       role="group"
       aria-label={@aria_label}
-      class="inline-flex items-center gap-0.5 rounded-md border border-stroke p-0.5 dark:border-strokedark"
+      class="inline-flex items-center gap-0.5 rounded-md border border-theme-outline p-0.5"
     >
       <button
         :for={{label, value} <- @options}
         type="button"
         x-on:click={"#{@model} = #{value}"}
-        x-bind:class={"#{@model} === #{value} ? 'bg-meta-4 text-white' : 'text-bodydark hover:text-black dark:hover:text-white'"}
+        x-bind:class={"#{@model} === #{value} ? 'bg-theme-surface-4 text-theme-on-surface' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"}
         x-bind:aria-pressed={"#{@model} === #{value}"}
         class="rounded-sm px-2.5 py-1 text-xs font-medium transition"
       >
@@ -359,25 +362,25 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   defp humanize_seconds(seconds), do: "#{div(seconds, 3600)}h #{seconds |> rem(3600) |> div(60)}m"
 
   defp status_chip("executing"),
-    do: %{label: "Running", class: "bg-primary/10 text-primary", icon: "hero-arrow-path"}
+    do: %{label: "Running", class: "bg-theme-primary/10 text-theme-primary", icon: "hero-arrow-path"}
 
   defp status_chip("completed"),
-    do: %{label: "Completed", class: "bg-success/10 text-success", icon: "hero-check-circle"}
+    do: %{label: "Completed", class: "bg-theme-success/10 text-theme-success", icon: "hero-check-circle"}
 
   defp status_chip("discarded"),
-    do: %{label: "Failed", class: "bg-danger/10 text-danger", icon: "hero-x-circle"}
+    do: %{label: "Failed", class: "bg-theme-error/10 text-theme-error", icon: "hero-x-circle"}
 
   defp status_chip("retryable"),
-    do: %{label: "Retrying", class: "bg-danger/10 text-danger", icon: "hero-exclamation-triangle"}
+    do: %{label: "Retrying", class: "bg-theme-error/10 text-theme-error", icon: "hero-exclamation-triangle"}
 
   defp status_chip("cancelled"),
-    do: %{label: "Cancelled", class: "bg-meta-4 text-bodydark1", icon: "hero-no-symbol"}
+    do: %{label: "Cancelled", class: "bg-theme-surface-4 text-theme-on-surface-muted", icon: "hero-no-symbol"}
 
   defp status_chip(scheduled) when scheduled in ~w(available scheduled),
-    do: %{label: "Scheduled", class: "bg-meta-4 text-bodydark1", icon: "hero-clock"}
+    do: %{label: "Scheduled", class: "bg-theme-surface-4 text-theme-on-surface-muted", icon: "hero-clock"}
 
   defp status_chip(state),
-    do: %{label: String.capitalize(state), class: "bg-meta-4 text-bodydark1", icon: "hero-clock"}
+    do: %{label: String.capitalize(state), class: "bg-theme-surface-4 text-theme-on-surface-muted", icon: "hero-clock"}
 
   # Workers are full module names; only the last segment identifies the work.
   defp worker_basename(worker), do: worker |> to_string() |> String.split(".") |> List.last()
@@ -742,13 +745,25 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   Presentation attributes for the header status pill given `Sources.status/1`.
   """
   def status_pill(:paused),
-    do: %{label: "Paused", icon: "hero-pause", class: "bg-warning/10 text-warning border border-warning/40"}
+    do: %{
+      label: "Paused",
+      icon: "hero-pause",
+      class: "bg-theme-warning/10 text-theme-warning border border-theme-warning/40"
+    }
 
   def status_pill(:error),
-    do: %{label: "Error", icon: "hero-exclamation-triangle", class: "bg-danger/10 text-danger border border-danger/40"}
+    do: %{
+      label: "Error",
+      icon: "hero-exclamation-triangle",
+      class: "bg-theme-error/10 text-theme-error border border-theme-error/40"
+    }
 
   def status_pill(_active),
-    do: %{label: "Active", icon: "hero-check-circle", class: "bg-success/10 text-success border border-success/40"}
+    do: %{
+      label: "Active",
+      icon: "hero-check-circle",
+      class: "bg-theme-success/10 text-theme-success border border-theme-success/40"
+    }
 
   @doc """
   A compact, human-friendly label for a source's original URL. YouTube handle and

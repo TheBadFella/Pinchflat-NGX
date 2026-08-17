@@ -76,6 +76,27 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Returns pending media items that have a recorded download error.
+
+  Returns [%MediaItem{}, ...]
+  """
+  def list_failed_media_items do
+    failed_media_query()
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns pending media items for a source that have a recorded download error.
+
+  Returns [%MediaItem{}, ...]
+  """
+  def list_failed_media_items_for(%Source{} = source) do
+    failed_media_query()
+    |> where(^dynamic(^MediaQuery.for_source(source)))
+    |> Repo.all()
+  end
+
+  @doc """
   For a given media_item, tells you if it is pending download. This is defined as
   the media_item satisfying `MediaQuery.pending` which you should really check out.
 
@@ -246,6 +267,12 @@ defmodule Pinchflat.Media do
       )
     )
     |> Repo.all()
+  end
+
+  defp failed_media_query do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.download_failed()))
   end
 
   defp do_delete_media_files(media_item) do

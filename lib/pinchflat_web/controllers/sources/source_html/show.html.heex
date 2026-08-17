@@ -101,6 +101,14 @@
         )}
       </:tab>
 
+      <:tab title="Failed" id="failed">
+        {live_render(
+          @conn,
+          PinchflatWeb.Sources.MediaItemTableLive,
+          session: %{"source_id" => @source.id, "media_state" => "failed"}
+        )}
+      </:tab>
+
       <:tab
         :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
         title="Selection"

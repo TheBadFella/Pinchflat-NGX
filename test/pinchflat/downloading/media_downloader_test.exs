@@ -385,6 +385,39 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
       assert {:error, :download_failed, "This video is available to this channel's members"} =
                MediaDownloader.download_for_media_item(media_item)
     end
+
+    test "retries with cookies when precheck is skipped and the download hits a cookie error" do
+      expect(YtDlpRunnerMock, :run, 3, fn
+        _url, :download, _opts, _ot, addl ->
+          if {:use_cookies, true} in addl do
+            {:ok, render_metadata(:media_metadata)}
+          else
+            {:error, "Sign in to confirm your age", 1}
+          end
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      source = source_fixture(%{cookie_behaviour: :when_needed})
+      media_item = media_item_fixture(%{source_id: source.id})
+
+      assert {:ok, _} =
+               MediaDownloader.download_for_media_item(media_item, skip_download_precheck: true)
+    end
+
+    test "does not retry with cookies when precheck is skipped and cookies would not help" do
+      expect(YtDlpRunnerMock, :run, 1, fn
+        _url, :download, _opts, _ot, _addl ->
+          {:error, "Some other error", 1}
+      end)
+
+      source = source_fixture(%{cookie_behaviour: :when_needed})
+      media_item = media_item_fixture(%{source_id: source.id})
+
+      assert {:error, :download_failed, "Some other error"} =
+               MediaDownloader.download_for_media_item(media_item, skip_download_precheck: true)
+    end
   end
 
   describe "download_for_media_item/3 when testing media_item attributes" do
