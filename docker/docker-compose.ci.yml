@@ -1,12 +1,14 @@
+name: pinchyt
+
 services:
   phx:
     build:
-      context: .
-      dockerfile: ./docker/dev.Dockerfile
+      context: ..
+      dockerfile: docker/dev.Dockerfile
     environment:
       - MIX_ENV=test
     volumes:
-      - '.:/app'
+      - '..:/app'
       # These lines ensure the deps can be saved as build artifacts for caching
       - '/app/deps'
       - '/app/_build'

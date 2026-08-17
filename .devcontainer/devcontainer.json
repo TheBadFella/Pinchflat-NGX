@@ -1,6 +1,6 @@
 {
   "name": "Pinchflat Dev",
-  "dockerComposeFile": "../docker-compose.yml",
+  "dockerComposeFile": "../docker/docker-compose.yml",
   "service": "phx",
   "workspaceFolder": "/app",
   "shutdownAction": "stopCompose",

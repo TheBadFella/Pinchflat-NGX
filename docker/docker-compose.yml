@@ -1,10 +1,12 @@
+name: pinchyt
+
 services:
   phx:
     build:
-      context: .
-      dockerfile: ./docker/dev.Dockerfile
+      context: ..
+      dockerfile: docker/dev.Dockerfile
     volumes:
-      - '.:/app'
+      - '..:/app'
       - mix_deps:/app/deps
       - mix_build:/app/_build
       - root_node_modules:/app/node_modules
@@ -17,7 +19,8 @@ services:
     environment:
       PAGINATION_HISTORY_LIMIT: 10
       PAGINATION_LIMIT: 20
-      YT_DLP_WORKER_CONCURRENCY: ${YT_DLP_WORKER_CONCURRENCY:-5}
+      # Leave YT_DLP_*_WORKER_CONCURRENCY unset to control workers in Settings.
+      # If you set them here they override the UI until you remove them.
 
 volumes:
   mix_deps:

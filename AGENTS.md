@@ -15,6 +15,8 @@ Pinchflat is a self-hosted media management app using:
 
 **Always use Docker for development and testing.** The project has permission issues when mixing Docker and local builds.
 
+Compose files live in `docker/`. The root `compose.yaml` includes `docker/docker-compose.yml`, so `docker compose up` still works from the repo root. CI sets `COMPOSE_FILE: ./docker/docker-compose.ci.yml`.
+
 ## Git And PR Policy
 
 - Create pull requests against this fork's `origin` remote unless the user explicitly says otherwise.

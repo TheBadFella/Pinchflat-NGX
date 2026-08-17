@@ -1,0 +1,3 @@
+# Compose looks here from the repo root. Real service definitions live in docker/.
+include:
+  - path: docker/docker-compose.yml

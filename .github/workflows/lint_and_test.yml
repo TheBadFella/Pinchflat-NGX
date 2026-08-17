@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 30
     if: "! contains(toJSON(github.event.commits.*.message), '[skip ci]')"
     env:
-      COMPOSE_FILE: ./docker-compose.ci.yml
+      COMPOSE_FILE: ./docker/docker-compose.ci.yml
       MIX_ENV: test
 
     steps:
