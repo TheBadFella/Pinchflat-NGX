@@ -19,6 +19,8 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
 
       assert html_response(conn, 200) =~ "Diagnostics"
       assert html_response(conn, 200) =~ "Queue Health"
+      assert html_response(conn, 200) =~ "flex-col gap-3 sm:flex-row"
+      assert html_response(conn, 200) =~ "flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
     end
   end
 

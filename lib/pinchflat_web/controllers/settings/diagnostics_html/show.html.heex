@@ -1,11 +1,11 @@
-<div class="mb-6 flex flex-row items-center justify-between gap-3">
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   <div class="flex items-center gap-3">
     <h2 class="ml-4 text-title-md2 font-bold text-theme-on-surface">
       Diagnostics
     </h2>
   </div>
-  <div class="flex items-center gap-4">
-    <.button rounding="rounded-m3-sm" x-data="{ copied: false }" x-on:click={~s"
+  <div class="flex flex-wrap items-center gap-2 sm:gap-4">
+    <.button rounding="rounded-m3-sm" class="w-full sm:w-auto" x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
           `#{diagnostic_info_string()}`,
           () => copied = true,
@@ -15,8 +15,8 @@
       Copy Diagnostic Info
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </.button>
-    <.link href={~p"/download_logs"}>
-      <.button rounding="rounded-m3-sm">
+    <.link href={~p"/download_logs"} class="w-full sm:w-auto">
+      <.button rounding="rounded-m3-sm" class="w-full">
         Download Logs
       </.button>
     </.link>
@@ -49,16 +49,20 @@
 <!-- Database -->
 <% db = database_stats() %>
 <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
-  <div class="mb-4 flex items-center justify-between">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h3 class="text-lg font-semibold text-theme-on-surface">Database</h3>
-    <div class="flex items-center gap-3">
-      {live_render(@conn, Pinchflat.Settings.IntegrityCheckLive, id: "integrity-check-live")}
+    <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+      {live_render(@conn, Pinchflat.Settings.IntegrityCheckLive,
+        id: "integrity-check-live",
+        container: {:div, class: "w-full sm:w-auto"}
+      )}
       <.link
         href={~p"/diagnostics/vacuum_database"}
         method="post"
         data-confirm="Compact the database now? Job queues are paused while any running jobs finish, then the database is compacted and the queues resume on their own. With long-running jobs this can take a while."
+        class="w-full sm:w-auto"
       >
-        <.button color="theme-primary-button" rounding="rounded-m3-sm" class="text-sm">
+        <.button color="theme-primary-button" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">
           <.icon name="hero-circle-stack" class="mr-1 h-4 w-4" /> Compact Now
         </.button>
       </.link>
@@ -133,10 +137,10 @@
 </div>
 
 <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
-  <div class="mb-4 flex items-center justify-between">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h3 class="text-lg font-semibold text-theme-on-surface">Queue Health</h3>
-    <.link href={~p"/diagnostics"}>
-      <.button color="theme-outline-button" rounding="rounded-m3-sm" class="text-sm">
+    <.link href={~p"/diagnostics"} class="w-full sm:w-auto">
+      <.button color="theme-outline-button" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">
         <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Refresh
       </.button>
     </.link>
@@ -235,15 +239,16 @@
 <% retryable = retryable_jobs() %>
 <% discarded = discarded_jobs() %>
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
-  <div class="mb-4 flex items-center justify-between">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h3 class="text-lg font-semibold text-theme-on-surface">Failed Jobs</h3>
     <%= if length(retryable) > 0 do %>
       <.link
         href={~p"/diagnostics/reset_retryable_jobs"}
         method="post"
         data-confirm="This will reset all retryable jobs and clear their error history. They will be retried from scratch. Continue?"
+        class="w-full sm:w-auto"
       >
-        <.button color="theme-danger-button-solid" rounding="rounded-m3-sm" class="text-sm">
+        <.button color="theme-danger-button-solid" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">
           <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Reset All Retryable Jobs
         </.button>
       </.link>

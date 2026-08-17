@@ -40,5 +40,7 @@ config :swoosh, :api_client, false
 
 config :logger, level: :critical
 
+config :pinchflat, :app_release_check, false
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime

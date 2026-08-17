@@ -93,7 +93,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
           Skipped at {format_datetime(job.cancelled_at)} — {extract_last_error(job.errors)}
         </span>
       <% job -> %>
-        <span class="text-bodydark">Queued, will run at {format_datetime(job.scheduled_at)}.</span>
+        <span class="text-theme-on-surface-muted">Queued, will run at {format_datetime(job.scheduled_at)}.</span>
     <% end %>
     """
   end

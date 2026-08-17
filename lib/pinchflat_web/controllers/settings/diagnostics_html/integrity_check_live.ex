@@ -23,11 +23,11 @@ defmodule Pinchflat.Settings.IntegrityCheckLive do
 
   def render(assigns) do
     ~H"""
-    <div>
+    <div class="flex w-full sm:inline-flex sm:w-auto">
       <.button
         color="theme-primary-button"
         rounding="rounded-m3-sm"
-        class="text-sm"
+        class="w-full text-sm sm:w-auto"
         type="button"
         phx-click={show_modal(@modal_id)}
       >
