@@ -2,22 +2,14 @@
   :let={f}
   for={@changeset}
   action={@action}
-  x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
-  x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
+  id="settings-form"
+  class="flex flex-col gap-6"
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
-  <section>
-    <section class="flex justify-between items-center mt-4">
-      <h3 class="text-2xl text-theme-on-surface">Notification Settings</h3>
+  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.notifications)">
+    <h3 class="text-2xl text-theme-on-surface">Notification Settings</h3>
 
-      <span
-        class="cursor-pointer text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline"
-        x-on:click="advancedMode = !advancedMode"
-      >
-        Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
-      </span>
-    </section>
     {live_render(
       @conn,
       Pinchflat.Settings.AppriseServerLive,
@@ -33,130 +25,177 @@
     />
   </section>
 
-  <section class="mt-8">
-    <section>
-      <h3 class="text-2xl text-theme-on-surface">Extractor Settings</h3>
+  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.extractor)">
+    <h3 class="text-2xl text-theme-on-surface">Extractor Settings</h3>
 
-      {live_render(
-        @conn,
-        Pinchflat.Settings.YoutubeApiKeyLive,
-        session: %{"value" => f[:youtube_api_key].value}
-      )}
-      <.input
-        field={f[:extractor_sleep_interval_seconds]}
-        placeholder="0"
-        type="number"
-        label="Sleep Interval (seconds)"
-        help="Sleep interval in seconds between each extractor request. Must be a positive whole number. Set to 0 to disable"
-      />
-      <.input
-        field={f[:download_throughput_limit]}
-        placeholder="4.2M"
-        label="Download Throughput"
-        help="Sets the max bytes-per-second throughput when downloading media. Examples: '50K' or '4.2M'. Leave blank to disable"
-      />
-      <.input
-        field={f[:restrict_filenames]}
-        type="toggle"
-        label="Restrict Filenames"
-        help="Restrict filenames to only ASCII characters and avoid ampersands/spaces in filenames"
-      />
+    {live_render(
+      @conn,
+      Pinchflat.Settings.YoutubeApiKeyLive,
+      session: %{"value" => f[:youtube_api_key].value}
+    )}
+    <.input
+      field={f[:extractor_sleep_interval_seconds]}
+      placeholder="0"
+      type="number"
+      label="Sleep Interval (seconds)"
+      help="Sleep interval in seconds between each extractor request. Must be a positive whole number. Set to 0 to disable"
+    />
+    <.input
+      field={f[:download_throughput_limit]}
+      placeholder="4.2M"
+      label="Download Throughput"
+      help="Sets the max bytes-per-second throughput when downloading media. Examples: '50K' or '4.2M'. Leave blank to disable"
+    />
+    <.input
+      field={f[:yt_dlp_download_worker_concurrency]}
+      type="number"
+      label="Download Workers"
+      help={concurrency_help(@concurrency_fields.download, download_workers_help())}
+      html_help={@concurrency_fields.download.locked}
+      disabled={@concurrency_fields.download.locked}
+    />
+    <.input
+      field={f[:yt_dlp_index_worker_concurrency]}
+      type="number"
+      label="Indexing Workers"
+      help={concurrency_help(@concurrency_fields.index, indexing_workers_help())}
+      html_help={@concurrency_fields.index.locked}
+      disabled={@concurrency_fields.index.locked}
+    />
+    <.input
+      field={f[:yt_dlp_remote_metadata_worker_concurrency]}
+      type="number"
+      label="Metadata Workers"
+      help={concurrency_help(@concurrency_fields.metadata, metadata_workers_help())}
+      html_help={@concurrency_fields.metadata.locked}
+      disabled={@concurrency_fields.metadata.locked}
+    />
+    <.input
+      field={f[:restrict_filenames]}
+      type="toggle"
+      label="Restrict Filenames"
+      help="Restrict filenames to only ASCII characters and avoid ampersands/spaces in filenames"
+    />
 
-      <.input
-        field={f[:ignore_unavailable_media]}
-        type="toggle"
-        label="Ignore Unavailable Media"
-        help="Mark members-only, private, and removed videos as skipped instead of repeatedly erroring. They stay in the database but won't be retried"
-      />
-      <div
-        x-data={"{ is12h: #{f[:time_format].value == "12h"} }"}
-        phx-update="ignore"
-        id="time-format-wrapper"
-      >
-        <.label for={f[:time_format].id}>Time Format</.label>
-        <div class="relative flex flex-col">
-          <input
-            type="hidden"
-            id={f[:time_format].id}
-            name={f[:time_format].name}
-            x-bind:value="is12h ? '12h' : '24h'"
-          />
-          <div
-            class="inline-flex items-center gap-3 cursor-pointer"
-            @click={"is12h = !is12h; dispatchFor('#{f[:time_format].id}', 'change')"}
-          >
-            <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
-            <div class="relative h-8 w-14">
-              <div
-                x-bind:class="is12h ? 'bg-theme-primary' : 'bg-theme-surface-4'"
-                class="block h-8 w-14 rounded-full transition-colors duration-200"
-              >
-              </div>
-              <div
-                x-bind:class="is12h ? 'right-1 translate-x-full' : 'left-1'"
-                class="absolute top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface transition-transform duration-200"
-              >
-              </div>
+    <.input
+      field={f[:ignore_unavailable_media]}
+      type="toggle"
+      label="Ignore Unavailable Media"
+      help="Mark members-only, private, and removed videos as skipped instead of repeatedly erroring. They stay in the database but won't be retried"
+    />
+    <div
+      x-data={"{ is12h: #{f[:time_format].value == "12h"} }"}
+      phx-update="ignore"
+      id="time-format-wrapper"
+    >
+      <.label for={f[:time_format].id}>Time Format</.label>
+      <div class="relative flex flex-col">
+        <input
+          type="hidden"
+          id={f[:time_format].id}
+          name={f[:time_format].name}
+          x-bind:value="is12h ? '12h' : '24h'"
+        />
+        <div
+          class="inline-flex items-center gap-3 cursor-pointer"
+          @click={"is12h = !is12h; dispatchFor('#{f[:time_format].id}', 'change')"}
+        >
+          <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
+          <div class="relative h-8 w-14">
+            <div
+              x-bind:class="is12h ? 'bg-theme-primary' : 'bg-theme-surface-4'"
+              class="block h-8 w-14 rounded-full transition-colors duration-200"
+            >
             </div>
-            <span x-bind:class="is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">12hr</span>
+            <div
+              x-bind:class="is12h ? 'right-1 translate-x-full' : 'left-1'"
+              class="absolute top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface transition-transform duration-200"
+            >
+            </div>
           </div>
-          <.help>Clock used when displaying timestamps in the UI</.help>
+          <span x-bind:class="is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">12hr</span>
         </div>
+        <.help>Clock used when displaying timestamps in the UI</.help>
       </div>
+    </div>
 
-      <.input
-        field={f[:database_maintenance_enabled]}
-        type="toggle"
-        label="Scheduled Database Compaction"
-        help="Automatically compact the database once a month to reclaim disk space. Job queues are paused while running jobs finish, then processing resumes. You can always compact manually from the Diagnostics page"
-      />
-    </section>
+    <.input
+      field={f[:database_maintenance_enabled]}
+      type="toggle"
+      label="Scheduled Database Compaction"
+      help="Automatically compact the database once a month to reclaim disk space. Job queues are paused while running jobs finish, then processing resumes. You can always compact manually from the Diagnostics page"
+    />
   </section>
 
-  <section class="mt-8">
-    <section>
-      <h3 class="text-2xl text-theme-on-surface">
-        yt-dlp
-      </h3>
+  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.ytdlp)">
+    <h3 class="text-2xl text-theme-on-surface">yt-dlp</h3>
 
-      {live_render(
-        @conn,
-        Pinchflat.Settings.YtDlpVersionLive,
-        session: %{
-          "policy" => f[:yt_dlp_update_policy].value,
-          "pinned_version" => f[:yt_dlp_pinned_version].value
-        }
-      )}
-    </section>
+    {live_render(
+      @conn,
+      Pinchflat.Settings.YtDlpVersionLive,
+      session: %{
+        "policy" => f[:yt_dlp_update_policy].value,
+        "pinned_version" => f[:yt_dlp_pinned_version].value
+      }
+    )}
+
+    <div class="mt-8 border-t border-theme-outline/60 pt-6">
+      {live_render(@conn, Pinchflat.Settings.YtDlpConfigLive, id: "yt-dlp-config-live")}
+    </div>
   </section>
 
-  <section class="mt-8" x-show="advancedMode">
-    <section>
-      <h3 class="text-2xl text-theme-on-surface">Codec Options</h3>
+  <section
+    class="theme-surface-raised px-5 py-5 sm:px-7.5"
+    x-show="(advancedMode || query.trim()) && match(groups.codec)"
+  >
+    <h3 class="text-2xl text-theme-on-surface">Codec Options</h3>
 
-      <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
-        The best available codec will be used if your preferred codecs are not found
-      </p>
+    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
+      The best available codec will be used if your preferred codecs are not found
+    </p>
 
-      <.input
-        field={f[:video_codec_preference]}
-        placeholder="avc"
-        type="text"
-        label="Video Codec Preference"
-        help="Video codec preference. Will be remuxed into an MP4 container. See below for more details"
-        inputclass="font-mono text-sm mr-4"
-      />
-      <.input
-        field={f[:audio_codec_preference]}
-        placeholder="m4a"
-        type="text"
-        label="Audio Codec Preference"
-        help="Audio codec preference. See below for more details"
-        inputclass="font-mono text-sm mr-4"
-      />
-    </section>
+    <.input
+      field={f[:video_codec_preference]}
+      placeholder="avc"
+      type="text"
+      label="Video Codec Preference"
+      help="Video codec preference. Will be remuxed into an MP4 container. See below for more details"
+      inputclass="font-mono text-sm mr-4"
+    />
+    <.input
+      field={f[:audio_codec_preference]}
+      placeholder="m4a"
+      type="text"
+      label="Audio Codec Preference"
+      help="Audio codec preference. See below for more details"
+      inputclass="font-mono text-sm mr-4"
+    />
 
     <div class="theme-surface-accent mt-5 p-4 md:p-6"><.codec_settings_help /></div>
   </section>
-  <.button class="mt-10 mb-4 w-full sm:mb-8 sm:w-auto" rounding="rounded-m3-sm">Save Settings</.button>
 </.simple_form>
+
+<section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.cookies)">
+  <h3 class="text-2xl text-theme-on-surface">Cookies</h3>
+  {live_render(@conn, Pinchflat.Settings.CookieFileLive, id: "cookie-file-live")}
+  {live_render(@conn, Pinchflat.Settings.DefaultCookieBehaviourLive, id: "default-cookie-behaviour-live")}
+</section>
+
+<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <.button
+    class="w-full sm:w-auto"
+    rounding="rounded-m3-sm"
+    form="settings-form"
+    x-show="match(groups.notifications) || match(groups.extractor) || match(groups.ytdlp) || ((advancedMode || query.trim()) && match(groups.codec))"
+  >
+    Save Settings
+  </.button>
+</div>
+
+<p
+  class="theme-surface-raised px-5 py-8 text-center text-sm text-theme-on-surface-muted sm:px-7.5"
+  x-cloak
+  x-show="!match(groups.notifications) && !match(groups.extractor) && !match(groups.ytdlp) && !match(groups.cookies) && !((advancedMode || query.trim()) && match(groups.codec))"
+>
+  No settings match "<span x-text="query.trim()"></span>".
+</p>

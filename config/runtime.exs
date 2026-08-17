@@ -43,6 +43,8 @@ config :pinchflat, Pinchflat.Repo,
 # Some users may want to increase the number of workers that use yt-dlp to improve speeds
 # Others may want to decrease the number of these workers to lessen the chance of an IP ban.
 # Downloads can be tuned separately from indexing so slow media fetches don't starve indexing.
+# These env vars set the boot-time Oban limits and override Settings whenever they
+# are present. Omit them from Compose to control workers in the UI.
 {yt_dlp_worker_count, _} = Integer.parse(System.get_env("YT_DLP_WORKER_CONCURRENCY", "5"))
 
 {yt_dlp_download_worker_count, _} =

@@ -9,6 +9,7 @@ defmodule PinchflatWeb.Settings.SettingHTML do
   attr :conn, Plug.Conn, required: true
   attr :changeset, Ecto.Changeset, required: true
   attr :action, :string, required: true
+  attr :concurrency_fields, :map, required: true
 
   def setting_form(assigns)
 
@@ -36,6 +37,24 @@ defmodule PinchflatWeb.Settings.SettingHTML do
     url = "https://github.com/yt-dlp/yt-dlp/releases"
 
     ~s(The exact yt-dlp version to install and hold, e.g. "2025.12.08". See the <a href="#{url}" class="#{help_link_classes()}" target="_blank">GH releases page</a> for valid versions, or use the check button to validate your entry)
+  end
+
+  def concurrency_help(%{locked: true, env_key: key, value: value}, _unlocked_help) do
+    ~s(Currently #{value}, set by Docker Compose as <span class="font-mono">#{key}</span>. Remove that variable from your compose file if you want to control this in the UI.)
+  end
+
+  def concurrency_help(%{locked: false}, unlocked_help), do: unlocked_help
+
+  defp download_workers_help do
+    "How many videos can download at once. Each 1080p job opens two network streams, so start at 1–2 if you see timeouts or 'Network is unreachable'. Takes effect immediately."
+  end
+
+  defp indexing_workers_help do
+    "How many sources can be indexed at once. Lower this if YouTube starts rate-limiting. Takes effect immediately."
+  end
+
+  defp metadata_workers_help do
+    "How many thumbnail/NFO/subtitle metadata jobs can run at once. Takes effect immediately."
   end
 
   defp help_link_classes do

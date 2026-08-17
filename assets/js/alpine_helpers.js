@@ -28,14 +28,6 @@ window.copyWithCallbacks = async (text, onCopy, onAfterDelay, delay = 4000) => {
   setTimeout(onAfterDelay, delay)
 }
 
-window.markVersionAsSeen = (versionString) => {
-  localStorage.setItem('seenVersion', versionString)
-}
-
-window.isVersionSeen = (versionString) => {
-  return localStorage.getItem('seenVersion') === versionString
-}
-
 window.getSidebarCollapsed = () => {
   return localStorage.getItem('sidebarCollapsed') === 'true'
 }
@@ -43,6 +35,34 @@ window.getSidebarCollapsed = () => {
 window.setSidebarCollapsed = (collapsed) => {
   localStorage.setItem('sidebarCollapsed', collapsed ? 'true' : 'false')
 }
+
+window.settingsPage = () => ({
+  query: '',
+  advancedMode: JSON.parse(localStorage.getItem('advancedMode') || 'false'),
+  groups: {
+    notifications:
+      'notifications notify apprise server webhook discord telegram email external base url public pinchflat',
+    extractor:
+      'extractor youtube api key sleep interval throughput download workers indexing metadata concurrency restrict filenames ascii ignore unavailable members-only private time format 12h 24h clock database compaction vacuum sqlite',
+    ytdlp:
+      'yt-dlp ytdlp youtube-dl update nightly stable pinned version base config force-ipv4 retries fragment-retries socket-timeout ipv4',
+    codec: 'codec video audio avc m4a remux preference mp4',
+    cookies:
+      'cookies cookie netscape cookies.txt members-only age-restricted default cookie behavior'
+  },
+  init() {
+    this.$watch('advancedMode', (value) => {
+      localStorage.setItem('advancedMode', JSON.stringify(value))
+    })
+  },
+  match(text) {
+    const query = this.query.trim().toLowerCase()
+    if (!query) return true
+
+    const haystack = String(text || '').toLowerCase()
+    return query.split(/\s+/).every((word) => haystack.includes(word))
+  }
+})
 
 window.dispatchFor = (elementOrId, eventName, detail = {}) => {
   const element =
