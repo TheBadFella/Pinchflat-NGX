@@ -12,6 +12,16 @@ For installation, configuration, and the base feature set, use the actual upstre
 - Upstream README: <https://github.com/kieraneglin/pinchflat/blob/master/README.md>
 - Upstream wiki: <https://github.com/kieraneglin/pinchflat/wiki>
 
+## Docker Images
+
+PinchYT images are published to `ghcr.io/thebadfella/pinchyt` as multi-platform Linux images:
+
+- `linux/amd64` for 64-bit Intel and AMD systems
+- `linux/arm64` for 64-bit ARM systems, including Raspberry Pi devices running a 64-bit OS
+
+Docker automatically pulls the correct architecture from a multi-platform tag. Use `latest` for the newest published
+release or a version tag when you want to pin a deployment.
+
 ## What PinchYT Adds over Pinchflat (As a Fork)
 
 ### Sources
