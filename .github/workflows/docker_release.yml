@@ -10,6 +10,7 @@ on:
         default: 'linux/amd64'
         options:
           - 'linux/amd64'
+          - 'linux/amd64,linux/arm64'
       docker_tags:
         type: string
         description: 'Docker tag to publish alongside latest'
@@ -46,13 +47,12 @@ jobs:
       - name: Determine build matrix
         id: set-matrix
         run: |
-          # Release events build amd64 only to control Actions usage
-          # Pushes to tags also build amd64 only
+          # Published releases and tag pushes build both architectures
           # workflow_dispatch uses the selected platforms input
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo 'matrix={"include":[{"platform":"linux/amd64","runner":"ubuntu-latest"}]}' >> "$GITHUB_OUTPUT"
-            echo "is_multi_arch=false" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"include":[{"platform":"linux/amd64","runner":"ubuntu-latest"},{"platform":"linux/arm64","runner":"ubuntu-24.04-arm"}]}' >> "$GITHUB_OUTPUT"
+            echo "is_multi_arch=true" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             PLATFORMS="${{ inputs.platforms }}"
             if [[ "$PLATFORMS" == *"arm64"* ]]; then
@@ -63,9 +63,8 @@ jobs:
               echo "is_multi_arch=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            # Tag pushes - only amd64 for faster versioned builds
-            echo 'matrix={"include":[{"platform":"linux/amd64","runner":"ubuntu-latest"}]}' >> "$GITHUB_OUTPUT"
-            echo "is_multi_arch=false" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"include":[{"platform":"linux/amd64","runner":"ubuntu-latest"},{"platform":"linux/arm64","runner":"ubuntu-24.04-arm"}]}' >> "$GITHUB_OUTPUT"
+            echo "is_multi_arch=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
