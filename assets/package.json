@@ -1,7 +1,7 @@
 {
   "description": "Use this one for actual JS deps used in-app",
   "dependencies": {
-    "alpinejs": "^3.16.1"
+    "alpinejs": "^3.16.3"
   },
   "license": "<See the LICENSE file>"
 }
