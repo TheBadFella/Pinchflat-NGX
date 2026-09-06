@@ -49,6 +49,8 @@ defmodule Pinchflat.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.8.5"},
+      {:assent, "~> 0.3.1"},
+      {:req, "~> 0.4"},
       {:phoenix_ecto, "~> 4.4"},
       {:ecto, "~> 3.14"},
       {:ecto_sql, "~> 3.14"},
