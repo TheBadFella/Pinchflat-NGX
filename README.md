@@ -63,3 +63,21 @@ release or a version tag when you want to pin a deployment.
 - **Compose Layout:** Docker Compose files live in `docker/`. A root `compose.yaml` keeps `docker compose up` working from the repo root.
 - **FFmpeg:** Container images install FFmpeg from [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds) `latest` (master builds, currently FFmpeg 9.x). That feed does not publish a separate `n9.0` tarball yet.
 - **Ongoing Fork Tweaks:** Small workflow, UI, and reliability improvements that are useful in self-hosted daily use.
+
+### Single Sign-On (OIDC)
+
+PinchYT can gate the web UI behind an OAuth2/OpenID Connect provider. Set all three of `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `OIDC_CLIENT_SECRET` to enable it; leave them unset to keep the stock behavior. Provider configuration is discovered automatically from `<issuer>/.well-known/openid-configuration`, and the flow uses PKCE, a CSRF `state` check, and nonce validation.
+
+When SSO is enabled, unauthenticated browser requests are redirected to a login page. `BASIC_AUTH_*` is then ignored for web UI routes, but feed endpoints keep Basic Auth (and the `route_token`) so podcast clients are unaffected. API endpoints and `/healthcheck` remain unauthenticated by design.
+
+| Variable                  | Default                | Description                                                                                                                                                                               |
+| ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OIDC_ISSUER`             | _unset_                | Provider issuer URL, e.g. `https://auth.example.com` (or `https://accounts.google.com`). Required.                                                                                        |
+| `OIDC_CLIENT_ID`          | _unset_                | OAuth2 client ID. Required.                                                                                                                                                               |
+| `OIDC_CLIENT_SECRET`      | _unset_                | OAuth2 client secret. Required.                                                                                                                                                           |
+| `OIDC_SCOPES`             | `openid email profile` | Scopes requested from the provider.                                                                                                                                                       |
+| `OIDC_CLIENT_AUTH_METHOD` | `client_secret_basic`  | Token endpoint auth method; use `client_secret_post` if your provider requires it.                                                                                                        |
+| `OIDC_PROVIDER_NAME`      | `Single Sign-On`       | Display name shown on the login button.                                                                                                                                                   |
+| `OIDC_REDIRECT_URI`       | _derived from request_ | Pin the redirect URI (e.g. `https://pinchyt.example.com/auth/oidc/callback`) when the app is reachable under a fixed external URL. By default it follows the host the request came in on. |
+
+Register the redirect URI `https://<your-host>/auth/oidc/callback` with your provider. Sign-in sessions live in the signed session cookie; signing out via the header button clears it.
