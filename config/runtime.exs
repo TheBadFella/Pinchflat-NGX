@@ -25,6 +25,25 @@ config :pinchflat,
   basic_auth_username: System.get_env("BASIC_AUTH_USERNAME"),
   basic_auth_password: System.get_env("BASIC_AUTH_PASSWORD")
 
+# Optional OIDC/OAuth2 single sign-on. When all three of these are set,
+# the web UI requires logging in via the provider and BASIC_AUTH_* is
+# ignored for browser routes (feeds keep basic auth for podcast clients).
+oidc_issuer = System.get_env("OIDC_ISSUER")
+oidc_client_id = System.get_env("OIDC_CLIENT_ID")
+oidc_client_secret = System.get_env("OIDC_CLIENT_SECRET")
+
+if oidc_issuer && oidc_issuer != "" && oidc_client_id && oidc_client_id != "" && oidc_client_secret &&
+     oidc_client_secret != "" do
+  config :pinchflat, :oidc,
+    issuer: oidc_issuer,
+    client_id: oidc_client_id,
+    client_secret: oidc_client_secret,
+    scopes: System.get_env("OIDC_SCOPES", "openid email profile"),
+    client_authentication_method: System.get_env("OIDC_CLIENT_AUTH_METHOD", "client_secret_basic"),
+    provider_name: System.get_env("OIDC_PROVIDER_NAME", "Single Sign-On"),
+    redirect_uri: System.get_env("OIDC_REDIRECT_URI")
+end
+
 arch_string = to_string(:erlang.system_info(:system_architecture))
 
 system_arch =
