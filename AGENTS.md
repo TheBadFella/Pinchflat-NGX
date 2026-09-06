@@ -1,10 +1,11 @@
-# Agent Guidelines for Pinchflat
+# Agent guidelines for PinchYT
 
 Guidelines for AI agents working on this Elixir/Phoenix codebase.
 
 ## Project Overview
 
-Pinchflat is a self-hosted media management app using:
+PinchYT is a self-hosted media management fork. Its internal Elixir application
+and modules retain the Pinchflat name. It uses:
 
 - **Backend**: Elixir 1.17+, Phoenix 1.7, Ecto with SQLite
 - **Frontend**: Phoenix LiveView, Tailwind CSS, esbuild
@@ -473,3 +474,11 @@ Lefthook runs on commit (configured in `lefthook.yml`):
 **Important:** The `mix check` hook uses `docker compose exec` which requires the phx container to be running. Before committing, ensure the container is started with `docker compose up -d phx`.
 
 **NEVER skip hooks with `--no-verify`.** If a hook fails due to the container not running, start it first.
+
+## Repository skills
+
+- For documentation, UI prose and change summaries, read [unslop-pinchyt](.agents/skills/unslop-pinchyt/SKILL.md).
+- For verification, read [verify-pinchyt](.agents/skills/verify-pinchyt/SKILL.md).
+- For implementation, debugging or review, read [change-pinchyt](.agents/skills/change-pinchyt/SKILL.md).
+
+Load the relevant skill, not the full catalog. These workflows preserve the user's scope and the repository's specific contracts. [Source revisions and licenses](.agents/skill-provenance.md).
