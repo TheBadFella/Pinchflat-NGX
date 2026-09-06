@@ -1,0 +1,15 @@
+<div class="flex flex-col items-center gap-6 text-center">
+  <img src={~p"/images/logo-2024-03-20.png"} alt="Pinchflat" class="mx-auto w-40" />
+  <h1 class="text-2xl font-semibold text-theme-on-surface">Sign in to Pinchflat</h1>
+
+  <div :if={@error} class="theme-status-card theme-status-card-error w-full text-left" role="alert">
+    <p class="font-medium">Authentication failed. Please try again.</p>
+  </div>
+
+  <.link
+    href={~p"/auth/oidc/request?redirect_to=#{@redirect_to}"}
+    class="theme-primary-button inline-flex w-full items-center justify-center rounded-m3-sm px-8 py-4 font-medium shadow-m3-1 transition hover:brightness-110"
+  >
+    Sign in with {@provider_name}
+  </.link>
+</div>

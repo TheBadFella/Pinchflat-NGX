@@ -6,7 +6,7 @@ defmodule PinchflatWeb.Router do
   # IMPORTANT: `strip_trailing_extension` in endpoint.ex removes
   # the extension from the path
   pipeline :browser do
-    plug :basic_auth
+    plug :browser_basic_auth
     plug :accepts, ["html", "json"]
     plug :fetch_session
     plug :fetch_live_flash
@@ -14,6 +14,19 @@ defmodule PinchflatWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :allow_iframe_embed
+    plug :require_sso_auth
+  end
+
+  # Session-enabled pipeline for the SSO login/authorize/callback routes.
+  # It intentionally omits require_sso_auth so users can reach the login
+  # page when the browser pipeline is SSO-gated.
+  pipeline :auth do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {PinchflatWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
   end
 
   pipeline :api do
@@ -38,6 +51,15 @@ defmodule PinchflatWeb.Router do
     get "/media/:uuid/episode_image", Podcasts.PodcastController, :episode_image
 
     get "/media/:uuid/stream", MediaItems.MediaItemController, :stream
+  end
+
+  scope "/auth", PinchflatWeb do
+    pipe_through :auth
+
+    get "/login", AuthController, :login
+    get "/oidc/request", AuthController, :request
+    get "/oidc/callback", AuthController, :callback
+    delete "/logout", AuthController, :logout
   end
 
   scope "/", PinchflatWeb do

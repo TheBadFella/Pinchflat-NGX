@@ -1,0 +1,18 @@
+<div class="flex min-h-screen flex-col">
+  <div class="relative flex flex-1 flex-col overflow-x-hidden">
+    <header class="sticky top-0 z-999 flex w-full border-b border-theme-outline/70 bg-theme-bg/95 backdrop-blur">
+      <div class="w-65 px-4 py-2 md:px-6">
+        <div class="flex items-center gap-2 py-2">
+          <img src={~p"/images/logo-2024-03-20.png"} alt="Pinchflat" class="w-auto" />
+        </div>
+      </div>
+    </header>
+
+    <main class="flex flex-1 items-center justify-center">
+      <div class="w-full max-w-sm px-4">
+        <.flash_group flash={@flash} />
+        {@inner_content}
+      </div>
+    </main>
+  </div>
+</div>
