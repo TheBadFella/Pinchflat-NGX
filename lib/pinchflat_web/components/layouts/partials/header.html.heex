@@ -11,21 +11,34 @@
       </button>
     </div>
 
-    <div class="theme-surface-accent w-4/6 rounded-m3-sm lg:w-3/6 xl:w-2/6">
-      <div class="relative">
-        <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
-          <.icon name="hero-magnifying-glass" />
-        </span>
-        <form action={~p"/search"}>
-          <input
-            type="text"
-            name="q"
-            value={@params["q"]}
-            placeholder="Search all media..."
-            class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:ring-0 focus:outline-none"
-          />
-        </form>
+    <div class="flex w-4/6 items-center lg:w-3/6 xl:w-2/6">
+      <div class="theme-surface-accent w-full rounded-m3-sm">
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
+            <.icon name="hero-magnifying-glass" />
+          </span>
+          <form action={~p"/search"}>
+            <input
+              type="text"
+              name="q"
+              value={@params["q"]}
+              placeholder="Search all media..."
+              class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:ring-0 focus:outline-none"
+            />
+          </form>
+        </div>
       </div>
+
+      <.link
+        :if={PinchflatWeb.OIDC.enabled?()}
+        href={~p"/auth/logout"}
+        method="delete"
+        class="theme-outline-button ml-2 block shrink-0 p-2 text-theme-on-surface-muted"
+        aria-label="Sign out"
+        title="Sign out"
+      >
+        <.icon name="hero-arrow-right-start-on-rectangle" />
+      </.link>
     </div>
   </div>
 </header>
