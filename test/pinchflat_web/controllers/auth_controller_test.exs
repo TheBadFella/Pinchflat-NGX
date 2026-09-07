@@ -8,6 +8,7 @@ defmodule PinchflatWeb.AuthControllerTest do
 
   import Pinchflat.SourcesFixtures
 
+  alias Pinchflat.Settings
   alias PinchflatWeb.OIDC
 
   @oidc_config [
@@ -77,7 +78,7 @@ defmodule PinchflatWeb.AuthControllerTest do
 
       assert params["state"]
       assert params["code_challenge"]
-      assert params["scope"] =~ "openid"
+      assert params["scope"] == "openid email profile"
 
       assert get_session(conn, :oidc_session_params)["state"] == params["state"] ||
                get_session(conn, :oidc_session_params)[:state] == params["state"]
@@ -270,13 +271,14 @@ defmodule PinchflatWeb.AuthControllerTest do
 
     test "browser routes render when enabled and the session has a user", %{session_conn: conn} do
       Application.put_env(:pinchflat, :oidc, @oidc_config)
+      Settings.set(onboarding: false)
 
       conn =
         conn
         |> put_session(OIDC.session_key(), %{sub: "user-123"})
         |> get(~p"/")
 
-      assert html_response(conn, 200) =~ "Pinchflat"
+      assert html_response(conn, 200) =~ "Sign out"
     end
 
     test "feed routes stay reachable without an SSO session", %{conn: conn} do

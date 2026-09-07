@@ -2,8 +2,9 @@ defmodule PinchflatWeb.OIDC do
   @moduledoc """
   Reads the optional OIDC/SSO application configuration and builds the
   assent provider config. When `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and
-  `OIDC_CLIENT_SECRET` are not all set, SSO is disabled and the app
-  behaves exactly as it did without this feature.
+  `OIDC_CLIENT_SECRET` are all unset, SSO is disabled and the app
+  behaves exactly as it did without this feature. Partial configuration
+  is rejected during startup.
   """
 
   @session_key :sso_user
@@ -41,7 +42,10 @@ defmodule PinchflatWeb.OIDC do
         base_url: cfg[:issuer],
         redirect_uri: redirect_uri,
         client_authentication_method: cfg[:client_authentication_method],
-        authorization_params: [scope: cfg[:scopes]],
+        authorization_params: [scope: authorization_scope(cfg[:scopes])],
+        # The configured scope is normalized to include `openid`, so stop
+        # Assent from prepending a second copy automatically.
+        openid_default_scope: nil,
         code_verifier: true,
         # assent expects the client to supply the nonce value itself
         # (a boolean `true` would be used verbatim); it lands in both the
@@ -61,6 +65,14 @@ defmodule PinchflatWeb.OIDC do
   """
   @spec provider_name() :: String.t() | nil
   def provider_name, do: Application.get_env(:pinchflat, :oidc)[:provider_name]
+
+  defp authorization_scope(scopes) do
+    scopes
+    |> String.split()
+    |> then(&["openid" | &1])
+    |> Enum.uniq()
+    |> Enum.join(" ")
+  end
 
   defp generate_nonce, do: Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
 end
