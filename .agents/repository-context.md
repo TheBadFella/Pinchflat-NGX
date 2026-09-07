@@ -25,11 +25,11 @@ Stack observed on 2026-09-06: Elixir/Phoenix LiveView + Ecto/SQLite + Oban. Rech
 
 These commands were found in project instructions, manifests, tests or CI and reviewed for task fit. Their inclusion does not mean they ran or passed during the skill audit. Inspect test fixtures and environment prerequisites before execution. Run only checks relevant to the change; keep any stricter repository release gate.
 
-| Working directory | Command | Purpose / condition |
-|---|---|---|
-| root in isolated development stack | `docker compose run --rm phx mix test` | ExUnit |
-| root in isolated development stack | `docker compose run --rm phx mix check` | Repository full check alias; may format |
-| root in isolated development stack | `docker compose run --rm phx yarn run ui:check-theme` | Theme checks for LiveView changes |
+| Working directory                  | Command                                               | Purpose / condition                     |
+| ---------------------------------- | ----------------------------------------------------- | --------------------------------------- |
+| root in isolated development stack | `docker compose run --rm phx mix test`                | ExUnit                                  |
+| root in isolated development stack | `docker compose run --rm phx mix check`               | Repository full check alias; may format |
+| root in isolated development stack | `docker compose run --rm phx yarn run ui:check-theme` | Theme checks for LiveView changes       |
 
 ## Observable proof
 
