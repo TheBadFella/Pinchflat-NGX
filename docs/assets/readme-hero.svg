@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">PinchYT</title>
+  <desc id="desc">Your media, under your control</desc>
+  <defs>
+    <linearGradient id="surface" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0f0d13"/>
+      <stop offset="1" stop-color="#211f26"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" x2="1">
+      <stop offset="0" stop-color="#d0bcff"/>
+      <stop offset="1" stop-color="#efb8c8"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="360" rx="32" fill="url(#surface)"/>
+  <circle cx="1120" cy="70" r="180" fill="#4f378b" opacity=".35" filter="url(#glow)"/>
+  <circle cx="120" cy="330" r="160" fill="#633b48" opacity=".3" filter="url(#glow)"/>
+  <g opacity=".3" fill="none" stroke="#938f99">
+    <path d="M0 88h1280M0 272h1280"/>
+    <path d="M96 0v360M1184 0v360"/>
+  </g>
+  <g transform="translate(100 104)">
+    <rect width="128" height="128" rx="40" fill="#4f378b"/>
+    <path d="M49 37v54l46-27-46-27Z" fill="#eaddff"/>
+    <path d="M31 30c-13 8-21 20-21 34s8 26 21 34M97 30c13 8 21 20 21 34s-8 26-21 34" fill="none" stroke="#d0bcff" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <text x="270" y="178" fill="url(#primary)" font-family="Arial, Helvetica, sans-serif" font-size="92" font-weight="700" letter-spacing="-4">PinchYT</text>
+  <text x="276" y="225" fill="#cac4d0" font-family="Arial, Helvetica, sans-serif" font-size="28" letter-spacing=".5">YOUR MEDIA, UNDER YOUR CONTROL</text>
+  <g transform="translate(276 260)" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600">
+    <rect width="160" height="42" rx="21" fill="#4f378b"/><text x="24" y="27" fill="#eaddff">SELF-HOSTED</text>
+    <rect x="174" width="164" height="42" rx="21" fill="#332d41"/><text x="198" y="27" fill="#e8def8">MATERIAL 3</text>
+    <rect x="352" width="180" height="42" rx="21" fill="#633b48"/><text x="377" y="27" fill="#ffd8e4">POWERED BY yt-dlp</text>
+  </g>
+</svg>
