@@ -66,7 +66,7 @@ release or a version tag when you want to pin a deployment.
 
 ### Single Sign-On (OIDC)
 
-PinchYT can gate the web UI behind an OAuth2/OpenID Connect provider. Set all three of `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `OIDC_CLIENT_SECRET` to enable it; leave them unset to keep the stock behavior. Provider configuration is discovered automatically from `<issuer>/.well-known/openid-configuration`, and the flow uses PKCE, a CSRF `state` check, and nonce validation.
+PinchYT can gate the web UI behind an OAuth2/OpenID Connect provider. Set all three of `OIDC_ISSUER`, `OIDC_CLIENT_ID`, and `OIDC_CLIENT_SECRET` to enable it; leave all `OIDC_*` variables unset to keep the stock behavior. PinchYT stops at startup if only part of the OIDC configuration is present. Provider configuration is discovered automatically from `<issuer>/.well-known/openid-configuration`, and the flow uses PKCE, a CSRF `state` check, and nonce validation.
 
 When SSO is enabled, unauthenticated browser requests are redirected to a login page. `BASIC_AUTH_*` is then ignored for web UI routes, but feed endpoints keep Basic Auth (and the `route_token`) so podcast clients are unaffected. API endpoints and `/healthcheck` remain unauthenticated by design.
 
@@ -80,4 +80,4 @@ When SSO is enabled, unauthenticated browser requests are redirected to a login 
 | `OIDC_PROVIDER_NAME`      | `Single Sign-On`       | Display name shown on the login button.                                                                                                                                                   |
 | `OIDC_REDIRECT_URI`       | _derived from request_ | Pin the redirect URI (e.g. `https://pinchyt.example.com/auth/oidc/callback`) when the app is reachable under a fixed external URL. By default it follows the host the request came in on. |
 
-Register the redirect URI `https://<your-host>/auth/oidc/callback` with your provider. Sign-in sessions live in the signed session cookie; signing out via the header button clears it.
+Register the redirect URI `https://<your-host>/auth/oidc/callback` with your provider. Sign-in sessions live in the signed and encrypted session cookie; signing out via the header button clears it.

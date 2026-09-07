@@ -31,17 +31,49 @@ config :pinchflat,
 oidc_issuer = System.get_env("OIDC_ISSUER")
 oidc_client_id = System.get_env("OIDC_CLIENT_ID")
 oidc_client_secret = System.get_env("OIDC_CLIENT_SECRET")
+oidc_scopes = System.get_env("OIDC_SCOPES")
+oidc_client_auth_method = System.get_env("OIDC_CLIENT_AUTH_METHOD")
+oidc_provider_name = System.get_env("OIDC_PROVIDER_NAME")
+oidc_redirect_uri = System.get_env("OIDC_REDIRECT_URI")
 
-if oidc_issuer && oidc_issuer != "" && oidc_client_id && oidc_client_id != "" && oidc_client_secret &&
-     oidc_client_secret != "" do
-  config :pinchflat, :oidc,
-    issuer: oidc_issuer,
-    client_id: oidc_client_id,
-    client_secret: oidc_client_secret,
-    scopes: System.get_env("OIDC_SCOPES", "openid email profile"),
-    client_authentication_method: System.get_env("OIDC_CLIENT_AUTH_METHOD", "client_secret_basic"),
-    provider_name: System.get_env("OIDC_PROVIDER_NAME", "Single Sign-On"),
-    redirect_uri: System.get_env("OIDC_REDIRECT_URI")
+oidc_variables = [
+  {"OIDC_ISSUER", oidc_issuer},
+  {"OIDC_CLIENT_ID", oidc_client_id},
+  {"OIDC_CLIENT_SECRET", oidc_client_secret},
+  {"OIDC_SCOPES", oidc_scopes},
+  {"OIDC_CLIENT_AUTH_METHOD", oidc_client_auth_method},
+  {"OIDC_PROVIDER_NAME", oidc_provider_name},
+  {"OIDC_REDIRECT_URI", oidc_redirect_uri}
+]
+
+oidc_value_set? = fn value -> is_binary(value) && value != "" end
+oidc_configured? = Enum.any?(oidc_variables, fn {_name, value} -> oidc_value_set?.(value) end)
+
+missing_oidc_variables =
+  oidc_variables
+  |> Enum.take(3)
+  |> Enum.reject(fn {_name, value} -> oidc_value_set?.(value) end)
+  |> Enum.map_join(", ", &elem(&1, 0))
+
+cond do
+  not oidc_configured? ->
+    :ok
+
+  missing_oidc_variables != "" ->
+    raise """
+    OIDC configuration is incomplete. Missing: #{missing_oidc_variables}.
+    Set all required OIDC variables, or remove all OIDC_* variables to disable SSO.
+    """
+
+  true ->
+    config :pinchflat, :oidc,
+      issuer: oidc_issuer,
+      client_id: oidc_client_id,
+      client_secret: oidc_client_secret,
+      scopes: oidc_scopes || "openid email profile",
+      client_authentication_method: oidc_client_auth_method || "client_secret_basic",
+      provider_name: oidc_provider_name || "Single Sign-On",
+      redirect_uri: oidc_redirect_uri
 end
 
 arch_string = to_string(:erlang.system_info(:system_architecture))
