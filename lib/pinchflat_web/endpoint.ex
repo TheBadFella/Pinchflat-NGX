@@ -1,13 +1,14 @@
 defmodule PinchflatWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :pinchflat
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session is stored in the cookie, signed and encrypted. The signature
+  # prevents tampering; the encryption keeps the contents (SSO user claims,
+  # OAuth state/nonce) unreadable to other local users of the browser profile.
   @session_options [
     store: :cookie,
     key: "_pinchflat_key",
     signing_salt: "3hKEgjXG",
+    encryption_salt: "SN3RfawsQuJOEW9V",
     same_site: "Lax"
   ]
 

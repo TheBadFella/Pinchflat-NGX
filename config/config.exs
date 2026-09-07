@@ -26,6 +26,10 @@ config :pinchflat,
   # If either is unset, basic auth will not be used.
   basic_auth_username: "",
   basic_auth_password: "",
+  # Optional OIDC/OAuth2 single sign-on. Set at runtime from OIDC_ISSUER,
+  # OIDC_CLIENT_ID, and OIDC_CLIENT_SECRET (see runtime.exs). When unset,
+  # SSO is disabled and the app behaves as it did before this feature.
+  oidc: nil,
   expose_feed_endpoints: false,
   file_watcher_poll_interval: 1000,
   db_maintenance_poll_interval: 15_000,

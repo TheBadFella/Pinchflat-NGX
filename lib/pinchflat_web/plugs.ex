@@ -32,6 +32,48 @@ defmodule PinchflatWeb.Plugs do
   end
 
   @doc """
+  Basic auth for browser UI routes. No-op when OIDC SSO is enabled, since
+  those routes are gated by `require_sso_auth/2` instead. Feed routes keep
+  using `basic_auth/2` (via `maybe_basic_auth/2`) so podcast clients retain
+  Basic Auth under SSO.
+  """
+  def browser_basic_auth(conn, opts) do
+    if PinchflatWeb.OIDC.enabled?() do
+      conn
+    else
+      basic_auth(conn, opts)
+    end
+  end
+
+  @doc """
+  Requires an SSO session when OIDC is configured; no-op otherwise.
+
+  Redirects unauthenticated browser requests to the login page, preserving
+  the original path so the flow can return there after signing in. Must run
+  AFTER `fetch_session` in the pipeline.
+  """
+  def require_sso_auth(conn, _opts) do
+    if PinchflatWeb.OIDC.enabled?() do
+      case get_session(conn, PinchflatWeb.OIDC.session_key()) do
+        nil ->
+          redirect_to = conn.request_path <> query_string(conn)
+
+          conn
+          |> Phoenix.Controller.redirect(to: "/auth/login?" <> URI.encode_query(redirect_to: redirect_to))
+          |> halt()
+
+        user ->
+          assign(conn, :sso_user, user)
+      end
+    else
+      conn
+    end
+  end
+
+  defp query_string(%{query_string: ""}), do: ""
+  defp query_string(%{query_string: qs}), do: "?" <> qs
+
+  @doc """
   Removes the `x-frame-options` header from the response to allow the page to be embedded in an iframe.
   """
   def allow_iframe_embed(conn, _opts) do
