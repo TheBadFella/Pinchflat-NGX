@@ -1,6 +1,8 @@
 defmodule PinchflatWeb.Settings.IntegrityCheckLiveTest do
   use PinchflatWeb.ConnCase
 
+  @moduletag :sqlite_only
+
   import Phoenix.LiveViewTest
   import Pinchflat.MediaFixtures
 

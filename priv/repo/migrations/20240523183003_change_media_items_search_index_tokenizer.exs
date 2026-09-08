@@ -2,6 +2,20 @@ defmodule Pinchflat.Repo.Migrations.ChangeMediaItemsSearchIndexTokenizer do
   use Ecto.Migration
 
   def up do
+    if Pinchflat.Database.postgres?(),
+      do: backfill_postgres_search(),
+      else: rebuild_sqlite_search()
+  end
+
+  def down do
+    if Pinchflat.Database.postgres?() do
+      execute "UPDATE media_items SET search_vector = NULL;"
+    else
+      execute "DROP TABLE media_items_search_index;"
+    end
+  end
+
+  defp rebuild_sqlite_search do
     # These all need to run as part of separate `execute` blocks. Do NOT ask me why.
     execute "DROP TRIGGER IF EXISTS media_items_search_index_insert;"
     execute "DROP TRIGGER IF EXISTS media_items_search_index_update;"
@@ -54,7 +68,11 @@ defmodule Pinchflat.Repo.Migrations.ChangeMediaItemsSearchIndexTokenizer do
     """
   end
 
-  def down do
-    execute "DROP TABLE media_items_search_index;"
+  defp backfill_postgres_search do
+    execute """
+      UPDATE media_items SET search_vector =
+        setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+        setweight(to_tsvector('simple', coalesce(description, '')), 'B');
+    """
   end
 end

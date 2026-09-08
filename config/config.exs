@@ -7,8 +7,16 @@
 # General application configuration
 import Config
 
+database_adapter =
+  case System.get_env("DATABASE_ADAPTER", "sqlite") do
+    "sqlite" -> :sqlite
+    "postgres" -> :postgres
+    adapter -> raise "unsupported DATABASE_ADAPTER: #{inspect(adapter)} (expected sqlite or postgres)"
+  end
+
 config :pinchflat,
   ecto_repos: [Pinchflat.Repo],
+  database_adapter: database_adapter,
   generators: [timestamp_type: :utc_datetime],
   env: config_env(),
   # Specifying backend data here makes mocking and local testing SUPER easy
@@ -59,15 +67,17 @@ config :pinchflat,
   timezone: "UTC",
   base_route_path: "/"
 
-config :pinchflat, Pinchflat.Repo,
-  journal_mode: :wal,
-  synchronous: :normal,
-  default_transaction_mode: :immediate,
-  cache_size: -64_000,
-  temp_store: :memory,
-  busy_timeout: 30_000,
-  timeout: 45_000,
-  pool_size: 10
+if database_adapter == :sqlite do
+  config :pinchflat, Pinchflat.Repo,
+    journal_mode: :wal,
+    synchronous: :normal,
+    default_transaction_mode: :immediate,
+    cache_size: -64_000,
+    temp_store: :memory,
+    busy_timeout: 30_000,
+    timeout: 45_000,
+    pool_size: 10
+end
 
 # Configures the endpoint
 config :pinchflat, PinchflatWeb.Endpoint,
@@ -85,10 +95,13 @@ config :pinchflat, PinchflatWeb.Endpoint,
   pubsub_server: Pinchflat.PubSub,
   live_view: [signing_salt: "/t5878kO"]
 
-config :pinchflat, Oban,
-  engine: Oban.Engines.Lite,
-  notifier: Oban.Notifiers.PG,
-  repo: Pinchflat.Repo
+oban_database_options =
+  case database_adapter do
+    :sqlite -> [engine: Oban.Engines.Lite, notifier: Oban.Notifiers.PG]
+    :postgres -> [engine: Oban.Engines.Basic, notifier: Oban.Notifiers.Postgres]
+  end
+
+config :pinchflat, Oban, Keyword.merge([repo: Pinchflat.Repo], oban_database_options)
 
 # Configures the mailer
 #

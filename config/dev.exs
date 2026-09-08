@@ -7,10 +7,17 @@ config :pinchflat,
   tmpfile_directory: Path.join([File.cwd!(), "tmp", "tmpfiles"])
 
 # Configure your database
-config :pinchflat, Pinchflat.Repo,
-  database: Path.expand("../priv/repo/pinchflat_dev.db", Path.dirname(__ENV__.file)),
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 5
+if System.get_env("DATABASE_ADAPTER", "sqlite") == "postgres" do
+  config :pinchflat, Pinchflat.Repo,
+    url: System.get_env("DATABASE_URL", "ecto://postgres:postgres@localhost/pinchflat_dev"),
+    show_sensitive_data_on_connection_error: true,
+    pool_size: 5
+else
+  config :pinchflat, Pinchflat.Repo,
+    database: Path.expand("../priv/repo/pinchflat_dev.db", Path.dirname(__ENV__.file)),
+    show_sensitive_data_on_connection_error: true,
+    pool_size: 5
+end
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

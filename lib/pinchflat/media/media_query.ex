@@ -36,14 +36,30 @@ defmodule Pinchflat.Media.MediaQuery do
   def unavailable, do: dynamic([mi], not is_nil(mi.unavailable_at))
   def culling_prevented, do: dynamic([mi], mi.prevent_culling == true)
   def redownloaded, do: dynamic([mi], not is_nil(mi.media_redownloaded_at))
-  def upload_date_matches(other_date), do: dynamic([mi], fragment("date(?) = date(?)", mi.uploaded_at, ^other_date))
+
+  def upload_date_matches(other_date) do
+    if Pinchflat.Database.postgres?() do
+      date = to_date(other_date)
+      dynamic([mi], fragment("?::date = ?", mi.uploaded_at, ^date))
+    else
+      dynamic([mi], fragment("date(?) = date(?)", mi.uploaded_at, ^other_date))
+    end
+  end
 
   def upload_date_after_source_cutoff do
-    dynamic(
-      [mi, source],
-      is_nil(source.download_cutoff_date) or
-        fragment("date(?) >= ?", mi.uploaded_at, source.download_cutoff_date)
-    )
+    if Pinchflat.Database.postgres?() do
+      dynamic(
+        [mi, source],
+        is_nil(source.download_cutoff_date) or
+          fragment("?::date >= ?", mi.uploaded_at, source.download_cutoff_date)
+      )
+    else
+      dynamic(
+        [mi, source],
+        is_nil(source.download_cutoff_date) or
+          fragment("date(?) >= ?", mi.uploaded_at, source.download_cutoff_date)
+      )
+    end
   end
 
   def format_matching_profile_preference do
@@ -71,10 +87,17 @@ defmodule Pinchflat.Media.MediaQuery do
   end
 
   def matches_source_title_regex do
-    dynamic(
-      [mi, source],
-      is_nil(source.title_filter_regex) or fragment("regexp_like(?, ?)", mi.title, source.title_filter_regex)
-    )
+    if Pinchflat.Database.postgres?() do
+      dynamic(
+        [mi, source],
+        is_nil(source.title_filter_regex) or fragment("? ~ ?", mi.title, source.title_filter_regex)
+      )
+    else
+      dynamic(
+        [mi, source],
+        is_nil(source.title_filter_regex) or fragment("regexp_like(?, ?)", mi.title, source.title_filter_regex)
+      )
+    end
   end
 
   def meets_min_and_max_duration do
@@ -86,26 +109,47 @@ defmodule Pinchflat.Media.MediaQuery do
   end
 
   def past_retention_period do
-    dynamic(
-      [mi, source],
-      fragment("""
-        IFNULL(retention_period_days, 0) > 0 AND
-        DATETIME(media_downloaded_at, '+' || retention_period_days || ' day') < DATETIME('now')
-      """)
-    )
+    if Pinchflat.Database.postgres?() do
+      dynamic(
+        [mi, source],
+        fragment("""
+          COALESCE(retention_period_days, 0) > 0 AND
+          media_downloaded_at + (retention_period_days * INTERVAL '1 day') < NOW()
+        """)
+      )
+    else
+      dynamic(
+        [mi, source],
+        fragment("""
+          IFNULL(retention_period_days, 0) > 0 AND
+          DATETIME(media_downloaded_at, '+' || retention_period_days || ' day') < DATETIME('now')
+        """)
+      )
+    end
   end
 
   def past_redownload_delay do
-    dynamic(
-      [mi, source, media_profile],
-      # Returns media items where the uploaded_at is at least redownload_delay_days ago AND
-      # downloaded_at minus the redownload_delay_days is before the upload date
-      fragment("""
-        IFNULL(redownload_delay_days, 0) > 0 AND
-        DATE('now', '-' || redownload_delay_days || ' day') > DATE(uploaded_at) AND
-        DATE(media_downloaded_at, '-' || redownload_delay_days || ' day') < DATE(uploaded_at)
-      """)
-    )
+    if Pinchflat.Database.postgres?() do
+      dynamic(
+        [mi, source, media_profile],
+        fragment("""
+          COALESCE(redownload_delay_days, 0) > 0 AND
+          (NOW() - (redownload_delay_days * INTERVAL '1 day'))::date > uploaded_at::date AND
+          (media_downloaded_at - (redownload_delay_days * INTERVAL '1 day'))::date < uploaded_at::date
+        """)
+      )
+    else
+      dynamic(
+        [mi, source, media_profile],
+        # Returns media items where the uploaded_at is at least redownload_delay_days ago AND
+        # downloaded_at minus the redownload_delay_days is before the upload date
+        fragment("""
+          IFNULL(redownload_delay_days, 0) > 0 AND
+          DATE('now', '-' || redownload_delay_days || ' day') > DATE(uploaded_at) AND
+          DATE(media_downloaded_at, '-' || redownload_delay_days || ' day') < DATE(uploaded_at)
+        """)
+      )
+    end
   end
 
   def cullable do
@@ -156,12 +200,9 @@ defmodule Pinchflat.Media.MediaQuery do
   def matches_search_term(nil), do: dynamic([mi], true)
 
   def matches_search_term(term) do
-    escaped_term = clean_search_term(term)
-
-    # Matching on `term` instead of `escaped_term` because the latter can mangle empty strings
     case String.trim(term) do
       "" -> dynamic([mi], true)
-      _ -> dynamic([mi], fragment("media_items_search_index MATCH ?", ^escaped_term))
+      trimmed -> matches_nonblank_search_term(trimmed)
     end
   end
 
@@ -174,7 +215,11 @@ defmodule Pinchflat.Media.MediaQuery do
   end
 
   defp do_require_assoc(query, :media_items_search_index) do
-    from(mi in query, join: s in assoc(mi, :media_items_search_index), as: :media_items_search_index)
+    if Pinchflat.Database.postgres?() do
+      query
+    else
+      from(mi in query, join: s in assoc(mi, :media_items_search_index), as: :media_items_search_index)
+    end
   end
 
   defp do_require_assoc(query, :source) do
@@ -192,6 +237,26 @@ defmodule Pinchflat.Media.MediaQuery do
   def matching_search_term(query, nil), do: query
 
   def matching_search_term(query, term) do
+    if Pinchflat.Database.postgres?() do
+      matching_postgres_search_term(query, term)
+    else
+      matching_sqlite_search_term(query, term)
+    end
+  end
+
+  defp matches_nonblank_search_term(term) do
+    if Pinchflat.Database.postgres?() do
+      case build_tsquery(term) do
+        "" -> dynamic([mi], true)
+        tsquery -> dynamic([mi], fragment("search_vector @@ to_tsquery('simple', ?)", ^tsquery))
+      end
+    else
+      escaped_term = clean_search_term(term)
+      dynamic([mi], fragment("media_items_search_index MATCH ?", ^escaped_term))
+    end
+  end
+
+  defp matching_sqlite_search_term(query, term) do
     escaped_term = clean_search_term(term)
 
     from(mi in query,
@@ -207,6 +272,35 @@ defmodule Pinchflat.Media.MediaQuery do
       },
       order_by: [desc: fragment("rank")]
     )
+  end
+
+  defp matching_postgres_search_term(query, term) do
+    case build_tsquery(term) do
+      "" ->
+        query
+
+      tsquery ->
+        from(mi in query,
+          where: fragment("search_vector @@ to_tsquery('simple', ?)", ^tsquery),
+          select_merge: %{
+            matching_search_term:
+              fragment(
+                """
+                coalesce(ts_headline('simple', ?, to_tsquery('simple', ?),
+                  'StartSel=[PF_HIGHLIGHT], StopSel=[/PF_HIGHLIGHT], MaxWords=20, MinWords=5'), '') ||
+                ' ' ||
+                coalesce(ts_headline('simple', ?, to_tsquery('simple', ?),
+                  'StartSel=[PF_HIGHLIGHT], StopSel=[/PF_HIGHLIGHT], MaxWords=20, MinWords=5'), '')
+                """,
+                mi.title,
+                ^tsquery,
+                mi.description,
+                ^tsquery
+              )
+          },
+          order_by: [desc: fragment("ts_rank(search_vector, to_tsquery('simple', ?))", ^tsquery)]
+        )
+    end
   end
 
   # SQLite's FTS5 is very picky about what it will accept as a search term.
@@ -230,4 +324,18 @@ defmodule Pinchflat.Media.MediaQuery do
     |> Enum.map(fn str -> String.replace(str, ~s("), "") end)
     |> Enum.map_join(" ", fn str -> ~s("#{str}") end)
   end
+
+  defp build_tsquery(term) do
+    term
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")
+    |> String.split(" ")
+    |> Enum.map(fn word -> Regex.replace(~r/[^\p{L}\p{N}]/u, word, "") end)
+    |> Enum.reject(fn word -> not Regex.match?(~r/[\p{L}\p{N}]/u, word) end)
+    |> Enum.map_join(" & ", fn word -> "#{word}:*" end)
+  end
+
+  defp to_date(%DateTime{} = datetime), do: DateTime.to_date(datetime)
+  defp to_date(%NaiveDateTime{} = datetime), do: NaiveDateTime.to_date(datetime)
+  defp to_date(%Date{} = date), do: date
 end

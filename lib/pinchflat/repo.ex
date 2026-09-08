@@ -1,7 +1,17 @@
 defmodule Pinchflat.Repo do
-  use Ecto.Repo,
-    otp_app: :pinchflat,
-    adapter: Ecto.Adapters.SQLite3
+  @database_adapter Application.compile_env(:pinchflat, :database_adapter, :sqlite)
+
+  case @database_adapter do
+    :sqlite ->
+      use Ecto.Repo,
+        otp_app: :pinchflat,
+        adapter: Ecto.Adapters.SQLite3
+
+    :postgres ->
+      use Ecto.Repo,
+        otp_app: :pinchflat,
+        adapter: Ecto.Adapters.Postgres
+  end
 
   import Ecto.Query, warn: false
 

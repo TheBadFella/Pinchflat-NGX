@@ -15,7 +15,8 @@ Application.put_env(:pinchflat, :youtube_api, YoutubeApiMock)
 
 Mox.defmock(DiskSpaceCheckerMock, for: Pinchflat.Diagnostics.DiskSpaceBehaviour)
 Application.put_env(:pinchflat, :disk_space_checker, DiskSpaceCheckerMock)
-ExUnit.start()
+exclude = if Pinchflat.Database.postgres?(), do: [sqlite_only: true], else: [postgres_only: true]
+ExUnit.start(exclude: exclude)
 Ecto.Adapters.SQL.Sandbox.mode(Pinchflat.Repo, :manual)
 Faker.start()
 

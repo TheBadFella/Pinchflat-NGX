@@ -1,9 +1,11 @@
 defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorkerTest do
   use Pinchflat.DataCase
 
-  alias Pinchflat.Settings
+  @moduletag :sqlite_only
+
   alias Pinchflat.Diagnostics.DatabaseMaintenanceWorker
   alias Pinchflat.JobFixtures.TestJobWorker
+  alias Pinchflat.Settings
 
   describe "kickoff/0" do
     test "enqueues a manual maintenance job" do

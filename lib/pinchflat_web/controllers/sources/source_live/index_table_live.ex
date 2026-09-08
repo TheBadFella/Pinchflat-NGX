@@ -6,9 +6,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   import PinchflatWeb.Helpers.SortingHelpers
   import PinchflatWeb.Helpers.PaginationHelpers
 
+  alias Pinchflat.Database
+  alias Pinchflat.Media.MediaItem
   alias Pinchflat.Repo
   alias Pinchflat.Sources.Source
-  alias Pinchflat.Media.MediaItem
   alias PinchflatWeb.Sources.SourceHTML
 
   @default_view_mode :table
@@ -95,11 +96,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     {:noreply, set_sources(socket)}
   end
 
-  defp sort_attr(:pending_count), do: dynamic([s, mp, dl, pe], pe.pending_count)
-  defp sort_attr(:downloaded_count), do: dynamic([s, mp, dl], dl.downloaded_count)
-  defp sort_attr(:media_size_bytes), do: dynamic([s, mp, dl], dl.media_size_bytes)
-  defp sort_attr(:media_profile_name), do: dynamic([s, mp], fragment("? COLLATE NOCASE", mp.name))
-  defp sort_attr(:custom_name), do: dynamic([s], fragment("? COLLATE NOCASE", s.custom_name))
+  defp sort_attr(:pending_count), do: dynamic([s, mp, dl, pe], coalesce(pe.pending_count, 0))
+  defp sort_attr(:downloaded_count), do: dynamic([s, mp, dl], coalesce(dl.downloaded_count, 0))
+  defp sort_attr(:media_size_bytes), do: dynamic([s, mp, dl], coalesce(dl.media_size_bytes, 0))
+  defp sort_attr(:media_profile_name), do: dynamic([s, mp], fragment("LOWER(?)", mp.name))
+
+  defp sort_attr(:custom_name) do
+    if Database.postgres?() do
+      dynamic([s], fragment("LOWER(?)", s.custom_name))
+    else
+      dynamic([s], fragment("? COLLATE NOCASE", s.custom_name))
+    end
+  end
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 

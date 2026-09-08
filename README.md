@@ -46,6 +46,51 @@ services:
 Save this as `compose.yaml`, replace the timezone if needed, and run `docker compose up -d`. Open
 <http://localhost:8945> when the container is healthy.
 
+### PostgreSQL image
+
+The `latest` image continues to use SQLite. To start a new installation with PostgreSQL, use the
+`latest-postgres` image and set `DATABASE_URL`:
+
+```yaml
+services:
+  pinchyt:
+    image: ghcr.io/thebadfella/pinchyt:latest-postgres
+    environment:
+      DATABASE_ADAPTER: postgres
+      DATABASE_URL: ecto://pinchyt:change-me@postgres/pinchyt
+      TZ: America/Regina
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8945:8945'
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pinchyt
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_USER: pinchyt
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pinchyt -d pinchyt']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+```
+
+The PostgreSQL image creates and migrates its own schema, but it does not copy data from an existing SQLite database.
+Keep using `latest` for an existing SQLite installation until you have migrated its data separately.
+
 ### Optional PO-token provider
 
 The default compose above keeps the provider disabled. If YouTube presents SABR or authentication problems, add the

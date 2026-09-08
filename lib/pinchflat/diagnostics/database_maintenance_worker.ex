@@ -16,10 +16,10 @@ defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorker do
 
   require Logger
 
-  alias Pinchflat.Repo
-  alias Pinchflat.Settings
   alias Pinchflat.Diagnostics.DatabaseDiagnostics
   alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Repo
+  alias Pinchflat.Settings
 
   # VACUUM rebuilds the database into a temporary copy before swapping it in,
   # so it can briefly need as much free space as the database itself. The
@@ -34,10 +34,10 @@ defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorker do
   setting — pressing the button is its own consent. Uniqueness ensures a
   manual kickoff and the scheduled run can't stack up or run concurrently.
 
-  Returns {:ok, %Oban.Job{}} | {:error, %Ecto.Changeset{}}
+  Returns {:ok, %Oban.Job{}} | {:error, %Ecto.Changeset{}} | {:error, :unsupported}
   """
   def kickoff do
-    Oban.insert(new(%{"manual" => true}))
+    if Pinchflat.Database.sqlite?(), do: Oban.insert(new(%{"manual" => true})), else: {:error, :unsupported}
   end
 
   @doc """
@@ -65,9 +65,17 @@ defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorker do
   Returns :ok | {:cancel, binary()} | {:error, binary()}
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"manual" => true}, id: job_id}), do: run_maintenance(job_id)
+  def perform(%Oban.Job{} = job) do
+    if Pinchflat.Database.sqlite?() do
+      perform_sqlite(job)
+    else
+      {:cancel, "Database compaction is only available for SQLite builds"}
+    end
+  end
 
-  def perform(%Oban.Job{id: job_id}) do
+  defp perform_sqlite(%Oban.Job{args: %{"manual" => true}, id: job_id}), do: run_maintenance(job_id)
+
+  defp perform_sqlite(%Oban.Job{id: job_id}) do
     if Settings.get!(:database_maintenance_enabled) do
       run_maintenance(job_id)
     else
