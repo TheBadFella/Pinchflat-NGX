@@ -14,6 +14,10 @@
   stronger source controls, and practical tools for running a hands-off media library.
 </p>
 
+<p align="center">
+  <img src="docs/assets/screenshot.png" alt="PinchYT web interface" width="100%">
+</p>
+
 > [!IMPORTANT]
 > PinchYT is an independent, personal fork. [Pinchflat](https://github.com/kieraneglin/pinchflat) remains the upstream
 > project and the foundation of its download model.
