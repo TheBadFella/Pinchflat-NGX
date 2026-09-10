@@ -85,7 +85,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       # Click the row to change the sort direction
-      click_element(view, "th", "Name")
+      click_element(view, "th button", "Name")
 
       assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
@@ -98,13 +98,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       # Click the row to change the sort field
-      click_element(view, "th", "Enabled?")
+      click_element(view, "th button", "Enabled?")
 
       assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
 
       # Click the row to again change the sort direcation
-      click_element(view, "th", "Enabled?")
+      click_element(view, "th button", "Enabled?")
       assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
     end
@@ -128,7 +128,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      click_element(view, "th", "Pending")
+      click_element(view, "th button", "Pending")
 
       assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
@@ -141,7 +141,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      click_element(view, "th", "Downloaded")
+      click_element(view, "th button", "Downloaded")
 
       assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
@@ -158,10 +158,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       # media_item_fixture creates stray zero-size sources, so only the biggest
       # source has a deterministic position: last when ascending, first when
       # descending
-      click_element(view, "th", "Size")
+      click_element(view, "th button", "Size")
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
 
-      click_element(view, "th", "Size")
+      click_element(view, "th button", "Size")
       assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
     end
 
@@ -171,12 +171,12 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      click_element(view, "th", "Type")
+      click_element(view, "th button", "Type")
 
       assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
 
-      click_element(view, "th", "Type")
+      click_element(view, "th button", "Type")
 
       assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
@@ -190,7 +190,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      click_element(view, "th", "Media Profile")
+      click_element(view, "th button", "Media Profile")
 
       assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name

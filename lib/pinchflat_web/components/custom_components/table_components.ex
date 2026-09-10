@@ -16,8 +16,8 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
   """
   attr :rows, :list, required: true
   attr :table_class, :string, default: ""
-  attr :sort_key, :string, default: nil
-  attr :sort_direction, :string, default: nil
+  attr :sort_key, :atom, default: nil
+  attr :sort_direction, :atom, default: nil
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -41,18 +41,26 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
             <tr class="border-b border-theme-outline/70 bg-theme-surface-3 text-left">
               <th
                 :for={col <- @col}
-                class={["px-4 py-4 font-medium text-theme-on-surface", col[:sort_key] && "cursor-pointer"]}
-                phx-click={col[:sort_key] && "sort_update"}
-                phx-value-sort_key={col[:sort_key]}
+                class="px-4 py-4 font-medium text-theme-on-surface"
+                aria-sort={column_sort(@sort_key, @sort_direction, col[:sort_key])}
               >
-                <div class="relative">
+                <button
+                  :if={col[:sort_key]}
+                  type="button"
+                  class="inline-flex items-center gap-1 text-left"
+                  phx-click="sort_update"
+                  phx-value-sort_key={col[:sort_key]}
+                  aria-label={sort_button_label(col[:label], @sort_key, @sort_direction, col[:sort_key])}
+                >
                   {col[:label]}
                   <.icon
                     :if={to_string(@sort_key) == col[:sort_key]}
                     name={if @sort_direction == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
-                    class="w-3 h-3 mt-2 ml-1 absolute"
+                    class="h-3 w-3"
+                    aria-hidden="true"
                   />
-                </div>
+                </button>
+                <span :if={!col[:sort_key]}>{col[:label]}</span>
               </th>
             </tr>
           </thead>
@@ -74,6 +82,24 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
       </div>
     </div>
     """
+  end
+
+  defp column_sort(sort_key, sort_direction, column_key) do
+    if to_string(sort_key) == column_key do
+      if sort_direction == :asc, do: "ascending", else: "descending"
+    else
+      "none"
+    end
+  end
+
+  defp sort_button_label(label, sort_key, sort_direction, column_key) do
+    if to_string(sort_key) == column_key do
+      direction = if sort_direction == :asc, do: "ascending", else: "descending"
+      next_direction = if sort_direction == :asc, do: "descending", else: "ascending"
+      "Sort by #{label}, currently #{direction}. Activate to sort #{next_direction}."
+    else
+      "Sort by #{label}"
+    end
   end
 
   @doc """
