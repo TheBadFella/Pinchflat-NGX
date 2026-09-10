@@ -301,6 +301,7 @@ defmodule PinchflatWeb.CoreComponents do
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
   attr :inputclass, :string, default: ""
+  attr :aria_label, :string, default: nil
 
   attr :rest, :global, include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
                 multiple pattern placeholder readonly required rows size step)
@@ -400,6 +401,7 @@ defmodule PinchflatWeb.CoreComponents do
             value="true"
             checked={@checked}
             class="peer sr-only"
+            aria-label={@aria_label}
             {@rest}
           />
           <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50">
