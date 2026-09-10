@@ -9,7 +9,7 @@ defmodule Pinchflat.Podcasts.PodcastHelpers do
 
   alias Pinchflat.Repo
   alias Pinchflat.Metadata.MediaMetadata
-  alias Pinchflat.Metadata.SourceMetadata
+  alias Pinchflat.Sources
 
   @doc """
   Returns a list of sources that are not marked for deletion.
@@ -75,11 +75,9 @@ defmodule Pinchflat.Podcasts.PodcastHelpers do
   end
 
   defp get_images_by_preference(source_with_preloads, []) do
-    source_metadata = source_with_preloads.metadata || %SourceMetadata{}
-
     [
-      source_metadata.poster_filepath,
-      source_metadata.fanart_filepath
+      Sources.image_filepath(source_with_preloads, :poster),
+      Sources.image_filepath(source_with_preloads, :fanart)
     ]
   end
 

@@ -23,8 +23,23 @@ defmodule Pinchflat.HTTP.HTTPClient do
   @impl HTTPBehaviour
   def get(url, headers \\ [], opts \\ []) do
     headers = parse_headers(headers)
-    request = Finch.build(:get, url, headers)
+    {connect_address, request_opts} = Keyword.pop(opts, :connect_address)
 
+    case connect_address do
+      nil ->
+        Finch.build(:get, url, headers)
+        |> request(request_opts)
+
+      address when is_tuple(address) ->
+        Finch.build(:get, url, headers)
+        |> request_to_address(address, request_opts)
+
+      _address ->
+        {:error, "HTTP request failed: invalid connection address"}
+    end
+  end
+
+  defp request(request, opts) do
     case Finch.request(request, Pinchflat.Finch, opts) do
       {:ok, %Response{status: 200, body: body}} ->
         {:ok, body}
@@ -35,6 +50,39 @@ defmodule Pinchflat.HTTP.HTTPClient do
       {:error, reason} ->
         {:error, "HTTP request failed: #{error_message(reason)}"}
     end
+  end
+
+  defp request_to_address(request, address, opts) do
+    pinned_host = address_to_host(address)
+    pool_tag = {:pinchflat_pinned, make_ref()}
+    pool = Finch.Pool.from_name({request.scheme, pinned_host, request.port, pool_tag})
+
+    :ok =
+      Finch.start_pool(Pinchflat.Finch, pool,
+        size: 1,
+        count: 1,
+        conn_opts: [hostname: request.host]
+      )
+
+    try do
+      request
+      |> Map.put(:host, pinned_host)
+      |> Map.put(:pool_tag, pool_tag)
+      |> request(opts)
+    after
+      _ = Finch.stop_pool(Pinchflat.Finch, pool)
+    end
+  end
+
+  defp address_to_host({a, b, c, d} = address)
+       when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) do
+    address |> :inet.ntoa() |> to_string()
+  end
+
+  defp address_to_host({a, b, c, d, e, f, g, h} = address)
+       when is_integer(a) and is_integer(b) and is_integer(c) and is_integer(d) and is_integer(e) and
+              is_integer(f) and is_integer(g) and is_integer(h) do
+    address |> :inet.ntoa() |> to_string()
   end
 
   defp parse_headers(headers) do

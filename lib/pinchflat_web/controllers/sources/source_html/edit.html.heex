@@ -52,6 +52,80 @@
         cookie_file_contents={@cookie_file_contents}
         show_delay_automatic_download={false}
       />
+
+      <section class="theme-surface-accent rounded-m3-lg px-6 py-5 text-theme-on-surface">
+        <div class="space-y-2">
+          <h3 class="text-lg font-bold">Custom Source Poster</h3>
+          <p class="max-w-3xl text-sm text-theme-on-surface-muted">
+            Use a local JPEG, PNG, or WebP file, or provide a public HTTP(S) URL. This poster takes precedence over
+            fetched artwork until you remove it.
+          </p>
+        </div>
+
+        <div :if={source_image?(@source, :poster)} class="mt-5 flex flex-wrap items-center gap-4">
+          <img
+            src={poster_preview_url(@source)}
+            alt="Source poster preview"
+            class="h-32 w-24 rounded-m3-sm border border-theme-outline/70 object-cover"
+          />
+          <p :if={custom_poster_present?(@source)} class="text-sm text-theme-on-surface-muted">
+            A custom poster is active for this source.
+          </p>
+          <p :if={!custom_poster_present?(@source)} class="text-sm text-theme-on-surface-muted">
+            No custom poster is set; the fetched poster is being used.
+          </p>
+        </div>
+
+        <div class="mt-6 grid gap-6 lg:grid-cols-2">
+          <.form
+            for={%{}}
+            as={:poster}
+            action={~p"/sources/#{@source}/poster/upload"}
+            method="post"
+            multipart
+            class="space-y-4"
+          >
+            <.input
+              type="file"
+              name="poster[file]"
+              value={nil}
+              label="Upload poster"
+              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+              help="JPEG, PNG, or WebP up to 10 MB. The decoded image is validated before saving."
+            />
+            <.button rounding="rounded-m3-sm">Upload Custom Poster</.button>
+          </.form>
+
+          <.form for={%{}} as={:poster} action={~p"/sources/#{@source}/poster/url"} method="post" class="space-y-4">
+            <.input
+              type="url"
+              name="poster[url]"
+              value={nil}
+              label="Poster URL"
+              placeholder="https://example.com/poster.jpg"
+              help="Only public HTTP(S) URLs are accepted; redirects and private addresses are blocked."
+            />
+            <.button rounding="rounded-m3-sm">Use Poster URL</.button>
+          </.form>
+        </div>
+
+        <.form
+          :if={custom_poster_present?(@source)}
+          for={%{}}
+          action={~p"/sources/#{@source}/poster/remove"}
+          method="post"
+          class="mt-6"
+        >
+          <.button
+            type="submit"
+            color="theme-danger-button-solid"
+            rounding="rounded-m3-sm"
+            data-confirm="Remove the custom poster and use fetched artwork again?"
+          >
+            Remove Custom Poster
+          </.button>
+        </.form>
+      </section>
     </div>
   </div>
 </div>

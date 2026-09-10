@@ -12,6 +12,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.YtDlp.MediaCollection
@@ -158,8 +159,9 @@ defmodule Pinchflat.Sources do
   def image_filepath(%Source{} = source, type) when is_map_key(@image_fields, type) do
     field = @image_fields[type]
     source = Repo.preload(source, :metadata)
+    custom_filepath = if type == :poster, do: CustomPoster.filepath(source)
 
-    Map.get(source, field) || (source.metadata && Map.get(source.metadata, field))
+    custom_filepath || Map.get(source, field) || (source.metadata && Map.get(source.metadata, field))
   end
 
   @doc """
@@ -567,7 +569,15 @@ defmodule Pinchflat.Sources do
     end
 
     delete_internal_metadata_files(source)
-    Repo.delete(source)
+
+    case Repo.delete(source) do
+      {:ok, _deleted_source} = result ->
+        CustomPoster.delete_owned_file(source)
+        result
+
+      error ->
+        error
+    end
   end
 
   @doc """

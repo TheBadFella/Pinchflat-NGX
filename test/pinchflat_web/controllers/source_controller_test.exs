@@ -8,6 +8,7 @@ defmodule PinchflatWeb.SourceControllerTest do
 
   alias Pinchflat.Repo
   alias Pinchflat.Settings
+  alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
@@ -299,6 +300,16 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "name=\"source[description_locked]\""
     end
 
+    test "renders custom poster controls", %{conn: conn, source: source} do
+      conn = get(conn, ~p"/sources/#{source}/edit")
+      response = html_response(conn, 200)
+
+      assert response =~ "Custom Source Poster"
+      assert response =~ "name=\"poster[file]\""
+      assert response =~ "name=\"poster[url]\""
+      refute response =~ "Remove Custom Poster"
+    end
+
     test "renders restore automatic downloads action for manual playlists", %{conn: conn} do
       source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
 
@@ -345,6 +356,56 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       assert redirected_to(conn) == "/sources/new"
       assert File.read!(Path.join(extras_directory, "cookies.txt")) == "uploaded-youtube-cookie-data"
+    end
+  end
+
+  describe "custom poster actions" do
+    test "uploads a custom poster and redirects back to edit", %{conn: conn} do
+      source = source_fixture()
+
+      upload = %Plug.Upload{
+        path: thumbnail_filepath_fixture(),
+        filename: "poster.jpg",
+        content_type: "image/jpeg"
+      }
+
+      conn = post(conn, ~p"/sources/#{source}/poster/upload", %{"poster" => %{"file" => upload}})
+
+      assert redirected_to(conn) == ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Custom poster saved."
+      assert Repo.reload!(source).custom_poster_filename
+    end
+
+    test "removes a custom poster and redirects back to edit", %{conn: conn} do
+      source = source_fixture()
+
+      {:ok, source} =
+        CustomPoster.set_from_upload(source, %Plug.Upload{
+          path: thumbnail_filepath_fixture(),
+          filename: "poster.jpg",
+          content_type: "image/jpeg"
+        })
+
+      custom_filepath = CustomPoster.filepath(source)
+      conn = post(conn, ~p"/sources/#{source}/poster/remove")
+
+      assert redirected_to(conn) == ~p"/sources/#{source}/edit"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Custom poster removed. The fetched poster will be used again."
+
+      assert is_nil(Repo.reload!(source).custom_poster_filename)
+      refute File.exists?(custom_filepath)
+    end
+
+    test "reports invalid poster URLs without fetching them", %{conn: conn} do
+      source = source_fixture()
+      expect(HTTPClientMock, :get, 0, fn _url, [], _opts -> {:ok, ""} end)
+
+      conn = post(conn, ~p"/sources/#{source}/poster/url", %{"poster" => %{"url" => "file:///etc/passwd"}})
+
+      assert redirected_to(conn) == ~p"/sources/#{source}/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Enter a public HTTP(S) poster URL."
     end
   end
 

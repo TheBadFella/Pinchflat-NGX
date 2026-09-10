@@ -135,6 +135,7 @@ defmodule Pinchflat.Sources.Source do
     field :series_directory, :string
     field :nfo_filepath, :string
     field :poster_filepath, :string
+    field :custom_poster_filename, :string
     field :fanart_filepath, :string
     field :banner_filepath, :string
 
@@ -220,7 +221,7 @@ defmodule Pinchflat.Sources.Source do
 
   @doc false
   def json_exluded_fields do
-    ~w(__meta__ __struct__ metadata tasks media_items)a
+    ~w(__meta__ __struct__ metadata tasks media_items custom_poster_filename)a
   end
 
   @doc false

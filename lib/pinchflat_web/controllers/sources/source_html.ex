@@ -1,6 +1,9 @@
 defmodule PinchflatWeb.Sources.SourceHTML do
   use PinchflatWeb, :html
 
+  alias Pinchflat.Sources
+  alias Pinchflat.Sources.CustomPoster
+
   embed_templates "source_html/*"
 
   @doc """
@@ -715,10 +718,32 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   fallback in the header. A single `File.exists?` per header render, not per row.
   """
   def source_image?(source, type) when type in [:banner, :poster] do
-    file_present?(Pinchflat.Sources.image_filepath(source, type))
+    file_present?(Sources.image_filepath(source, type))
   end
 
   defp file_present?(path), do: is_binary(path) and File.exists?(path)
+
+  @doc """
+  Whether the source has a saved custom poster file to manage from the edit page.
+  """
+  def custom_poster_present?(source) do
+    file_present?(CustomPoster.filepath(source))
+  end
+
+  @doc """
+  URL for the source poster preview, including a poster-specific cache version
+  so a replacement is not hidden behind a browser or feed-reader cache.
+  """
+  def poster_preview_url(source) do
+    extension =
+      case Sources.image_filepath(source, :poster) do
+        filepath when is_binary(filepath) -> Path.extname(filepath)
+        _ -> ".jpg"
+      end
+
+    path = ~p"/sources/#{source.uuid}/feed_image"
+    "#{path}#{extension}?v=#{CustomPoster.poster_cache_version(source)}"
+  end
 
   @doc """
   Up to two uppercase initials derived from the source's display name, for the

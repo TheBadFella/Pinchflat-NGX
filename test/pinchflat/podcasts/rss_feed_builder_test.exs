@@ -5,6 +5,7 @@ defmodule Pinchflat.Podcasts.RssFeedBuilderTest do
   import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Podcasts.RssFeedBuilder
+  alias Pinchflat.Sources.CustomPoster
 
   @datetime_format "%a, %d %b %Y %H:%M:%S %z"
 
@@ -74,18 +75,44 @@ defmodule Pinchflat.Podcasts.RssFeedBuilderTest do
 
     test "returns a link to the feed image" do
       source = source_with_metadata_attachments()
+      cache_version = DateTime.to_unix(source.updated_at)
 
       res = RssFeedBuilder.build(source)
       [_before, image_block, _after] = String.split(res, ~r(</?image>))
 
-      assert String.contains?(image_block, ~s(<url>http://localhost:8945/sources/#{source.uuid}/feed_image.jpg</url>))
+      assert String.contains?(
+               image_block,
+               ~s(<url>http://localhost:8945/sources/#{source.uuid}/feed_image.jpg?v=#{cache_version}</url>)
+             )
+
       assert String.contains?(image_block, ~s(<title>#{source.custom_name}</title>))
       assert String.contains?(image_block, ~s(<link>#{source.original_url}</link>))
 
       assert String.contains?(
                res,
-               ~s(<itunes:image href="http://localhost:8945/sources/#{source.uuid}/feed_image.jpg"></itunes:image>)
+               ~s(<itunes:image href="http://localhost:8945/sources/#{source.uuid}/feed_image.jpg?v=#{cache_version}"></itunes:image>)
              )
+    end
+
+    test "uses the generated custom poster filename for feed image cache busting" do
+      source = source_fixture()
+
+      {:ok, first_source} =
+        CustomPoster.set_from_upload(source, upload_for(File.read!(thumbnail_filepath_fixture()), "jpg", "image/jpeg"))
+
+      first_res = RssFeedBuilder.build(first_source)
+
+      {:ok, second_source} =
+        CustomPoster.set_from_upload(
+          first_source,
+          upload_for(File.read!(thumbnail_filepath_fixture()), "jpg", "image/jpeg")
+        )
+
+      second_res = RssFeedBuilder.build(%{second_source | updated_at: first_source.updated_at})
+
+      assert first_res =~ "feed_image.jpg?v=#{first_source.custom_poster_filename}"
+      assert second_res =~ "feed_image.jpg?v=#{second_source.custom_poster_filename}"
+      refute first_source.custom_poster_filename == second_source.custom_poster_filename
     end
   end
 
@@ -169,5 +196,13 @@ defmodule Pinchflat.Podcasts.RssFeedBuilderTest do
 
   defp format_date(date) do
     Calendar.strftime(date, @datetime_format)
+  end
+
+  defp upload_for(contents, extension, content_type) do
+    path = Path.join(System.tmp_dir!(), "pinchflat-custom-poster-upload-#{Ecto.UUID.generate()}.#{extension}")
+    File.write!(path, contents)
+    on_exit(fn -> File.rm(path) end)
+
+    %Plug.Upload{path: path, filename: "poster.#{extension}", content_type: content_type}
   end
 end
