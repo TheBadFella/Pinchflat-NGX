@@ -38,7 +38,8 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
           {:ok, render_metadata(:media_metadata)}
       end)
 
-      assert {:ok, _} = MediaDownloader.download_for_media_item(media_item)
+      assert {:ok, updated_media_item} = MediaDownloader.download_for_media_item(media_item)
+      assert updated_media_item.availability == :public
     end
 
     test "saves the metadata filepath to the database", %{media_item: media_item} do

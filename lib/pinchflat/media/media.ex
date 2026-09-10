@@ -187,7 +187,10 @@ defmodule Pinchflat.Media do
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
   def update_media_item(%MediaItem{} = media_item, attrs) do
-    update_attrs = Map.drop(attrs, @fields_to_drop_on_update)
+    update_attrs =
+      attrs
+      |> Map.drop(@fields_to_drop_on_update)
+      |> preserve_known_availability(media_item)
 
     media_item
     |> MediaItem.changeset(update_attrs)
@@ -331,10 +334,23 @@ defmodule Pinchflat.Media do
   end
 
   defp update_media_item_from_backend_attrs(media_item, attrs) do
+    attrs =
+      attrs
+      |> Map.drop(@fields_to_drop_on_update)
+      |> preserve_known_availability(media_item)
+
     media_item
-    |> MediaItem.changeset(Map.drop(attrs, @fields_to_drop_on_update))
+    |> MediaItem.changeset(attrs)
     |> Repo.update()
   end
+
+  # A later backend response can omit availability while yt-dlp is unable to determine it.
+  # Keep a value already captured instead of replacing it with nil.
+  defp preserve_known_availability(attrs, %{availability: availability}) when not is_nil(availability) do
+    if Map.get(attrs, :availability) == nil, do: Map.delete(attrs, :availability), else: attrs
+  end
+
+  defp preserve_known_availability(attrs, _media_item), do: attrs
 
   defp maybe_prevent_download_by_default(attrs, %Source{collection_type: :playlist, selection_mode: :manual}) do
     Map.put_new(attrs, :prevent_download, true)

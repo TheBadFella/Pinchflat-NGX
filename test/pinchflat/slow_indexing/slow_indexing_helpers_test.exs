@@ -193,6 +193,15 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert Enum.all?(media_items, fn %MediaItem{} -> true end)
     end
 
+    test "persists availability returned during slow indexing", %{source: source} do
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture(%{availability: "private"})}
+      end)
+
+      assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.all?(media_items, &(&1.availability == :private))
+    end
+
     test "attaches all media_items to the given source", %{source: source} do
       source_id = source.id
       assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)

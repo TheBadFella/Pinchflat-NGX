@@ -17,6 +17,8 @@ defmodule Pinchflat.Media.MediaItem do
   alias Pinchflat.Metadata.MediaMetadata
   alias Pinchflat.Media.MediaItemsSearchIndex
 
+  @availability_values ~w(public unlisted subscriber_only premium_only needs_auth private)a
+
   @allowed_fields [
     # these fields are only captured on index
     :playlist_index,
@@ -28,6 +30,7 @@ defmodule Pinchflat.Media.MediaItem do
     :livestream,
     :source_id,
     :short_form_content,
+    :availability,
     :uploaded_at,
     :upload_date_index,
     :duration_seconds,
@@ -73,6 +76,7 @@ defmodule Pinchflat.Media.MediaItem do
     field :original_url, :string
     field :livestream, :boolean, default: false
     field :short_form_content, :boolean, default: false
+    field :availability, Ecto.Enum, values: @availability_values
     field :media_downloaded_at, :utc_datetime
     field :media_redownloaded_at, :utc_datetime
     field :uploaded_at, :utc_datetime

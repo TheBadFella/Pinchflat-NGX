@@ -76,7 +76,7 @@ defmodule Pinchflat.SourcesFixtures do
     source_fixture(merged_attrs)
   end
 
-  def source_attributes_return_fixture do
+  def source_attributes_return_fixture(attrs \\ %{}) do
     # Use recent dates to ensure media items pass the download_cutoff_date filter
     today = Date.utc_today()
     date1 = Date.add(today, -1) |> Calendar.strftime("%Y%m%d")
@@ -117,6 +117,7 @@ defmodule Pinchflat.SourcesFixtures do
     ]
 
     source_attributes
+    |> Enum.map(&Map.merge(&1, attrs))
     |> Enum.map_join("\n", &Phoenix.json_library().encode!(&1))
   end
 

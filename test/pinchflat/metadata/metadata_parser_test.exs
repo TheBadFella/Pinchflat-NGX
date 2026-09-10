@@ -60,6 +60,13 @@ defmodule Pinchflat.Metadata.MetadataParserTest do
 
       assert result.duration_seconds == round(metadata["duration"])
     end
+
+    test "it extracts and normalizes availability", %{metadata: metadata} do
+      result = Parser.parse_for_media_item(metadata)
+
+      assert metadata["availability"] == "public"
+      assert result.availability == :public
+    end
   end
 
   describe "parse_for_media_item/1 when testing subtitle metadata" do

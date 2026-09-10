@@ -91,7 +91,7 @@ defmodule Pinchflat.MediaFixtures do
     media_item_fixture(merged_attrs)
   end
 
-  def media_attributes_return_fixture do
+  def media_attributes_return_fixture(attrs \\ %{}) do
     media_attributes = %{
       id: "video1",
       title: "Video 1",
@@ -104,7 +104,9 @@ defmodule Pinchflat.MediaFixtures do
       timestamp: 1_600_000_000
     }
 
-    Phoenix.json_library().encode!(media_attributes)
+    media_attributes
+    |> Map.merge(attrs)
+    |> Phoenix.json_library().encode!()
   end
 
   def media_filepath_fixture do

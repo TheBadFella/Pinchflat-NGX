@@ -32,6 +32,13 @@ defmodule Pinchflat.MediaTest do
 
       assert {:ok, _} = Phoenix.json_library().encode(media_item)
     end
+
+    test "serializes availability as a nullable API field" do
+      media_item = media_item_fixture(%{availability: :public})
+      encoded_media_item = media_item |> Phoenix.json_library().encode!() |> Phoenix.json_library().decode!()
+
+      assert encoded_media_item["availability"] == "public"
+    end
   end
 
   describe "list_media_items/0" do
@@ -684,6 +691,78 @@ defmodule Pinchflat.MediaTest do
       assert media_item.media_id == media_attrs.media_id
       assert media_item.original_url == media_attrs.original_url
       assert media_item.description == media_attrs.description
+    end
+
+    test "persists every known availability value" do
+      source = source_fixture()
+
+      Enum.each(
+        [
+          {"public", :public},
+          {"unlisted", :unlisted},
+          {"subscriber_only", :subscriber_only},
+          {"premium_only", :premium_only},
+          {"needs_auth", :needs_auth},
+          {"private", :private}
+        ],
+        fn {raw_value, expected_value} ->
+          media_attrs =
+            media_attributes_return_fixture(%{"id" => "video-#{raw_value}", availability: raw_value})
+            |> Phoenix.json_library().decode!()
+            |> YtDlpMedia.response_to_struct()
+
+          assert {:ok, media_item} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+          assert media_item.availability == expected_value
+        end
+      )
+    end
+
+    test "does not erase a known availability when a later response is missing or unknown" do
+      source = source_fixture()
+
+      known_attrs =
+        media_attributes_return_fixture(%{availability: "public"})
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      assert {:ok, %MediaItem{availability: :public}} =
+               Media.create_media_item_from_backend_attrs(source, known_attrs)
+
+      missing_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      assert missing_attrs.availability == nil
+
+      assert {:ok, %MediaItem{availability: :public}} =
+               Media.create_media_item_from_backend_attrs(source, missing_attrs)
+
+      unknown_attrs =
+        media_attributes_return_fixture(%{availability: "future_visibility"})
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      assert unknown_attrs.availability == nil
+
+      assert {:ok, %MediaItem{availability: :public}} =
+               Media.create_media_item_from_backend_attrs(source, unknown_attrs)
+    end
+
+    test "updates a changed known availability value when re-indexed" do
+      source = source_fixture()
+
+      known_attrs =
+        media_attributes_return_fixture(%{"availability" => "public"})
+        |> Phoenix.json_library().decode!()
+        |> YtDlpMedia.response_to_struct()
+
+      changed_attrs = %YtDlpMedia{known_attrs | availability: :unlisted}
+
+      assert {:ok, media_item} = Media.create_media_item_from_backend_attrs(source, known_attrs)
+      assert {:ok, updated_media_item} = Media.create_media_item_from_backend_attrs(source, changed_attrs)
+      assert updated_media_item.id == media_item.id
+      assert Repo.reload!(updated_media_item).availability == :unlisted
     end
 
     test "updates the media item if it already exists" do

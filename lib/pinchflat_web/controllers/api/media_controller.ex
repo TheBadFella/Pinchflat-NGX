@@ -173,6 +173,7 @@ defmodule PinchflatWeb.Api.MediaController do
           uuid: mi.uuid,
           title: mi.title,
           media_id: mi.media_id,
+          availability: mi.availability,
           source_id: mi.source_id,
           uploaded_at: mi.uploaded_at,
           media_downloaded_at: mi.media_downloaded_at,

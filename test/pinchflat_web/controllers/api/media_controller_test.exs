@@ -198,7 +198,7 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
     end
 
     test "returns expected fields for each item", %{conn: conn} do
-      media_item_fixture(%{media_downloaded_at: DateTime.utc_now()})
+      media_item_fixture(%{media_downloaded_at: DateTime.utc_now(), availability: :public})
 
       conn = get(conn, "/api/media/recent_downloads")
       response = json_response(conn, 200)
@@ -208,6 +208,7 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       assert Map.has_key?(item, "uuid")
       assert Map.has_key?(item, "title")
       assert Map.has_key?(item, "media_id")
+      assert item["availability"] == "public"
       assert Map.has_key?(item, "source_id")
       assert Map.has_key?(item, "uploaded_at")
       assert Map.has_key?(item, "media_downloaded_at")

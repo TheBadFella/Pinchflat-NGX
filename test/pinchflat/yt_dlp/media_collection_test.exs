@@ -19,6 +19,28 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
                MediaCollection.get_media_attributes_for_collection(@channel_url)
     end
 
+    test "normalizes availability for collection indexing" do
+      output =
+        Phoenix.json_library().encode!(%{
+          id: "video1",
+          title: "Video 1",
+          original_url: "https://example.com/video1",
+          live_status: "not_live",
+          description: "desc1",
+          aspect_ratio: 1.67,
+          duration: 12.34,
+          upload_date: "20210101",
+          availability: "subscriber_only"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, output}
+      end)
+
+      assert {:ok, [%Media{availability: :subscriber_only}]} =
+               MediaCollection.get_media_attributes_for_collection(@channel_url)
+    end
+
     test "passes the expected default args" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, ot, _addl_opts ->
         assert opts == [:simulate, :skip_download, :ignore_no_formats_error, :no_warnings]

@@ -216,6 +216,12 @@ defmodule PinchflatWeb.Schemas do
         title: %Schema{type: :string, description: "Media title", example: "My Video Title"},
         media_id: %Schema{type: :string, description: "External media ID", example: "youtube_video_id"},
         source_id: %Schema{type: :integer, description: "ID of the source this media belongs to", example: 1},
+        availability: %Schema{
+          type: :string,
+          nullable: true,
+          enum: ~w(public unlisted subscriber_only premium_only needs_auth private),
+          description: "Availability reported by yt-dlp"
+        },
         source: %Schema{
           allOf: [Source],
           description: "The source this media belongs to"

@@ -266,6 +266,14 @@ defmodule Pinchflat.YtDlp.MediaTest do
       assert {:ok, _} = Media.get_media_attributes(@media_url, [], addl_arg: true)
     end
 
+    test "normalizes availability from yt-dlp output" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl ->
+        {:ok, media_attributes_return_fixture(%{availability: "unlisted"})}
+      end)
+
+      assert {:ok, %{availability: :unlisted}} = Media.get_media_attributes(@media_url)
+    end
+
     test "returns the error straight through when the command fails" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl -> {:error, "Big issue", 1} end)
 
@@ -282,11 +290,33 @@ defmodule Pinchflat.YtDlp.MediaTest do
   describe "indexing_output_template/0" do
     test "contains all the greatest hits" do
       attrs =
-        ~w(id title live_status original_url description aspect_ratio duration upload_date timestamp playlist_index filename)a
+        ~w(id title live_status original_url description aspect_ratio duration upload_date timestamp playlist_index filename availability)a
 
       formatted_attrs = "%(.{#{Enum.join(attrs, ",")}})j"
 
       assert formatted_attrs == Media.indexing_output_template()
+    end
+  end
+
+  describe "normalize_availability/1" do
+    for {raw_value, normalized_value} <- [
+          {"public", :public},
+          {"unlisted", :unlisted},
+          {"subscriber_only", :subscriber_only},
+          {"members-only", :subscriber_only},
+          {"premium_only", :premium_only},
+          {"needs_auth", :needs_auth},
+          {"private", :private}
+        ] do
+      test "normalizes #{raw_value}" do
+        assert Media.normalize_availability(unquote(raw_value)) == unquote(normalized_value)
+      end
+    end
+
+    test "returns nil for missing and unknown values" do
+      assert Media.normalize_availability(nil) == nil
+      assert Media.normalize_availability("") == nil
+      assert Media.normalize_availability("future_visibility") == nil
     end
   end
 
@@ -316,6 +346,7 @@ defmodule Pinchflat.YtDlp.MediaTest do
                uploaded_at: ~U[2020-09-13 12:26:40Z],
                duration_seconds: 60,
                playlist_index: 1,
+               availability: nil,
                predicted_media_filepath: "TiZPUDkDYbk.mp4"
              } == Media.response_to_struct(response)
     end

@@ -3,6 +3,9 @@ defmodule Pinchflat.YtDlp.Media do
   Contains utilities for working with singular pieces of media
   """
 
+  @availability_values ~w(public unlisted subscriber_only premium_only needs_auth private)a
+  @availability_aliases %{"members-only" => :subscriber_only, "members_only" => :subscriber_only}
+
   @enforce_keys [
     :media_id,
     :title,
@@ -25,6 +28,7 @@ defmodule Pinchflat.YtDlp.Media do
     :uploaded_at,
     :duration_seconds,
     :playlist_index,
+    :availability,
     :predicted_media_filepath
   ]
 
@@ -141,8 +145,28 @@ defmodule Pinchflat.YtDlp.Media do
         if something is a short via the URL again
   """
   def indexing_output_template do
-    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename})j"
+    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename,availability})j"
   end
+
+  @doc """
+  Normalizes yt-dlp availability values to the values stored by PinchYT.
+
+  Unknown, blank, and missing values return `nil`.
+
+  Returns `:public | :unlisted | :subscriber_only | :premium_only | :needs_auth | :private | nil`.
+  """
+  def normalize_availability(value) when is_atom(value) do
+    if value in @availability_values, do: value
+  end
+
+  def normalize_availability(value) when is_binary(value) do
+    value = String.trim(value)
+
+    Map.get(@availability_aliases, value) ||
+      Enum.find(@availability_values, fn known_value -> Atom.to_string(known_value) == value end)
+  end
+
+  def normalize_availability(_value), do: nil
 
   @doc """
   Transforms a response from yt-dlp into a struct. Interprets the response to
@@ -161,6 +185,7 @@ defmodule Pinchflat.YtDlp.Media do
       short_form_content: response["original_url"] && short_form_content?(response),
       uploaded_at: response["upload_date"] && parse_uploaded_at(response),
       playlist_index: response["playlist_index"] || 0,
+      availability: normalize_availability(response["availability"]),
       predicted_media_filepath: response["filename"]
     }
   end
