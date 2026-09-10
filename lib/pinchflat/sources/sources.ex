@@ -1045,29 +1045,37 @@ defmodule Pinchflat.Sources do
     current_changes = changeset.changes
     applied_changes = Ecto.Changeset.apply_changes(changeset)
 
-    # We need both current_changes and applied_changes to determine
-    # the course of action to take. For example, we only care if a source is supposed
-    # to be `enabled` or not - we don't care if that information comes from the
-    # current changes or if that's how it already was in the database.
-    # Rephrased, we're essentially using it in place of `get_field/2`
-    case {current_changes, applied_changes} do
-      {%{download_media: true}, %{enabled: true}} ->
-        DownloadingHelpers.enqueue_pending_download_tasks(source)
+    if availability_policy_changed?(current_changes) do
+      DownloadingHelpers.reconcile_availability_policy(source)
+    else
+      # We need both current_changes and applied_changes to determine
+      # the course of action to take. For example, we only care if a source is supposed
+      # to be `enabled` or not - we don't care if that information comes from the
+      # current changes or if that's how it already was in the database.
+      # Rephrased, we're essentially using it in place of `get_field/2`
+      case {current_changes, applied_changes} do
+        {%{download_media: true}, %{enabled: true}} ->
+          DownloadingHelpers.enqueue_pending_download_tasks(source)
 
-      {%{enabled: true}, %{download_media: true}} ->
-        DownloadingHelpers.enqueue_pending_download_tasks(source)
+        {%{enabled: true}, %{download_media: true}} ->
+          DownloadingHelpers.enqueue_pending_download_tasks(source)
 
-      {%{download_media: false}, _} ->
-        DownloadingHelpers.dequeue_pending_download_tasks(source)
+        {%{download_media: false}, _} ->
+          DownloadingHelpers.dequeue_pending_download_tasks(source)
 
-      {%{enabled: false}, _} ->
-        DownloadingHelpers.dequeue_pending_download_tasks(source)
+        {%{enabled: false}, _} ->
+          DownloadingHelpers.dequeue_pending_download_tasks(source)
 
-      _ ->
-        nil
+        _ ->
+          nil
+      end
     end
 
     :ok
+  end
+
+  defp availability_policy_changed?(changes) do
+    Map.has_key?(changes, :download_public_media) || Map.has_key?(changes, :download_members_only_media)
   end
 
   defp maybe_run_indexing_task(changeset, source) do

@@ -13,6 +13,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   alias Pinchflat.Media
   alias Pinchflat.Tasks
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.AvailabilityPolicy
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Downloading.MediaDownloadWorker
 
@@ -47,6 +48,30 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def enqueue_pending_download_tasks(%Source{download_media: false} = source, _job_opts) do
     Logger.info("pending_download_enqueue_skipped source_id=#{source.id} reason=source_downloads_disabled")
     0
+  end
+
+  @doc """
+  Reconciles queued download work after a source availability policy changes.
+
+  Policy blocks are kept separate from `prevent_download`, so manually
+  prevented items are never re-enabled by this operation.
+
+  Returns integer() | :ok.
+  """
+  def reconcile_availability_policy(%Source{} = source) do
+    source
+    |> list_media_items_for_policy()
+    |> Enum.each(fn media_item ->
+      unless AvailabilityPolicy.allowed?(source, media_item.availability) do
+        Tasks.delete_pending_tasks_for(media_item)
+      end
+    end)
+
+    if source.enabled && source.download_media do
+      enqueue_pending_download_tasks(source)
+    else
+      dequeue_pending_download_tasks(source)
+    end
   end
 
   @doc """
@@ -115,14 +140,28 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def kickoff_download_if_pending(%MediaItem{} = media_item, job_opts \\ []) do
     media_item = Repo.preload(media_item, :source)
 
-    if media_item.source.download_media && Media.pending_download?(media_item) do
-      Logger.info("Kicking off download for media item ##{media_item.id} (#{media_item.media_id})")
+    case AvailabilityPolicy.evaluate(media_item.source, media_item.availability) do
+      {:block, reason} ->
+        Logger.info("download_enqueue_skipped media_item_id=#{media_item.id} reason=availability_policy_#{reason}")
 
-      MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts)
-    else
-      Logger.info("download_enqueue_skipped media_item_id=#{media_item.id} reason=should_not_download")
-      {:error, :should_not_download}
+        {:error, :should_not_download}
+
+      :allow ->
+        if media_item.source.download_media && Media.pending_download?(media_item) do
+          Logger.info("Kicking off download for media item ##{media_item.id} (#{media_item.media_id})")
+
+          MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts)
+        else
+          Logger.info("download_enqueue_skipped media_item_id=#{media_item.id} reason=should_not_download")
+          {:error, :should_not_download}
+        end
     end
+  end
+
+  defp list_media_items_for_policy(source) do
+    MediaQuery.new()
+    |> where(^MediaQuery.for_source(source))
+    |> Repo.all()
   end
 
   @doc """

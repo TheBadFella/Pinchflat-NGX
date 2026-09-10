@@ -31,6 +31,8 @@ defmodule Pinchflat.Sources.Source do
     cookie_behaviour
     selection_mode
     download_media
+    download_public_media
+    download_members_only_media
     last_indexed_at
     original_url
     download_cutoff_date
@@ -84,6 +86,10 @@ defmodule Pinchflat.Sources.Source do
     field :cookie_behaviour, Ecto.Enum, values: [:disabled, :when_needed, :all_operations], default: :disabled
     field :selection_mode, Ecto.Enum, values: [:all, :manual], default: :all
     field :download_media, :boolean, default: true
+    # Keep both policies enabled by default so existing sources retain their
+    # current behavior after the policy fields are introduced.
+    field :download_public_media, :boolean, default: true
+    field :download_members_only_media, :boolean, default: true
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date

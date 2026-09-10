@@ -31,6 +31,13 @@ defmodule Pinchflat.SourcesTest do
   end
 
   describe "schema" do
+    test "defaults availability policies to enabled" do
+      source = source_fixture()
+
+      assert source.download_public_media
+      assert source.download_members_only_media
+    end
+
     test "source_metadata is deleted when the source is deleted" do
       source =
         source_fixture(%{metadata: %{metadata_filepath: "/metadata.json.gz"}})

@@ -26,12 +26,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
     end
 
     test "shows records when present", %{conn: conn, source: source} do
-      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil, availability: :subscriber_only)
 
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source))
 
       assert html =~ "Showing"
       assert html =~ "Title"
+      assert html =~ "Availability"
+      assert html =~ "Members-only"
       assert html =~ media_item.title
     end
   end

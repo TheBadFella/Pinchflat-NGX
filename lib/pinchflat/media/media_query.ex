@@ -11,6 +11,7 @@ defmodule Pinchflat.Media.MediaQuery do
   import Ecto.Query, warn: false
 
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Sources.AvailabilityPolicy
 
   # This allows the module to be aliased and query methods to be used
   # all in one go
@@ -130,6 +131,7 @@ defmodule Pinchflat.Media.MediaQuery do
       [mi],
       not (^downloaded()) and
         not (^download_prevented()) and
+        ^AvailabilityPolicy.query_condition() and
         ^upload_date_after_source_cutoff() and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and

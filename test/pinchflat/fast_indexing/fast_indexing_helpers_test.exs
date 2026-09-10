@@ -85,6 +85,21 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
       assert [%MediaItem{availability: :subscriber_only}] = FastIndexingHelpers.index_and_kickoff_downloads(source)
     end
 
+    test "does not enqueue media blocked by the source availability policy" do
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      source = source_fixture(%{download_members_only_media: false})
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl_opts ->
+        {:ok, media_attributes_return_fixture(%{availability: "subscriber_only"})}
+      end)
+
+      assert [%MediaItem{availability: :subscriber_only, prevent_download: false}] =
+               FastIndexingHelpers.index_and_kickoff_downloads(source)
+
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "does not enqueue a download job if the source does not allow it" do
       expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
       source = source_fixture(%{download_media: false})

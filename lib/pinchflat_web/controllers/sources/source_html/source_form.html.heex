@@ -128,28 +128,62 @@
       Downloading Options
     </h3>
 
-    <.input
-      field={f[:download_media]}
-      type="toggle"
-      label="Download Media"
-      help="Unchecking still indexes media but it won't be downloaded until you enable this option"
-    />
-    <section :if={@show_delay_automatic_download} class="mt-3">
+    <section
+      class="space-y-3"
+      x-data={
+        Phoenix.json_library().encode!(%{
+          downloadMembersOnlyMedia: Ecto.Changeset.get_field(@changeset, :download_members_only_media),
+          cookieBehaviour: to_string(Ecto.Changeset.get_field(@changeset, :cookie_behaviour))
+        })
+      }
+    >
       <.input
-        field={f[:delay_automatic_download]}
+        field={f[:download_media]}
         type="toggle"
-        label="Delay Automatic Download"
-        help="For playlists only. Index first, then send me to a selection screen so I can choose which items to download."
+        label="Download Media"
+        help="Unchecking still indexes media but it won't be downloaded until you enable this option"
       />
+      <.input
+        field={f[:download_public_media]}
+        type="toggle"
+        label="Download Public and Unlisted Media"
+        help="Controls media that yt-dlp reports as public or unlisted"
+      />
+      <.input
+        field={f[:download_members_only_media]}
+        type="toggle"
+        label="Download Members-only Media"
+        help="Includes subscriber-only, premium-only, and media that requires authentication"
+        x-model="downloadMembersOnlyMedia"
+      />
+      <section :if={@show_delay_automatic_download} class="mt-3">
+        <.input
+          field={f[:delay_automatic_download]}
+          type="toggle"
+          label="Delay Automatic Download"
+          help="For playlists only. Index first, then send me to a selection screen so I can choose which items to download."
+        />
+      </section>
+
+      <.input
+        field={f[:cookie_behaviour]}
+        options={friendly_cookie_behaviours()}
+        type="select"
+        label="Cookie Behaviour"
+        help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
+        x-model="cookieBehaviour"
+      />
+      <div
+        x-cloak
+        x-show="downloadMembersOnlyMedia && cookieBehaviour === 'disabled'"
+        class="theme-status-card theme-status-card-warning text-sm"
+        role="alert"
+      >
+        Members-only media may fail without cookies. Configure a cookies.txt file and select a cookie behaviour if
+        you want PinchYT to access it; this setting will not enable cookies automatically.
+      </div>
     </section>
 
-    <.input
-      field={f[:cookie_behaviour]}
-      options={friendly_cookie_behaviours()}
-      type="select"
-      label="Cookie Behaviour"
-      help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
-    />
     <section class="theme-surface-accent mt-3 px-6 py-5">
       <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_max-content] lg:items-start">
         <div class="space-y-3">

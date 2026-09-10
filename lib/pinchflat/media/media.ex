@@ -9,6 +9,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Repo
   alias Pinchflat.Tasks
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.AvailabilityPolicy
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
@@ -166,20 +167,38 @@ defmodule Pinchflat.Media do
   def create_media_item_from_backend_attrs(source, media_attrs_struct) do
     attrs = Map.merge(%{source_id: source.id}, Map.from_struct(media_attrs_struct))
 
-    case attrs.media_id do
-      nil ->
-        insert_media_item_from_backend_attrs(source, attrs)
+    result =
+      case attrs.media_id do
+        nil ->
+          insert_media_item_from_backend_attrs(source, attrs)
 
-      media_id ->
-        case Repo.get_by(MediaItem, source_id: source.id, media_id: media_id) do
-          %MediaItem{} = media_item ->
-            update_media_item_from_backend_attrs(media_item, attrs)
+        media_id ->
+          case Repo.get_by(MediaItem, source_id: source.id, media_id: media_id) do
+            %MediaItem{} = media_item ->
+              update_media_item_from_backend_attrs(media_item, attrs)
 
-          nil ->
-            insert_media_item_from_backend_attrs(source, attrs)
-        end
+            nil ->
+              insert_media_item_from_backend_attrs(source, attrs)
+          end
+      end
+
+    reconcile_availability_policy(source, result)
+  end
+
+  @doc """
+  Cancels queued work when a newly indexed availability value is blocked by the
+  source policy. Manual `prevent_download` state is left untouched.
+  """
+  def reconcile_availability_policy(%Source{} = source, {:ok, %MediaItem{} = media_item} = result) do
+    if AvailabilityPolicy.allowed?(source, media_item.availability) do
+      result
+    else
+      Tasks.delete_pending_tasks_for(media_item)
+      result
     end
   end
+
+  def reconcile_availability_policy(_source, result), do: result
 
   @doc """
   Updates a media_item.

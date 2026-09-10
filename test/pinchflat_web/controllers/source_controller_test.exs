@@ -96,6 +96,9 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources/new")
       assert html_response(conn, 200) =~ "New Source"
       assert html_response(conn, 200) =~ "Delay Automatic Download"
+      assert html_response(conn, 200) =~ "Download Public and Unlisted Media"
+      assert html_response(conn, 200) =~ "Download Members-only Media"
+      assert html_response(conn, 200) =~ "Members-only media may fail without cookies"
       assert html_response(conn, 200) =~ "How source folders work"
       assert html_response(conn, 200) =~ "Insert media profile template"
     end
@@ -354,6 +357,18 @@ defmodule PinchflatWeb.SourceControllerTest do
       put(conn, ~p"/sources/#{source}", source: update_attrs)
 
       assert Pinchflat.Reconciliation.get_plan!(plan.id).status == :stale
+    end
+
+    test "persists availability policy settings", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{download_public_media: "false", download_members_only_media: "false"}
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}"
+      updated_source = Repo.reload!(source)
+      refute updated_source.download_public_media
+      refute updated_source.download_members_only_media
     end
   end
 

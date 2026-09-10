@@ -414,6 +414,44 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing availability policies" do
+    test "groups public and unlisted media under the public policy" do
+      source = source_fixture(%{download_public_media: false})
+      _public = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :public})
+      _unlisted = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :unlisted})
+      unknown = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: nil})
+
+      assert Media.list_pending_media_items_for(source) == [unknown]
+    end
+
+    test "groups subscriber-only, premium-only, and auth-required media under the members-only policy" do
+      source = source_fixture(%{download_members_only_media: false})
+
+      _subscriber_only =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :subscriber_only})
+
+      _premium_only = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :premium_only})
+      _needs_auth = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :needs_auth})
+      public = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :public})
+
+      assert Media.list_pending_media_items_for(source) == [public]
+    end
+
+    test "always blocks private media" do
+      source = source_fixture()
+      _private = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :private})
+
+      assert Media.list_pending_media_items_for(source) == []
+    end
+
+    test "does not block unknown or missing availability" do
+      source = source_fixture(%{download_public_media: false, download_members_only_media: false})
+      missing = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: nil})
+
+      assert Media.list_pending_media_items_for(source) == [missing]
+    end
+  end
+
   describe "list_failed_media_items/0 and list_failed_media_items_for/1" do
     test "returns pending items with a last_error" do
       source = source_fixture()

@@ -131,6 +131,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
             </div>
             <div class="flex items-start justify-between gap-3">
+              <dt class="text-theme-on-surface-muted">Availability</dt>
+              <dd class="text-right"><.availability_badge availability={media_item.availability} /></dd>
+            </div>
+            <div class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Size / Progress</dt>
               <dd class="max-w-[65%] text-right text-theme-on-surface">
                 <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
@@ -191,6 +195,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 <span>{status.label}</span>
               </span>
             </.tooltip>
+          </:col>
+
+          <:col :let={media_item} label="Availability">
+            <.availability_badge availability={media_item.availability} />
           </:col>
 
           <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
@@ -502,6 +510,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :duration_seconds,
       :livestream,
       :short_form_content,
+      :availability,
       :media_size_bytes,
       :unavailable_at,
       :unavailable_reason,
@@ -713,6 +722,35 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> min(100.0)
     |> trunc()
   end
+
+  attr :availability, :any, default: nil
+
+  defp availability_badge(assigns) do
+    {label, class} = availability_presentation(assigns.availability)
+    assigns = assign(assigns, label: label, class: class)
+
+    ~H"""
+    <span class={["inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium", @class]}>
+      {@label}
+    </span>
+    """
+  end
+
+  defp availability_presentation(:public), do: {"Public", "theme-badge-success"}
+  defp availability_presentation("public"), do: availability_presentation(:public)
+  defp availability_presentation(:unlisted), do: {"Unlisted", "theme-badge-success"}
+  defp availability_presentation("unlisted"), do: availability_presentation(:unlisted)
+
+  defp availability_presentation(:subscriber_only), do: {"Members-only", "theme-badge-warning"}
+  defp availability_presentation("subscriber_only"), do: availability_presentation(:subscriber_only)
+  defp availability_presentation(:premium_only), do: {"Premium-only", "theme-badge-warning"}
+  defp availability_presentation("premium_only"), do: availability_presentation(:premium_only)
+  defp availability_presentation(:needs_auth), do: {"Needs authentication", "theme-badge-warning"}
+  defp availability_presentation("needs_auth"), do: availability_presentation(:needs_auth)
+
+  defp availability_presentation(:private), do: {"Private", "theme-danger-panel"}
+  defp availability_presentation("private"), do: availability_presentation(:private)
+  defp availability_presentation(_unknown), do: {"Unknown", "bg-theme-surface-3 text-theme-on-surface-muted"}
 
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do

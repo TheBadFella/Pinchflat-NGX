@@ -6,6 +6,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
   import Pinchflat.ProfilesFixtures
 
   alias Pinchflat.Tasks
+  alias Pinchflat.Sources
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Downloading.MediaDownloadWorker
 
@@ -109,6 +110,15 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       refute_enqueued(worker: MediaDownloadWorker)
     end
 
+    test "does not enqueue a download job when the availability policy blocks it" do
+      source = source_fixture(%{download_public_media: false})
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil, availability: :public)
+
+      assert {:error, :should_not_download} = DownloadingHelpers.kickoff_download_if_pending(media_item)
+
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "does not enqueue a download job if the media item does not match the format rules" do
       profile = media_profile_fixture(%{livestream_behaviour: :exclude})
       source = source_fixture(%{media_profile_id: profile.id})
@@ -125,6 +135,25 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       assert {:ok, _} = DownloadingHelpers.kickoff_download_if_pending(media_item, priority: 1)
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id}, priority: 1)
+    end
+
+    test "re-enables policy-blocked media without clearing manual prevention" do
+      source = source_fixture(%{download_public_media: false})
+      policy_blocked = media_item_fixture(source_id: source.id, media_filepath: nil, availability: :public)
+
+      manually_prevented =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: nil,
+          availability: :public,
+          prevent_download: true
+        )
+
+      assert {:ok, _source} = Sources.update_source(source, %{download_public_media: true})
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => policy_blocked.id})
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => manually_prevented.id})
+      assert Repo.reload!(manually_prevented).prevent_download
     end
   end
 

@@ -520,6 +520,16 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       ),
       field("Download media", yes_no(source.download_media), "Whether newly indexed media is queued for download"),
       field(
+        "Public and unlisted media",
+        yes_no(source.download_public_media),
+        "Whether public and unlisted media is eligible for download"
+      ),
+      field(
+        "Members-only media",
+        yes_no(source.download_members_only_media),
+        "Whether subscriber-only, premium-only, and authentication-required media is eligible for download"
+      ),
+      field(
         "Index frequency",
         index_frequency_label(source.index_frequency_minutes),
         "How often the full channel or playlist is re-read"

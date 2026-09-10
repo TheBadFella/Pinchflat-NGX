@@ -202,6 +202,18 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert Enum.all?(media_items, &(&1.availability == :private))
     end
 
+    test "does not enqueue media blocked by the source availability policy" do
+      source = source_fixture(%{download_public_media: false})
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture(%{availability: "public"})}
+      end)
+
+      assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.all?(media_items, fn item -> item.availability == :public and item.prevent_download == false end)
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "attaches all media_items to the given source", %{source: source} do
       source_id = source.id
       assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)

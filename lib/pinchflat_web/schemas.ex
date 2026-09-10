@@ -157,6 +157,16 @@ defmodule PinchflatWeb.Schemas do
           example: :all
         },
         download_media: %Schema{type: :boolean, description: "Download media items", example: true},
+        download_public_media: %Schema{
+          type: :boolean,
+          description: "Download public and unlisted media",
+          example: true
+        },
+        download_members_only_media: %Schema{
+          type: :boolean,
+          description: "Download subscriber-only, premium-only, and authentication-required media",
+          example: true
+        },
         last_indexed_at: %Schema{
           type: :string,
           format: :date_time,
@@ -353,6 +363,16 @@ defmodule PinchflatWeb.Schemas do
             description: %Schema{type: :string, description: "Source description"},
             enabled: %Schema{type: :boolean, description: "Whether the source is active", default: true},
             download_media: %Schema{type: :boolean, description: "Download media items", default: true},
+            download_public_media: %Schema{
+              type: :boolean,
+              description: "Download public and unlisted media",
+              default: true
+            },
+            download_members_only_media: %Schema{
+              type: :boolean,
+              description: "Download subscriber-only, premium-only, and authentication-required media",
+              default: true
+            },
             fast_index: %Schema{type: :boolean, description: "Use fast indexing", default: false},
             delay_automatic_download: %Schema{
               type: :boolean,
@@ -411,6 +431,11 @@ defmodule PinchflatWeb.Schemas do
             description: %Schema{type: :string, description: "Source description"},
             enabled: %Schema{type: :boolean, description: "Whether the source is active"},
             download_media: %Schema{type: :boolean, description: "Download media items"},
+            download_public_media: %Schema{type: :boolean, description: "Download public and unlisted media"},
+            download_members_only_media: %Schema{
+              type: :boolean,
+              description: "Download subscriber-only, premium-only, and authentication-required media"
+            },
             fast_index: %Schema{type: :boolean, description: "Use fast indexing"},
             index_frequency_minutes: %Schema{type: :integer, description: "Indexing frequency in minutes"},
             download_cutoff_date: %Schema{
