@@ -75,13 +75,36 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   we need, so instead we're fetching just the first video (using playlist_end: 1)
   and parsing the source ID and name from _its_ metadata
 
+  The optional source_type runner option accepts automatic, channel, playlist,
+  or video. Automatic preserves URL-based detection. Explicit video inspection
+  uses --no-playlist; explicit channel and playlist inspection use the
+  collection inspection path so the caller can validate the returned metadata.
+
   Returns {:ok, map()} | {:error, any, ...}.
   """
   def get_source_details(source_url, command_opts \\ [], addl_opts \\ []) do
-    if Source.youtube_video_url?(source_url) do
-      get_single_video_source_details(source_url, command_opts, addl_opts)
-    else
-      get_collection_source_details(source_url, command_opts, addl_opts)
+    {source_type, addl_opts} = Keyword.pop(addl_opts, :source_type, :automatic)
+
+    case source_type do
+      :automatic ->
+        if Source.youtube_video_url?(source_url) do
+          get_single_video_source_details(source_url, command_opts, addl_opts)
+        else
+          get_collection_source_details(source_url, command_opts, addl_opts)
+        end
+
+      :video ->
+        if Source.supported_youtube_url?(source_url) and not Source.youtube_video_url?(source_url) do
+          {:error, "URL is not a single video"}
+        else
+          get_single_video_source_details(source_url, command_opts, addl_opts)
+        end
+
+      type when type in [:channel, :playlist] ->
+        get_collection_source_details(source_url, command_opts, addl_opts)
+
+      source_type ->
+        {:error, "unsupported source type: #{inspect(source_type)}"}
     end
   end
 
@@ -119,10 +142,12 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     action = :get_source_details
 
     with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
-         {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
-      {:ok, format_single_video_source_details(parsed_json)}
+         {:ok, parsed_json} <- Phoenix.json_library().decode(output),
+         {:ok, source_details} <- format_single_video_source_details(parsed_json) do
+      {:ok, source_details}
     else
       {:error, %Jason.DecodeError{}} -> {:error, "Error decoding JSON response"}
+      {:error, :not_a_video} -> {:error, "URL did not resolve to a single video"}
       err -> err
     end
   end
@@ -167,6 +192,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     # NOTE: I should probably make this a struct some day
     %{
       source_type: :collection,
+      detected_type: detected_collection_type(response),
       channel_id: response["channel_id"],
       channel_name: response["channel"],
       playlist_id: response["playlist_id"],
@@ -179,17 +205,30 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   end
 
   defp format_single_video_source_details(response) do
-    %{
-      source_type: :video,
-      video_id: response["id"],
-      video_title: response["title"],
-      channel_id: response["channel_id"],
-      channel_name: response["channel"],
-      playlist_id: response["playlist_id"],
-      playlist_name: response["playlist_title"],
-      filepath: response["filename"]
-    }
+    if is_binary(response["id"]) and is_binary(response["title"]) do
+      {:ok,
+       %{
+         source_type: :video,
+         detected_type: :video,
+         video_id: response["id"],
+         video_title: response["title"],
+         channel_id: response["channel_id"],
+         channel_name: response["channel"],
+         playlist_id: response["playlist_id"],
+         playlist_name: response["playlist_title"],
+         filepath: response["filename"]
+       }}
+    else
+      {:error, :not_a_video}
+    end
   end
+
+  defp detected_collection_type(%{"channel_id" => channel_id, "playlist_id" => playlist_id})
+       when is_binary(channel_id) and channel_id == playlist_id,
+       do: :channel
+
+  defp detected_collection_type(%{"playlist_id" => playlist_id}) when is_binary(playlist_id), do: :playlist
+  defp detected_collection_type(_response), do: :unknown
 
   defp backend_runner do
     # This approach lets us mock the command for testing

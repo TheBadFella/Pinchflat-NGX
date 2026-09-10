@@ -3,6 +3,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
+  alias Pinchflat.Sources.Source
 
   embed_templates "source_html/*"
 
@@ -20,6 +21,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :cookie_file_contents, :string, default: nil
   attr :available_folders, :list, default: []
   attr :show_delay_automatic_download, :boolean, default: false
+  attr :new_source, :boolean, default: false
 
   def source_form(assigns)
 

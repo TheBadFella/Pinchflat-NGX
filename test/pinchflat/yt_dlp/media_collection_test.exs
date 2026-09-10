@@ -201,6 +201,32 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
                filepath: "/tmp/test/media/one-off.mp4"
              } = res
     end
+
+    test "explicit video inspection uses no-playlist and preserves video metadata" do
+      expect(YtDlpRunnerMock, :run, fn @video_url, :get_source_details, opts, _ot, addl_opts ->
+        assert :no_playlist in opts
+        refute Keyword.has_key?(addl_opts, :source_type)
+
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           id: "72maj9FLQZI",
+           title: "One-Off Video",
+           channel: "PinchflatTestChannel",
+           channel_id: "UCQH2",
+           playlist_id: nil,
+           playlist_title: nil,
+           filename: "/tmp/test/media/one-off.mp4"
+         })}
+      end)
+
+      assert {:ok, %{detected_type: :video}} =
+               MediaCollection.get_source_details(@video_url, [], source_type: :video)
+    end
+
+    test "rejects an obvious channel or playlist URL selected as a video before inspection" do
+      assert {:error, "URL is not a single video"} =
+               MediaCollection.get_source_details(@channel_url, [], source_type: :video)
+    end
   end
 
   describe "get_source_metadata/1" do

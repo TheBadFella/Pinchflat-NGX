@@ -141,7 +141,9 @@ defmodule PinchflatWeb.Sources.SourceController do
                   media_profiles: media_profiles(),
                   available_folders: available_media_directories(),
                   current_path: ~p"/sources/new",
-                  layout: get_onboarding_layout()
+                  layout: get_onboarding_layout(),
+                  new_source: true,
+                  show_delay_automatic_download: true
                 ],
                 cookie_file_assigns()
               )

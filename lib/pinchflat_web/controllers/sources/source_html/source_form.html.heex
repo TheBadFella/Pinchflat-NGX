@@ -13,9 +13,26 @@
     {
       mediaProfileId: null,
       sourceUrl: '',
+      sourceType: '#{Ecto.Changeset.get_field(@changeset, :source_type, :automatic)}',
       cutoffDate: '#{f[:download_cutoff_date].value}',
       indexCutoffDate: '#{f[:index_cutoff_date].value}',
       isPlaylist: #{Ecto.Changeset.get_field(@changeset, :collection_type) == :playlist},
+      get sourceTypeLabel() {
+        return {
+          automatic: 'Source URL',
+          channel: 'Channel URL',
+          playlist: 'Playlist URL',
+          video: 'Video URL'
+        }[this.sourceType] || 'Source URL'
+      },
+      get sourceTypeHelp() {
+        return {
+          automatic: 'URL of a channel, playlist, or single video (required). Automatic detection preserves existing PinchYT behavior.',
+          channel: 'URL of a YouTube channel (required). PinchYT will reject a URL that resolves to a playlist or video.',
+          playlist: 'URL of a YouTube playlist (required). PinchYT will reject a URL that resolves to a channel or video.',
+          video: 'URL of a single YouTube video (required). Video sources are indexed once and fast indexing is disabled automatically.'
+        }[this.sourceType] || 'URL of a channel, playlist, or single video (required).'
+      },
       get looksLikePlaylist() { return this.isPlaylist || /[?&]list=|\\/playlist/.test(this.sourceUrl) },
       get indexCutoffAfterDownloadCutoff() {
         return !!(this.indexCutoffDate && this.cutoffDate && this.indexCutoffDate > this.cutoffDate)
@@ -51,7 +68,28 @@
       </div>
     </section>
 
+    <section :if={@new_source}>
+      <.input
+        field={f[:source_type]}
+        options={Source.source_type_options()}
+        type="select"
+        label="Source Type"
+        help="Choose Automatic to keep PinchYT's existing URL detection, or select the type you expect before inspection."
+        x-model="sourceType"
+      />
+      <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-md font-medium text-theme-on-surface">
+        <span x-text="sourceTypeLabel"></span>
+      </label>
+      <.input
+        field={f[:original_url]}
+        type="text"
+        x-init="$el.focus()"
+        x-model.fill="sourceUrl"
+      />
+      <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted" x-text="sourceTypeHelp"></p>
+    </section>
     <.input
+      :if={!@new_source}
       field={f[:original_url]}
       type="text"
       label="Source URL"

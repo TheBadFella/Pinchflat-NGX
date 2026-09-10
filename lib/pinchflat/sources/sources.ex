@@ -708,6 +708,7 @@ defmodule Pinchflat.Sources do
 
   defp add_source_details_to_changeset(source, changeset) do
     original_url = changeset.changes.original_url
+    source_type = Ecto.Changeset.get_field(changeset, :source_type, :automatic)
     should_use_cookies = Ecto.Changeset.get_field(changeset, :cookie_behaviour) == :all_operations
     # Skipping sleep interval since this is UI blocking and we want to keep this as fast as possible
     command_opts =
@@ -716,54 +717,105 @@ defmodule Pinchflat.Sources do
 
     addl_opts = [use_cookies: should_use_cookies, skip_sleep_interval: true]
 
-    case MediaCollection.get_source_details(original_url, command_opts, addl_opts) do
+    case MediaCollection.get_source_details(
+           original_url,
+           command_opts,
+           Keyword.put(addl_opts, :source_type, source_type)
+         ) do
       {:ok, source_details} ->
         add_source_details_by_collection_type(source, changeset, source_details)
 
       err ->
-        runner_error =
-          case err do
-            {:error, error_msg, _status_code} -> error_msg
-            {:error, error_msg} -> error_msg
-          end
-
         Ecto.Changeset.add_error(
           changeset,
           :original_url,
-          "could not fetch source details from URL",
-          error: runner_error
+          source_details_error_message(source_type),
+          error: source_details_error(err)
         )
     end
   end
 
   defp add_source_details_by_collection_type(source, changeset, source_details) do
     %Ecto.Changeset{changes: changes} = changeset
+    source_type = Ecto.Changeset.get_field(changeset, :source_type, :automatic)
+    detected_type = detected_source_type(source_details)
 
-    collection_changes =
-      if source_details.source_type == :video do
-        %{
-          collection_type: :video,
-          collection_id: source_details.video_id,
-          collection_name: source_details.video_title
-        }
-      else
-        if source_details.playlist_id == source_details.channel_id do
-          %{
-            collection_type: :channel,
-            collection_id: source_details.channel_id,
-            collection_name: source_details.channel_name
-          }
-        else
-          %{
-            collection_type: :playlist,
-            collection_id: source_details.playlist_id,
-            collection_name: source_details.playlist_name
-          }
-        end
-      end
+    cond do
+      detected_type == :unknown ->
+        Ecto.Changeset.add_error(
+          changeset,
+          :original_url,
+          "could not determine whether this URL is a channel, playlist, or video; choose Automatic or check the URL"
+        )
+
+      source_type != :automatic and source_type != detected_type ->
+        Ecto.Changeset.add_error(changeset, :original_url, source_type_mismatch_message(source_type, detected_type))
+
+      true ->
+        add_detected_source_details(source, changeset, source_details, changes, detected_type)
+    end
+  end
+
+  defp add_detected_source_details(source, _changeset, source_details, changes, :video) do
+    collection_changes = %{
+      collection_type: :video,
+      collection_id: source_details.video_id,
+      collection_name: source_details.video_title
+    }
 
     change_source(source, Map.merge(changes, collection_changes))
   end
+
+  defp add_detected_source_details(source, _changeset, source_details, changes, :channel) do
+    collection_changes = %{
+      collection_type: :channel,
+      collection_id: source_details.channel_id,
+      collection_name: source_details.channel_name
+    }
+
+    change_source(source, Map.merge(changes, collection_changes))
+  end
+
+  defp add_detected_source_details(source, _changeset, source_details, changes, :playlist) do
+    collection_changes = %{
+      collection_type: :playlist,
+      collection_id: source_details.playlist_id,
+      collection_name: source_details.playlist_name
+    }
+
+    change_source(source, Map.merge(changes, collection_changes))
+  end
+
+  defp detected_source_type(%{detected_type: detected_type}), do: detected_type
+
+  defp detected_source_type(%{source_type: :video}), do: :video
+
+  defp detected_source_type(%{playlist_id: playlist_id, channel_id: channel_id})
+       when is_binary(channel_id) and channel_id == playlist_id,
+       do: :channel
+
+  defp detected_source_type(%{playlist_id: playlist_id}) when is_binary(playlist_id), do: :playlist
+  defp detected_source_type(_source_details), do: :unknown
+
+  defp source_type_mismatch_message(expected, detected) do
+    "the selected source type is #{source_type_label(expected)}, but this URL resolves to a " <>
+      "#{source_type_label(detected)}; choose #{source_type_label(detected)} or Automatic"
+  end
+
+  defp source_details_error_message(:automatic), do: "could not fetch source details from URL"
+
+  defp source_details_error_message(source_type) do
+    "could not inspect this URL as a #{source_type_label(source_type)}; check the URL or choose Automatic"
+  end
+
+  defp source_details_error({:error, error_msg, _status_code}), do: error_msg
+  defp source_details_error({:error, error_msg}), do: error_msg
+  defp source_details_error(error), do: error
+
+  defp source_type_label(:automatic), do: "Automatic"
+  defp source_type_label(:channel), do: "Channel"
+  defp source_type_label(:playlist), do: "Playlist"
+  defp source_type_label(:video), do: "Video"
 
   defp maybe_change_indexing_frequency(changeset) do
     changeset

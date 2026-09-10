@@ -33,11 +33,19 @@ defmodule Pinchflat.Sources.Source do
   @player_client_values Keyword.values(@player_client_options)
   @cookie_incompatible_player_clients [:android, :ios, :tv_simply]
 
+  @source_type_options [
+    {"Automatic", :automatic},
+    {"Channel", :channel},
+    {"Playlist", :playlist},
+    {"Video", :video}
+  ]
+
   @allowed_fields ~w(
     enabled
     collection_name
     collection_id
     collection_type
+    source_type
     custom_name
     custom_name_locked
     description
@@ -105,6 +113,7 @@ defmodule Pinchflat.Sources.Source do
     field :collection_name, :string
     field :collection_id, :string
     field :collection_type, Ecto.Enum, values: [:channel, :playlist, :video]
+    field :source_type, Ecto.Enum, values: [:automatic, :channel, :playlist, :video], virtual: true, default: :automatic
     field :index_frequency_minutes, :integer, default: 60 * 24
     field :fast_index, :boolean, default: false
     field :cookie_behaviour, Ecto.Enum, values: [:disabled, :when_needed, :all_operations], default: :disabled
@@ -202,6 +211,14 @@ defmodule Pinchflat.Sources.Source do
     Keyword.get(@player_client_options, player_client, to_string(player_client))
   end
 
+  @doc """
+  Returns the source-type choices shown while creating a source.
+
+  The selected value is transient form state. The persisted source type remains
+  collection_type, which is populated from inspected source metadata.
+  """
+  def source_type_options, do: @source_type_options
+
   @doc false
   def index_frequency_when_fast_indexing do
     # 30 days in minutes
@@ -221,7 +238,7 @@ defmodule Pinchflat.Sources.Source do
 
   @doc false
   def json_exluded_fields do
-    ~w(__meta__ __struct__ metadata tasks media_items custom_poster_filename)a
+    ~w(__meta__ __struct__ metadata tasks media_items custom_poster_filename source_type)a
   end
 
   @doc false
