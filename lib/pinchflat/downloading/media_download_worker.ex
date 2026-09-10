@@ -149,6 +149,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         persist_download_failure(media_item, :transient, should_force)
         {:ok, :non_retry}
 
+      {:error, :staging_unavailable, message} ->
+        persist_download_failure(media_item, :permanent, should_force)
+        maybe_update_progress(job_id, %{progress_status: message})
+        {:ok, :non_retry}
+
       {:error, _error_atom, message} ->
         maybe_ignore_unavailable_media(media_item, job_id, message, should_force)
     end

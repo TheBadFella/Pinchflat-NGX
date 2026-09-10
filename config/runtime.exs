@@ -33,12 +33,27 @@ pot_provider_url =
       nil
   end
 
+download_staging_directory =
+  case System.get_env("DOWNLOAD_STAGING_PATH") do
+    value when is_binary(value) ->
+      case String.trim(value) do
+        "" -> nil
+        trimmed -> trimmed
+      end
+
+    _ ->
+      nil
+  end
+
 config :pinchflat,
   basic_auth_username: System.get_env("BASIC_AUTH_USERNAME"),
   basic_auth_password: System.get_env("BASIC_AUTH_PASSWORD"),
   # Optional bgutil PO-token provider. An absent or blank URL keeps the
   # provider disabled and preserves the existing yt-dlp command line.
-  po_token_provider_url: pot_provider_url
+  po_token_provider_url: pot_provider_url,
+  # Optional local download staging. An absent or blank path preserves direct
+  # writes to the configured media directory.
+  download_staging_directory: download_staging_directory
 
 # Optional OIDC/OAuth2 single sign-on. When all three of these are set,
 # the web UI requires logging in via the provider and BASIC_AUTH_* is

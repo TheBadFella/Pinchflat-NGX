@@ -18,6 +18,9 @@ config :pinchflat,
   apprise_runner: Pinchflat.Lifecycle.Notifications.CommandRunner,
   disk_space_checker: Pinchflat.Diagnostics.DiskSpaceChecker,
   media_directory: "/downloads",
+  # Optional local staging root for completed downloads. Nil preserves direct
+  # writes to media_directory.
+  download_staging_directory: nil,
   # The user may or may not store metadata for their needs, but the app will always store its copy
   metadata_directory: "/config/metadata",
   extras_directory: "/config/extras",

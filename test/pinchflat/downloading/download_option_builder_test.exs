@@ -33,6 +33,14 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:output, "/tmp/test/media/#{media_item.source.custom_name}.%(ext)s"} in res
     end
 
+    test "routes yt-dlp output under the per-item staging directory when requested", %{media_item: media_item} do
+      staging_directory = "/tmp/test/staging/media-#{media_item.id}-unique"
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item, staging_directory: staging_directory)
+
+      assert {:output, "#{staging_directory}/%(title)S.%(ext)s"} in res
+    end
+
     test "respects custom media_item-related output path options", %{media_item: media_item} do
       media_item =
         update_media_profile_attribute(media_item, %{output_path_template: "{{ media_upload_date_index }}.%(ext)s"})

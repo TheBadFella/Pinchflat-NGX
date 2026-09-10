@@ -8,6 +8,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Downloading.OutputPathBuilder
   alias Pinchflat.Downloading.QualityOptionBuilder
+  alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.YtDlp.PoTokenProvider
 
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
@@ -20,18 +21,21 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   def build(%MediaItem{} = media_item_with_preloads, override_opts \\ []) do
     media_profile = media_item_with_preloads.source.media_profile
 
-    built_options =
-      default_options(override_opts) ++
-        build_youtube_options_for(media_item_with_preloads) ++
-        subtitle_options(media_profile) ++
-        thumbnail_options(media_item_with_preloads) ++
-        metadata_options(media_profile) ++
-        quality_options(media_profile) ++
-        sponsorblock_options(media_profile) ++
-        output_options(media_item_with_preloads) ++
-        config_file_options(media_item_with_preloads)
+    with {:ok, output_options} <- output_options(media_item_with_preloads, override_opts),
+         {:ok, thumbnail_options} <- thumbnail_options(media_item_with_preloads, override_opts) do
+      built_options =
+        default_options(override_opts) ++
+          build_youtube_options_for(media_item_with_preloads) ++
+          subtitle_options(media_profile) ++
+          thumbnail_options ++
+          metadata_options(media_profile) ++
+          quality_options(media_profile) ++
+          sponsorblock_options(media_profile) ++
+          output_options ++
+          config_file_options(media_item_with_preloads)
 
-    {:ok, built_options}
+      {:ok, built_options}
+    end
   end
 
   @doc """
@@ -154,24 +158,27 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     end)
   end
 
-  defp thumbnail_options(media_item_with_preloads) do
+  defp thumbnail_options(media_item_with_preloads, override_opts) do
     media_profile = media_item_with_preloads.source.media_profile
     mapped_struct = Map.from_struct(media_profile)
 
-    Enum.reduce(mapped_struct, [], fn attr, acc ->
-      case attr do
-        {:download_thumbnail, true} ->
-          thumbnail_save_location = determine_thumbnail_location(media_item_with_preloads)
+    with {:ok, thumbnail_save_location} <- determine_thumbnail_location(media_item_with_preloads, override_opts) do
+      options =
+        Enum.reduce(mapped_struct, [], fn attr, acc ->
+          case attr do
+            {:download_thumbnail, true} ->
+              acc ++ [:write_thumbnail, convert_thumbnail: "jpg", output: "thumbnail:#{thumbnail_save_location}"]
 
-          acc ++ [:write_thumbnail, convert_thumbnail: "jpg", output: "thumbnail:#{thumbnail_save_location}"]
+            {:embed_thumbnail, true} ->
+              acc ++ [:embed_thumbnail, convert_thumbnail: "jpg"]
 
-        {:embed_thumbnail, true} ->
-          acc ++ [:embed_thumbnail, convert_thumbnail: "jpg"]
+            _ ->
+              acc
+          end
+        end)
 
-        _ ->
-          acc
-      end
-    end)
+      {:ok, options}
+    end
   end
 
   defp metadata_options(media_profile) do
@@ -227,19 +234,36 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     Enum.map(config_filepaths, fn filepath -> {:config_locations, filepath} end)
   end
 
-  defp output_options(media_item_with_preloads) do
-    [
-      output: build_output_path_for(media_item_with_preloads)
-    ]
+  defp output_options(media_item_with_preloads, override_opts) do
+    relative_output_path = build_relative_output_path(media_item_with_preloads)
+
+    case Keyword.get(override_opts, :staging_directory) do
+      nil ->
+        {:ok, [output: Path.join(base_directory(), relative_output_path)]}
+
+      staging_directory ->
+        with {:ok, output_path} <- DownloadStaging.output_path(staging_directory, relative_output_path) do
+          {:ok, [output: output_path]}
+        end
+    end
   end
 
   defp build_output_path(string, media_item_with_preloads, template_options) do
+    Path.join(base_directory(), build_relative_output_path(string, media_item_with_preloads, template_options))
+  end
+
+  defp build_relative_output_path(media_item_with_preloads) do
+    output_path_template = Sources.output_path_template(media_item_with_preloads.source)
+    build_relative_output_path(output_path_template, media_item_with_preloads, %{})
+  end
+
+  defp build_relative_output_path(string, media_item_with_preloads, template_options) do
     additional_options_map = Map.merge(output_options_map(media_item_with_preloads), template_options)
     {:ok, output_path} = OutputPathBuilder.build(string, additional_options_map)
     relative_output_path = output_path |> String.trim_leading("/") |> String.trim_leading("\\")
     source_subdirectory = media_item_with_preloads.source.download_subdirectory
 
-    [base_directory(), source_subdirectory, relative_output_path]
+    [source_subdirectory, relative_output_path]
     |> Enum.reject(&is_nil/1)
     |> Path.join()
   end
@@ -263,8 +287,18 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   # The thumbnail must share the media file's basename (differing only in
   # extension) for media center apps to pick it up as the episode thumbnail -
   # Plex in particular only matches an exactly-named sidecar image
-  defp determine_thumbnail_location(media_item_with_preloads) do
-    build_output_path_for(media_item_with_preloads)
+  defp determine_thumbnail_location(media_item_with_preloads, override_opts) do
+    if media_item_with_preloads.source.media_profile.download_thumbnail do
+      case Keyword.get(override_opts, :staging_directory) do
+        nil ->
+          {:ok, build_output_path_for(media_item_with_preloads)}
+
+        staging_directory ->
+          DownloadStaging.output_path(staging_directory, build_relative_output_path(media_item_with_preloads))
+      end
+    else
+      {:ok, nil}
+    end
   end
 
   defp pad_int(integer, count \\ 2, padding \\ "0") do

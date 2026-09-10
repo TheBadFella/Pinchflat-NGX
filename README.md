@@ -70,6 +70,39 @@ yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health che
 [official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
 [yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
 
+### Optional local download staging
+
+Set `DOWNLOAD_STAGING_PATH` to an absolute path inside the container when downloads should complete on a local disk
+before their finished artifacts are transferred to `/downloads`. The default is disabled, so existing deployments keep
+their current direct-to-library behavior. Each download receives its own directory, and the database is updated only
+after the complete artifact set reaches the media root.
+
+For a local staging disk, add a bind mount such as:
+
+```yaml
+services:
+  pinchyt:
+    environment:
+      DOWNLOAD_STAGING_PATH: /staging
+    volumes:
+      - ./download-staging:/staging
+```
+
+For a NAS library with local temporary storage, mount the local staging disk separately from the NAS destination:
+
+```yaml
+services:
+  pinchyt:
+    environment:
+      DOWNLOAD_STAGING_PATH: /staging
+    volumes:
+      - /fast-local-disk/pinchyt-staging:/staging
+      - /mnt/nas/media:/downloads
+```
+
+Staging and the media directory may be on different filesystems. PinchYT uses a temporary destination name and an
+atomic rename after copying in that case. Staging paths must be absolute, writable, and different from the media root.
+
 ## What PinchYT adds
 
 <table>

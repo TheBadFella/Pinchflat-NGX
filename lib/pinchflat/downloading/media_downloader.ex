@@ -18,6 +18,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.DownloadOptionBuilder
+  alias Pinchflat.Downloading.DownloadStaging
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
@@ -82,31 +83,57 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     media_with_preloads = Repo.preload(media_item, [:metadata, source: :media_profile])
 
-    case download_with_options(media_item.original_url, media_with_preloads, output_filepath, override_opts) do
-      {:ok, parsed_json} ->
-        update_media_item_from_parsed_json(media_with_preloads, parsed_json)
+    case DownloadStaging.prepare(media_with_preloads.id) do
+      {:ok, staging_directory} ->
+        try do
+          download_override_opts = maybe_add_staging_directory(override_opts, staging_directory)
 
-      {:error, :unsuitable_for_download} ->
-        message =
-          "Media item ##{media_with_preloads.id} isn't suitable for download yet. May be an active or processing live stream"
+          case download_with_options(
+                 media_item.original_url,
+                 media_with_preloads,
+                 output_filepath,
+                 download_override_opts
+               ) do
+            {:ok, parsed_json} ->
+              case DownloadStaging.transfer(parsed_json, staging_directory) do
+                {:ok, transferred_json} ->
+                  update_media_item_from_parsed_json(media_with_preloads, transferred_json)
 
-        Logger.warning(message)
+                {:error, reason} ->
+                  {:error, :staging_unavailable, staging_error_message(reason)}
+              end
 
-        {:error, :unsuitable_for_download, message}
+            {:error, :unsuitable_for_download} ->
+              message =
+                "Media item ##{media_with_preloads.id} isn't suitable for download yet. May be an active or processing live stream"
 
-      {:error, message, _exit_code} ->
-        Logger.error("yt-dlp download error for media item ##{media_with_preloads.id}: #{inspect(message)}")
+              Logger.warning(message)
 
-        if String.contains?(to_string(message), recoverable_errors()) do
-          attempt_recovery_from_error(media_with_preloads, output_filepath, message)
-        else
-          {:error, :download_failed, message}
+              {:error, :unsuitable_for_download, message}
+
+            {:error, :staging_unavailable, message} ->
+              {:error, :staging_unavailable, message}
+
+            {:error, message, _exit_code} ->
+              Logger.error("yt-dlp download error for media item ##{media_with_preloads.id}: #{inspect(message)}")
+
+              if String.contains?(to_string(message), recoverable_errors()) && is_nil(staging_directory) do
+                attempt_recovery_from_error(media_with_preloads, output_filepath, message)
+              else
+                {:error, :download_failed, message}
+              end
+
+            err ->
+              Logger.error("Unknown error downloading media item ##{media_with_preloads.id}: #{inspect(err)}")
+
+              {:error, :unknown, "Unknown error: #{inspect(err)}"}
+          end
+        after
+          DownloadStaging.cleanup(staging_directory)
         end
 
-      err ->
-        Logger.error("Unknown error downloading media item ##{media_with_preloads.id}: #{inspect(err)}")
-
-        {:error, :unknown, "Unknown error: #{inspect(err)}"}
+      {:error, reason} ->
+        {:error, :staging_unavailable, staging_error_message(reason)}
     end
   end
 
@@ -163,7 +190,17 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp download_with_options(url, item_with_preloads, output_filepath, override_opts) do
     emit_progress = Keyword.has_key?(override_opts, :progress_handler)
     build_opts = Keyword.put(override_opts, :emit_progress, emit_progress)
-    {:ok, options} = DownloadOptionBuilder.build(item_with_preloads, build_opts)
+
+    case DownloadOptionBuilder.build(item_with_preloads, build_opts) do
+      {:ok, options} ->
+        do_download_with_options(url, item_with_preloads, output_filepath, override_opts, options, emit_progress)
+
+      {:error, reason} ->
+        {:error, :staging_unavailable, staging_error_message(reason)}
+    end
+  end
+
+  defp do_download_with_options(url, item_with_preloads, output_filepath, override_opts, options, emit_progress) do
     force_use_cookies = Keyword.get(override_opts, :force_use_cookies, false)
     source_uses_cookies = Sources.use_cookies?(item_with_preloads.source, :downloading)
     should_use_cookies = force_use_cookies || source_uses_cookies
@@ -288,6 +325,16 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       nil -> :ok
       progress_handler -> progress_handler.(attrs)
     end
+  end
+
+  defp maybe_add_staging_directory(override_opts, nil), do: override_opts
+
+  defp maybe_add_staging_directory(override_opts, staging_directory) do
+    Keyword.put(override_opts, :staging_directory, staging_directory)
+  end
+
+  defp staging_error_message(reason) do
+    "Download staging is unavailable: #{inspect(reason)}"
   end
 
   defp persisted_last_error(media_item, message) do

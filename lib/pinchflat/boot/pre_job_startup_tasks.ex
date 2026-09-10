@@ -15,6 +15,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
   alias Pinchflat.Repo
   alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.Downloading.DownloadStaging
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -41,6 +42,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
 
   def init(state) do
     ensure_tmpfile_directory()
+    cleanup_stale_download_staging()
     reset_executing_jobs()
     revive_stalled_reconcile_jobs()
     create_blank_yt_dlp_files()
@@ -57,6 +59,20 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
     if !File.exists?(tmpfile_dir) do
       File.mkdir_p!(tmpfile_dir)
     end
+  end
+
+  defp cleanup_stale_download_staging do
+    active_media_item_ids =
+      Oban.Job
+      |> where(worker: "Pinchflat.Downloading.MediaDownloadWorker", state: "executing")
+      |> select([job], job.args)
+      |> Repo.all()
+      |> Enum.flat_map(fn
+        %{"id" => id} when is_integer(id) -> [id]
+        _ -> []
+      end)
+
+    DownloadStaging.cleanup_stale(active_media_item_ids)
   end
 
   # If a node cannot gracefully shut down, the currently executing jobs get stuck
