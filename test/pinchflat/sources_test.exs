@@ -316,6 +316,77 @@ defmodule Pinchflat.SourcesTest do
       assert source.index_frequency_minutes == 0
     end
 
+    test "creates a source when the explicit channel type matches inspected metadata" do
+      expect(YtDlpRunnerMock, :run, &channel_mock/5)
+
+      attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/abc123",
+        source_type: :channel
+      }
+
+      assert {:ok, %Source{collection_type: :channel}} =
+               Sources.create_source(attrs, run_post_commit_tasks: false)
+    end
+
+    test "creates a source when the explicit playlist type matches inspected metadata" do
+      expect(YtDlpRunnerMock, :run, &playlist_mock/5)
+
+      attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/playlist?list=abc123",
+        source_type: :playlist
+      }
+
+      assert {:ok, %Source{collection_type: :playlist}} =
+               Sources.create_source(attrs, run_post_commit_tasks: false)
+    end
+
+    test "creates a source when the explicit video type matches inspected metadata" do
+      expect(YtDlpRunnerMock, :run, &video_mock/5)
+
+      attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/watch?v=72maj9FLQZI",
+        source_type: :video
+      }
+
+      assert {:ok, %Source{collection_type: :video}} =
+               Sources.create_source(attrs, run_post_commit_tasks: false)
+    end
+
+    test "rejects an explicit type when inspected metadata resolves to another type" do
+      expect(YtDlpRunnerMock, :run, &channel_mock/5)
+
+      attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/abc123",
+        source_type: :playlist
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Sources.create_source(attrs, run_post_commit_tasks: false)
+
+      assert errors_on(changeset).original_url == [
+               "the selected source type is Playlist, but this URL resolves to a Channel; choose Channel or Automatic"
+             ]
+    end
+
+    test "rejects an explicit video type for an obvious channel URL without inspection" do
+      attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/abc123",
+        source_type: :video
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Sources.create_source(attrs, run_post_commit_tasks: false)
+
+      assert errors_on(changeset).original_url == [
+               "could not inspect this URL as a Video; check the URL or choose Automatic"
+             ]
+    end
+
     test "adds an error if the runner fails" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl -> {:error, "some error", 1} end)
 

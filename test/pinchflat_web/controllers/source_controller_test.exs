@@ -95,19 +95,31 @@ defmodule PinchflatWeb.SourceControllerTest do
   describe "new source" do
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/sources/new")
-      assert html_response(conn, 200) =~ "New Source"
-      assert html_response(conn, 200) =~ "Source Metadata"
-      assert html_response(conn, 200) =~ "Lock Source Name"
-      assert html_response(conn, 200) =~ "Lock Description"
-      assert html_response(conn, 200) =~ "Delay Automatic Download"
-      assert html_response(conn, 200) =~ "Download Public and Unlisted Media"
-      assert html_response(conn, 200) =~ "Download Members-only Media"
-      assert html_response(conn, 200) =~ "YouTube Player Client"
-      assert html_response(conn, 200) =~ "Default"
-      assert html_response(conn, 200) =~ "Web Creator"
-      assert html_response(conn, 200) =~ "Members-only media may fail without cookies"
-      assert html_response(conn, 200) =~ "How source folders work"
-      assert html_response(conn, 200) =~ "Insert media profile template"
+      response = html_response(conn, 200)
+
+      assert response =~ "New Source"
+      assert response =~ "Source Type"
+      assert response =~ "Automatic"
+      assert response =~ "Channel"
+      assert response =~ "Playlist"
+      assert response =~ "Video"
+      assert response =~ "Channel URL"
+      assert response =~ "Playlist URL"
+      assert response =~ "Video URL"
+      assert response =~ "preserves existing PinchYT behavior."
+      refute response =~ ~S(PinchYT\'s)
+      assert response =~ "Source Metadata"
+      assert response =~ "Lock Source Name"
+      assert response =~ "Lock Description"
+      assert response =~ "Delay Automatic Download"
+      assert response =~ "Download Public and Unlisted Media"
+      assert response =~ "Download Members-only Media"
+      assert response =~ "YouTube Player Client"
+      assert response =~ "Default"
+      assert response =~ "Web Creator"
+      assert response =~ "Members-only media may fail without cookies"
+      assert response =~ "How source folders work"
+      assert response =~ "Insert media profile template"
     end
 
     test "renders source folder picker options from existing media directories", %{conn: conn} do
@@ -183,6 +195,24 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders errors when data is invalid", %{conn: conn, invalid_attrs: invalid_attrs} do
       conn = post(conn, ~p"/sources", source: invalid_attrs)
       assert html_response(conn, 200) =~ "New Source"
+    end
+
+    test "preserves the selected source type and URL after an inspection error", %{
+      conn: conn,
+      create_attrs: create_attrs
+    } do
+      source_attrs =
+        Map.merge(create_attrs, %{
+          source_type: "video",
+          original_url: "https://www.youtube.com/channel/explicit-video-mismatch"
+        })
+
+      response = conn |> post(~p"/sources", source: source_attrs) |> html_response(200)
+
+      assert response =~ "could not inspect this URL as a Video"
+      assert response =~ ~r/name="source\[source_type\]"[^>]*value="video"/
+      assert response =~ "https://www.youtube.com/channel/explicit-video-mismatch"
+      assert response =~ "Video URL"
     end
 
     test "renders a cookie compatibility error for the selected player client", %{
