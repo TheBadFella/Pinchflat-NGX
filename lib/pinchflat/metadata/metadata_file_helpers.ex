@@ -10,6 +10,7 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
   """
 
   alias Pinchflat.Sources
+  alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Utils.FilesystemUtils
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
@@ -71,7 +72,11 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
   def download_and_store_thumbnail_for(media_item_with_preloads) do
     yt_dlp_filepath = generate_filepath_for(media_item_with_preloads, "thumbnail.%(ext)s")
     real_filepath = generate_filepath_for(media_item_with_preloads, "thumbnail.jpg")
-    command_opts = [output: yt_dlp_filepath]
+
+    command_opts =
+      [output: yt_dlp_filepath] ++
+        DownloadOptionBuilder.build_player_client_options_for(media_item_with_preloads)
+
     addl_opts = [use_cookies: Sources.use_cookies?(media_item_with_preloads.source, :metadata)]
 
     case YtDlpMedia.download_thumbnail(media_item_with_preloads.original_url, command_opts, addl_opts) do

@@ -98,6 +98,9 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Delay Automatic Download"
       assert html_response(conn, 200) =~ "Download Public and Unlisted Media"
       assert html_response(conn, 200) =~ "Download Members-only Media"
+      assert html_response(conn, 200) =~ "YouTube Player Client"
+      assert html_response(conn, 200) =~ "Default"
+      assert html_response(conn, 200) =~ "Web Creator"
       assert html_response(conn, 200) =~ "Members-only media may fail without cookies"
       assert html_response(conn, 200) =~ "How source folders work"
       assert html_response(conn, 200) =~ "Insert media profile template"
@@ -176,6 +179,16 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders errors when data is invalid", %{conn: conn, invalid_attrs: invalid_attrs} do
       conn = post(conn, ~p"/sources", source: invalid_attrs)
       assert html_response(conn, 200) =~ "New Source"
+    end
+
+    test "renders a cookie compatibility error for the selected player client", %{
+      conn: conn,
+      create_attrs: create_attrs
+    } do
+      conn =
+        post(conn, ~p"/sources", source: Map.merge(create_attrs, %{player_client: "web_creator"}))
+
+      assert html_response(conn, 200) =~ "requires account cookies; select When Needed or All Operations"
     end
 
     test "redirects to onboarding when onboarding", %{conn: conn, create_attrs: create_attrs} do

@@ -189,7 +189,14 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     else
       maybe_report_progress(override_opts, %{progress_percent: 0.0, progress_status: "Prechecking media"})
 
-      case {YtDlpMedia.get_downloadable_status(url, use_cookies: should_use_cookies), should_use_cookies} do
+      case {
+        YtDlpMedia.get_downloadable_status(
+          url,
+          DownloadOptionBuilder.build_player_client_options_for(item_with_preloads),
+          use_cookies: should_use_cookies
+        ),
+        should_use_cookies
+      } do
         {{:ok, :downloadable}, _} ->
           maybe_report_progress(override_opts, %{
             progress_percent: 0.0,

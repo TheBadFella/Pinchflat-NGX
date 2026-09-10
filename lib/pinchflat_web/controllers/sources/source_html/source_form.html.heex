@@ -133,7 +133,8 @@
       x-data={
         Phoenix.json_library().encode!(%{
           downloadMembersOnlyMedia: Ecto.Changeset.get_field(@changeset, :download_members_only_media),
-          cookieBehaviour: to_string(Ecto.Changeset.get_field(@changeset, :cookie_behaviour))
+          cookieBehaviour: to_string(Ecto.Changeset.get_field(@changeset, :cookie_behaviour)),
+          playerClient: to_string(Ecto.Changeset.get_field(@changeset, :player_client) || "")
         })
       }
     >
@@ -173,6 +174,14 @@
         help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
         x-model="cookieBehaviour"
       />
+      <.input
+        field={f[:player_client]}
+        options={friendly_player_clients()}
+        type="select"
+        label="YouTube Player Client"
+        help="Overrides yt-dlp's default YouTube player-client selection for this source. Default is recommended unless you need a specific client."
+        x-model="playerClient"
+      />
       <div
         x-cloak
         x-show="downloadMembersOnlyMedia && cookieBehaviour === 'disabled'"
@@ -181,6 +190,22 @@
       >
         Members-only media may fail without cookies. Configure a cookies.txt file and select a cookie behaviour if
         you want PinchYT to access it; this setting will not enable cookies automatically.
+      </div>
+      <div
+        x-cloak
+        x-show="playerClient === 'web_creator' && cookieBehaviour !== 'all_operations'"
+        class="theme-status-card theme-status-card-warning text-sm"
+        role="alert"
+      >
+        Web Creator requires account cookies. Select All Operations to use this client reliably.
+      </div>
+      <div
+        x-cloak
+        x-show="['android', 'ios', 'tv_simply'].includes(playerClient) && cookieBehaviour !== 'disabled'"
+        class="theme-status-card theme-status-card-warning text-sm"
+        role="alert"
+      >
+        This player client does not support account cookies. Set Cookie Behaviour to Disabled before saving.
       </div>
     </section>
 

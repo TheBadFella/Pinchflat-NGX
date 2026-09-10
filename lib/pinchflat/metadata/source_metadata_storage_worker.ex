@@ -134,8 +134,10 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   defp maybe_ignore_unavailable_source_metadata(_source, result), do: result
 
   defp determine_series_directory(source) do
-    output_path = DownloadOptionBuilder.build_output_path_for(source)
-    runner_opts = [output: output_path]
+    runner_opts =
+      [output: DownloadOptionBuilder.build_output_path_for(source)] ++
+        DownloadOptionBuilder.build_player_client_options_for(source)
+
     addl_opts = [use_cookies: Sources.use_cookies?(source, :metadata)]
     details_result = MediaCollection.get_source_details(source.original_url, runner_opts, addl_opts)
 
@@ -175,6 +177,8 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
       else
         base_opts ++ [:write_thumbnail, playlist_items: 1]
       end
+
+    opts = opts ++ DownloadOptionBuilder.build_player_client_options_for(source)
 
     MediaCollection.get_source_metadata(source.original_url, opts, use_cookies: should_use_cookies)
   end

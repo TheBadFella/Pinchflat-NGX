@@ -21,6 +21,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
     built_options =
       default_options(override_opts) ++
+        player_client_options(media_item_with_preloads.source.player_client) ++
         subtitle_options(media_profile) ++
         thumbnail_options(media_item_with_preloads) ++
         metadata_options(media_profile) ++
@@ -30,6 +31,31 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
         config_file_options(media_item_with_preloads)
 
     {:ok, built_options}
+  end
+
+  @doc """
+  Builds the yt-dlp extractor arguments for a source's optional YouTube
+  player-client override.
+
+  Returns [] when the source uses the default client selection.
+  """
+  def build_player_client_options_for(%Source{} = source) do
+    player_client_options(source.player_client)
+  end
+
+  def build_player_client_options_for(%MediaItem{} = media_item) do
+    build_player_client_options_for(media_item.source)
+  end
+
+  @doc false
+  def player_client_options(nil), do: []
+
+  def player_client_options(player_client) do
+    if player_client in Source.player_client_values() do
+      [{:extractor_args, "youtube:player-client=#{player_client}"}]
+    else
+      []
+    end
   end
 
   @doc """

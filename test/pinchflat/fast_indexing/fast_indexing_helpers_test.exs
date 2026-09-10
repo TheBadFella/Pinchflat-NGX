@@ -129,6 +129,19 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
       FastIndexingHelpers.index_and_kickoff_downloads(source)
     end
 
+    test "passes the source player client to the yt-dlp runner" do
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, opts, _ot, _addl_opts ->
+        assert {:extractor_args, "youtube:player-client=android"} in opts
+        {:ok, media_attributes_return_fixture()}
+      end)
+
+      source = source_fixture(%{player_client: :android})
+
+      assert [%MediaItem{}] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+    end
+
     test "does not enqueue a download job if the media item does not match the format rules" do
       expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
 

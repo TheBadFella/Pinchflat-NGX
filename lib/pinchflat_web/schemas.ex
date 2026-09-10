@@ -150,6 +150,26 @@ defmodule PinchflatWeb.Schemas do
         },
         index_frequency_minutes: %Schema{type: :integer, description: "Indexing frequency in minutes", example: 1440},
         fast_index: %Schema{type: :boolean, description: "Use fast indexing", example: false},
+        player_client: %Schema{
+          type: :string,
+          nullable: true,
+          enum: [
+            :web,
+            :web_safari,
+            :web_embedded,
+            :web_music,
+            :web_creator,
+            :mweb,
+            :ios,
+            :visionos,
+            :android,
+            :android_vr,
+            :tv,
+            :tv_downgraded,
+            :tv_simply
+          ],
+          description: "Optional yt-dlp YouTube player-client override; null uses yt-dlp defaults"
+        },
         selection_mode: %Schema{
           type: :string,
           enum: [:all, :manual],
@@ -387,6 +407,26 @@ defmodule PinchflatWeb.Schemas do
               default: true
             },
             fast_index: %Schema{type: :boolean, description: "Use fast indexing", default: false},
+            player_client: %Schema{
+              type: :string,
+              nullable: true,
+              enum: [
+                :web,
+                :web_safari,
+                :web_embedded,
+                :web_music,
+                :web_creator,
+                :mweb,
+                :ios,
+                :visionos,
+                :android,
+                :android_vr,
+                :tv,
+                :tv_downgraded,
+                :tv_simply
+              ],
+              description: "Optional yt-dlp YouTube player-client override; null uses yt-dlp defaults"
+            },
             delay_automatic_download: %Schema{
               type: :boolean,
               description: "For playlist sources, index first and wait for a manual item selection before downloading",
@@ -450,6 +490,26 @@ defmodule PinchflatWeb.Schemas do
               description: "Download subscriber-only, premium-only, and authentication-required media"
             },
             fast_index: %Schema{type: :boolean, description: "Use fast indexing"},
+            player_client: %Schema{
+              type: :string,
+              nullable: true,
+              enum: [
+                :web,
+                :web_safari,
+                :web_embedded,
+                :web_music,
+                :web_creator,
+                :mweb,
+                :ios,
+                :visionos,
+                :android,
+                :android_vr,
+                :tv,
+                :tv_downgraded,
+                :tv_simply
+              ],
+              description: "Optional yt-dlp YouTube player-client override; null uses yt-dlp defaults"
+            },
             index_frequency_minutes: %Schema{type: :integer, description: "Indexing frequency in minutes"},
             download_cutoff_date: %Schema{
               type: :string,

@@ -126,6 +126,48 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "player client validation" do
+    test "defaults to yt-dlp's player-client selection" do
+      changeset = Source.changeset(%Source{}, %{}, :initial)
+
+      assert Ecto.Changeset.get_field(changeset, :player_client) == nil
+      refute Map.has_key?(errors_on(changeset), :player_client)
+    end
+
+    test "requires account cookies for the web creator client" do
+      changeset =
+        Source.changeset(
+          %Source{},
+          %{player_client: :web_creator, cookie_behaviour: :disabled},
+          :initial
+        )
+
+      assert "requires account cookies; select When Needed or All Operations" in errors_on(changeset).player_client
+    end
+
+    test "rejects cookie-incompatible clients when cookies are enabled" do
+      changeset =
+        Source.changeset(
+          %Source{},
+          %{player_client: :android, cookie_behaviour: :all_operations},
+          :initial
+        )
+
+      assert "does not support account cookies; set Cookie Behaviour to Disabled" in errors_on(changeset).player_client
+    end
+
+    test "allows android when cookies are disabled" do
+      changeset =
+        Source.changeset(
+          %Source{},
+          %{player_client: :android, cookie_behaviour: :disabled},
+          :initial
+        )
+
+      refute Map.has_key?(errors_on(changeset), :player_client)
+    end
+  end
+
   describe "cookie file helpers" do
     setup do
       extras_directory =
@@ -639,6 +681,22 @@ defmodule Pinchflat.SourcesTest do
       }
 
       assert {:ok, %Source{}} = Sources.create_source(valid_attrs)
+    end
+
+    test "passes a source player-client override to source details" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, opts, _ot, _addl ->
+        assert {:extractor_args, "youtube:player-client=android"} in opts
+
+        {:ok, playlist_return()}
+      end)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/abc123",
+        player_client: :android
+      }
+
+      assert {:ok, %Source{player_client: :android}} = Sources.create_source(valid_attrs)
     end
   end
 

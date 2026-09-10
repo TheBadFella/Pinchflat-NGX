@@ -408,6 +408,17 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
+
+    test "passes the source player client to the yt-dlp runner" do
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert {:extractor_args, "youtube:player-client=android"} in opts
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      source = source_fixture(%{player_client: :android})
+
+      assert [_ | _] = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
   end
 
   describe "index_and_enqueue_download_for_media_items/2 when testing cookies" do

@@ -133,6 +133,21 @@ defmodule Pinchflat.YtDlp.MediaTest do
       assert {:ok, :downloadable} = Media.get_downloadable_status(@media_url, addl_arg: true)
     end
 
+    test "passes typed command options to the backend runner" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_downloadable_status, opts, _ot, _addl ->
+        assert [:simulate, :skip_download, {:extractor_args, "youtube:player-client=android"}] == opts
+
+        {:ok, Phoenix.json_library().encode!(%{"live_status" => "was_live"})}
+      end)
+
+      assert {:ok, :downloadable} =
+               Media.get_downloadable_status(
+                 @media_url,
+                 [{:extractor_args, "youtube:player-client=android"}],
+                 use_cookies: false
+               )
+    end
+
     test "returns an error (instead of raising) if the output is not JSON" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_downloadable_status, _opts, _ot, _addl ->
         {:ok, ""}

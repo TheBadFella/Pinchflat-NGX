@@ -153,6 +153,27 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
 
       assert {:ok, _} = MediaDownloader.download_for_media_item(media_item, skip_download_precheck: true)
     end
+
+    test "passes the source player client to precheck and download commands" do
+      expect(YtDlpRunnerMock, :run, 3, fn
+        _url, :get_downloadable_status, opts, _ot, _addl ->
+          assert {:extractor_args, "youtube:player-client=android"} in opts
+          {:ok, "{}"}
+
+        _url, :download, opts, _ot, _addl ->
+          assert {:extractor_args, "youtube:player-client=android"} in opts
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, opts, _ot, _addl ->
+          assert {:extractor_args, "youtube:player-client=android"} in opts
+          {:ok, ""}
+      end)
+
+      source = source_fixture(%{player_client: :android})
+      media_item = media_item_fixture(%{source_id: source.id})
+
+      assert {:ok, _} = MediaDownloader.download_for_media_item(media_item)
+    end
   end
 
   describe "download_for_media_item/3 when testing cookie usage" do

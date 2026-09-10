@@ -14,6 +14,25 @@ defmodule Pinchflat.Sources.Source do
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Metadata.SourceMetadata
 
+  @player_client_options [
+    {"Web", :web},
+    {"Web Safari", :web_safari},
+    {"Web Embedded", :web_embedded},
+    {"Web Music", :web_music},
+    {"Web Creator", :web_creator},
+    {"Mobile Web", :mweb},
+    {"iOS", :ios},
+    {"VisionOS", :visionos},
+    {"Android", :android},
+    {"Android VR", :android_vr},
+    {"TV", :tv},
+    {"TV Downgraded", :tv_downgraded},
+    {"TV Simply", :tv_simply}
+  ]
+
+  @player_client_values Keyword.values(@player_client_options)
+  @cookie_incompatible_player_clients [:android, :ios, :tv_simply]
+
   @allowed_fields ~w(
     enabled
     collection_name
@@ -29,6 +48,7 @@ defmodule Pinchflat.Sources.Source do
     index_frequency_minutes
     fast_index
     cookie_behaviour
+    player_client
     selection_mode
     download_media
     download_public_media
@@ -84,6 +104,7 @@ defmodule Pinchflat.Sources.Source do
     field :index_frequency_minutes, :integer, default: 60 * 24
     field :fast_index, :boolean, default: false
     field :cookie_behaviour, Ecto.Enum, values: [:disabled, :when_needed, :all_operations], default: :disabled
+    field :player_client, Ecto.Enum, values: @player_client_values
     field :selection_mode, Ecto.Enum, values: [:all, :manual], default: :all
     field :download_media, :boolean, default: true
     # Keep both policies enabled by default so existing sources retain their
@@ -146,11 +167,34 @@ defmodule Pinchflat.Sources.Source do
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
     |> validate_index_cutoff_date()
+    |> validate_player_client_cookie_compatibility()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> cast_assoc(:metadata, with: &SourceMetadata.changeset/2, required: false)
     |> unique_constraint([:collection_id, :media_profile_id, :title_filter_regex], error_key: :original_url)
+  end
+
+  @doc """
+  Returns the finite list of supported YouTube player-client choices.
+
+  The `nil`/Default choice is rendered by the source form and is intentionally
+  not part of this list because it means that yt-dlp should receive no override.
+  """
+  def player_client_options, do: @player_client_options
+
+  @doc """
+  Returns the finite set of player-client atoms accepted by the schema.
+  """
+  def player_client_values, do: @player_client_values
+
+  @doc """
+  Returns the display label for a player-client value.
+  """
+  def player_client_label(nil), do: "Default"
+
+  def player_client_label(player_client) do
+    Keyword.get(@player_client_options, player_client, to_string(player_client))
   end
 
   @doc false
@@ -310,6 +354,22 @@ defmodule Pinchflat.Sources.Source do
       add_error(changeset, :index_cutoff_date, "must be on or before the download cutoff date")
     else
       changeset
+    end
+  end
+
+  defp validate_player_client_cookie_compatibility(changeset) do
+    player_client = get_field(changeset, :player_client)
+    cookie_behaviour = get_field(changeset, :cookie_behaviour)
+
+    cond do
+      player_client == :web_creator and cookie_behaviour == :disabled ->
+        add_error(changeset, :player_client, "requires account cookies; select When Needed or All Operations")
+
+      player_client in @cookie_incompatible_player_clients and cookie_behaviour != :disabled ->
+        add_error(changeset, :player_client, "does not support account cookies; set Cookie Behaviour to Disabled")
+
+      true ->
+        changeset
     end
   end
 

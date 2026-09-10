@@ -72,6 +72,20 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       refute :force_overwrites in res
       assert :no_force_overwrites in res
     end
+
+    test "does not add an extractor argument for the default player client", %{media_item: media_item} do
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      refute Enum.any?(res, &match?({:extractor_args, "youtube:player-client=" <> _}, &1))
+    end
+
+    test "maps a source player client to a typed extractor argument", %{media_item: media_item} do
+      media_item = put_in(media_item.source.player_client, :android)
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:extractor_args, "youtube:player-client=android"} in res
+    end
   end
 
   describe "build/1 when testing subtitle options" do

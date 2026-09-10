@@ -455,6 +455,10 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
+  def friendly_player_clients do
+    [{"Default", ""} | Pinchflat.Sources.Source.player_client_options()]
+  end
+
   def cutoff_date_presets do
     [
       {"7 days", compute_date_offset(7)},
@@ -544,6 +548,11 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Cookies",
         cookie_behaviour_label(source.cookie_behaviour),
         "When this source's requests use your cookies.txt file"
+      ),
+      field(
+        "Player client",
+        Pinchflat.Sources.Source.player_client_label(source.player_client),
+        "The YouTube player client passed to yt-dlp, or Default when yt-dlp chooses"
       )
     ]
   end

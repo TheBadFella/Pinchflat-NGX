@@ -18,6 +18,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Metadata.SourceMetadata
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.DownloadingHelpers
+  alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.FastIndexing.FastIndexingHelpers
@@ -671,9 +672,10 @@ defmodule Pinchflat.Sources do
     original_url = changeset.changes.original_url
     should_use_cookies = Ecto.Changeset.get_field(changeset, :cookie_behaviour) == :all_operations
     # Skipping sleep interval since this is UI blocking and we want to keep this as fast as possible
+    command_opts = DownloadOptionBuilder.player_client_options(Ecto.Changeset.get_field(changeset, :player_client))
     addl_opts = [use_cookies: should_use_cookies, skip_sleep_interval: true]
 
-    case MediaCollection.get_source_details(original_url, [], addl_opts) do
+    case MediaCollection.get_source_details(original_url, command_opts, addl_opts) do
       {:ok, source_details} ->
         add_source_details_by_collection_type(source, changeset, source_details)
 

@@ -23,6 +23,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   alias Pinchflat.Reconciliation.ReconcilePlan
   alias Pinchflat.Reconciliation.ReconcilePlanItem
   alias Pinchflat.Metadata.MetadataFileHelpers
+  alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
@@ -249,7 +250,11 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
 
   defp backfill_media_item_attribute(media_item, %{attribute: "thumbnail"} = row) do
     rootname = Path.rootname(row.to_path)
-    command_opts = [output: "#{rootname}.%(ext)s"]
+
+    command_opts =
+      [output: "#{rootname}.%(ext)s"] ++
+        DownloadOptionBuilder.build_player_client_options_for(media_item)
+
     addl_opts = [use_cookies: Sources.use_cookies?(media_item.source, :metadata)]
 
     case YtDlpMedia.download_thumbnail(media_item.original_url, command_opts, addl_opts) do
@@ -281,6 +286,8 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
     command_opts =
       [sub_langs: profile.sub_langs, output: "#{rootname}.%(ext)s"] ++
         if(profile.download_auto_subs, do: [:write_auto_subs], else: [])
+
+    command_opts = command_opts ++ DownloadOptionBuilder.build_player_client_options_for(media_item)
 
     addl_opts = [use_cookies: Sources.use_cookies?(media_item.source, :metadata)]
 
