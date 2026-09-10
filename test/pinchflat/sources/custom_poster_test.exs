@@ -6,6 +6,7 @@ defmodule Pinchflat.Sources.CustomPosterTest do
 
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
+  alias PinchflatWeb.Sources.SourceHTML
 
   @png Base.decode64!("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
   @webp Base.decode64!("UklGRiIAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vuUAAA=")
@@ -75,13 +76,26 @@ defmodule Pinchflat.Sources.CustomPosterTest do
       source = source_fixture()
 
       expect(HTTPClientMock, :get, fn "https://example.com/poster.png", [], opts ->
-        assert opts == [receive_timeout: 10_000, request_timeout: 30_000]
+        assert opts[:receive_timeout] == 10_000
+        assert opts[:request_timeout] == 30_000
+        assert opts[:connect_address] == {93, 184, 216, 34}
         {:ok, @png}
       end)
 
       assert {:ok, saved_source} = CustomPoster.set_from_url(source, "https://example.com/poster.png")
       assert saved_source.custom_poster_filename =~ ~r/\.png$/
       assert File.read!(CustomPoster.filepath(saved_source)) == @png
+    end
+
+    test "pins the validated public address before making the request" do
+      source = source_fixture()
+
+      expect(HTTPClientMock, :get, fn "https://example.com/poster.png", [], opts ->
+        assert opts[:connect_address] == {93, 184, 216, 34}
+        {:ok, @png}
+      end)
+
+      assert {:ok, _saved_source} = CustomPoster.set_from_url(source, "https://example.com/poster.png")
     end
 
     test "preserves the HTTP timeout error" do
@@ -133,6 +147,28 @@ defmodule Pinchflat.Sources.CustomPosterTest do
   end
 
   describe "replacement and removal" do
+    test "uses each generated poster filename for cache busting" do
+      source = source_fixture()
+
+      {:ok, first_source} =
+        CustomPoster.set_from_upload(source, upload_for(File.read!(thumbnail_filepath_fixture()), "jpg", "image/jpeg"))
+
+      {:ok, second_source} =
+        CustomPoster.set_from_upload(
+          first_source,
+          upload_for(File.read!(thumbnail_filepath_fixture()), "jpg", "image/jpeg")
+        )
+
+      second_source_same_timestamp = %{second_source | updated_at: first_source.updated_at}
+      first_url = SourceHTML.poster_preview_url(first_source)
+      second_url = SourceHTML.poster_preview_url(second_source_same_timestamp)
+
+      assert first_source.updated_at == second_source_same_timestamp.updated_at
+      assert first_url =~ "?v=#{first_source.custom_poster_filename}"
+      assert second_url =~ "?v=#{second_source.custom_poster_filename}"
+      refute first_url == second_url
+    end
+
     test "removes the old file only after a successful replacement" do
       source = source_fixture()
 

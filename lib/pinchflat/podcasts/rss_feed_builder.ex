@@ -10,6 +10,7 @@ defmodule Pinchflat.Podcasts.RssFeedBuilder do
   use PinchflatWeb, :verified_routes
 
   alias Pinchflat.Podcasts.PodcastHelpers
+  alias Pinchflat.Sources.CustomPoster
 
   @doc """
   Builds an RSS feed for a given source and its media items.
@@ -120,7 +121,7 @@ defmodule Pinchflat.Podcasts.RssFeedBuilder do
       {:ok, filepath} ->
         extension = Path.extname(filepath)
         path = Path.join(url_base, "#{podcast_route(:feed_image, source.uuid)}#{extension}")
-        "#{path}?v=#{DateTime.to_unix(source.updated_at)}"
+        "#{path}?v=#{CustomPoster.poster_cache_version(source)}"
     end
   end
 

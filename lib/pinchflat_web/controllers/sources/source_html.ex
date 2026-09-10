@@ -731,8 +731,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
-  URL for the source poster preview, including the source update timestamp so a
-  replacement is not hidden behind a browser or feed-reader cache.
+  URL for the source poster preview, including a poster-specific cache version
+  so a replacement is not hidden behind a browser or feed-reader cache.
   """
   def poster_preview_url(source) do
     extension =
@@ -742,7 +742,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       end
 
     path = ~p"/sources/#{source.uuid}/feed_image"
-    "#{path}#{extension}?v=#{DateTime.to_unix(source.updated_at)}"
+    "#{path}#{extension}?v=#{CustomPoster.poster_cache_version(source)}"
   end
 
   @doc """

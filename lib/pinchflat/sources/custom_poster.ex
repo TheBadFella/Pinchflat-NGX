@@ -79,14 +79,17 @@ defmodule Pinchflat.Sources.CustomPoster do
 
   Redirects are not followed by the project HTTP client. The URL host is
   resolved and private, loopback, link-local, multicast, and other reserved
-  address ranges are rejected before making the request.
+  address ranges are rejected before making the request. The validated public
+  address is pinned for the request so a second DNS lookup cannot rebind the
+  hostname to a private address.
 
   Returns `{:ok, %Source{}}` or `{:error, reason}`.
   """
   def set_from_url(%Source{} = source, url) when is_binary(url) do
     with {:ok, normalized_url, uri} <- validate_url(url),
-         :ok <- ensure_safe_host(uri.host),
-         {:ok, body} <- http_client().get(normalized_url, [], @request_options),
+         {:ok, connect_address} <- ensure_safe_host(uri.host),
+         request_options = Keyword.put(@request_options, :connect_address, connect_address),
+         {:ok, body} <- http_client().get(normalized_url, [], request_options),
          :ok <- validate_body(body),
          :ok <- validate_size(byte_size(body)) do
       store(source, fn temporary_path -> File.write(temporary_path, body) end)
@@ -224,7 +227,11 @@ defmodule Pinchflat.Sources.CustomPoster do
       true ->
         case resolve_host(normalized_host) do
           {:ok, addresses} when addresses != [] ->
-            if Enum.any?(addresses, &private_address?/1), do: {:error, :unsafe_url}, else: :ok
+            if Enum.any?(addresses, &private_address?/1) do
+              {:error, :unsafe_url}
+            else
+              {:ok, List.first(addresses)}
+            end
 
           _ ->
             {:error, :unresolvable_host}
@@ -310,6 +317,27 @@ defmodule Pinchflat.Sources.CustomPoster do
   defp normalize_remote_error(:too_large), do: :too_large
   defp normalize_remote_error(:invalid_image), do: :invalid_image
   defp normalize_remote_error(reason), do: reason
+
+  @doc """
+  Returns the cache version for a source poster.
+
+  Custom poster filenames contain a generated UUID and therefore change for
+  every replacement, even when two database updates share the same second.
+  Sources without a custom poster retain the source timestamp as their cache
+  version.
+  """
+  def poster_cache_version(%Source{} = source) do
+    case source.custom_poster_filename do
+      filename when is_binary(filename) ->
+        if Regex.match?(@filename_pattern, filename), do: filename, else: timestamp_cache_version(source)
+
+      _ ->
+        timestamp_cache_version(source)
+    end
+  end
+
+  defp timestamp_cache_version(%Source{updated_at: %DateTime{} = updated_at}), do: DateTime.to_unix(updated_at)
+  defp timestamp_cache_version(%Source{}), do: 0
 
   defp http_client do
     Application.get_env(:pinchflat, :http_client, HTTPClient)
