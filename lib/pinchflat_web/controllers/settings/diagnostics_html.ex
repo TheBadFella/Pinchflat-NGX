@@ -4,6 +4,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   alias Pinchflat.Settings
   alias Pinchflat.Diagnostics.QueueDiagnostics
   alias Pinchflat.Diagnostics.DatabaseDiagnostics
+  alias Pinchflat.YtDlp.PoTokenProvider
 
   embed_templates "diagnostics_html/*"
 
@@ -108,6 +109,14 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
     - Timezone: #{Application.get_env(:pinchflat, :timezone)}
     """
   end
+
+  def po_token_provider_status do
+    PoTokenProvider.status()
+  end
+
+  def po_token_provider_status_class(%{state: :healthy}), do: "theme-status-success"
+  def po_token_provider_status_class(%{state: :disabled}), do: "text-theme-on-surface-muted"
+  def po_token_provider_status_class(_status), do: "theme-status-error"
 
   def format_worker_name(worker) do
     worker

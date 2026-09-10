@@ -86,6 +86,17 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
 
       assert {:extractor_args, "youtube:player-client=android"} in res
     end
+
+    test "adds the typed PO-token provider argument only when configured", %{media_item: media_item} do
+      original_url = Application.get_env(:pinchflat, :po_token_provider_url)
+      on_exit(fn -> Application.put_env(:pinchflat, :po_token_provider_url, original_url) end)
+
+      Application.put_env(:pinchflat, :po_token_provider_url, "http://pot-provider:4416")
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:extractor_args, "youtubepot-bgutilhttp:base_url=http://pot-provider:4416"} in res
+    end
   end
 
   describe "build/1 when testing subtitle options" do

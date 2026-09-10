@@ -46,6 +46,30 @@ services:
 Save this as `compose.yaml`, replace the timezone if needed, and run `docker compose up -d`. Open
 <http://localhost:8945> when the container is healthy.
 
+### Optional PO-token provider
+
+The default compose above keeps the provider disabled. If YouTube presents SABR or authentication problems, add the
+following service and environment variable to your compose file:
+
+```yaml
+services:
+  pinchyt:
+    environment:
+      TZ: America/Regina
+      POT_PROVIDER_URL: http://pot-provider:4416
+
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    profiles: [pot-provider]
+    restart: unless-stopped
+    # No ports mapping: the unauthenticated provider stays on the Compose network.
+```
+
+Start the opt-in service with `docker compose --profile pot-provider up -d`. PinchYT images include the matching bgutil
+yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. See the
+[official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
+[yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
+
 ## What PinchYT adds
 
 <table>

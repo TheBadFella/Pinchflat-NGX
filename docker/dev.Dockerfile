@@ -5,11 +5,16 @@ ARG INSTALL_SHELL_TOOLS=0
 
 ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 
+FROM node:24-bookworm-slim AS node
+
 FROM ${DEV_IMAGE}
 
 ARG TARGETPLATFORM
 ARG YT_DLP_CACHE_BUST=""
+ARG BGUTIL_PLUGIN_VERSION=2.0.0
 RUN echo "Building for ${TARGETPLATFORM:?}"
+
+COPY --from=node /usr/local/ /usr/local/
 
 # Install debian packages
 RUN set -eux; \
@@ -42,37 +47,38 @@ RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
     tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffmpeg" && \
     tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffprobe"
 
-# Install nodejs and Yarn
-RUN curl -sL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
-  bash nodesource_setup.sh && \
-  set -eux; \
-  for attempt in 1 2 3 4 5; do \
-    rm -rf /var/lib/apt/lists/*; \
-    apt-get clean; \
-    if apt-get \
-      -o Acquire::Retries=5 \
-      -o Acquire::By-Hash=force \
-      -o Acquire::http::No-Cache=true \
-      -o Acquire::https::No-Cache=true \
-      update -qq && \
-      apt-get install -y --no-install-recommends nodejs; then \
-      break; \
-    fi; \
-    if [ "$attempt" -eq 5 ]; then exit 1; fi; \
-    sleep 5; \
-  done && \
+# Install Yarn and project tooling
+RUN set -eux; \
+  node --version; \
+  npm --version; \
+  rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg && \
   npm install -g yarn prettier@3.9.4 sqleton@^4.0.0 && \
+  yarn --version && \
   # Install baseline Elixir packages
   mix local.hex --force && \
   mix local.rebar --force && \
   # Install Deno - required for YouTube downloads (See yt-dlp#14404)
-  curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y --no-modify-path && \
+  case "${TARGETPLATFORM:-linux/amd64}" in \
+    "linux/amd64") DENO_ARCH="x86_64" ;; \
+    "linux/arm64") DENO_ARCH="aarch64" ;; \
+    *) echo "Unsupported platform: ${TARGETPLATFORM}" >&2; exit 1 ;; \
+  esac && \
+  curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-unknown-linux-gnu.zip" -o /tmp/deno.zip && \
+  unzip -q /tmp/deno.zip deno -d /usr/local/bin && \
+  chmod a+rx /usr/local/bin/deno && \
+  rm -f /tmp/deno.zip && \
   # Download and update YT-DLP
   echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
   export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \
   curl -L ${YT_DLP_DOWNLOAD} -o /usr/local/bin/yt-dlp && \
   chmod a+rx /usr/local/bin/yt-dlp && \
   yt-dlp --update-to nightly && \
+  # Keep the optional bgutil plugin outside the app's mounted config. It is only
+  # loaded when POT_PROVIDER_URL is configured by the application.
+  install -d /opt/pinchyt/yt-dlp-plugins && \
+  curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_PLUGIN_VERSION}/bgutil-ytdlp-pot-provider.zip" \
+    -o /opt/pinchyt/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip && \
+  chmod -R a+rX /opt/pinchyt/yt-dlp-plugins && \
   # Install Apprise
   export PIPX_HOME=/opt/pipx && \
   export PIPX_BIN_DIR=/usr/local/bin && \

@@ -8,6 +8,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Downloading.OutputPathBuilder
   alias Pinchflat.Downloading.QualityOptionBuilder
+  alias Pinchflat.YtDlp.PoTokenProvider
 
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
 
@@ -21,7 +22,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
     built_options =
       default_options(override_opts) ++
-        player_client_options(media_item_with_preloads.source.player_client) ++
+        build_youtube_options_for(media_item_with_preloads) ++
         subtitle_options(media_profile) ++
         thumbnail_options(media_item_with_preloads) ++
         metadata_options(media_profile) ++
@@ -45,6 +46,19 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
   def build_player_client_options_for(%MediaItem{} = media_item) do
     build_player_client_options_for(media_item.source)
+  end
+
+  @doc """
+  Builds the source-specific yt-dlp extractor arguments used by every YouTube
+  operation. The player-client override remains source-specific, while the
+  optional provider argument is global and is omitted when disabled.
+  """
+  def build_youtube_options_for(%Source{} = source) do
+    player_client_options(source.player_client) ++ PoTokenProvider.options()
+  end
+
+  def build_youtube_options_for(%MediaItem{} = media_item) do
+    build_youtube_options_for(media_item.source)
   end
 
   @doc false

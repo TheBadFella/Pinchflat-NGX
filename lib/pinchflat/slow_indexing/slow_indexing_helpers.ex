@@ -149,7 +149,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       [output: DownloadOptionBuilder.build_output_path_for(source)] ++
         build_single_video_options(source) ++
         DownloadOptionBuilder.build_quality_options_for(source) ++
-        DownloadOptionBuilder.build_player_client_options_for(source) ++
+        DownloadOptionBuilder.build_youtube_options_for(source) ++
         build_dateafter_options(source)
 
     results =

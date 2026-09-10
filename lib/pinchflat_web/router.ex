@@ -81,6 +81,7 @@ defmodule PinchflatWeb.Router do
     post "/reconciliation/apply/:plan_id", Settings.ReconciliationController, :apply
 
     get "/diagnostics", Settings.DiagnosticsController, :show
+    post "/diagnostics/test_po_token_provider", Settings.DiagnosticsController, :test_po_token_provider
     post "/diagnostics/reset_retryable_jobs", Settings.DiagnosticsController, :reset_retryable_jobs
     post "/diagnostics/reset_job/:id", Settings.DiagnosticsController, :reset_job
     post "/diagnostics/requeue_job/:id", Settings.DiagnosticsController, :requeue_job

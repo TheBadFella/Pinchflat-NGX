@@ -7,10 +7,14 @@ ARG DEBIAN_VERSION=bookworm-20260316-slim
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
+FROM node:24-bookworm-slim AS node
+
 FROM ${BUILDER_IMAGE} AS builder
 
 ARG TARGETPLATFORM
 RUN echo "Building for ${TARGETPLATFORM:?}"
+
+COPY --from=node /usr/local/ /usr/local/
 
 # install build dependencies
 RUN set -eux; \
@@ -32,25 +36,10 @@ RUN set -eux; \
       if [ "$attempt" -eq 5 ]; then exit 1; fi; \
       sleep 5; \
     done && \
-    # Node.js and Yarn
-    curl -sL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
-    bash nodesource_setup.sh && \
-    for attempt in 1 2 3 4 5; do \
-      rm -rf /var/lib/apt/lists/*; \
-      apt-get clean; \
-      if apt-get \
-        -o Acquire::Retries=5 \
-        -o Acquire::By-Hash=force \
-        -o Acquire::http::No-Cache=true \
-        -o Acquire::https::No-Cache=true \
-        update -qq && \
-        apt-get install -y --no-install-recommends nodejs; then \
-        break; \
-      fi; \
-      if [ "$attempt" -eq 5 ]; then exit 1; fi; \
-      sleep 5; \
-    done && \
+    # Remove the Node image's Yarn shim before installing Yarn globally.
+    rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg && \
     npm install -g yarn && \
+    yarn --version && \
     # Hex and Rebar
     mix local.hex --force && \
     mix local.rebar --force && \
@@ -102,6 +91,7 @@ FROM ${RUNNER_IMAGE}
 
 ARG TARGETPLATFORM
 ARG PORT=8945
+ARG BGUTIL_PLUGIN_VERSION=2.0.0
 ARG YT_DLP_CACHE_BUST=""
 
 COPY --from=builder ./usr/local/bin/ffmpeg /usr/bin/ffmpeg
@@ -139,7 +129,15 @@ RUN set -eux; \
       sleep 5; \
     done && \
     # Install Deno - required for YouTube downloads (See yt-dlp#14404)
-    curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y --no-modify-path && \
+    case "${TARGETPLATFORM:-linux/amd64}" in \
+      "linux/amd64") DENO_ARCH="x86_64" ;; \
+      "linux/arm64") DENO_ARCH="aarch64" ;; \
+      *) echo "Unsupported platform: ${TARGETPLATFORM}" >&2; exit 1 ;; \
+    esac && \
+    curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-unknown-linux-gnu.zip" -o /tmp/deno.zip && \
+    unzip -q /tmp/deno.zip deno -d /usr/local/bin && \
+    chmod a+rx /usr/local/bin/deno && \
+    rm -f /tmp/deno.zip && \
     # Apprise
     export PIPX_HOME=/opt/pipx && \
     export PIPX_BIN_DIR=/usr/local/bin && \
@@ -164,8 +162,15 @@ ENV LC_ALL=en_US.UTF-8
 WORKDIR "/app"
 
 # Set up data volumes
-RUN mkdir -p /config /downloads /etc/elixir_tzdata_data /etc/yt-dlp/plugins && \
+RUN mkdir -p /config /downloads /opt/pinchyt/yt-dlp-plugins /etc/elixir_tzdata_data /etc/yt-dlp/plugins && \
   chmod ugo+rw /etc/elixir_tzdata_data /etc/yt-dlp /etc/yt-dlp/plugins /usr/local/bin /usr/local/bin/yt-dlp
+
+# The official bgutil plugin is installed as a zip in a dedicated directory.
+# PinchYT adds --plugin-dirs only when POT_PROVIDER_URL is valid, so the
+# disabled configuration keeps the existing yt-dlp command line unchanged.
+RUN curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_PLUGIN_VERSION}/bgutil-ytdlp-pot-provider.zip" \
+      -o /opt/pinchyt/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip && \
+    chmod -R a+rX /opt/pinchyt/yt-dlp-plugins
 
 # set runner ENV
 ENV MIX_ENV="prod"

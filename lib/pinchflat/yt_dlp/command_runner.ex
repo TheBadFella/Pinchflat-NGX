@@ -9,6 +9,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   alias Pinchflat.Utils.CliUtils
   alias Pinchflat.Utils.NumberUtils
   alias Pinchflat.YtDlp.YtDlpCommandRunner
+  alias Pinchflat.YtDlp.PoTokenProvider
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
 
   @behaviour YtDlpCommandRunner
@@ -137,7 +138,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
     [
       :windows_filenames,
       cache_dir: Path.join(Application.get_env(:pinchflat, :tmpfile_directory), "yt-dlp-cache")
-    ] ++ quiet_opt
+    ] ++ quiet_opt ++ PoTokenProvider.plugin_options()
   end
 
   defp cookie_file_options(addl_opts) do

@@ -19,8 +19,45 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
 
       assert html_response(conn, 200) =~ "Diagnostics"
       assert html_response(conn, 200) =~ "Queue Health"
+      assert html_response(conn, 200) =~ "PO-token Provider"
+      assert html_response(conn, 200) =~ "Disabled"
       assert html_response(conn, 200) =~ "flex-col gap-3 sm:flex-row"
       assert html_response(conn, 200) =~ "flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
+    end
+
+    test "shows a healthy configured provider without exposing response data", %{conn: conn} do
+      original_url = Application.get_env(:pinchflat, :po_token_provider_url)
+      Application.put_env(:pinchflat, :po_token_provider_url, "http://pot-provider:4416")
+
+      on_exit(fn -> Application.put_env(:pinchflat, :po_token_provider_url, original_url) end)
+
+      expect(HTTPClientMock, :get, fn _url, _headers, _opts ->
+        {:ok, ~s({"server_uptime":12.5,"version":"2.0.0","poToken":"must-not-render"})}
+      end)
+
+      conn = get(conn, ~p"/diagnostics")
+      html = html_response(conn, 200)
+
+      assert html =~ "Healthy"
+      refute html =~ "must-not-render"
+    end
+  end
+
+  describe "test_po_token_provider" do
+    test "returns a bounded flash result", %{conn: conn} do
+      original_url = Application.get_env(:pinchflat, :po_token_provider_url)
+      Application.put_env(:pinchflat, :po_token_provider_url, "http://pot-provider:4416")
+
+      on_exit(fn -> Application.put_env(:pinchflat, :po_token_provider_url, original_url) end)
+
+      expect(HTTPClientMock, :get, fn _url, _headers, _opts ->
+        {:ok, ~s({"server_uptime":1,"version":"2.0.0"})}
+      end)
+
+      conn = post(conn, ~p"/diagnostics/test_po_token_provider")
+
+      assert redirected_to(conn) == ~p"/diagnostics"
+      assert conn.assigns[:flash]["info"] == "PO-token provider is healthy."
     end
   end
 

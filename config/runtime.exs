@@ -21,9 +21,24 @@ if System.get_env("PHX_SERVER") do
   config :pinchflat, PinchflatWeb.Endpoint, server: true
 end
 
+pot_provider_url =
+  case System.get_env("POT_PROVIDER_URL") do
+    value when is_binary(value) ->
+      case String.trim(value) do
+        "" -> nil
+        trimmed -> trimmed
+      end
+
+    _ ->
+      nil
+  end
+
 config :pinchflat,
   basic_auth_username: System.get_env("BASIC_AUTH_USERNAME"),
-  basic_auth_password: System.get_env("BASIC_AUTH_PASSWORD")
+  basic_auth_password: System.get_env("BASIC_AUTH_PASSWORD"),
+  # Optional bgutil PO-token provider. An absent or blank URL keeps the
+  # provider disabled and preserves the existing yt-dlp command line.
+  po_token_provider_url: pot_provider_url
 
 # Optional OIDC/OAuth2 single sign-on. When all three of these are set,
 # the web UI requires logging in via the provider and BASIC_AUTH_* is

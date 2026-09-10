@@ -46,6 +46,28 @@
   </div>
 </div>
 
+<% pot_status = po_token_provider_status() %>
+<div id="po-token-provider-status" class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
+  <div class="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <h3 class="text-lg font-semibold text-theme-on-surface">PO-token Provider</h3>
+    <%= if pot_status.state != :disabled do %>
+      <.link href={~p"/diagnostics/test_po_token_provider"} method="post" class="w-full sm:w-auto">
+        <.button color="theme-outline-button" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">
+          Test Provider
+        </.button>
+      </.link>
+    <% end %>
+  </div>
+  <p class={"text-sm font-semibold #{po_token_provider_status_class(pot_status)}"}>
+    {pot_status.label}
+  </p>
+  <p class="mt-1 text-sm text-theme-on-surface-muted">{pot_status.detail}</p>
+  <p class="mt-2 text-xs text-theme-on-surface-muted">
+    Configure <span class="font-mono">POT_PROVIDER_URL</span> to enable the internal bgutil-compatible provider.
+    Health checks use the provider's bounded <span class="font-mono">/ping</span> endpoint and never display tokens.
+  </p>
+</div>
+
 <!-- Database -->
 <% db = database_stats() %>
 <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">

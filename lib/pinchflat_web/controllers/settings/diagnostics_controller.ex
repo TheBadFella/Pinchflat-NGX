@@ -4,9 +4,18 @@ defmodule PinchflatWeb.Settings.DiagnosticsController do
   alias Pinchflat.Settings
   alias Pinchflat.Diagnostics.QueueDiagnostics
   alias Pinchflat.Diagnostics.DatabaseMaintenanceWorker
+  alias Pinchflat.YtDlp.PoTokenProvider
 
   def show(conn, _params) do
     render(conn, "show.html")
+  end
+
+  def test_po_token_provider(conn, _params) do
+    {flash_type, message} = PoTokenProvider.test_result()
+
+    conn
+    |> put_flash(flash_type, message)
+    |> redirect(to: ~p"/diagnostics")
   end
 
   def reset_retryable_jobs(conn, _params) do

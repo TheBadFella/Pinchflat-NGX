@@ -192,7 +192,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       case {
         YtDlpMedia.get_downloadable_status(
           url,
-          DownloadOptionBuilder.build_player_client_options_for(item_with_preloads),
+          DownloadOptionBuilder.build_youtube_options_for(item_with_preloads),
           use_cookies: should_use_cookies
         ),
         should_use_cookies

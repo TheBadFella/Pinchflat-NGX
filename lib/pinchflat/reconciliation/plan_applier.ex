@@ -253,7 +253,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
 
     command_opts =
       [output: "#{rootname}.%(ext)s"] ++
-        DownloadOptionBuilder.build_player_client_options_for(media_item)
+        DownloadOptionBuilder.build_youtube_options_for(media_item)
 
     addl_opts = [use_cookies: Sources.use_cookies?(media_item.source, :metadata)]
 
@@ -287,7 +287,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       [sub_langs: profile.sub_langs, output: "#{rootname}.%(ext)s"] ++
         if(profile.download_auto_subs, do: [:write_auto_subs], else: [])
 
-    command_opts = command_opts ++ DownloadOptionBuilder.build_player_client_options_for(media_item)
+    command_opts = command_opts ++ DownloadOptionBuilder.build_youtube_options_for(media_item)
 
     addl_opts = [use_cookies: Sources.use_cookies?(media_item.source, :metadata)]
 

@@ -1,6 +1,23 @@
 name: pinchyt
 
 services:
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    profiles: ["pot-provider"]
+    restart: unless-stopped
+    # The provider is intentionally internal-only. Do not add a ports mapping.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          require("http").get("http://127.0.0.1:4416/ping", response =>
+          process.exit(response.statusCode === 200 ? 0 : 1)).on("error", () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   phx:
     build:
       context: ..

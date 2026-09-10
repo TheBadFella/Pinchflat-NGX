@@ -182,7 +182,7 @@ defmodule Pinchflat.Reconciliation.PlanBuilder do
     command_opts =
       [output: DownloadOptionBuilder.build_output_path_for(media_item)] ++
         DownloadOptionBuilder.build_quality_options_for(media_item.source) ++
-        DownloadOptionBuilder.build_player_client_options_for(media_item)
+        DownloadOptionBuilder.build_youtube_options_for(media_item)
 
     addl_opts = [use_cookies: Sources.use_cookies?(media_item.source, :metadata)]
 

@@ -75,7 +75,7 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
 
     command_opts =
       [output: yt_dlp_filepath] ++
-        DownloadOptionBuilder.build_player_client_options_for(media_item_with_preloads)
+        DownloadOptionBuilder.build_youtube_options_for(media_item_with_preloads)
 
     addl_opts = [use_cookies: Sources.use_cookies?(media_item_with_preloads.source, :metadata)]
 
