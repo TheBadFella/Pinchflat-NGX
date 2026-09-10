@@ -5,6 +5,9 @@ defmodule PinchflatWeb.PodcastControllerTest do
   import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Settings
+  alias Pinchflat.Sources.CustomPoster
+
+  @png Base.decode64!("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 
   describe "opml_feed" do
     test "renders the XML document", %{conn: conn} do
@@ -56,6 +59,26 @@ defmodule PinchflatWeb.PodcastControllerTest do
       assert conn.status == 200
       assert {"content-type", "image/jpeg; charset=utf-8"} in conn.resp_headers
       assert conn.resp_body == File.read!(source.metadata.poster_filepath)
+    end
+
+    test "prefers a custom poster over fetched artwork", %{conn: conn} do
+      source = source_with_metadata_attachments()
+      upload_path = Path.join(System.tmp_dir!(), "pinchflat-custom-poster-#{Ecto.UUID.generate()}.png")
+      File.write!(upload_path, @png)
+      on_exit(fn -> File.rm(upload_path) end)
+
+      {:ok, source} =
+        CustomPoster.set_from_upload(source, %Plug.Upload{
+          path: upload_path,
+          filename: "poster.png",
+          content_type: "image/png"
+        })
+
+      conn = get(conn, ~p"/sources/#{source.uuid}/feed_image" <> ".jpg")
+
+      assert conn.status == 200
+      assert {"content-type", "image/png; charset=utf-8"} in conn.resp_headers
+      assert conn.resp_body == @png
     end
 
     test "returns 404 if an image cannot be found", %{conn: conn} do

@@ -119,7 +119,8 @@ defmodule Pinchflat.Podcasts.RssFeedBuilder do
 
       {:ok, filepath} ->
         extension = Path.extname(filepath)
-        Path.join(url_base, "#{podcast_route(:feed_image, source.uuid)}#{extension}")
+        path = Path.join(url_base, "#{podcast_route(:feed_image, source.uuid)}#{extension}")
+        "#{path}?v=#{DateTime.to_unix(source.updated_at)}"
     end
   end
 

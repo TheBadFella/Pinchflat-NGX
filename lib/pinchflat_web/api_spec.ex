@@ -98,7 +98,10 @@ defmodule PinchflatWeb.ApiSpec do
               :force_redownload,
               :force_index,
               :force_metadata_refresh,
-              :sync_files_on_disk
+              :sync_files_on_disk,
+              :upload_poster,
+              :set_poster_url,
+              :remove_poster
             ] ->
           true
 

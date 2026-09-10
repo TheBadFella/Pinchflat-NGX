@@ -74,17 +74,22 @@ defmodule Pinchflat.Podcasts.RssFeedBuilderTest do
 
     test "returns a link to the feed image" do
       source = source_with_metadata_attachments()
+      cache_version = DateTime.to_unix(source.updated_at)
 
       res = RssFeedBuilder.build(source)
       [_before, image_block, _after] = String.split(res, ~r(</?image>))
 
-      assert String.contains?(image_block, ~s(<url>http://localhost:8945/sources/#{source.uuid}/feed_image.jpg</url>))
+      assert String.contains?(
+               image_block,
+               ~s(<url>http://localhost:8945/sources/#{source.uuid}/feed_image.jpg?v=#{cache_version}</url>)
+             )
+
       assert String.contains?(image_block, ~s(<title>#{source.custom_name}</title>))
       assert String.contains?(image_block, ~s(<link>#{source.original_url}</link>))
 
       assert String.contains?(
                res,
-               ~s(<itunes:image href="http://localhost:8945/sources/#{source.uuid}/feed_image.jpg"></itunes:image>)
+               ~s(<itunes:image href="http://localhost:8945/sources/#{source.uuid}/feed_image.jpg?v=#{cache_version}"></itunes:image>)
              )
     end
   end

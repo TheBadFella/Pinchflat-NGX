@@ -9,6 +9,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Media
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
+  alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Reconciliation
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
@@ -266,6 +267,37 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  def upload_poster(conn, %{"source_id" => id, "poster" => %{"file" => %Plug.Upload{} = upload}}) do
+    source = Sources.get_source!(id)
+    finish_poster_action(conn, source, CustomPoster.set_from_upload(source, upload))
+  end
+
+  def upload_poster(conn, %{"source_id" => id}) do
+    source = Sources.get_source!(id)
+
+    conn
+    |> put_flash(:error, "Please choose a valid poster file.")
+    |> redirect(to: ~p"/sources/#{source}/edit")
+  end
+
+  def set_poster_url(conn, %{"source_id" => id, "poster" => %{"url" => url}}) do
+    source = Sources.get_source!(id)
+    finish_poster_action(conn, source, CustomPoster.set_from_url(source, url))
+  end
+
+  def set_poster_url(conn, %{"source_id" => id}) do
+    source = Sources.get_source!(id)
+
+    conn
+    |> put_flash(:error, "Please enter a public HTTP(S) poster URL.")
+    |> redirect(to: ~p"/sources/#{source}/edit")
+  end
+
+  def remove_poster(conn, %{"source_id" => id}) do
+    source = Sources.get_source!(id)
+    finish_poster_action(conn, source, CustomPoster.remove(source), :removed)
+  end
+
   operation(:delete,
     operation_id: "Sources.SourceController.delete",
     summary: "Delete source",
@@ -512,6 +544,34 @@ defmodule PinchflatWeb.Sources.SourceController do
         end
     end
   end
+
+  defp finish_poster_action(conn, source, {:ok, _updated_source}, :removed) do
+    conn
+    |> put_flash(:info, "Custom poster removed. The fetched poster will be used again.")
+    |> redirect(to: ~p"/sources/#{source}/edit")
+  end
+
+  defp finish_poster_action(conn, source, {:ok, _updated_source}) do
+    conn
+    |> put_flash(:info, "Custom poster saved.")
+    |> redirect(to: ~p"/sources/#{source}/edit")
+  end
+
+  defp finish_poster_action(conn, source, {:error, reason}) do
+    conn
+    |> put_flash(:error, poster_error_message(reason))
+    |> redirect(to: ~p"/sources/#{source}/edit")
+  end
+
+  defp poster_error_message(:invalid_upload), do: "Please choose a valid poster file."
+  defp poster_error_message(:too_large), do: "The poster must be 10 MB or smaller."
+  defp poster_error_message(:invalid_image), do: "The poster must be a valid JPEG, PNG, or WebP image."
+  defp poster_error_message(:invalid_response), do: "The poster URL did not return a valid JPEG, PNG, or WebP image."
+  defp poster_error_message(:invalid_url), do: "Enter a public HTTP(S) poster URL."
+  defp poster_error_message(:unsafe_url), do: "That poster URL is not allowed."
+  defp poster_error_message(:unresolvable_host), do: "That poster URL host could not be resolved."
+  defp poster_error_message(:image_validator_unavailable), do: "Poster validation is temporarily unavailable."
+  defp poster_error_message(_reason), do: "The custom poster could not be saved."
 
   defp should_confirm_directory_move?(conn, params, _source, _source_params) do
     get_format(conn) != "json" && !truthy_param?(Map.get(params, "confirm_directory_move"))
