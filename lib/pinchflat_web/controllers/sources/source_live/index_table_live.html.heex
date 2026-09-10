@@ -198,7 +198,7 @@
     <div id="source-table" data-view="table" class="hidden md:flex md:flex-col md:min-w-max">
       <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
         <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
-          <div class="flex min-w-0 flex-col gap-2">
+          <div data-source-id={source.id} class="flex min-w-0 flex-col gap-2">
             <div class="flex min-w-0 items-center gap-3">
               <div class="flex min-w-0 flex-1 items-center gap-2">
                 <span
@@ -358,7 +358,7 @@
         :for={source <- @sources}
         id={"source-card-#{source.id}"}
         data-source-id={source.id}
-        class="theme-surface-accent group relative overflow-hidden transition hover:border-theme-primary/70 hover:shadow-m3-2"
+        class="theme-surface-accent group relative overflow-hidden transition hover:border-theme-primary/70 hover:shadow-m3-2 focus-within:ring-2 focus-within:ring-theme-primary focus-within:ring-offset-2 focus-within:ring-offset-theme-bg"
       >
         <.link
           href={~p"/sources/#{source.id}"}

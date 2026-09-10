@@ -155,8 +155,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       on: p.source_id == s.id,
       left_join: i in subquery(indexed_subquery),
       on: i.source_id == s.id,
+      left_join: md in assoc(s, :metadata),
       where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at),
-      preload: [media_profile: mp],
+      preload: [media_profile: mp, metadata: md],
       select: map(s, ^Source.__schema__(:fields)),
       select_merge: %{
         downloaded_count: coalesce(d.downloaded_count, 0),

@@ -86,6 +86,25 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert grid_html =~ ~s(aria-label="Monitor Grid candidate")
     end
 
+    test "renders the same exact source ID set in table and poster-grid views", %{conn: conn} do
+      sources = [
+        source_fixture(custom_name: "Grid candidate A"),
+        source_fixture(custom_name: "Grid candidate B")
+      ]
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      expected_ids = sources |> Enum.map(& &1.id) |> MapSet.new()
+      table_ids = source_ids(render_element(view, "#source-table"))
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      grid_ids = source_ids(render_element(view, "#source-poster-grid"))
+
+      assert table_ids == expected_ids
+      assert grid_ids == table_ids
+    end
+
     test "keeps the sorted page while switching views", %{conn: conn} do
       source_a = source_fixture(custom_name: "Source_A")
       source_b = source_fixture(custom_name: "Source_B")
@@ -295,6 +314,21 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert %{enabled: false} = Repo.get!(Source, target.id)
       assert %{enabled: true} = Repo.get!(Source, other.id)
     end
+
+    test "shows an error and restores the checked state when monitoring update fails", %{conn: conn} do
+      source = source_fixture(custom_name: "Toggle failure", enabled: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      view
+      |> element("#source_enable_toggle_source_#{source.id}_enabled_grid_form")
+      |> render_change(%{source: %{"enabled" => "not-a-boolean"}})
+
+      assert render(view) =~ "Could not update monitoring state."
+      assert render_element(view, "#source_enable_toggle_source_#{source.id}_enabled_grid_input") =~ "checked"
+      assert %{enabled: true} = Repo.get!(Source, source.id)
+    end
   end
 
   defp click_element(view, selector, text_filter \\ nil) do
@@ -314,6 +348,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     |> render_element(selector)
     |> String.replace(~r/<[^>]*>/, "")
     |> String.trim()
+  end
+
+  defp source_ids(html) do
+    ~r/data-source-id="(\d+)"/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> Enum.map(fn [id] -> String.to_integer(id) end)
+    |> MapSet.new()
   end
 
   defp create_session do
