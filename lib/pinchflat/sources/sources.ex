@@ -24,6 +24,11 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.FastIndexing.FastIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
 
+  @automated_metadata_lock_fields %{
+    custom_name: :custom_name_locked,
+    description: :description_locked
+  }
+
   @doc """
   Returns the configured path to the shared cookie file.
 
@@ -509,6 +514,8 @@ defmodule Pinchflat.Sources do
   Returns {:ok, %Source{}} | {:error, %Ecto.Changeset{}}
   """
   def update_source(%Source{} = source, attrs, opts \\ []) do
+    attrs = maybe_apply_automated_metadata_locks(source, attrs, opts)
+
     case change_source(source, attrs, :initial) do
       %Ecto.Changeset{valid?: true} ->
         source
@@ -568,6 +575,27 @@ defmodule Pinchflat.Sources do
   """
   def change_source(%Source{} = source, attrs \\ %{}, validation_stage \\ :pre_insert) do
     Source.changeset(source, attrs, validation_stage)
+  end
+
+  @doc """
+  Removes source metadata fields protected by their lock flags when an
+  automated metadata refresh is being applied.
+
+  User-initiated changes are not filtered by this function unless the caller
+  explicitly opts into the automated refresh contract in `update_source/3`.
+
+  Returns a map with locked automated fields removed.
+  """
+  def apply_automated_metadata_locks(%Source{} = source, attrs) when is_map(attrs) do
+    Enum.reduce(@automated_metadata_lock_fields, attrs, fn {field, lock_field}, filtered_attrs ->
+      if Map.get(source, lock_field, false) do
+        filtered_attrs
+        |> Map.delete(field)
+        |> Map.delete(Atom.to_string(field))
+      else
+        filtered_attrs
+      end
+    end)
   end
 
   @doc """
@@ -1079,6 +1107,14 @@ defmodule Pinchflat.Sources do
     end
 
     :ok
+  end
+
+  defp maybe_apply_automated_metadata_locks(source, attrs, opts) do
+    if Keyword.get(opts, :automated_metadata_refresh, false) do
+      apply_automated_metadata_locks(source, attrs)
+    else
+      attrs
+    end
   end
 
   defp availability_policy_changed?(changes) do

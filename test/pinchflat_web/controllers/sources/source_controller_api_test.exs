@@ -32,6 +32,8 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
       assert response["id"] == source.id
       assert response["uuid"] == source.uuid
       assert response["custom_name"] == source.custom_name
+      assert response["custom_name_locked"] == false
+      assert response["description_locked"] == false
     end
 
     test "returns 404 for non-existent source", %{conn: conn} do
@@ -78,7 +80,10 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
 
       attrs = %{
         "source" => %{
-          "custom_name" => "Updated Name"
+          "custom_name" => "Updated Name",
+          "description" => "Updated description",
+          "custom_name_locked" => "true",
+          "description_locked" => "true"
         },
         "_format" => "json"
       }
@@ -91,6 +96,9 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
       # Verify the source was updated
       updated_source = Sources.get_source!(source.id)
       assert updated_source.custom_name == "Updated Name"
+      assert updated_source.description == "Updated description"
+      assert updated_source.custom_name_locked
+      assert updated_source.description_locked
     end
   end
 

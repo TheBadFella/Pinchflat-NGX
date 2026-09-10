@@ -167,6 +167,104 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       assert source.description == "This is a test file for Pinchflat"
     end
+
+    test "unlocked name and description are refreshed" do
+      stub_metadata_refresh(%{"channel" => "Refreshed Source", "description" => "Refreshed description"})
+      source = source_fixture(%{custom_name: "Old Source", description: "Old description"})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      source = Repo.reload!(source)
+      assert source.custom_name == "Refreshed Source"
+      assert source.description == "Refreshed description"
+    end
+
+    test "a locked name remains while an unlocked description refreshes" do
+      stub_metadata_refresh(%{"channel" => "Refreshed Source", "description" => "Refreshed description"})
+      source = source_fixture(%{custom_name: "Pinned Source", custom_name_locked: true, description: "Old description"})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      source = Repo.reload!(source)
+      assert source.custom_name == "Pinned Source"
+      assert source.description == "Refreshed description"
+    end
+
+    test "a locked description remains while an unlocked name refreshes" do
+      stub_metadata_refresh(%{"channel" => "Refreshed Source", "description" => "Refreshed description"})
+      source = source_fixture(%{custom_name: "Old Source", description: "Pinned description", description_locked: true})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      source = Repo.reload!(source)
+      assert source.custom_name == "Refreshed Source"
+      assert source.description == "Pinned description"
+    end
+
+    test "both locked fields remain unchanged" do
+      stub_metadata_refresh(%{"channel" => "Refreshed Source", "description" => "Refreshed description"})
+
+      source =
+        source_fixture(%{
+          custom_name: "Pinned Source",
+          custom_name_locked: true,
+          description: "Pinned description",
+          description_locked: true
+        })
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      source = Repo.reload!(source)
+      assert source.custom_name == "Pinned Source"
+      assert source.description == "Pinned description"
+      assert source.custom_name_locked
+      assert source.description_locked
+    end
+
+    test "unlocking a field allows the next refresh to update it" do
+      stub_metadata_refresh(%{"channel" => "Refreshed Source", "description" => "Refreshed description"})
+      source = source_fixture(%{custom_name: "Pinned Source", custom_name_locked: true})
+
+      assert {:ok, source} = Sources.update_source(source, %{custom_name_locked: false})
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      source = Repo.reload!(source)
+      assert source.custom_name == "Refreshed Source"
+      refute source.custom_name_locked
+    end
+
+    test "a user can edit a locked field" do
+      source = source_fixture(%{custom_name_locked: true, description_locked: true})
+
+      assert {:ok, source} =
+               Sources.update_source(source, %{
+                 custom_name: "User Name",
+                 description: "User description"
+               })
+
+      assert source.custom_name == "User Name"
+      assert source.description == "User description"
+      assert source.custom_name_locked
+      assert source.description_locked
+    end
+
+    test "a failed refresh preserves metadata values and lock state" do
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:error, "metadata unavailable", 1}
+      end)
+
+      source =
+        source_fixture(%{custom_name: "Existing Source", custom_name_locked: true, description: "Existing description"})
+
+      assert {:error, :source_metadata_fetch_failed} = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      source = Repo.reload!(source)
+      assert source.custom_name == "Existing Source"
+      assert source.description == "Existing description"
+      assert source.custom_name_locked
+      refute source.description_locked
+    end
   end
 
   describe "perform/1 when testing metadata storage" do
@@ -540,5 +638,15 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       refute source.nfo_filepath
     end
+  end
+
+  defp stub_metadata_refresh(metadata) do
+    stub(YtDlpRunnerMock, :run, fn
+      _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok, source_details_return_fixture()}
+
+      _url, :get_source_metadata, _opts, _ot, _addl ->
+        {:ok, Phoenix.json_library().encode!(metadata)}
+    end)
   end
 end

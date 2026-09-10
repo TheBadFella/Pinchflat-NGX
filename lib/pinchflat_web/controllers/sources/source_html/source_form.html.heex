@@ -59,11 +59,34 @@
       x-init="$el.focus()"
       x-model.fill="sourceUrl"
     />
+    <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
+    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
+      Name and description are refreshed from source metadata unless you lock the individual field. Locked fields
+      can still be edited and saved here; the lock only affects automated refreshes.
+    </p>
     <.input
       field={f[:custom_name]}
       type="text"
-      label="Custom Name"
-      help="Does not impact indexing or downloading. Will be inferred from the source if left blank"
+      label="Source Name"
+      help="The name shown throughout PinchYT. It will be refreshed from source metadata unless locked."
+    />
+    <.input
+      field={f[:custom_name_locked]}
+      type="toggle"
+      label="Lock Source Name"
+      help="Keep the current name when automated metadata refreshes run."
+    />
+    <.input
+      field={f[:description]}
+      type="textarea"
+      label="Description"
+      help="The source description shown in PinchYT. It will be refreshed from source metadata unless locked."
+    />
+    <.input
+      field={f[:description_locked]}
+      type="toggle"
+      label="Lock Description"
+      help="Keep the current description when automated metadata refreshes run."
     />
     <.input
       field={f[:media_profile_id]}

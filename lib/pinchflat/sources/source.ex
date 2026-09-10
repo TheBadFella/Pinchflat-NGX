@@ -39,7 +39,9 @@ defmodule Pinchflat.Sources.Source do
     collection_id
     collection_type
     custom_name
+    custom_name_locked
     description
+    description_locked
     nfo_filepath
     poster_filepath
     fanart_filepath
@@ -97,7 +99,9 @@ defmodule Pinchflat.Sources.Source do
     field :uuid, Ecto.UUID
 
     field :custom_name, :string
+    field :custom_name_locked, :boolean, default: false
     field :description, :string
+    field :description_locked, :boolean, default: false
     field :collection_name, :string
     field :collection_id, :string
     field :collection_type, Ecto.Enum, values: [:channel, :playlist, :video]

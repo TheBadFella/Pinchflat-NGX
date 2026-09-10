@@ -56,19 +56,21 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
            fetch_source_metadata_and_images(series_directory, source) do
       source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
 
+      metadata_attrs =
+        %{
+          series_directory: series_directory,
+          nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+          metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
+        }
+        |> put_if_binary(:custom_name, source_name_from_metadata(source, source_metadata))
+        |> put_if_binary(:description, source_metadata["description"])
+
       Sources.update_source(
         source,
-        Map.merge(
-          %{
-            series_directory: series_directory,
-            nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
-            description: source_metadata["description"],
-            metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
-          },
-          source_image_attrs
-        ),
+        Map.merge(metadata_attrs, source_image_attrs),
         # `run_post_commit_tasks: false` prevents this from running in an infinite loop
-        run_post_commit_tasks: false
+        run_post_commit_tasks: false,
+        automated_metadata_refresh: true
       )
 
       :ok
@@ -182,6 +184,26 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
 
     MediaCollection.get_source_metadata(source.original_url, opts, use_cookies: should_use_cookies)
   end
+
+  defp source_name_from_metadata(source, metadata) do
+    name_keys =
+      case source.collection_type do
+        :channel -> ["channel", "uploader", "title"]
+        :playlist -> ["playlist_title", "playlist", "title"]
+        :video -> ["title"]
+        _ -> ["title", "channel", "uploader"]
+      end
+
+    Enum.find_value(name_keys, fn key ->
+      case metadata[key] do
+        value when is_binary(value) and value != "" -> value
+        _ -> nil
+      end
+    end)
+  end
+
+  defp put_if_binary(attrs, key, value) when is_binary(value), do: Map.put(attrs, key, value)
+  defp put_if_binary(attrs, _key, _value), do: attrs
 
   defp tmp_directory do
     Application.get_env(:pinchflat, :tmpfile_directory)

@@ -118,11 +118,21 @@ defmodule PinchflatWeb.Schemas do
         },
         enabled: %Schema{type: :boolean, description: "Whether the source is active", example: true},
         custom_name: %Schema{type: :string, description: "Display name for the source", example: "My Channel"},
+        custom_name_locked: %Schema{
+          type: :boolean,
+          description: "Whether automated metadata refreshes may change the display name",
+          example: false
+        },
         description: %Schema{
           type: :string,
           nullable: true,
           description: "Source description",
           example: "A collection of videos"
+        },
+        description_locked: %Schema{
+          type: :boolean,
+          description: "Whether automated metadata refreshes may change the description",
+          example: false
         },
         collection_name: %Schema{
           type: :string,
@@ -481,7 +491,15 @@ defmodule PinchflatWeb.Schemas do
           type: :object,
           properties: %{
             custom_name: %Schema{type: :string, description: "Custom display name"},
+            custom_name_locked: %Schema{
+              type: :boolean,
+              description: "Prevent automated metadata refreshes from changing the display name"
+            },
             description: %Schema{type: :string, description: "Source description"},
+            description_locked: %Schema{
+              type: :boolean,
+              description: "Prevent automated metadata refreshes from changing the description"
+            },
             enabled: %Schema{type: :boolean, description: "Whether the source is active"},
             download_media: %Schema{type: :boolean, description: "Download media items"},
             download_public_media: %Schema{type: :boolean, description: "Download public and unlisted media"},

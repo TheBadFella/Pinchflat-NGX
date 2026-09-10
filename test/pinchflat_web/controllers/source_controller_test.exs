@@ -95,6 +95,9 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/sources/new")
       assert html_response(conn, 200) =~ "New Source"
+      assert html_response(conn, 200) =~ "Source Metadata"
+      assert html_response(conn, 200) =~ "Lock Source Name"
+      assert html_response(conn, 200) =~ "Lock Description"
       assert html_response(conn, 200) =~ "Delay Automatic Download"
       assert html_response(conn, 200) =~ "Download Public and Unlisted Media"
       assert html_response(conn, 200) =~ "Download Members-only Media"
@@ -289,7 +292,11 @@ defmodule PinchflatWeb.SourceControllerTest do
 
     test "renders form for editing chosen source", %{conn: conn, source: source} do
       conn = get(conn, ~p"/sources/#{source}/edit")
-      assert html_response(conn, 200) =~ "Editing \"#{source.custom_name}\""
+      response = html_response(conn, 200)
+      assert response =~ "Editing \"#{source.custom_name}\""
+      assert response =~ "name=\"source[description]\""
+      assert response =~ "name=\"source[custom_name_locked]\""
+      assert response =~ "name=\"source[description_locked]\""
     end
 
     test "renders restore automatic downloads action for manual playlists", %{conn: conn} do
