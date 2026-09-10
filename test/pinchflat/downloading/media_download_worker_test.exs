@@ -355,7 +355,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       {:ok, %{media_item: media_item}}
     end
 
-    test "marks unavailable media as prevent_download and clears the error", %{media_item: media_item} do
+    test "marks unavailable media as a permanent prevented error", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 1, fn
         _url, :download, _opts, _ot, _addl -> {:error, "Video unavailable", 1}
       end)
@@ -364,7 +364,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
 
       media_item = Repo.reload(media_item)
       assert media_item.prevent_download == true
-      assert media_item.last_error == nil
+      assert media_item.download_prevented_reason == :error
+      assert media_item.error_type == :permanent
+      assert media_item.last_error == "Video unavailable"
     end
 
     test "records when and why the item was skipped", %{media_item: media_item} do
@@ -406,7 +408,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
   end
 
   describe "perform/1 when ignore_unavailable_media is disabled" do
-    test "leaves unavailable media as an error without preventing download", %{media_item: media_item} do
+    test "marks unavailable media as a permanent prevented error", %{media_item: media_item} do
       Settings.set(ignore_unavailable_media: false)
 
       expect(YtDlpRunnerMock, :run, 1, fn
@@ -416,7 +418,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       perform_job(MediaDownloadWorker, %{id: media_item.id})
 
       media_item = Repo.reload(media_item)
-      assert media_item.prevent_download == false
+      assert media_item.prevent_download == true
+      assert media_item.download_prevented_reason == :error
+      assert media_item.error_type == :permanent
       assert media_item.last_error =~ "Video unavailable"
     end
   end

@@ -10,6 +10,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Sources
+  alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Utils.StringUtils
   alias Pinchflat.Metadata.NfoBuilder
@@ -35,7 +36,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     case attempt_download_and_update_for_media_item(media_item, override_opts) do
       {:ok, media_item} ->
         # Returns {:ok, %MediaItem{}}
-        Media.update_media_item(media_item, %{last_error: nil})
+        Media.update_media_item(media_item, DownloadState.transition(media_item, :success))
 
       {:error, error_atom, message} ->
         Media.update_media_item(reload_media_item_for_last_error(media_item), %{

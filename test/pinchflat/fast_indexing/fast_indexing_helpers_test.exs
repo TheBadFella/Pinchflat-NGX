@@ -94,7 +94,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
         {:ok, media_attributes_return_fixture(%{availability: "subscriber_only"})}
       end)
 
-      assert [%MediaItem{availability: :subscriber_only, prevent_download: false}] =
+      assert [%MediaItem{availability: :subscriber_only, prevent_download: true, download_prevented_reason: :policy}] =
                FastIndexingHelpers.index_and_kickoff_downloads(source)
 
       refute_enqueued(worker: MediaDownloadWorker)

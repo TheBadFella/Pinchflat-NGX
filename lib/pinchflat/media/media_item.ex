@@ -44,6 +44,8 @@ defmodule Pinchflat.Media.MediaItem do
     :metadata_filepath,
     :nfo_filepath,
     :last_error,
+    :error_type,
+    :download_prevented_reason,
     # These are user or system controlled fields
     :prevent_download,
     :prevent_culling,
@@ -96,7 +98,9 @@ defmodule Pinchflat.Media.MediaItem do
     field :subtitle_filepaths, {:array, {:array, :string}}, default: []
 
     field :last_error, :string
+    field :error_type, Ecto.Enum, values: [:transient, :permanent]
     field :prevent_download, :boolean, default: false
+    field :download_prevented_reason, Ecto.Enum, values: [:manual, :policy, :error]
     field :prevent_culling, :boolean, default: false
     field :culled_at, :utc_datetime
     # Set when the item is auto-skipped because it's permanently unavailable

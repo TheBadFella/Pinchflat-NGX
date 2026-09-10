@@ -44,6 +44,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       # gets re-downloaded.
       Media.delete_media_files(media_item, %{
         prevent_download: true,
+        download_prevented_reason: nil,
         culled_at: DateTime.utc_now()
       })
     end)

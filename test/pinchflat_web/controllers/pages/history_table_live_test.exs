@@ -60,6 +60,44 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => failed.id})
     end
+
+    test "filters failures by type and labels retry actions", %{conn: conn} do
+      source = source_fixture()
+
+      transient =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Network is unreachable",
+          error_type: :transient,
+          title: "ALPHA_TRANSIENT_ITEM"
+        })
+
+      permanent =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent,
+          title: "OMEGA_PERMANENT_ITEM"
+        })
+
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "failed"})
+
+      assert html =~ transient.title
+      assert html =~ permanent.title
+      assert html =~ "Retry Now"
+      assert html =~ "Force Retry"
+
+      render_change(view, "filter_error_type", %{"error_type" => "permanent"})
+      html = render(view)
+
+      assert html =~ permanent.title
+      refute html =~ transient.title
+      assert html =~ "Permanent failure"
+    end
   end
 
   describe "sorting" do

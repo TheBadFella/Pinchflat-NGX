@@ -582,7 +582,9 @@ defmodule Pinchflat.Sources do
 
     multi =
       Ecto.Multi.new()
-      |> Ecto.Multi.update_all(:exclude_unselected, media_items_for_source_query(source), set: [prevent_download: true])
+      |> Ecto.Multi.update_all(:exclude_unselected, media_items_for_source_query(source),
+        set: [prevent_download: true, download_prevented_reason: :manual]
+      )
       |> maybe_include_selected_items(source, selected_ids)
       |> maybe_enable_source_downloads(source, enable_downloads)
 
@@ -616,7 +618,7 @@ defmodule Pinchflat.Sources do
       Ecto.Multi.new()
       |> Ecto.Multi.update(:source, change_source(source, %{selection_mode: :all, download_media: true}, :initial))
       |> Ecto.Multi.update_all(:restore_media_items, media_items_for_source_query(source),
-        set: [prevent_download: false]
+        set: [prevent_download: false, download_prevented_reason: nil]
       )
 
     case Repo.transaction(multi) do
@@ -1203,7 +1205,7 @@ defmodule Pinchflat.Sources do
       multi,
       :include_selected,
       media_items_for_source_query(source, selected_ids),
-      set: [prevent_download: false]
+      set: [prevent_download: false, download_prevented_reason: nil]
     )
   end
 

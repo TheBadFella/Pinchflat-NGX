@@ -19,6 +19,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     "inserted_at" => :inserted_at,
     "media_downloaded_at" => :media_downloaded_at
   }
+  @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
 
   def render(%{records: []} = assigns) do
     ~H"""
@@ -49,6 +50,18 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         >
           <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
         </.button>
+        <form :if={@media_state == "failed"} id="history-error-type-filter" phx-change="filter_error_type">
+          <label class="sr-only" for="history-error-type">Failure type</label>
+          <select
+            id="history-error-type"
+            name="error_type"
+            class="theme-input rounded-m3-sm text-sm"
+          >
+            <option value="all" selected={@error_type_filter == "all"}>All failures</option>
+            <option value="transient" selected={@error_type_filter == "transient"}>Transient failures</option>
+            <option value="permanent" selected={@error_type_filter == "permanent"}>Permanent failures</option>
+          </select>
+        </form>
       </span>
       <div class="space-y-4 md:hidden">
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
@@ -60,6 +73,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                   name="hero-exclamation-circle-solid"
                   class="theme-status-error mt-0.5 shrink-0"
                 />
+                <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                 <div class="min-w-0">
                   <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
                     <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
@@ -75,13 +89,33 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
             <div class="flex shrink-0 items-center gap-2">
               <.icon_button
-                :if={is_nil(media_item.media_downloaded_at)}
+                :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
                 icon_name="hero-arrow-down-tray"
                 class="h-10 w-10"
                 phx-click="force_download"
                 phx-value-media-id={media_item.id}
                 data-confirm="Are you sure you want to force a download of this media?"
-                tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
+                tooltip="Force Download"
+                tooltip_position="bottom-left"
+              />
+              <.icon_button
+                :if={@media_state == "failed" and media_item.error_type != :permanent}
+                icon_name="hero-arrow-path"
+                class="h-10 w-10"
+                phx-click="retry_download"
+                phx-value-media-id={media_item.id}
+                data-confirm="Retry this download now?"
+                tooltip="Retry Now"
+                tooltip_position="bottom-left"
+              />
+              <.icon_button
+                :if={@media_state == "failed" and media_item.error_type == :permanent}
+                icon_name="hero-arrow-path"
+                class="h-10 w-10"
+                phx-click="force_download"
+                phx-value-media-id={media_item.id}
+                data-confirm="Force a retry of this permanent failure?"
+                tooltip="Force Retry"
                 tooltip_position="bottom-left"
               />
               <.icon_button
@@ -140,14 +174,35 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                       name="hero-exclamation-circle-solid"
                       class="theme-status-error shrink-0"
                     />
+                    <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                     <.icon_button
-                      :if={is_nil(media_item.media_downloaded_at)}
+                      :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
                       icon_name="hero-arrow-down-tray"
                       class="h-10 w-10"
                       phx-click="force_download"
                       phx-value-media-id={media_item.id}
                       data-confirm="Are you sure you want to force a download of this media?"
-                      tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
+                      tooltip="Force Download"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type != :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="retry_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Retry this download now?"
+                      tooltip="Retry Now"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type == :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Force a retry of this permanent failure?"
+                      tooltip="Force Retry"
                       tooltip_position="bottom-left"
                     />
                     <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
@@ -217,9 +272,10 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
     page = 1
     media_state = session["media_state"]
+    error_type_filter = "all"
     sort_key = nil
     sort_direction = :desc
-    base_query = generate_base_query(media_state)
+    base_query = generate_base_query(media_state, error_type_filter)
     pagination_attrs = fetch_pagination_attributes(base_query, page, media_state, sort_key, sort_direction)
 
     {:ok,
@@ -228,6 +284,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
        Map.merge(pagination_attrs, %{
          base_query: base_query,
          media_state: media_state,
+         error_type_filter: error_type_filter,
          sort_key: sort_key,
          sort_direction: sort_direction
        })
@@ -272,6 +329,23 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     end
   end
 
+  def handle_event("filter_error_type", %{"error_type" => error_type}, %{assigns: assigns} = socket) do
+    error_type_filter = if Map.has_key?(@error_type_filters, error_type), do: error_type, else: "all"
+    base_query = generate_base_query(assigns.media_state, error_type_filter)
+
+    pagination_attrs =
+      fetch_pagination_attributes(
+        base_query,
+        1,
+        assigns.media_state,
+        assigns.sort_key,
+        assigns.sort_direction
+      )
+
+    {:noreply,
+     assign(socket, Map.merge(pagination_attrs, %{base_query: base_query, error_type_filter: error_type_filter}))}
+  end
+
   def handle_event("reload_page", _params, %{assigns: assigns} = socket) do
     new_assigns =
       fetch_pagination_attributes(
@@ -288,6 +362,22 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   def handle_event("force_download", %{"media-id" => media_id}, %{assigns: assigns} = socket) do
     media_item = Media.get_media_item!(media_id)
     MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+
+    new_assigns =
+      fetch_pagination_attributes(
+        assigns.base_query,
+        assigns.page,
+        assigns.media_state,
+        assigns.sort_key,
+        assigns.sort_direction
+      )
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
+  def handle_event("retry_download", %{"media-id" => media_id}, %{assigns: assigns} = socket) do
+    media_item = Media.get_media_item!(media_id)
+    MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
 
     new_assigns =
       fetch_pagination_attributes(
@@ -418,7 +508,17 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     |> Repo.preload(:source)
   end
 
-  defp generate_base_query("pending") do
+  defp generate_base_query(media_state, error_type_filter) do
+    query = generate_base_query_for_state(media_state)
+
+    if media_state == "failed" do
+      where(query, ^error_type_condition(error_type_filter))
+    else
+      query
+    end
+  end
+
+  defp generate_base_query_for_state("pending") do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.pending()))
@@ -432,12 +532,14 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :media_downloaded_at,
         :source_id,
         :last_error,
+        :error_type,
+        :download_prevented_reason,
         :media_size_bytes
       ])
     )
   end
 
-  defp generate_base_query("failed") do
+  defp generate_base_query_for_state("failed") do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.download_failed()))
@@ -451,12 +553,14 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :media_downloaded_at,
         :source_id,
         :last_error,
+        :error_type,
+        :download_prevented_reason,
         :media_size_bytes
       ])
     )
   end
 
-  defp generate_base_query("downloaded") do
+  defp generate_base_query_for_state("downloaded") do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.downloaded()))
@@ -470,9 +574,18 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :media_downloaded_at,
         :source_id,
         :last_error,
+        :error_type,
+        :download_prevented_reason,
         :media_size_bytes
       ])
     )
+  end
+
+  defp error_type_condition(error_type_filter) do
+    case Map.fetch!(@error_type_filters, error_type_filter) do
+      nil -> dynamic([_media_item], true)
+      error_type -> dynamic([media_item], media_item.error_type == ^error_type)
+    end
   end
 
   defp order_records(base_query, "pending", nil, _sort_direction), do: order_pending_media(base_query)
@@ -587,6 +700,23 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     |> min(100.0)
     |> trunc()
   end
+
+  attr :error_type, :any, default: nil
+
+  defp failure_badge(assigns) do
+    {label, class} = failure_presentation(assigns.error_type)
+    assigns = assign(assigns, label: label, class: class)
+
+    ~H"""
+    <span class={["inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium", @class]}>
+      {@label}
+    </span>
+    """
+  end
+
+  defp failure_presentation(:transient), do: {"Transient failure", "theme-badge-warning"}
+  defp failure_presentation(:permanent), do: {"Permanent failure", "theme-danger-panel"}
+  defp failure_presentation(_unknown), do: {"Failure", "theme-danger-panel"}
 
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do

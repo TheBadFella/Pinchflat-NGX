@@ -452,6 +452,27 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "reconcile_availability_policy/2" do
+    test "keeps a legacy prevented item blocked when provenance is unavailable" do
+      source = source_fixture()
+
+      legacy_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          availability: :public,
+          prevent_download: true,
+          download_prevented_reason: nil
+        })
+
+      assert {:ok, _} = Media.reconcile_availability_policy(source, legacy_item)
+
+      reloaded_item = Repo.reload!(legacy_item)
+      assert reloaded_item.prevent_download
+      assert reloaded_item.download_prevented_reason == nil
+    end
+  end
+
   describe "list_failed_media_items/0 and list_failed_media_items_for/1" do
     test "returns pending items with a last_error" do
       source = source_fixture()
@@ -876,6 +897,7 @@ defmodule Pinchflat.MediaTest do
 
       assert {:ok, %MediaItem{} = media_item} = Media.create_media_item_from_backend_attrs(source, media_attrs)
       assert media_item.prevent_download
+      assert media_item.download_prevented_reason == :manual
     end
 
     test "does not re-apply prevent_download on updates to existing media items" do
@@ -1104,6 +1126,7 @@ defmodule Pinchflat.MediaTest do
 
       assert {:ok, updated_media_item} = Media.delete_media_files(media_item, %{prevent_download: true})
       assert updated_media_item.prevent_download
+      assert updated_media_item.download_prevented_reason == :manual
     end
 
     test "calls the user script runner" do

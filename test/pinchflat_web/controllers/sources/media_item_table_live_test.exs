@@ -163,6 +163,42 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       assert html =~ "HTTP Error 429"
     end
 
+    test "filters failed media by type and labels retry actions", %{conn: conn, source: source} do
+      transient =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Network is unreachable",
+          error_type: :transient,
+          title: "ALPHA_TRANSIENT_ITEM"
+        })
+
+      permanent =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent,
+          title: "OMEGA_PERMANENT_ITEM"
+        })
+
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "failed"))
+
+      assert html =~ transient.title
+      assert html =~ permanent.title
+      assert html =~ "Retry Now"
+      assert html =~ "Force Retry"
+
+      render_change(view, "filter_error_type", %{"error_type" => "transient"})
+      html = render(view)
+
+      assert html =~ transient.title
+      refute html =~ permanent.title
+      assert html =~ "Transient failure"
+    end
+
     test "sorts pending downloads by state and then task inserted_at", %{conn: conn, source: source} do
       # Setup multiple downloads
       older_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days))

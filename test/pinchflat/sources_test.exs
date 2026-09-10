@@ -1098,6 +1098,8 @@ defmodule Pinchflat.SourcesTest do
       refute updated_source.download_media
       refute Repo.reload!(selected).prevent_download
       assert Repo.reload!(unselected).prevent_download
+      assert Repo.reload!(selected).download_prevented_reason == nil
+      assert Repo.reload!(unselected).download_prevented_reason == :manual
       refute_enqueued(worker: MediaDownloadWorker)
     end
 
@@ -1134,6 +1136,8 @@ defmodule Pinchflat.SourcesTest do
       assert restored_source.download_media
       refute Repo.reload!(first).prevent_download
       refute Repo.reload!(second).prevent_download
+      assert Repo.reload!(first).download_prevented_reason == nil
+      assert Repo.reload!(second).download_prevented_reason == nil
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => first.id})
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => second.id})
     end

@@ -10,6 +10,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Tasks
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.AvailabilityPolicy
+  alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
@@ -186,19 +187,40 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
-  Cancels queued work when a newly indexed availability value is blocked by the
-  source policy. Manual `prevent_download` state is left untouched.
+  Applies the source policy to a newly indexed or rescanned media item.
+
+  Policy transitions preserve manual and error prevention reasons. Blocked
+  items have queued work removed, while allowed items only clear a stale policy
+  block.
   """
-  def reconcile_availability_policy(%Source{} = source, {:ok, %MediaItem{} = media_item} = result) do
-    if AvailabilityPolicy.allowed?(source, media_item.availability) do
-      result
-    else
+  def reconcile_availability_policy(%Source{} = source, {:ok, %MediaItem{} = media_item}) do
+    reconcile_availability_policy(source, media_item)
+  end
+
+  def reconcile_availability_policy(%Source{} = source, %MediaItem{} = media_item) do
+    allowed? = AvailabilityPolicy.allowed?(source, media_item.availability)
+    transition = if allowed?, do: :policy_allowed, else: :policy_block
+    result = update_download_state(media_item, transition)
+
+    unless allowed? do
       Tasks.delete_pending_tasks_for(media_item)
-      result
     end
+
+    result
   end
 
   def reconcile_availability_policy(_source, result), do: result
+
+  @doc """
+  Applies a pure download-state transition and persists the resulting changes.
+
+  Returns `{:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}`.
+  """
+  def update_download_state(%MediaItem{} = media_item, transition) do
+    media_item
+    |> DownloadState.transition(transition)
+    |> then(&update_media_item(media_item, &1))
+  end
 
   @doc """
   Updates a media_item.
@@ -249,6 +271,7 @@ defmodule Pinchflat.Media do
   """
   def delete_media_files(%MediaItem{} = media_item, addl_attrs \\ %{}) do
     filepath_attrs = MediaItem.filepath_attribute_defaults()
+    addl_attrs = maybe_add_manual_prevention_reason(media_item, addl_attrs)
 
     Tasks.delete_tasks_for(media_item)
     {:ok, _} = do_delete_media_files(media_item)
@@ -372,8 +395,28 @@ defmodule Pinchflat.Media do
   defp preserve_known_availability(attrs, _media_item), do: attrs
 
   defp maybe_prevent_download_by_default(attrs, %Source{collection_type: :playlist, selection_mode: :manual}) do
-    Map.put_new(attrs, :prevent_download, true)
+    attrs = Map.put_new(attrs, :prevent_download, true)
+
+    if Map.get(attrs, :prevent_download) == true do
+      Map.put_new(attrs, :download_prevented_reason, :manual)
+    else
+      attrs
+    end
   end
 
   defp maybe_prevent_download_by_default(attrs, _source), do: attrs
+
+  defp maybe_add_manual_prevention_reason(media_item, attrs) do
+    if Map.has_key?(attrs, :prevent_download) and not Map.has_key?(attrs, :download_prevented_reason) do
+      prevent_download = normalize_prevent_download(Map.fetch!(attrs, :prevent_download))
+      Map.merge(attrs, DownloadState.transition(media_item, {:manual, prevent_download}))
+    else
+      attrs
+    end
+  end
+
+  defp normalize_prevent_download(value) when value in [true, false], do: value
+  defp normalize_prevent_download(value) when value in ["true", "1"], do: true
+  defp normalize_prevent_download(value) when value in ["false", "0"], do: false
+  defp normalize_prevent_download(_value), do: false
 end

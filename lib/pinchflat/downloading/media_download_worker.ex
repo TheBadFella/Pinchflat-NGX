@@ -15,7 +15,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Media
   alias Pinchflat.Settings
   alias Pinchflat.Media.FileSyncing
+  alias Pinchflat.Media.DownloadState
   alias Pinchflat.YtDlp.UnavailableMedia
+  alias Pinchflat.Downloading.DownloadError
   alias Pinchflat.Downloading.MediaDownloader
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
@@ -105,8 +107,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
     {:ok, media_item} =
       case run_user_script(:media_pre_download, media_item) do
-        {:ok, _, exit_code} when exit_code != 0 -> Media.update_media_item(media_item, %{prevent_download: true})
-        _ -> {:ok, media_item}
+        {:ok, _, exit_code} when exit_code != 0 ->
+          Media.update_download_state(media_item, {:manual, true})
+
+        _ ->
+          {:ok, media_item}
       end
 
     Repo.preload(media_item, source: :media_profile)
@@ -136,39 +141,38 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
         :ok
 
-      {:recovered, _media_item, _message} ->
+      {:recovered, recovered_media_item, _message} ->
+        persist_download_failure(recovered_media_item, :transient, should_force)
         {:error, :retry}
 
       {:error, :unsuitable_for_download, _message} ->
+        persist_download_failure(media_item, :transient, should_force)
         {:ok, :non_retry}
 
       {:error, _error_atom, message} ->
-        maybe_ignore_unavailable_media(media_item, job_id, message)
+        maybe_ignore_unavailable_media(media_item, job_id, message, should_force)
     end
   end
 
   # If the "ignore unavailable media" setting is enabled and the error indicates the
-  # media is permanently inaccessible (members-only, private, or removed), mark the
-  # item as prevent_download so it drops out of the pending set and isn't retried.
-  # The error is cleared so it reads as intentionally skipped rather than failed.
-  defp maybe_ignore_unavailable_media(media_item, job_id, message) do
+  # media is permanently inaccessible (members-only, private, or removed), keep the
+  # existing unavailable metadata while recording the durable permanent state.
+  defp maybe_ignore_unavailable_media(media_item, job_id, message, should_force) do
     if Settings.get!(:ignore_unavailable_media) && UnavailableMedia.error?(message) do
       Logger.info("Ignoring unavailable media item ##{media_item.id}: #{inspect(message)}")
 
-      attrs = %{
-        prevent_download: true,
-        last_error: nil,
+      unavailable_attrs = %{
         unavailable_at: DateTime.utc_now(),
         unavailable_reason: UnavailableMedia.matched_reason(message)
       }
 
-      # Reload first: download_for_media_item already persisted last_error, but the
-      # in-memory struct still has the old value, so clearing it would be a no-op change.
-      {:ok, _} = media_item |> Repo.reload() |> Media.update_media_item(attrs)
+      current_media_item = Repo.reload!(media_item)
+      state_attrs = DownloadState.transition(current_media_item, {:failure, :permanent, should_force})
+      {:ok, _} = Media.update_media_item(current_media_item, Map.merge(state_attrs, unavailable_attrs))
 
       {:ok, :non_retry}
     else
-      action_on_error(job_id, message)
+      action_on_error(media_item, job_id, message, should_force)
     end
   end
 
@@ -310,51 +314,25 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   defp get_redownloaded_at(true), do: DateTime.utc_now()
   defp get_redownloaded_at(_), do: nil
 
-  defp action_on_error(job_id, message) do
-    case classify_non_retryable_error(message) do
-      {:ok, progress_status} ->
+  defp action_on_error(media_item, job_id, message, should_force) do
+    case DownloadError.classify(message) do
+      {:permanent, progress_status} ->
+        persist_download_failure(media_item, :permanent, should_force)
         maybe_update_progress(job_id, %{progress_status: progress_status})
         Logger.error("yt-dlp download will not be retried: #{inspect(message)}")
         {:ok, :non_retry}
 
-      :error ->
+      :transient ->
+        persist_download_failure(media_item, :transient, should_force)
         {:error, :download_failed}
     end
   end
 
-  defp classify_non_retryable_error(message) do
-    message = to_string(message)
-
-    cond do
-      String.contains?(message, rate_limited_errors()) ->
-        {:ok, "Stopped: rate limited by remote source"}
-
-      String.contains?(message, permanent_download_errors()) ->
-        {:ok, "Stopped: download unavailable"}
-
-      true ->
-        :error
-    end
-  end
-
-  defp rate_limited_errors do
-    [
-      "HTTP Error 429",
-      "Too Many Requests",
-      "rate limit",
-      "rate-limit",
-      "requested too many",
-      "confirm you're not a bot",
-      "confirm you’re not a bot"
-    ]
-  end
-
-  defp permanent_download_errors do
-    [
-      "Video unavailable",
-      "Sign in to confirm",
-      "This video is available to this channel's members"
-    ]
+  defp persist_download_failure(media_item, error_type, should_force) do
+    current_media_item = Repo.reload!(media_item)
+    attrs = DownloadState.transition(current_media_item, {:failure, error_type, should_force})
+    {:ok, _} = Media.update_media_item(current_media_item, attrs)
+    :ok
   end
 
   # NOTE: I like this pattern of using the default value so that I don't have to

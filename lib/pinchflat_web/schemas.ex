@@ -232,6 +232,19 @@ defmodule PinchflatWeb.Schemas do
           enum: ~w(public unlisted subscriber_only premium_only needs_auth private),
           description: "Availability reported by yt-dlp"
         },
+        prevent_download: %Schema{type: :boolean, description: "Whether future downloads are prevented"},
+        error_type: %Schema{
+          type: :string,
+          nullable: true,
+          enum: [:transient, :permanent],
+          description: "Whether the latest download error may be retried"
+        },
+        download_prevented_reason: %Schema{
+          type: :string,
+          nullable: true,
+          enum: [:manual, :policy, :error],
+          description: "Why future downloads are prevented"
+        },
         source: %Schema{
           allOf: [Source],
           description: "The source this media belongs to"

@@ -210,7 +210,13 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       end)
 
       assert media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
-      assert Enum.all?(media_items, fn item -> item.availability == :public and item.prevent_download == false end)
+
+      assert Enum.all?(media_items, fn item ->
+               item.availability == :public and
+                 item.prevent_download and
+                 item.download_prevented_reason == :policy
+             end)
+
       refute_enqueued(worker: MediaDownloadWorker)
     end
 

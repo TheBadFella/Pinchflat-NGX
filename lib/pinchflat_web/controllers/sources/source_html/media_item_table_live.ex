@@ -13,6 +13,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   alias Pinchflat.Tasks.Task
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
+  @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
 
   def render(%{total_record_count: 0} = assigns) do
     ~H"""
@@ -45,6 +46,18 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           >
             <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
           </.button>
+          <form :if={@media_state == "failed"} id="source-error-type-filter" phx-change="filter_error_type">
+            <label class="sr-only" for="source-error-type">Failure type</label>
+            <select
+              id="source-error-type"
+              name="error_type"
+              class="theme-input rounded-m3-sm text-sm"
+            >
+              <option value="all" selected={@error_type_filter == "all"}>All failures</option>
+              <option value="transient" selected={@error_type_filter == "transient"}>Transient failures</option>
+              <option value="permanent" selected={@error_type_filter == "permanent"}>Permanent failures</option>
+            </select>
+          </form>
           <div class="theme-surface-accent rounded-m3-sm">
             <div class="relative">
               <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
@@ -81,6 +94,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   name="hero-exclamation-circle-solid"
                   class="theme-status-error mt-0.5 shrink-0"
                 />
+                <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                 <div class="min-w-0">
                   <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
                     <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
@@ -93,13 +107,33 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
             <div class="flex items-center gap-2">
               <.icon_button
-                :if={@media_state != "downloaded"}
+                :if={@media_state not in ["downloaded", "failed"]}
                 icon_name="hero-arrow-down-tray"
                 class="h-10 w-10"
                 phx-click="force_download"
                 phx-value-media-id={media_item.id}
                 data-confirm="Are you sure you want to force a download of this media?"
-                tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
+                tooltip="Force Download"
+                tooltip_position="bottom-left"
+              />
+              <.icon_button
+                :if={@media_state == "failed" and media_item.error_type != :permanent}
+                icon_name="hero-arrow-path"
+                class="h-10 w-10"
+                phx-click="retry_download"
+                phx-value-media-id={media_item.id}
+                data-confirm="Retry this download now?"
+                tooltip="Retry Now"
+                tooltip_position="bottom-left"
+              />
+              <.icon_button
+                :if={@media_state == "failed" and media_item.error_type == :permanent}
+                icon_name="hero-arrow-path"
+                class="h-10 w-10"
+                phx-click="force_download"
+                phx-value-media-id={media_item.id}
+                data-confirm="Force a retry of this permanent failure?"
+                tooltip="Force Retry"
                 tooltip_position="bottom-left"
               />
               <.icon_button
@@ -166,14 +200,35 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             <section class="space-y-2">
               <div class="flex items-start space-x-1 gap-2">
                 <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="theme-status-error shrink-0" />
+                <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                 <.icon_button
-                  :if={@media_state != "downloaded"}
+                  :if={@media_state not in ["downloaded", "failed"]}
                   icon_name="hero-arrow-down-tray"
                   class="h-10 w-10"
                   phx-click="force_download"
                   phx-value-media-id={media_item.id}
                   data-confirm="Are you sure you want to force a download of this media?"
-                  tooltip={if @media_state == "failed", do: "Retry Download", else: "Force Download"}
+                  tooltip="Force Download"
+                  tooltip_position="bottom-left"
+                />
+                <.icon_button
+                  :if={@media_state == "failed" and media_item.error_type != :permanent}
+                  icon_name="hero-arrow-path"
+                  class="h-10 w-10"
+                  phx-click="retry_download"
+                  phx-value-media-id={media_item.id}
+                  data-confirm="Retry this download now?"
+                  tooltip="Retry Now"
+                  tooltip_position="bottom-left"
+                />
+                <.icon_button
+                  :if={@media_state == "failed" and media_item.error_type == :permanent}
+                  icon_name="hero-arrow-path"
+                  class="h-10 w-10"
+                  phx-click="force_download"
+                  phx-value-media-id={media_item.id}
+                  data-confirm="Force a retry of this permanent failure?"
+                  tooltip="Force Retry"
                   tooltip_position="bottom-left"
                 />
                 <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
@@ -253,7 +308,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> Sources.get_source!()
       |> Repo.preload(:media_profile)
 
-    base_query = generate_base_query(source, media_state)
+    error_type_filter = "all"
+    base_query = generate_base_query(source, media_state, error_type_filter)
     pagination_attrs = fetch_pagination_attributes(base_query, page, nil, media_state)
 
     new_assigns =
@@ -262,7 +318,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         %{
           base_query: base_query,
           source: source,
-          media_state: media_state
+          media_state: media_state,
+          error_type_filter: error_type_filter
         }
       )
 
@@ -286,9 +343,31 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     {:noreply, assign(socket, new_assigns)}
   end
 
+  def handle_event("filter_error_type", %{"error_type" => error_type}, socket) do
+    error_type_filter = if Map.has_key?(@error_type_filters, error_type), do: error_type, else: "all"
+    base_query = generate_base_query(socket.assigns.source, socket.assigns.media_state, error_type_filter)
+
+    pagination_attrs =
+      fetch_pagination_attributes(base_query, 1, socket.assigns.search_term, socket.assigns.media_state)
+
+    {:noreply,
+     assign(
+       socket,
+       Map.put(pagination_attrs, :base_query, base_query) |> Map.put(:error_type_filter, error_type_filter)
+     )}
+  end
+
   def handle_event("force_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
     MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("retry_download", %{"media-id" => media_id}, socket) do
+    media_item = Media.get_media_item!(media_id)
+    MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
     PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
 
     {:noreply, socket}
@@ -461,27 +540,37 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> offset(^offset)
   end
 
-  defp generate_base_query(source, "pending") do
+  defp generate_base_query(source, media_state, error_type_filter) do
+    query = generate_base_query_for_state(source, media_state)
+
+    if media_state == "failed" do
+      where(query, ^error_type_condition(error_type_filter))
+    else
+      query
+    end
+  end
+
+  defp generate_base_query_for_state(source, "pending") do
     MediaQuery.new()
     |> select(^select_fields())
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
   end
 
-  defp generate_base_query(source, "failed") do
+  defp generate_base_query_for_state(source, "failed") do
     MediaQuery.new()
     |> select(^select_fields())
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.download_failed()))
   end
 
-  defp generate_base_query(source, "downloaded") do
+  defp generate_base_query_for_state(source, "downloaded") do
     MediaQuery.new()
     |> select(^select_fields())
     |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.downloaded()))
   end
 
-  defp generate_base_query(source, "other") do
+  defp generate_base_query_for_state(source, "other") do
     MediaQuery.new()
     |> select(^select_fields())
     |> MediaQuery.require_assoc(:media_profile)
@@ -499,6 +588,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> where(^MediaQuery.matches_search_term(search_term))
   end
 
+  defp error_type_condition(error_type_filter) do
+    case Map.fetch!(@error_type_filters, error_type_filter) do
+      nil -> dynamic([_media_item], true)
+      error_type -> dynamic([media_item], media_item.error_type == ^error_type)
+    end
+  end
+
   # Selecting only what we need GREATLY speeds up queries on large tables
   defp select_fields do
     [
@@ -507,6 +603,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :uploaded_at,
       :prevent_download,
       :last_error,
+      :error_type,
+      :download_prevented_reason,
       :duration_seconds,
       :livestream,
       :short_form_content,
@@ -752,6 +850,23 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   defp availability_presentation("private"), do: availability_presentation(:private)
   defp availability_presentation(_unknown), do: {"Unknown", "bg-theme-surface-3 text-theme-on-surface-muted"}
 
+  attr :error_type, :any, default: nil
+
+  defp failure_badge(assigns) do
+    {label, class} = failure_presentation(assigns.error_type)
+    assigns = assign(assigns, label: label, class: class)
+
+    ~H"""
+    <span class={["inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium", @class]}>
+      {@label}
+    </span>
+    """
+  end
+
+  defp failure_presentation(:transient), do: {"Transient failure", "theme-badge-warning"}
+  defp failure_presentation(:permanent), do: {"Permanent failure", "theme-danger-panel"}
+  defp failure_presentation(_unknown), do: {"Failure", "theme-danger-panel"}
+
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do
     if Enum.any?(records, &(&1.id == media_item_id)) do
@@ -801,6 +916,24 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       end
 
     %{label: "Removed", icon: "hero-trash", class: "text-slate-300", tooltip: tooltip}
+  end
+
+  defp media_status(%{download_prevented_reason: :policy}) do
+    %{
+      label: "Blocked by policy",
+      icon: "hero-shield-exclamation",
+      class: "theme-status-warning",
+      tooltip: "Blocked by the source availability policy"
+    }
+  end
+
+  defp media_status(%{download_prevented_reason: :error}) do
+    %{
+      label: "Permanent failure",
+      icon: "hero-exclamation-triangle",
+      class: "theme-status-error",
+      tooltip: "Download failed permanently; use Force Retry to try again"
+    }
   end
 
   defp media_status(%{prevent_download: true}) do

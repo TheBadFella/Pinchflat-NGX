@@ -6,6 +6,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
   import Pinchflat.ProfilesFixtures
 
   alias Pinchflat.Tasks
+  alias Pinchflat.Media
   alias Pinchflat.Sources
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Downloading.MediaDownloadWorker
@@ -146,14 +147,21 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
           source_id: source.id,
           media_filepath: nil,
           availability: :public,
-          prevent_download: true
+          prevent_download: true,
+          download_prevented_reason: :manual
         )
+
+      assert {:ok, _} = Media.reconcile_availability_policy(source, policy_blocked)
+      assert Repo.reload!(policy_blocked).download_prevented_reason == :policy
 
       assert {:ok, _source} = Sources.update_source(source, %{download_public_media: true})
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => policy_blocked.id})
       refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => manually_prevented.id})
       assert Repo.reload!(manually_prevented).prevent_download
+      assert Repo.reload!(manually_prevented).download_prevented_reason == :manual
+      refute Repo.reload!(policy_blocked).prevent_download
+      assert Repo.reload!(policy_blocked).download_prevented_reason == nil
     end
   end
 
@@ -179,6 +187,30 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       assert [] = DownloadingHelpers.kickoff_redownload_for_existing_media(source)
 
       refute_enqueued(worker: MediaDownloadWorker)
+    end
+  end
+
+  describe "retry_failed_download_tasks/0" do
+    test "retries transient failures without forcing permanent failures" do
+      transient =
+        media_item_fixture(
+          media_filepath: nil,
+          last_error: "Network is unreachable",
+          error_type: :transient
+        )
+
+      permanent =
+        media_item_fixture(
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent
+        )
+
+      assert DownloadingHelpers.retry_failed_download_tasks() == 1
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => transient.id, "reset_last_error" => true})
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => permanent.id})
     end
   end
 end

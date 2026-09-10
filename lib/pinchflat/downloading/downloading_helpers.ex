@@ -53,8 +53,8 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   @doc """
   Reconciles queued download work after a source availability policy changes.
 
-  Policy blocks are kept separate from `prevent_download`, so manually
-  prevented items are never re-enabled by this operation.
+  Policy blocks use `download_prevented_reason: :policy`, so manually or
+  error-prevented items are never re-enabled by this operation.
 
   Returns integer() | :ok.
   """
@@ -62,9 +62,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
     source
     |> list_media_items_for_policy()
     |> Enum.each(fn media_item ->
-      unless AvailabilityPolicy.allowed?(source, media_item.availability) do
-        Tasks.delete_pending_tasks_for(media_item)
-      end
+      Media.reconcile_availability_policy(source, media_item)
     end)
 
     if source.enabled && source.download_media do
@@ -89,8 +87,9 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def retry_pending_download_tasks(%Source{download_media: false}), do: :ok
 
   @doc """
-  Re-enqueues download jobs for pending media items that have a recorded error.
-  Pass a source to limit the retry to that source; omit it to retry every failed item.
+  Re-enqueues download jobs for retryable media items that have a recorded error.
+  Permanent failures are left for an explicit force retry. Pass a source to limit
+  the retry to that source; omit it to retry every failed item.
 
   Returns integer()
   """
@@ -106,9 +105,11 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   end
 
   defp do_retry_failed_download_tasks(media_items) do
-    Enum.each(media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{"force" => true, "reset_last_error" => true}))
+    retryable_media_items = Enum.reject(media_items, &(&1.error_type == :permanent))
 
-    length(media_items)
+    Enum.each(retryable_media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
+
+    length(retryable_media_items)
   end
 
   @doc """
