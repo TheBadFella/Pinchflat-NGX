@@ -66,6 +66,79 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "1"
       assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
     end
+
+    test "renders the table view by default and exposes an accessible grid toggle", %{conn: conn} do
+      source = source_fixture(custom_name: "Grid candidate")
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert html =~ ~s(data-view="table")
+      assert html =~ ~s(data-view-toggle="grid")
+      assert html =~ ~s(aria-pressed="false")
+      assert html =~ source.custom_name
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      grid_html = render_element(view, "#source-poster-grid")
+      assert grid_html =~ source.custom_name
+      assert grid_html =~ ~s(data-artwork-fallback)
+      assert grid_html =~ ~s(aria-label="Open source Grid candidate")
+      assert grid_html =~ ~s(aria-label="Monitor Grid candidate")
+    end
+
+    test "renders the same exact source ID set in table and poster-grid views", %{conn: conn} do
+      sources = [
+        source_fixture(custom_name: "Grid candidate A"),
+        source_fixture(custom_name: "Grid candidate B")
+      ]
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      expected_ids = sources |> Enum.map(& &1.id) |> MapSet.new()
+      table_ids = source_ids(render_element(view, "#source-table"))
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      grid_ids = source_ids(render_element(view, "#source-poster-grid"))
+
+      assert table_ids == expected_ids
+      assert grid_ids == table_ids
+    end
+
+    test "keeps the sorted page while switching views", %{conn: conn} do
+      source_a = source_fixture(custom_name: "Source_A")
+      source_b = source_fixture(custom_name: "Source_B")
+
+      session = Map.merge(create_session(), %{"results_per_page" => 1})
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      click_element(view, "span.pagination-next")
+      assert render_element(view, "#source-table") =~ source_b.custom_name
+      refute render_element(view, "#source-table") =~ source_a.custom_name
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      assert render_element(view, "#source-poster-grid") =~ source_b.custom_name
+      refute render_element(view, "#source-poster-grid") =~ source_a.custom_name
+      assert render(view) =~ "Page"
+
+      click_element(view, ~s([data-view-toggle="table"]))
+      assert render_element(view, "#source-table") =~ source_b.custom_name
+      refute render_element(view, "#source-table") =~ source_a.custom_name
+    end
+  end
+
+  describe "poster-grid progress" do
+    test "does not claim completion when the total is empty or unknown" do
+      assert %{state: :empty, percent: 0, label: "No indexed media yet"} =
+               IndexTableLive.source_progress(%{media_count: 0, downloaded_count: 0})
+
+      assert %{state: :unknown, percent: nil} =
+               IndexTableLive.source_progress(%{media_count: nil, downloaded_count: 0})
+
+      assert %{state: :known, percent: 50, label: "1 of 2 indexed items downloaded"} =
+               IndexTableLive.source_progress(%{media_count: 2, downloaded_count: 1})
+    end
   end
 
   describe "when testing sorting" do
@@ -226,6 +299,36 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       assert %{enabled: false} = Repo.get!(Source, source.id)
     end
+
+    test "updates only the source whose poster-grid toggle changed", %{conn: conn} do
+      target = source_fixture(custom_name: "Target source", enabled: true)
+      other = source_fixture(custom_name: "Other source", enabled: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      view
+      |> element("#source_enable_toggle_source_#{target.id}_enabled_grid_form")
+      |> render_change(%{source: %{"enabled" => false}})
+
+      assert %{enabled: false} = Repo.get!(Source, target.id)
+      assert %{enabled: true} = Repo.get!(Source, other.id)
+    end
+
+    test "shows an error and restores the checked state when monitoring update fails", %{conn: conn} do
+      source = source_fixture(custom_name: "Toggle failure", enabled: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      view
+      |> element("#source_enable_toggle_source_#{source.id}_enabled_grid_form")
+      |> render_change(%{source: %{"enabled" => "not-a-boolean"}})
+
+      assert render(view) =~ "Could not update monitoring state."
+      assert render_element(view, "#source_enable_toggle_source_#{source.id}_enabled_grid_input") =~ "checked"
+      assert %{enabled: true} = Repo.get!(Source, source.id)
+    end
   end
 
   defp click_element(view, selector, text_filter \\ nil) do
@@ -247,10 +350,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     |> String.trim()
   end
 
+  defp source_ids(html) do
+    ~r/data-source-id="(\d+)"/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> Enum.map(fn [id] -> String.to_integer(id) end)
+    |> MapSet.new()
+  end
+
   defp create_session do
     %{
       "initial_sort_key" => :custom_name,
       "initial_sort_direction" => :asc,
+      "initial_view_mode" => :table,
       "results_per_page" => 10
     }
   end

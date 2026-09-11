@@ -1,162 +1,59 @@
 <div>
-  <div class="space-y-4 md:hidden">
-    <article :for={source <- @sources} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-      <div class="flex items-center justify-between gap-3">
-        <div class="min-w-0 flex-1 space-y-2">
-          <div class="flex items-start gap-3">
-            <span
-              class={[
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                if(source.selection_mode == :manual,
-                  do: "theme-badge-warning",
-                  else: "theme-badge-success"
-                )
-              ]}
-              title={source_download_mode_label(source)}
-            >
-              <.icon
-                name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
-                class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
-              />
-            </span>
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/70 pb-3">
+    <div>
+      <p class="text-sm font-medium text-theme-on-surface">Source view</p>
+      <p class="text-xs text-theme-on-surface-muted">Choose a table or poster library layout.</p>
+    </div>
 
-            <div class="min-w-0 flex-1">
-              <.subtle_link href={~p"/sources/#{source.id}"}>
-                <span class="block break-words font-medium text-theme-on-surface">{source.custom_name}</span>
-              </.subtle_link>
-              <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
-                <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
-              </.subtle_link>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex shrink-0 items-center gap-1.5">
-          <.form
-            for={%{}}
-            as={:start_source}
-            action={~p"/sources/#{source.id}/start_all"}
-            method="post"
-            x-data="{ submitting: false }"
-            x-on:submit="submitting = true"
-          >
-            <input type="hidden" name="return_to" value={~p"/sources"} />
-            <.icon_button
-              icon_name="hero-play-solid"
-              variant="primary"
-              type="submit"
-              class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-              icon_class="h-4 w-4"
-              title="Start all"
-              aria-label="Start all"
-              data-confirm={"Start downloads for #{source.custom_name}?"}
-              x-bind:disabled="submitting"
-            />
-          </.form>
-
-          <.form
-            for={%{}}
-            as={:pause_source}
-            action={~p"/sources/#{source.id}/pause_all"}
-            method="post"
-            x-data="{ submitting: false }"
-            x-on:submit="submitting = true"
-          >
-            <input type="hidden" name="return_to" value={~p"/sources"} />
-            <.icon_button
-              icon_name="hero-pause-solid"
-              variant="warning"
-              type="submit"
-              class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-              icon_class="h-4 w-4"
-              title="Pause all"
-              aria-label="Pause all"
-              data-confirm={"Pause downloads for #{source.custom_name}?"}
-              x-bind:disabled="submitting"
-            />
-          </.form>
-
-          <.form
-            for={%{}}
-            as={:stop_source}
-            action={~p"/sources/#{source.id}/stop_all"}
-            method="post"
-            x-data="{ submitting: false }"
-            x-on:submit="submitting = true"
-          >
-            <input type="hidden" name="return_to" value={~p"/sources"} />
-            <.icon_button
-              icon_name="hero-stop-solid"
-              variant="danger-solid"
-              type="submit"
-              class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-              icon_class="h-4 w-4"
-              title="Stop all"
-              aria-label="Stop all"
-              data-confirm={"Stop downloads for #{source.custom_name}?"}
-              x-bind:disabled="submitting"
-            />
-          </.form>
-
-          <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
-          <.icon_link
-            href={~p"/sources/#{source.id}"}
-            icon="hero-trash"
-            method="delete"
-            data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
-            aria-label={"Delete #{source.custom_name}"}
-            title="Delete source"
-            class="mx-1 hover:text-theme-error"
-          />
-        </div>
-      </div>
-
-      <dl class="grid grid-cols-1 gap-3 text-sm">
-        <div class="flex items-start justify-between gap-3">
-          <dt class="text-theme-on-surface-muted">Pending</dt>
-          <dd class="text-right text-theme-on-surface">
-            <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
-              <.localized_number number={source.pending_count} />
-            </.subtle_link>
-          </dd>
-        </div>
-        <div class="flex items-start justify-between gap-3">
-          <dt class="text-theme-on-surface-muted">Downloaded</dt>
-          <dd class="text-right text-theme-on-surface">
-            <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
-              <.localized_number number={source.downloaded_count} />
-            </.subtle_link>
-          </dd>
-        </div>
-        <div class="flex items-start justify-between gap-3">
-          <dt class="text-theme-on-surface-muted">Size</dt>
-          <dd class="text-right text-theme-on-surface">
-            <.readable_filesize byte_size={source.media_size_bytes} />
-          </dd>
-        </div>
-        <div class="flex items-start justify-between gap-3">
-          <dt class="text-theme-on-surface-muted">Enabled</dt>
-          <dd class="text-right">
-            <.live_component
-              module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-              source={source}
-              id={"source_#{source.id}_enabled_mobile"}
-            />
-          </dd>
-        </div>
-      </dl>
-    </article>
+    <div
+      class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
+      role="group"
+      aria-label="Source view"
+    >
+      <button
+        type="button"
+        class={[
+          "inline-flex items-center gap-2 rounded-m3-xs px-3 py-2 text-sm font-medium transition",
+          if(@view_mode == :table,
+            do: "bg-theme-primary text-theme-on-primary",
+            else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
+          )
+        ]}
+        phx-click="view_change"
+        phx-value-view="table"
+        aria-pressed={to_string(@view_mode == :table)}
+        data-view-toggle="table"
+      >
+        <.icon name="hero-list-bullet" class="h-4 w-4" aria-hidden="true" /> Table
+      </button>
+      <button
+        type="button"
+        class={[
+          "inline-flex items-center gap-2 rounded-m3-xs px-3 py-2 text-sm font-medium transition",
+          if(@view_mode == :grid,
+            do: "bg-theme-primary text-theme-on-primary",
+            else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
+          )
+        ]}
+        phx-click="view_change"
+        phx-value-view="grid"
+        aria-pressed={to_string(@view_mode == :grid)}
+        data-view-toggle="grid"
+      >
+        <.icon name="hero-squares-2x2" class="h-4 w-4" aria-hidden="true" /> Poster grid
+      </button>
+    </div>
   </div>
 
-  <div class="hidden md:flex md:flex-col md:min-w-max">
-    <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
-      <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
-        <div class="flex min-w-0 flex-col gap-2">
-          <div class="flex min-w-0 items-center gap-3">
-            <div class="flex min-w-0 flex-1 items-center gap-2">
+  <div :if={@view_mode == :table}>
+    <div class="space-y-4 md:hidden">
+      <article :for={source <- @sources} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0 flex-1 space-y-2">
+            <div class="flex items-start gap-3">
               <span
                 class={[
-                  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
                   if(source.selection_mode == :manual,
                     do: "theme-badge-warning",
                     else: "theme-badge-success"
@@ -168,134 +65,399 @@
                   name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
                   class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
                 />
-                <span class="sr-only">{source_download_mode_label(source)}</span>
               </span>
 
-              <div class="min-w-0 flex-1 leading-6 break-words whitespace-normal">
-                <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+              <div class="min-w-0 flex-1">
+                <.subtle_link href={~p"/sources/#{source.id}"}>
+                  <span class="block break-words font-medium text-theme-on-surface">{source.custom_name}</span>
+                </.subtle_link>
+                <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
+                  <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
+                </.subtle_link>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex shrink-0 items-center gap-1.5">
+            <.form
+              for={%{}}
+              as={:start_source}
+              action={~p"/sources/#{source.id}/start_all"}
+              method="post"
+              x-data="{ submitting: false }"
+              x-on:submit="submitting = true"
+            >
+              <input type="hidden" name="return_to" value={~p"/sources"} />
+              <.icon_button
+                icon_name="hero-play-solid"
+                variant="primary"
+                type="submit"
+                class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                icon_class="h-4 w-4"
+                title="Start all"
+                aria-label="Start all"
+                data-confirm={"Start downloads for #{source.custom_name}?"}
+                x-bind:disabled="submitting"
+              />
+            </.form>
+
+            <.form
+              for={%{}}
+              as={:pause_source}
+              action={~p"/sources/#{source.id}/pause_all"}
+              method="post"
+              x-data="{ submitting: false }"
+              x-on:submit="submitting = true"
+            >
+              <input type="hidden" name="return_to" value={~p"/sources"} />
+              <.icon_button
+                icon_name="hero-pause-solid"
+                variant="warning"
+                type="submit"
+                class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                icon_class="h-4 w-4"
+                title="Pause all"
+                aria-label="Pause all"
+                data-confirm={"Pause downloads for #{source.custom_name}?"}
+                x-bind:disabled="submitting"
+              />
+            </.form>
+
+            <.form
+              for={%{}}
+              as={:stop_source}
+              action={~p"/sources/#{source.id}/stop_all"}
+              method="post"
+              x-data="{ submitting: false }"
+              x-on:submit="submitting = true"
+            >
+              <input type="hidden" name="return_to" value={~p"/sources"} />
+              <.icon_button
+                icon_name="hero-stop-solid"
+                variant="danger-solid"
+                type="submit"
+                class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                icon_class="h-4 w-4"
+                title="Stop all"
+                aria-label="Stop all"
+                data-confirm={"Stop downloads for #{source.custom_name}?"}
+                x-bind:disabled="submitting"
+              />
+            </.form>
+
+            <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+            <.icon_link
+              href={~p"/sources/#{source.id}"}
+              icon="hero-trash"
+              method="delete"
+              data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
+              aria-label={"Delete #{source.custom_name}"}
+              title="Delete source"
+              class="mx-1 hover:text-theme-error"
+            />
+          </div>
+        </div>
+
+        <dl class="grid grid-cols-1 gap-3 text-sm">
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Pending</dt>
+            <dd class="text-right text-theme-on-surface">
+              <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+                <.localized_number number={source.pending_count} />
+              </.subtle_link>
+            </dd>
+          </div>
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Downloaded</dt>
+            <dd class="text-right text-theme-on-surface">
+              <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+                <.localized_number number={source.downloaded_count} />
+              </.subtle_link>
+            </dd>
+          </div>
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Size</dt>
+            <dd class="text-right text-theme-on-surface">
+              <.readable_filesize byte_size={source.media_size_bytes} />
+            </dd>
+          </div>
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Enabled</dt>
+            <dd class="text-right">
+              <.live_component
+                module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+                source={source}
+                id={"source_#{source.id}_enabled_mobile"}
+              />
+            </dd>
+          </div>
+        </dl>
+      </article>
+    </div>
+
+    <div id="source-table" data-view="table" class="hidden md:flex md:flex-col md:min-w-max">
+      <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
+        <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
+          <div data-source-id={source.id} class="flex min-w-0 flex-col gap-2">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                <span
+                  class={[
+                    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                    if(source.selection_mode == :manual,
+                      do: "theme-badge-warning",
+                      else: "theme-badge-success"
+                    )
+                  ]}
+                  title={source_download_mode_label(source)}
+                >
+                  <.icon
+                    name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
+                    class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
+                  />
+                  <span class="sr-only">{source_download_mode_label(source)}</span>
+                </span>
+
+                <div class="min-w-0 flex-1 leading-6 break-words whitespace-normal">
+                  <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+                </div>
+              </div>
+
+              <div class="ml-auto flex shrink-0 items-center gap-1.5 self-center">
+                <.form
+                  for={%{}}
+                  as={:start_source}
+                  action={~p"/sources/#{source.id}/start_all"}
+                  method="post"
+                  x-data="{ submitting: false }"
+                  x-on:submit="submitting = true"
+                >
+                  <input type="hidden" name="return_to" value={~p"/sources"} />
+                  <.icon_button
+                    icon_name="hero-play-solid"
+                    variant="primary"
+                    type="submit"
+                    class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                    icon_class="h-4 w-4"
+                    title="Start all"
+                    aria-label="Start all"
+                    data-confirm={"Start downloads for #{source.custom_name}?"}
+                    x-bind:disabled="submitting"
+                  />
+                </.form>
+
+                <.form
+                  for={%{}}
+                  as={:pause_source}
+                  action={~p"/sources/#{source.id}/pause_all"}
+                  method="post"
+                  x-data="{ submitting: false }"
+                  x-on:submit="submitting = true"
+                >
+                  <input type="hidden" name="return_to" value={~p"/sources"} />
+                  <.icon_button
+                    icon_name="hero-pause-solid"
+                    variant="warning"
+                    type="submit"
+                    class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                    icon_class="h-4 w-4"
+                    title="Pause all"
+                    aria-label="Pause all"
+                    data-confirm={"Pause downloads for #{source.custom_name}?"}
+                    x-bind:disabled="submitting"
+                  />
+                </.form>
+
+                <.form
+                  for={%{}}
+                  as={:stop_source}
+                  action={~p"/sources/#{source.id}/stop_all"}
+                  method="post"
+                  x-data="{ submitting: false }"
+                  x-on:submit="submitting = true"
+                >
+                  <input type="hidden" name="return_to" value={~p"/sources"} />
+                  <.icon_button
+                    icon_name="hero-stop-solid"
+                    variant="danger-solid"
+                    type="submit"
+                    class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                    icon_class="h-4 w-4"
+                    title="Stop all"
+                    aria-label="Stop all"
+                    data-confirm={"Stop downloads for #{source.custom_name}?"}
+                    x-bind:disabled="submitting"
+                  />
+                </.form>
+              </div>
+            </div>
+          </div>
+        </:col>
+
+        <:col :let={source} label="Type" sort_key="collection_type">
+          <PinchflatWeb.Sources.SourceHTML.collection_type_badge collection_type={source.collection_type} />
+        </:col>
+
+        <:col :let={source} label="Pending" sort_key="pending_count">
+          <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+            <.localized_number number={source.pending_count} />
+          </.subtle_link>
+        </:col>
+
+        <:col :let={source} label="Downloaded" sort_key="downloaded_count">
+          <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+            <.localized_number number={source.downloaded_count} />
+          </.subtle_link>
+        </:col>
+
+        <:col :let={source} label="Size" sort_key="media_size_bytes">
+          <.readable_filesize byte_size={source.media_size_bytes} />
+        </:col>
+
+        <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="truncate max-w-xs">
+          <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
+        </:col>
+
+        <:col :let={source} label="Enabled?" sort_key="enabled">
+          <.live_component
+            module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+            source={source}
+            id={"source_#{source.id}_enabled"}
+          />
+        </:col>
+
+        <:col :let={source} label="" class="align-middle">
+          <div class="flex h-full items-center justify-center">
+            <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+            <.icon_link
+              href={~p"/sources/#{source.id}"}
+              icon="hero-trash"
+              method="delete"
+              data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
+              aria-label={"Delete #{source.custom_name}"}
+              title="Delete source"
+              class="mx-1 hover:text-theme-error"
+            />
+          </div>
+        </:col>
+      </.table>
+
+      <section class="my-5 flex justify-center">
+        <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
+      </section>
+    </div>
+  </div>
+
+  <div :if={@view_mode == :grid}>
+    <div
+      id="source-poster-grid"
+      data-view="poster-grid"
+      class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+    >
+      <article
+        :for={source <- @sources}
+        id={"source-card-#{source.id}"}
+        data-source-id={source.id}
+        class="theme-surface-accent group relative overflow-hidden transition hover:border-theme-primary/70 hover:shadow-m3-2 focus-within:ring-2 focus-within:ring-theme-primary focus-within:ring-offset-2 focus-within:ring-offset-theme-bg"
+      >
+        <.link
+          href={~p"/sources/#{source.id}"}
+          class="absolute inset-0 z-0 rounded-m3-lg focus-visible:ring-2 focus-visible:ring-theme-primary focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg"
+          aria-label={"Open source #{source.custom_name}"}
+        >
+          <span class="sr-only">Open source {source.custom_name}</span>
+        </.link>
+
+        <div class="relative z-10 pointer-events-none flex h-full flex-col">
+          <div
+            x-data="{ image_loaded: false }"
+            class="relative aspect-[16/10] overflow-hidden bg-theme-surface-4"
+          >
+            <div
+              x-show="!image_loaded"
+              class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-theme-primary-container/30 p-4 text-center text-theme-on-primary-container"
+              data-artwork-fallback
+            >
+              <span class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-theme-primary/20 text-xl font-bold">
+                {source_initials(source)}
+              </span>
+              <span class="text-sm font-medium">Artwork unavailable</span>
+            </div>
+            <img
+              src={source_poster_url(source)}
+              alt={"Artwork for #{source.custom_name}"}
+              class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              x-on:load="image_loaded = true"
+              x-on:error="image_loaded = false; $event.target.classList.add('hidden')"
+            />
+          </div>
+
+          <div class="flex flex-1 flex-col gap-4 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="break-words text-base font-semibold text-theme-on-surface">{source.custom_name}</h3>
+                <p class="mt-1 truncate text-sm text-theme-on-surface-muted">{source.media_profile.name}</p>
+              </div>
+              <div class="pointer-events-auto shrink-0">
+                <.live_component
+                  module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+                  source={source}
+                  id={"source_#{source.id}_enabled_grid"}
+                />
               </div>
             </div>
 
-            <div class="ml-auto flex shrink-0 items-center gap-1.5 self-center">
-              <.form
-                for={%{}}
-                as={:start_source}
-                action={~p"/sources/#{source.id}/start_all"}
-                method="post"
-                x-data="{ submitting: false }"
-                x-on:submit="submitting = true"
+            <div class="flex items-center justify-between gap-2 text-sm">
+              <PinchflatWeb.Sources.SourceHTML.collection_type_badge collection_type={source.collection_type} />
+              <span
+                class={if(source.enabled, do: "theme-status-success", else: "theme-status-warning")}
+                data-monitored-state
               >
-                <input type="hidden" name="return_to" value={~p"/sources"} />
-                <.icon_button
-                  icon_name="hero-play-solid"
-                  variant="primary"
-                  type="submit"
-                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                  icon_class="h-4 w-4"
-                  title="Start all"
-                  aria-label="Start all"
-                  data-confirm={"Start downloads for #{source.custom_name}?"}
-                  x-bind:disabled="submitting"
-                />
-              </.form>
+                {if source.enabled, do: "Monitored", else: "Not monitored"}
+              </span>
+            </div>
 
-              <.form
-                for={%{}}
-                as={:pause_source}
-                action={~p"/sources/#{source.id}/pause_all"}
-                method="post"
-                x-data="{ submitting: false }"
-                x-on:submit="submitting = true"
-              >
-                <input type="hidden" name="return_to" value={~p"/sources"} />
-                <.icon_button
-                  icon_name="hero-pause-solid"
-                  variant="warning"
-                  type="submit"
-                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                  icon_class="h-4 w-4"
-                  title="Pause all"
-                  aria-label="Pause all"
-                  data-confirm={"Pause downloads for #{source.custom_name}?"}
-                  x-bind:disabled="submitting"
-                />
-              </.form>
+            <dl class="grid grid-cols-2 gap-3 text-sm">
+              <div class="rounded-m3-sm bg-theme-surface-2/70 p-3">
+                <dt class="text-theme-on-surface-muted">Downloaded</dt>
+                <dd class="mt-1 font-semibold text-theme-on-surface">
+                  <.localized_number number={source.downloaded_count} />
+                </dd>
+              </div>
+              <div class="rounded-m3-sm bg-theme-surface-2/70 p-3">
+                <dt class="text-theme-on-surface-muted">Pending</dt>
+                <dd class="mt-1 font-semibold text-theme-on-surface">
+                  <.localized_number number={source.pending_count} />
+                </dd>
+              </div>
+            </dl>
 
-              <.form
-                for={%{}}
-                as={:stop_source}
-                action={~p"/sources/#{source.id}/stop_all"}
-                method="post"
-                x-data="{ submitting: false }"
-                x-on:submit="submitting = true"
+            <% progress = source_progress(source) %>
+            <div class="mt-auto space-y-2" data-progress-state={progress.state}>
+              <div class="flex items-center justify-between gap-3 text-xs">
+                <span class="text-theme-on-surface-muted">Download progress</span>
+                <span class="text-right text-theme-on-surface-muted">{progress.label}</span>
+              </div>
+              <div
+                :if={progress.state == :known}
+                class="h-2 overflow-hidden rounded-full bg-theme-surface-4"
+                role="progressbar"
+                aria-label={"Download progress for #{source.custom_name}"}
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={progress.percent}
+                aria-valuetext={progress.label}
               >
-                <input type="hidden" name="return_to" value={~p"/sources"} />
-                <.icon_button
-                  icon_name="hero-stop-solid"
-                  variant="danger-solid"
-                  type="submit"
-                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                  icon_class="h-4 w-4"
-                  title="Stop all"
-                  aria-label="Stop all"
-                  data-confirm={"Stop downloads for #{source.custom_name}?"}
-                  x-bind:disabled="submitting"
-                />
-              </.form>
+                <div class="h-full rounded-full bg-theme-primary transition-all" style={"width: #{progress.percent}%"}>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </:col>
+      </article>
+    </div>
 
-      <:col :let={source} label="Type" sort_key="collection_type">
-        <PinchflatWeb.Sources.SourceHTML.collection_type_badge collection_type={source.collection_type} />
-      </:col>
-
-      <:col :let={source} label="Pending" sort_key="pending_count">
-        <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
-          <.localized_number number={source.pending_count} />
-        </.subtle_link>
-      </:col>
-
-      <:col :let={source} label="Downloaded" sort_key="downloaded_count">
-        <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
-          <.localized_number number={source.downloaded_count} />
-        </.subtle_link>
-      </:col>
-
-      <:col :let={source} label="Size" sort_key="media_size_bytes">
-        <.readable_filesize byte_size={source.media_size_bytes} />
-      </:col>
-
-      <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="truncate max-w-xs">
-        <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
-      </:col>
-
-      <:col :let={source} label="Enabled?" sort_key="enabled">
-        <.live_component
-          module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-          source={source}
-          id={"source_#{source.id}_enabled"}
-        />
-      </:col>
-
-      <:col :let={source} label="" class="align-middle">
-        <div class="flex h-full items-center justify-center">
-          <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
-          <.icon_link
-            href={~p"/sources/#{source.id}"}
-            icon="hero-trash"
-            method="delete"
-            data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
-            aria-label={"Delete #{source.custom_name}"}
-            title="Delete source"
-            class="mx-1 hover:text-theme-error"
-          />
-        </div>
-      </:col>
-    </.table>
-
-    <section class="flex justify-center my-5">
+    <section class="my-5 flex justify-center">
       <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
     </section>
   </div>
