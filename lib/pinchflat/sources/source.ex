@@ -8,11 +8,11 @@ defmodule Pinchflat.Sources.Source do
   import Pinchflat.Utils.ChangesetUtils
 
   alias __MODULE__
+  alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Metadata.SourceMetadata
+  alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Repo
   alias Pinchflat.Tasks.Task
-  alias Pinchflat.Media.MediaItem
-  alias Pinchflat.Profiles.MediaProfile
-  alias Pinchflat.Metadata.SourceMetadata
 
   @player_client_options [
     {"Web", :web},
@@ -155,7 +155,7 @@ defmodule Pinchflat.Sources.Source do
     has_one :metadata, SourceMetadata, on_replace: :update
 
     has_many :tasks, Task
-    has_many :media_items, MediaItem, foreign_key: :source_id
+    has_many :media_items, MediaItem, foreign_key: :source_id, preload_order: [asc: :id]
 
     timestamps(type: :utc_datetime)
   end
@@ -357,13 +357,21 @@ defmodule Pinchflat.Sources.Source do
   end
 
   defp validate_title_regex(%{changes: %{title_filter_regex: regex}} = changeset) when is_binary(regex) do
-    case Ecto.Adapters.SQL.query(Repo, "SELECT regexp_like('', ?)", [regex]) do
+    case validate_regex(regex) do
       {:ok, _} -> changeset
       _ -> add_error(changeset, :title_filter_regex, "is invalid")
     end
   end
 
   defp validate_title_regex(changeset), do: changeset
+
+  defp validate_regex(regex) do
+    if Pinchflat.Database.postgres?() do
+      Repo.query("SELECT '' ~ $1", [regex])
+    else
+      Repo.query("SELECT regexp_like('', ?)", [regex])
+    end
+  end
 
   # An indexing cutoff after the download cutoff would stop indexing before
   # reaching media the download cutoff still allows — that media would never be

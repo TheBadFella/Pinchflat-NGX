@@ -15,6 +15,7 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnosticsTest do
       assert stats.total_bytes == stats.main_file_bytes + stats.wal_file_bytes + stats.shm_file_bytes
     end
 
+    @tag :sqlite_only
     test "returns page-level statistics" do
       stats = DatabaseDiagnostics.get_database_stats()
 
@@ -23,6 +24,7 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnosticsTest do
       assert stats.reclaimable_bytes == stats.freelist_count * stats.page_size
     end
 
+    @tag :sqlite_only
     test "returns the journal mode" do
       assert DatabaseDiagnostics.get_database_stats().journal_mode in ["wal", "delete", "truncate", "memory"]
     end
@@ -62,6 +64,7 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnosticsTest do
       assert DatabaseDiagnostics.latest_maintenance_job() == nil
     end
 
+    @tag :sqlite_only
     test "returns the most recent maintenance job" do
       {:ok, job} = DatabaseMaintenanceWorker.kickoff()
 
@@ -70,6 +73,8 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnosticsTest do
   end
 
   describe "run_integrity_check/1" do
+    @describetag :sqlite_only
+
     test "reports no findings for a healthy database in quick mode" do
       assert {:ok, []} = DatabaseDiagnostics.run_integrity_check(:quick)
     end

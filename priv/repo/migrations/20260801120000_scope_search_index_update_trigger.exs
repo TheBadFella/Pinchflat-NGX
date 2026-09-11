@@ -12,6 +12,16 @@ defmodule Pinchflat.Repo.Migrations.ScopeSearchIndexUpdateTrigger do
   # not that its value changed (upserts re-assign every column), so the WHEN
   # clause does the real work. IS NOT is SQLite's null-safe inequality.
   def up do
+    if Pinchflat.Database.postgres?(), do: scope_postgres_trigger(), else: scope_sqlite_trigger()
+  end
+
+  def down do
+    if Pinchflat.Database.postgres?(),
+      do: restore_postgres_trigger(),
+      else: restore_sqlite_trigger()
+  end
+
+  defp scope_sqlite_trigger do
     execute "DROP TRIGGER IF EXISTS media_items_search_index_update;"
 
     execute """
@@ -28,7 +38,7 @@ defmodule Pinchflat.Repo.Migrations.ScopeSearchIndexUpdateTrigger do
     """
   end
 
-  def down do
+  defp restore_sqlite_trigger do
     execute "DROP TRIGGER IF EXISTS media_items_search_index_update;"
 
     execute """
@@ -39,6 +49,26 @@ defmodule Pinchflat.Repo.Migrations.ScopeSearchIndexUpdateTrigger do
         WHERE
           rowid = old.id;
       END;
+    """
+  end
+
+  defp scope_postgres_trigger do
+    execute "DROP TRIGGER IF EXISTS media_items_search_vector_update ON media_items;"
+
+    execute """
+      CREATE TRIGGER media_items_search_vector_update
+      BEFORE INSERT OR UPDATE OF title, description ON media_items
+      FOR EACH ROW EXECUTE FUNCTION media_items_search_vector_trigger();
+    """
+  end
+
+  defp restore_postgres_trigger do
+    execute "DROP TRIGGER IF EXISTS media_items_search_vector_update ON media_items;"
+
+    execute """
+      CREATE TRIGGER media_items_search_vector_update
+      BEFORE INSERT OR UPDATE ON media_items
+      FOR EACH ROW EXECUTE FUNCTION media_items_search_vector_trigger();
     """
   end
 end

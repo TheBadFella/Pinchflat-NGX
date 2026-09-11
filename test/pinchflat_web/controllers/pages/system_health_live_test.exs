@@ -19,8 +19,12 @@ defmodule PinchflatWeb.Pages.SystemHealthLiveTest do
       {:ok, _view, html} = live_isolated(conn, SystemHealthLive, session: %{})
 
       assert html =~ "Size"
-      assert html =~ "WAL Size"
-      assert html =~ "Page Count"
+      assert html =~ if(Pinchflat.Database.sqlite?(), do: "SQLite", else: "PostgreSQL")
+
+      if Pinchflat.Database.sqlite?() do
+        assert html =~ "WAL Size"
+        assert html =~ "Page Count"
+      end
     end
 
     test "shows queue stats", %{conn: conn} do

@@ -1,0 +1,37 @@
+name: pinchyt-postgres
+
+services:
+  phx:
+    build:
+      context: ..
+      dockerfile: docker/dev.Dockerfile
+      args:
+        DATABASE_ADAPTER: postgres
+    environment:
+      DATABASE_ADAPTER: postgres
+      DATABASE_URL: ecto://postgres:postgres@postgres/pinchflat_test
+      MIX_ENV: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - '..:/app'
+      - '/app/deps'
+      - '/app/_build'
+    ports:
+      - '4008:4008'
+    command: tail -F /dev/null
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pinchflat_test
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d pinchflat_test']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    tmpfs:
+      - /var/lib/postgresql/data

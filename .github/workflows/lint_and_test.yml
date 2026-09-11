@@ -13,12 +13,17 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build, Lint, and Test
+    name: Build, Lint, and Test (${{ matrix.database }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: "! contains(toJSON(github.event.commits.*.message), '[skip ci]')"
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
     env:
-      COMPOSE_FILE: ./docker/docker-compose.ci.yml
+      COMPOSE_FILE: ${{ matrix.database == 'postgres' && './docker/docker-compose.postgres.ci.yml' || './docker/docker-compose.ci.yml' }}
+      DATABASE_ADAPTER: ${{ matrix.database }}
       MIX_ENV: test
 
     steps:
@@ -37,8 +42,9 @@ jobs:
           context: .
           file: ./docker/dev.Dockerfile
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: DATABASE_ADAPTER=${{ matrix.database }}
+          cache-from: type=gha,scope=test-${{ matrix.database }}
+          cache-to: type=gha,scope=test-${{ matrix.database }},mode=max
 
       - name: Run Docker image
         run: docker compose up --detach
@@ -59,6 +65,47 @@ jobs:
 
       - name: Run code checks
         run: docker compose exec -T phx mix check --no-fix --no-retry
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  postgres-schema-migrations:
+    name: PostgreSQL schema migration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: "! contains(toJSON(github.event.commits.*.message), '[skip ci]')"
+    env:
+      COMPOSE_FILE: ./docker/docker-compose.postgres.migrations.yml
+      DATABASE_ADAPTER: postgres
+      MIX_ENV: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build docker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./docker/dev.Dockerfile
+          load: true
+          build-args: DATABASE_ADAPTER=postgres
+
+      - name: Run Docker image
+        run: docker compose up --detach
+
+      - name: Install Elixir dependencies
+        run: docker compose exec -T phx mix deps.get
+
+      - name: Run isolated schema migration tests
+        run: >-
+          docker compose exec -T phx mix test --include migration_schema
+          test/pinchflat/database/channel_discovery_migration_postgres_test.exs
+          test/pinchflat/database/upload_date_index_migration_postgres_test.exs
 
       - name: Cleanup
         if: always()

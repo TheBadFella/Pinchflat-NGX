@@ -31,17 +31,19 @@ defmodule Pinchflat.Repo.Migrations.SplitSponsorblockCategoriesByAction do
       add :sponsorblock_categories, {:array, :string}, default: []
     end
 
+    array_length = if Pinchflat.Database.postgres?(), do: "cardinality", else: "json_array_length"
+
     # Remove takes precedence over mark when collapsing back to a single behaviour
     execute """
     UPDATE media_profiles
     SET sponsorblock_behaviour = 'mark', sponsorblock_categories = sponsorblock_mark_categories
-    WHERE json_array_length(sponsorblock_mark_categories) > 0
+    WHERE #{array_length}(sponsorblock_mark_categories) > 0
     """
 
     execute """
     UPDATE media_profiles
     SET sponsorblock_behaviour = 'remove', sponsorblock_categories = sponsorblock_remove_categories
-    WHERE json_array_length(sponsorblock_remove_categories) > 0
+    WHERE #{array_length}(sponsorblock_remove_categories) > 0
     """
 
     alter table(:media_profiles) do

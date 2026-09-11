@@ -1,6 +1,8 @@
 import Config
 require Logger
 
+database_adapter = Application.get_env(:pinchflat, :database_adapter, :sqlite)
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -116,10 +118,12 @@ system_arch =
     true -> "unknown"
   end
 
-config :pinchflat, Pinchflat.Repo,
-  load_extensions: [
-    Path.join([:code.priv_dir(:pinchflat), "repo", "extensions", "sqlean-linux-#{system_arch}", "sqlean"])
-  ]
+if database_adapter == :sqlite do
+  config :pinchflat, Pinchflat.Repo,
+    load_extensions: [
+      Path.join([:code.priv_dir(:pinchflat), "repo", "extensions", "sqlean-linux-#{system_arch}", "sqlean"])
+    ]
+end
 
 # Some users may want to increase the number of workers that use yt-dlp to improve speeds
 # Others may want to decrease the number of these workers to lessen the chance of an IP ban.
@@ -147,6 +151,25 @@ config :pinchflat, reconcile_backfill_concurrency: max(yt_dlp_worker_count, 1)
 # breaks something
 %{hour: current_hour, minute: current_minute} = DateTime.utc_now()
 
+cron_jobs = [
+  {"#{current_minute} #{current_hour} * * *", Pinchflat.YtDlp.UpdateWorker},
+  {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
+  {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker},
+  # Discovery is opt-in in the database. The worker cancels this cheap
+  # scheduled job while disabled, so a setting change does not require a
+  # runtime config reload or a scheduler restart.
+  {"0 3 * * *", Pinchflat.Discovery.Worker}
+]
+
+cron_jobs =
+  if database_adapter == :sqlite do
+    # Monthly, after retention (1AM) and quality upgrades (2AM) have had a
+    # chance to delete records whose space the VACUUM can then reclaim.
+    cron_jobs ++ [{"0 3 1 * *", Pinchflat.Diagnostics.DatabaseMaintenanceWorker}]
+  else
+    cron_jobs
+  end
+
 config :pinchflat, Oban,
   queues: [
     default: 10,
@@ -164,26 +187,13 @@ config :pinchflat, Oban,
     {Oban.Plugins.Pruner, max_age: 30 * 24 * 60 * 60},
     # Rescue orphaned jobs stuck in "executing" state after crash/restart
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
-    {Oban.Plugins.Cron,
-     crontab: [
-       {"#{current_minute} #{current_hour} * * *", Pinchflat.YtDlp.UpdateWorker},
-       {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
-       {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker},
-       # Discovery is opt-in in the database. The worker cancels this cheap
-       # scheduled job while disabled, so a setting change does not require a
-       # runtime config reload or a scheduler restart.
-       {"0 3 * * *", Pinchflat.Discovery.Worker},
-       # Monthly, after retention (1AM) and quality upgrades (2AM) have had a
-       # chance to delete records whose space the VACUUM can then reclaim
-       {"0 3 1 * *", Pinchflat.Diagnostics.DatabaseMaintenanceWorker}
-     ]}
+    {Oban.Plugins.Cron, crontab: cron_jobs}
   ]
 
 if config_env() == :prod do
   # Various paths. These ones shouldn't be tweaked if running in Docker
   media_path = System.get_env("MEDIA_PATH", "/downloads")
   config_path = System.get_env("CONFIG_PATH", "/config")
-  db_path = System.get_env("DATABASE_PATH", Path.join([config_path, "db", "pinchflat.db"]))
   log_path = System.get_env("LOG_PATH", Path.join([config_path, "logs", "pinchflat.log"]))
   metadata_path = System.get_env("METADATA_PATH", Path.join([config_path, "metadata"]))
   extras_path = System.get_env("EXTRAS_PATH", Path.join([config_path, "extras"]))
@@ -192,8 +202,6 @@ if config_env() == :prod do
   tz_data_path = System.get_env("TZ_DATA_PATH", Path.join([extras_path, "elixir_tz_data"]))
   # For running PF as a podcast host on self-hosted environments
   expose_feed_endpoints = String.length(System.get_env("EXPOSE_FEED_ENDPOINTS", "")) > 0
-  # For testing alternate journal modes (see issue #137)
-  journal_mode = String.to_existing_atom(System.get_env("JOURNAL_MODE", "wal"))
   # For running PF in a subdirectory via a reverse proxy
   base_route_path = System.get_env("BASE_ROUTE_PATH", "/")
   enable_ipv6 = String.length(System.get_env("ENABLE_IPV6", "")) > 0
@@ -217,15 +225,31 @@ if config_env() == :prod do
 
   config :tzdata, :data_dir, tz_data_path
 
-  # WAL lets readers run concurrently, so a larger pool mainly buys headroom for
-  # the web UI / other jobs while a long op (reconcile, compaction) holds
-  # connections. Bump this if you see "connection not available" under load.
   {db_pool_size, _} = Integer.parse(System.get_env("DATABASE_POOL_SIZE", "10"))
 
-  config :pinchflat, Pinchflat.Repo,
-    database: db_path,
-    journal_mode: journal_mode,
-    pool_size: db_pool_size
+  case database_adapter do
+    :sqlite ->
+      db_path = System.get_env("DATABASE_PATH", Path.join([config_path, "db", "pinchflat.db"]))
+      # For testing alternate journal modes (see issue #137)
+      journal_mode = String.to_existing_atom(System.get_env("JOURNAL_MODE", "wal"))
+
+      # WAL lets readers run concurrently, so a larger pool mainly buys headroom
+      # for the web UI and other jobs while a long operation holds connections.
+      config :pinchflat, Pinchflat.Repo,
+        database: db_path,
+        journal_mode: journal_mode,
+        pool_size: db_pool_size
+
+    :postgres ->
+      database_url =
+        System.get_env("DATABASE_URL") ||
+          raise "DATABASE_URL is required by the PostgreSQL image"
+
+      config :pinchflat, Pinchflat.Repo,
+        url: database_url,
+        pool_size: db_pool_size,
+        socket_options: if(enable_ipv6, do: [:inet6], else: [])
+  end
 
   config :pinchflat, Pinchflat.PromEx, disabled: !enable_prometheus
 

@@ -5,6 +5,8 @@ defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorkerVacuumTest do
   use ExUnit.Case, async: false
   use Oban.Testing, repo: Pinchflat.Repo, engine: Oban.Engines.Lite
 
+  @moduletag :sqlite_only
+
   import Mox
 
   alias Pinchflat.Diagnostics.DatabaseDiagnostics

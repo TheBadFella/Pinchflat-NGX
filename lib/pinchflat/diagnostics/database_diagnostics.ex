@@ -1,9 +1,8 @@
 defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
   @moduledoc """
-  Insight into the SQLite database itself: on-disk size (including the WAL/SHM
-  sidecar files), space reclaimable by VACUUM, row counts for key tables, the
-  results of integrity checks, and the status of the most recent database
-  maintenance run.
+  Insight into the configured database: size, row counts for key tables, and
+  the status of the most recent database maintenance run. SQLite builds also
+  report WAL, reclaimable-space, and integrity-check details.
 
   Powers the "Database" section of the diagnostics page.
   """
@@ -31,6 +30,10 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
   Returns map()
   """
   def get_database_stats do
+    if Pinchflat.Database.postgres?(), do: postgres_database_stats(), else: sqlite_database_stats()
+  end
+
+  defp sqlite_database_stats do
     main_file_bytes = file_size(database_filepath())
     wal_file_bytes = file_size(database_filepath() <> "-wal")
     shm_file_bytes = file_size(database_filepath() <> "-shm")
@@ -44,7 +47,25 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
       page_count: pragma_number("page_count"),
       freelist_count: pragma_number("freelist_count"),
       reclaimable_bytes: pragma_number("freelist_count") * pragma_number("page_size"),
-      journal_mode: to_string(pragma_value("journal_mode"))
+      journal_mode: to_string(pragma_value("journal_mode")),
+      adapter: :sqlite
+    }
+  end
+
+  defp postgres_database_stats do
+    %{rows: [[database_bytes]]} = Repo.query!("SELECT pg_database_size(current_database())")
+
+    %{
+      main_file_bytes: database_bytes,
+      wal_file_bytes: 0,
+      shm_file_bytes: 0,
+      total_bytes: database_bytes,
+      page_size: 0,
+      page_count: 0,
+      freelist_count: 0,
+      reclaimable_bytes: 0,
+      journal_mode: nil,
+      adapter: :postgres
     }
   end
 
@@ -97,6 +118,14 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
   Returns {:ok, [binary()]} | {:error, binary()}
   """
   def run_integrity_check(mode) when mode in [:quick, :full] do
+    if Pinchflat.Database.sqlite?() do
+      run_sqlite_integrity_check(mode)
+    else
+      {:error, "Integrity checks from the diagnostics page are only available for SQLite builds"}
+    end
+  end
+
+  defp run_sqlite_integrity_check(mode) do
     pragma = if mode == :quick, do: "quick_check", else: "integrity_check"
 
     case Repo.query("PRAGMA #{pragma}", [], timeout: @integrity_check_timeout) do
@@ -140,12 +169,14 @@ defmodule Pinchflat.Diagnostics.DatabaseDiagnostics do
 
   Returns non_neg_integer()
   """
-  def file_size(filepath) do
+  def file_size(filepath) when is_binary(filepath) do
     case File.stat(filepath) do
       {:ok, %{size: size}} -> size
       _ -> 0
     end
   end
+
+  def file_size(_filepath), do: 0
 
   @doc """
   Formats a byte count as a human-readable binary-unit string.

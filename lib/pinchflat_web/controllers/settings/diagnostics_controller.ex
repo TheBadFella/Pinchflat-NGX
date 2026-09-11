@@ -1,9 +1,9 @@
 defmodule PinchflatWeb.Settings.DiagnosticsController do
   use PinchflatWeb, :controller
 
-  alias Pinchflat.Settings
-  alias Pinchflat.Diagnostics.QueueDiagnostics
   alias Pinchflat.Diagnostics.DatabaseMaintenanceWorker
+  alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Settings
   alias Pinchflat.YtDlp.PoTokenProvider
 
   def show(conn, _params) do
@@ -91,7 +91,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsController do
 
       {:error, _changeset} ->
         conn
-        |> put_flash(:error, "Could not queue the database compaction job.")
+        |> put_flash(:error, "Database compaction is only available for SQLite builds.")
         |> redirect(to: ~p"/diagnostics")
     end
   end

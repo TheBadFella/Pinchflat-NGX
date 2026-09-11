@@ -90,7 +90,7 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
                  :skip_download,
                  :write_thumbnail,
                  convert_thumbnail: "jpg",
-                 output: "/tmp/test/metadata/media_items/1/thumbnail.%(ext)s"
+                 output: "/tmp/test/metadata/media_items/#{media_item.id}/thumbnail.%(ext)s"
                ]
 
         {:ok, ""}

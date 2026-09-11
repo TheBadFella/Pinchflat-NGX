@@ -1,10 +1,12 @@
 defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   use PinchflatWeb, :html
 
-  alias Pinchflat.Settings
-  alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Database
   alias Pinchflat.Diagnostics.DatabaseDiagnostics
+  alias Pinchflat.Diagnostics.QueueDiagnostics
+  alias Pinchflat.Settings
   alias Pinchflat.YtDlp.PoTokenProvider
+  alias Pinchflat.YtDlp.UpdateManager
 
   embed_templates "diagnostics_html/*"
 
@@ -47,6 +49,8 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   def scheduled_compaction_enabled? do
     Settings.get!(:database_maintenance_enabled)
   end
+
+  def sqlite_database?, do: Pinchflat.Database.sqlite?()
 
   def format_bytes(bytes) do
     DatabaseDiagnostics.format_bytes(bytes)
@@ -102,8 +106,9 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   def diagnostic_info_string do
     """
     - App Version: #{Application.spec(:pinchflat)[:vsn]}
+    - Database: #{Database.adapter()}
     - yt-dlp Version: #{Settings.get!(:yt_dlp_version)}
-    - yt-dlp Update Behavior: #{Pinchflat.YtDlp.UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
+    - yt-dlp Update Behavior: #{UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
     - Apprise Version: #{Settings.get!(:apprise_version)}
     - System Architecture: #{to_string(:erlang.system_info(:system_architecture))}
     - Timezone: #{Application.get_env(:pinchflat, :timezone)}

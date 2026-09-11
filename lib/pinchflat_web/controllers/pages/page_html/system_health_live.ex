@@ -8,6 +8,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
   import Ecto.Query, warn: false
 
+  alias Pinchflat.Diagnostics.DatabaseDiagnostics
   alias Pinchflat.Repo
   alias Pinchflat.Sources.Source
   alias PinchflatWeb.CustomComponents.TextComponents
@@ -27,9 +28,14 @@ defmodule Pinchflat.Pages.SystemHealthLive do
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <.health_card title="Database">
           <div class="space-y-2">
+            <.health_row label="Adapter" value={database_adapter_name(@db_stats.adapter)} />
             <.health_row label="Size" value={format_bytes(@db_stats.size)} />
-            <.health_row label="WAL Size" value={format_bytes(@db_stats.wal_size)} />
-            <.health_row label="Page Count" value={format_number(@db_stats.page_count)} />
+            <.health_row :if={@db_stats.adapter == :sqlite} label="WAL Size" value={format_bytes(@db_stats.wal_size)} />
+            <.health_row
+              :if={@db_stats.adapter == :sqlite}
+              label="Page Count"
+              value={format_number(@db_stats.page_count)}
+            />
           </div>
         </.health_card>
 
@@ -195,31 +201,18 @@ defmodule Pinchflat.Pages.SystemHealthLive do
   end
 
   defp fetch_db_stats do
-    db_path = Application.get_env(:pinchflat, Pinchflat.Repo)[:database]
-    wal_path = db_path <> "-wal"
-
-    db_size = safe_file_size(db_path)
-    wal_size = safe_file_size(wal_path)
-
-    page_count =
-      case Repo.query("SELECT page_count FROM pragma_page_count()") do
-        {:ok, %{rows: [[count]]}} -> count
-        _ -> 0
-      end
+    stats = DatabaseDiagnostics.get_database_stats()
 
     %{
-      size: db_size,
-      wal_size: wal_size,
-      page_count: page_count
+      size: stats.total_bytes,
+      wal_size: stats.wal_file_bytes,
+      page_count: stats.page_count,
+      adapter: stats.adapter
     }
   end
 
-  defp safe_file_size(path) do
-    case File.stat(path) do
-      {:ok, %{size: size}} -> size
-      _ -> 0
-    end
-  end
+  defp database_adapter_name(:postgres), do: "PostgreSQL"
+  defp database_adapter_name(:sqlite), do: "SQLite"
 
   defp fetch_queue_stats do
     cutoff_24h = DateTime.utc_now() |> DateTime.add(-24, :hour)

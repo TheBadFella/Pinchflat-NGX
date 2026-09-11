@@ -15,7 +15,13 @@ Application.put_env(:pinchflat, :youtube_api, YoutubeApiMock)
 
 Mox.defmock(DiskSpaceCheckerMock, for: Pinchflat.Diagnostics.DiskSpaceBehaviour)
 Application.put_env(:pinchflat, :disk_space_checker, DiskSpaceCheckerMock)
-ExUnit.start()
+# These tests temporarily change PostgreSQL column types. Keep them out of the
+# normal suite so cached Postgrex plans cannot observe a changed result type;
+# the dedicated PostgreSQL migration job opts back in with --include.
+adapter_exclude = if Pinchflat.Database.postgres?(), do: [sqlite_only: true], else: [postgres_only: true]
+exclude = [migration_schema: true] ++ adapter_exclude
+
+ExUnit.start(exclude: exclude)
 Ecto.Adapters.SQL.Sandbox.mode(Pinchflat.Repo, :manual)
 Faker.start()
 

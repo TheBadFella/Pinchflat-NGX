@@ -22,7 +22,12 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
       assert html_response(conn, 200) =~ "PO-token Provider"
       assert html_response(conn, 200) =~ "Disabled"
       assert html_response(conn, 200) =~ "flex-col gap-3 sm:flex-row"
-      assert html_response(conn, 200) =~ "flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
+
+      if Pinchflat.Database.sqlite?() do
+        assert html_response(conn, 200) =~ "flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
+      else
+        assert html_response(conn, 200) =~ "PostgreSQL"
+      end
     end
 
     test "shows a healthy configured provider without exposing response data", %{conn: conn} do
@@ -142,6 +147,8 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
   end
 
   describe "vacuum_database" do
+    @describetag :sqlite_only
+
     test "enqueues a maintenance job and redirects", %{conn: conn} do
       conn = post(conn, ~p"/diagnostics/vacuum_database")
 
@@ -161,6 +168,8 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
   end
 
   describe "toggle_scheduled_compaction" do
+    @describetag :sqlite_only
+
     test "turns scheduled compaction on", %{conn: conn} do
       conn = post(conn, ~p"/diagnostics/toggle_scheduled_compaction")
 

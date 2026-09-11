@@ -10,7 +10,7 @@ defmodule Pinchflat.Repo.Migrations.AddDownloadErrorStateToMediaItems do
     # Existing prevention flags have no reliable provenance. Treating them as
     # manual preserves the existing blocked behavior without inventing a policy
     # or error cause from historical data.
-    execute "UPDATE media_items SET download_prevented_reason = 'manual' WHERE prevent_download = 1"
+    execute "UPDATE media_items SET download_prevented_reason = 'manual' WHERE prevent_download = TRUE"
   end
 
   def down do

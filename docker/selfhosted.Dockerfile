@@ -12,6 +12,8 @@ FROM node:24-bookworm-slim AS node
 FROM ${BUILDER_IMAGE} AS builder
 
 ARG TARGETPLATFORM
+ARG DATABASE_ADAPTER=sqlite
+ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
 RUN echo "Building for ${TARGETPLATFORM:?}"
 
 COPY --from=node /usr/local/ /usr/local/
@@ -93,6 +95,7 @@ ARG TARGETPLATFORM
 ARG PORT=8945
 ARG BGUTIL_PLUGIN_VERSION=2.0.0
 ARG YT_DLP_CACHE_BUST=""
+ARG DATABASE_ADAPTER=sqlite
 
 COPY --from=builder ./usr/local/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder ./usr/local/bin/ffprobe /usr/bin/ffprobe
@@ -174,6 +177,7 @@ RUN curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/Brainicism/bg
 
 # set runner ENV
 ENV MIX_ENV="prod"
+ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
 ENV PORT=${PORT}
 ENV RUN_CONTEXT="selfhosted"
 ENV UMASK=022
