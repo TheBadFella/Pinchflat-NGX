@@ -57,6 +57,46 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def collection_type_icon(_), do: "hero-question-mark-circle"
 
   @doc """
+  Renders the compact media statistics summary shown on a source detail page.
+  """
+  attr :statistics, :map, required: true
+
+  def source_statistics(assigns) do
+    assigns =
+      assign(assigns, :statistics_items, [
+        {:downloaded, "Downloaded", "theme-status-success"},
+        {:pending, "Pending", "theme-status-info"},
+        {:failed, "Failed", "theme-status-error"},
+        {:prevented, "Prevented", "theme-status-warning"},
+        {:unavailable, "Unavailable / Skipped", "text-theme-on-surface-muted"}
+      ])
+
+    ~H"""
+    <section
+      id="source-media-statistics"
+      aria-labelledby="source-media-statistics-title"
+      class="theme-surface-accent mb-6 rounded-m3-lg px-4 py-3 sm:px-5"
+    >
+      <h3 id="source-media-statistics-title" class="sr-only">Source media statistics</h3>
+      <dl class="grid grid-cols-2 divide-x divide-y divide-theme-outline/50 sm:grid-cols-5 sm:divide-y-0">
+        <div
+          :for={{key, label, value_class} <- @statistics_items}
+          class="flex min-w-0 flex-col gap-1 px-3 py-2 first:pl-0 last:pr-0 sm:px-4"
+        >
+          <dt class="truncate text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">{label}</dt>
+          <dd
+            class={["text-xl font-semibold tabular-nums", value_class]}
+            aria-label={"#{label}: #{Map.fetch!(@statistics, key)}"}
+          >
+            <.localized_number number={Map.fetch!(@statistics, key)} />
+          </dd>
+        </div>
+      </dl>
+    </section>
+    """
+  end
+
+  @doc """
   The "why is nothing downloading?" banner. Renders **only the first** blocking
   condition — the most fundamental one, since fixing it may well clear the rest —
   and renders nothing at all when the source is healthy. There is deliberately no

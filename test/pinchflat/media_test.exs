@@ -48,6 +48,132 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "source_media_statistics/1" do
+    test "counts each source media item in one mutually exclusive bucket" do
+      media_profile = media_profile_fixture(%{shorts_behaviour: :exclude})
+      source = source_fixture(%{media_profile_id: media_profile.id})
+
+      _downloaded = media_item_fixture(%{source_id: source.id})
+      _pending = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      _failed =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Network is unreachable"
+        })
+
+      _prevented =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :manual
+        })
+
+      _unavailable =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          unavailable_at: now(),
+          unavailable_reason: "Private video"
+        })
+
+      _filtered =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          short_form_content: true
+        })
+
+      assert Media.source_media_statistics(source) == %{
+               downloaded: 1,
+               pending: 1,
+               failed: 1,
+               prevented: 1,
+               unavailable: 2
+             }
+    end
+
+    test "uses precedence for legacy rows that match multiple predicates" do
+      source = source_fixture()
+
+      _downloaded_wins =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/legacy.mp4",
+          last_error: "old error",
+          prevent_download: true,
+          unavailable_at: now(),
+          culled_at: now()
+        })
+
+      _unavailable_wins =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Video unavailable",
+          prevent_download: true,
+          unavailable_at: now()
+        })
+
+      _failed_wins =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Permanent failure",
+          error_type: :permanent,
+          prevent_download: true,
+          download_prevented_reason: :error
+        })
+
+      assert Media.source_media_statistics(source) == %{
+               downloaded: 1,
+               pending: 0,
+               failed: 1,
+               prevented: 0,
+               unavailable: 1
+             }
+    end
+
+    test "uses a bounded aggregate query set rather than one query per status" do
+      source = source_fixture()
+
+      for _index <- 1..8 do
+        media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      end
+
+      parent = self()
+      handler_id = "source-media-statistics-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:pinchflat, :repo, :query],
+        fn _event, _measurements, metadata, _config ->
+          send(parent, {:source_statistics_query, metadata.query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert %{pending: 8} = Media.source_media_statistics(source)
+
+      queries =
+        Stream.repeatedly(fn ->
+          receive do
+            {:source_statistics_query, query} -> query
+          after
+            0 -> :done
+          end
+        end)
+        |> Enum.take_while(&(&1 != :done))
+
+      assert length(queries) == 2
+    end
+  end
+
   describe "list_upgradeable_media_items/0" do
     setup do
       media_profile = media_profile_fixture(%{redownload_delay_days: 4})

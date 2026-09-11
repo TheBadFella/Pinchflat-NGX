@@ -78,215 +78,253 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </div>
         </div>
       </header>
-      <div class="space-y-4 md:hidden">
-        <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0 flex-1 space-y-2">
-              <div
-                :if={@media_state == "pending"}
-                class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted"
-              >
-                Queue #{Map.get(@queue_positions, media_item.id, "-")}
-              </div>
-              <div class="flex items-start gap-2">
-                <.icon
-                  :if={media_item.last_error}
-                  name="hero-exclamation-circle-solid"
-                  class="theme-status-error mt-0.5 shrink-0"
-                />
-                <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                <div class="min-w-0">
-                  <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
-                    <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
-                      {media_item.title}
-                    </span>
-                  </.subtle_link>
-                </div>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <.icon_button
-                :if={@media_state not in ["downloaded", "failed"]}
-                icon_name="hero-arrow-down-tray"
-                class="h-10 w-10"
-                phx-click="force_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Are you sure you want to force a download of this media?"
-                tooltip="Force Download"
-                tooltip_position="bottom-left"
+      <div :for={group <- @grouped_records} class="space-y-4">
+        <section
+          class="theme-surface-accent rounded-m3-lg"
+          x-data={"{ open: #{group.open?} }"}
+        >
+          <h3>
+            <button
+              type="button"
+              class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-base font-semibold text-theme-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-theme-primary sm:px-5"
+              aria-controls={year_content_id(@media_state, group.year)}
+              aria-expanded={to_string(group.open?)}
+              aria-label={"Toggle #{year_label(group.year)} media"}
+              x-bind:aria-expanded="open.toString()"
+              x-on:click="open = !open"
+            >
+              <span>{year_label(group.year)}</span>
+              <.icon
+                name="hero-chevron-down"
+                class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition"
+                x-bind:class="open ? 'rotate-180' : ''"
+                aria-hidden="true"
               />
-              <.icon_button
-                :if={@media_state == "failed" and media_item.error_type != :permanent}
-                icon_name="hero-arrow-path"
-                class="h-10 w-10"
-                phx-click="retry_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Retry this download now?"
-                tooltip="Retry Now"
-                tooltip_position="bottom-left"
-              />
-              <.icon_button
-                :if={@media_state == "failed" and media_item.error_type == :permanent}
-                icon_name="hero-arrow-path"
-                class="h-10 w-10"
-                phx-click="force_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Force a retry of this permanent failure?"
-                tooltip="Force Retry"
-                tooltip_position="bottom-left"
-              />
-              <.icon_button
-                :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-                icon_name="hero-stop-solid"
-                variant="danger"
-                class="h-10 w-10"
-                phx-click="stop_download"
-                phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
-                phx-value-media-id={media_item.id}
-                data-confirm="Are you sure you want to stop this download?"
-                tooltip="Stop Download"
-                tooltip_position="bottom-left"
-              />
-              <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" />
-            </div>
-          </div>
+            </button>
+          </h3>
 
           <div
-            :if={media_item.last_error}
-            class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
+            id={year_content_id(@media_state, group.year)}
+            class="border-t border-theme-outline/50 px-2 pb-2 pt-2 sm:px-3"
+            x-cloak
+            x-show="open"
           >
-            {media_item.last_error}
+            <div class="space-y-4 md:hidden">
+              <article :for={media_item <- group.records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0 flex-1 space-y-2">
+                    <div
+                      :if={@media_state == "pending"}
+                      class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted"
+                    >
+                      Queue #{Map.get(@queue_positions, media_item.id, "-")}
+                    </div>
+                    <div class="flex items-start gap-2">
+                      <.icon
+                        :if={media_item.last_error}
+                        name="hero-exclamation-circle-solid"
+                        class="theme-status-error mt-0.5 shrink-0"
+                      />
+                      <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                      <div class="min-w-0">
+                        <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                          <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
+                            {media_item.title}
+                          </span>
+                        </.subtle_link>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <.icon_button
+                      :if={@media_state not in ["downloaded", "failed"]}
+                      icon_name="hero-arrow-down-tray"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Are you sure you want to force a download of this media?"
+                      tooltip="Force Download"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type != :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="retry_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Retry this download now?"
+                      tooltip="Retry Now"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type == :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Force a retry of this permanent failure?"
+                      tooltip="Force Retry"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+                      icon_name="hero-stop-solid"
+                      variant="danger"
+                      class="h-10 w-10"
+                      phx-click="stop_download"
+                      phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+                      phx-value-media-id={media_item.id}
+                      data-confirm="Are you sure you want to stop this download?"
+                      tooltip="Stop Download"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" />
+                  </div>
+                </div>
+
+                <div
+                  :if={media_item.last_error}
+                  class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
+                >
+                  {media_item.last_error}
+                </div>
+
+                <dl class="grid grid-cols-1 gap-3 text-sm">
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="text-theme-on-surface-muted">Upload Date</dt>
+                    <dd class="text-right text-theme-on-surface">{upload_date_label(media_item.uploaded_at)}</dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="text-theme-on-surface-muted">Availability</dt>
+                    <dd class="text-right"><.availability_badge availability={media_item.availability} /></dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="text-theme-on-surface-muted">Size / Progress</dt>
+                    <dd class="max-w-[65%] text-right text-theme-on-surface">
+                      <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+                    </dd>
+                  </div>
+                  <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
+                    <dt class="text-theme-on-surface-muted">Status</dt>
+                    <dd class="text-right text-theme-on-surface">
+                      <% status = media_status(media_item) %>
+                      <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
+                        <span class={["flex items-center gap-1.5", status.class]}>
+                          <.icon name={status.icon} class="w-5 h-5 shrink-0" />
+                          <span>{status.label}</span>
+                        </span>
+                      </.tooltip>
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            </div>
+
+            <div class="hidden md:block">
+              <.table rows={group.records}>
+                <:col :let={media_item} :if={@media_state == "pending"} label="#" class="w-16 text-center">
+                  {Map.get(@queue_positions, media_item.id, "-")}
+                </:col>
+
+                <:col :let={media_item} label="Title" class="max-w-sm">
+                  <section class="space-y-2">
+                    <div class="flex items-start space-x-1 gap-2">
+                      <.icon
+                        :if={media_item.last_error}
+                        name="hero-exclamation-circle-solid"
+                        class="theme-status-error shrink-0"
+                      />
+                      <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                      <.icon_button
+                        :if={@media_state not in ["downloaded", "failed"]}
+                        icon_name="hero-arrow-down-tray"
+                        class="h-10 w-10"
+                        phx-click="force_download"
+                        phx-value-media-id={media_item.id}
+                        data-confirm="Are you sure you want to force a download of this media?"
+                        tooltip="Force Download"
+                        tooltip_position="bottom-left"
+                      />
+                      <.icon_button
+                        :if={@media_state == "failed" and media_item.error_type != :permanent}
+                        icon_name="hero-arrow-path"
+                        class="h-10 w-10"
+                        phx-click="retry_download"
+                        phx-value-media-id={media_item.id}
+                        data-confirm="Retry this download now?"
+                        tooltip="Retry Now"
+                        tooltip_position="bottom-left"
+                      />
+                      <.icon_button
+                        :if={@media_state == "failed" and media_item.error_type == :permanent}
+                        icon_name="hero-arrow-path"
+                        class="h-10 w-10"
+                        phx-click="force_download"
+                        phx-value-media-id={media_item.id}
+                        data-confirm="Force a retry of this permanent failure?"
+                        tooltip="Force Retry"
+                        tooltip_position="bottom-left"
+                      />
+                      <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                        <span class="block whitespace-normal break-words">{media_item.title}</span>
+                      </.subtle_link>
+                    </div>
+
+                    <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
+                      {media_item.last_error}
+                    </div>
+                  </section>
+                </:col>
+
+                <:col :let={media_item} :if={@media_state == "other"} label="Status">
+                  <% status = media_status(media_item) %>
+                  <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
+                    <span class={["flex items-center gap-1.5", status.class]}>
+                      <.icon name={status.icon} class="w-5 h-5 shrink-0" />
+                      <span>{status.label}</span>
+                    </span>
+                  </.tooltip>
+                </:col>
+
+                <:col :let={media_item} label="Availability">
+                  <.availability_badge availability={media_item.availability} />
+                </:col>
+
+                <:col :let={media_item} label="Upload Date">{upload_date_label(media_item.uploaded_at)}</:col>
+
+                <:col :let={media_item} label="Size / Progress">
+                  <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+                </:col>
+
+                <:col :let={media_item} label="Action">
+                  <.icon_button
+                    :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+                    icon_name="hero-stop-solid"
+                    variant="danger"
+                    class="h-10 w-10"
+                    phx-click="stop_download"
+                    phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+                    phx-value-media-id={media_item.id}
+                    data-confirm="Are you sure you want to stop this download?"
+                    tooltip="Stop Download"
+                    tooltip_position="bottom-left"
+                  />
+                  <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
+                </:col>
+                <:col :let={media_item} label="" class="align-middle text-right">
+                  <div class="flex justify-end">
+                    <.icon_link
+                      href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"}
+                      icon="hero-pencil-square"
+                      class="mr-4"
+                    />
+                  </div>
+                </:col>
+              </.table>
+            </div>
           </div>
-
-          <dl class="grid grid-cols-1 gap-3 text-sm">
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Upload Date</dt>
-              <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
-            </div>
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Availability</dt>
-              <dd class="text-right"><.availability_badge availability={media_item.availability} /></dd>
-            </div>
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Size / Progress</dt>
-              <dd class="max-w-[65%] text-right text-theme-on-surface">
-                <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
-              </dd>
-            </div>
-            <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Status</dt>
-              <dd class="text-right text-theme-on-surface">
-                <% status = media_status(media_item) %>
-                <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
-                  <span class={["flex items-center gap-1.5", status.class]}>
-                    <.icon name={status.icon} class="w-5 h-5 shrink-0" />
-                    <span>{status.label}</span>
-                  </span>
-                </.tooltip>
-              </dd>
-            </div>
-          </dl>
-        </article>
-      </div>
-
-      <div class="hidden md:block">
-        <.table rows={@records}>
-          <:col :let={media_item} :if={@media_state == "pending"} label="#" class="w-16 text-center">
-            {Map.get(@queue_positions, media_item.id, "-")}
-          </:col>
-
-          <:col :let={media_item} label="Title" class="max-w-sm">
-            <section class="space-y-2">
-              <div class="flex items-start space-x-1 gap-2">
-                <.icon :if={media_item.last_error} name="hero-exclamation-circle-solid" class="theme-status-error shrink-0" />
-                <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                <.icon_button
-                  :if={@media_state not in ["downloaded", "failed"]}
-                  icon_name="hero-arrow-down-tray"
-                  class="h-10 w-10"
-                  phx-click="force_download"
-                  phx-value-media-id={media_item.id}
-                  data-confirm="Are you sure you want to force a download of this media?"
-                  tooltip="Force Download"
-                  tooltip_position="bottom-left"
-                />
-                <.icon_button
-                  :if={@media_state == "failed" and media_item.error_type != :permanent}
-                  icon_name="hero-arrow-path"
-                  class="h-10 w-10"
-                  phx-click="retry_download"
-                  phx-value-media-id={media_item.id}
-                  data-confirm="Retry this download now?"
-                  tooltip="Retry Now"
-                  tooltip_position="bottom-left"
-                />
-                <.icon_button
-                  :if={@media_state == "failed" and media_item.error_type == :permanent}
-                  icon_name="hero-arrow-path"
-                  class="h-10 w-10"
-                  phx-click="force_download"
-                  phx-value-media-id={media_item.id}
-                  data-confirm="Force a retry of this permanent failure?"
-                  tooltip="Force Retry"
-                  tooltip_position="bottom-left"
-                />
-                <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
-                  <span class="block whitespace-normal break-words">{media_item.title}</span>
-                </.subtle_link>
-              </div>
-
-              <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
-                {media_item.last_error}
-              </div>
-            </section>
-          </:col>
-
-          <:col :let={media_item} :if={@media_state == "other"} label="Status">
-            <% status = media_status(media_item) %>
-            <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
-              <span class={["flex items-center gap-1.5", status.class]}>
-                <.icon name={status.icon} class="w-5 h-5 shrink-0" />
-                <span>{status.label}</span>
-              </span>
-            </.tooltip>
-          </:col>
-
-          <:col :let={media_item} label="Availability">
-            <.availability_badge availability={media_item.availability} />
-          </:col>
-
-          <:col :let={media_item} label="Upload Date">{DateTime.to_date(media_item.uploaded_at)}</:col>
-
-          <:col :let={media_item} label="Size / Progress">
-            <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
-          </:col>
-
-          <:col :let={media_item} label="Action">
-            <.icon_button
-              :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-              icon_name="hero-stop-solid"
-              variant="danger"
-              class="h-10 w-10"
-              phx-click="stop_download"
-              phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
-              phx-value-media-id={media_item.id}
-              data-confirm="Are you sure you want to stop this download?"
-              tooltip="Stop Download"
-              tooltip_position="bottom-left"
-            />
-            <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
-          </:col>
-          <:col :let={media_item} label="" class="align-middle text-right">
-            <div class="flex justify-end">
-              <.icon_link
-                href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"}
-                icon="hero-pencil-square"
-                class="mr-4"
-              />
-            </div>
-          </:col>
-        </.table>
+        </section>
       </div>
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
@@ -466,7 +504,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     else
       records =
         fetch_records(base_query, page)
-        |> order_by(desc: :uploaded_at)
+        |> order_by(desc: :uploaded_at, desc: :id)
         |> Repo.all()
 
       build_pagination_attrs(
@@ -514,7 +552,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     else
       records =
         fetch_records(filtered_base_query, page)
-        |> order_by(desc: fragment("rank"), desc: :uploaded_at)
+        |> order_by(desc: fragment("rank"), desc: :uploaded_at, desc: :id)
         |> Repo.all()
 
       build_pagination_attrs(
@@ -622,9 +660,36 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
     attrs
     |> Map.put(:records, ordered_records)
+    |> Map.put(:grouped_records, group_records_by_year(ordered_records))
     |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
     |> Map.put(:queue_positions, build_queue_positions(queue_base_query, ordered_records, media_state))
   end
+
+  defp group_records_by_year(records) do
+    records
+    |> Enum.group_by(&uploaded_year(&1.uploaded_at))
+    |> Enum.sort_by(fn {year, _records} -> year_sort_key(year) end)
+    |> Enum.with_index()
+    |> Enum.map(fn {{year, year_records}, index} ->
+      %{year: year, records: year_records, open?: index == 0}
+    end)
+  end
+
+  defp uploaded_year(nil), do: :unknown
+  defp uploaded_year(%DateTime{year: year}), do: year
+
+  defp year_sort_key(:unknown), do: {1, 0}
+  defp year_sort_key(year), do: {0, -year}
+
+  defp year_label(:unknown), do: "Unknown year"
+  defp year_label(year), do: to_string(year)
+
+  defp year_content_id(media_state, year) do
+    "media-year-#{media_state}-#{if year == :unknown, do: "unknown", else: year}"
+  end
+
+  defp upload_date_label(nil), do: "Unknown"
+  defp upload_date_label(%DateTime{} = uploaded_at), do: DateTime.to_date(uploaded_at)
 
   defp fetch_download_tasks(records) do
     media_item_ids = Enum.map(records, & &1.id)
