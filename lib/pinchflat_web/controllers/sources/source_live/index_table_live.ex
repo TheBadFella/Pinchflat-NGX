@@ -108,6 +108,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       dynamic([s], fragment("? COLLATE NOCASE", s.custom_name))
     end
   end
+
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 

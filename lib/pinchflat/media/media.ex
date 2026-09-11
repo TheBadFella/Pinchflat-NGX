@@ -119,6 +119,7 @@ defmodule Pinchflat.Media do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
+    |> order_by([mi], asc: mi.id)
     |> Repo.all()
   end
 
@@ -375,7 +376,7 @@ defmodule Pinchflat.Media do
             WHEN ? IS NOT NULL THEN 'downloaded'
             WHEN ? IS NOT NULL OR ? IS NOT NULL THEN 'unavailable'
             WHEN ? IS NOT NULL OR ? = 'permanent' THEN 'failed'
-            WHEN ? = 1 THEN 'prevented'
+            WHEN ? THEN 'prevented'
             ELSE 'skipped'
           END
           """,
@@ -394,7 +395,7 @@ defmodule Pinchflat.Media do
               WHEN ? IS NOT NULL THEN 'downloaded'
               WHEN ? IS NOT NULL OR ? IS NOT NULL THEN 'unavailable'
               WHEN ? IS NOT NULL OR ? = 'permanent' THEN 'failed'
-              WHEN ? = 1 THEN 'prevented'
+              WHEN ? THEN 'prevented'
               ELSE 'skipped'
             END
             """,
