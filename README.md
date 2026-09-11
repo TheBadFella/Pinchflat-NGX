@@ -91,6 +91,37 @@ volumes:
 The PostgreSQL image creates and migrates its own schema, but it does not copy data from an existing SQLite database.
 Keep using `latest` for an existing SQLite installation until you have migrated its data separately.
 
+#### PostgreSQL database backups
+
+The PostgreSQL image includes pg_dump. Authenticated users can create a custom-format database backup from
+Settings -> PostgreSQL Backups. Credentials are taken from the running app's DATABASE_URL; PinchYT passes them to
+pg_dump through PostgreSQL's PG* environment variables, never as command-line arguments or rendered UI text.
+
+Completed dumps are stored in the persistent configuration volume at /config/extras/backups by default. The
+Backups to Keep setting controls retention (1-100 completed dumps, with 7 as the default). A failed or cancelled
+dump is written to a temporary .partial file and is removed before the request finishes; stale partial files are
+also cleaned up before a later backup. The optional POSTGRES_BACKUP_PATH variable can point the backup directory at
+another persistent path.
+
+Generated filenames use a UTC timestamp through microsecond precision, in the form
+`pinchyt-postgres-YYYYMMDD-HHMMSS-ffffff-<id>.dump`. The high-resolution component keeps retention ordering
+deterministic when the filesystem reports equal modification times. Existing second-precision filenames remain
+strictly validated and can still be downloaded.
+
+These backups contain PostgreSQL database state only. They do not contain downloaded media, the /config runtime
+secrets, or the PostgreSQL server's own volume. PinchYT does not restore a dump automatically and does not convert a
+SQLite database to PostgreSQL.
+
+To restore, stop PinchYT first, provision a compatible PostgreSQL database, and use the matching PG* connection
+environment (or a protected .pgpass file) with pg_restore:
+
+    pg_restore --clean --if-exists --no-owner --no-privileges \
+      --dbname="$PGDATABASE" /config/extras/backups/pinchyt-postgres-YYYYMMDD-HHMMSS-ffffff-<id>.dump
+
+Restore into a database that is not being used by a running PinchYT instance. Review the target and migration
+compatibility before using --clean; restore the database first, then start PinchYT so its normal migration check can
+run. Restore the downloaded media files separately from your media backup.
+
 ### Optional PO-token provider
 
 The default compose above keeps the provider disabled. If YouTube presents SABR or authentication problems, add the

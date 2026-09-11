@@ -1,6 +1,7 @@
 defmodule PinchflatWeb.Settings.SettingController do
   use PinchflatWeb, :controller
 
+  alias Pinchflat.Backups
   alias Pinchflat.Settings
   alias Pinchflat.Reconciliation
   alias Pinchflat.Settings.CookieFile
@@ -13,7 +14,11 @@ defmodule PinchflatWeb.Settings.SettingController do
     setting = Settings.record()
     changeset = Settings.change_setting(setting, QueueConcurrency.form_attrs(setting))
 
-    render(conn, "show.html", changeset: changeset, concurrency_fields: QueueConcurrency.field_states(setting))
+    render(conn, "show.html",
+      changeset: changeset,
+      concurrency_fields: QueueConcurrency.field_states(setting),
+      backup_status: Backups.status()
+    )
   end
 
   def update(conn, %{"setting" => setting_params}) do
@@ -34,7 +39,8 @@ defmodule PinchflatWeb.Settings.SettingController do
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "show.html",
           changeset: changeset,
-          concurrency_fields: QueueConcurrency.field_states(setting)
+          concurrency_fields: QueueConcurrency.field_states(setting),
+          backup_status: Backups.status()
         )
     end
   end

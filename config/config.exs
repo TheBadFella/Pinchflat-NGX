@@ -32,6 +32,8 @@ config :pinchflat,
   # The user may or may not store metadata for their needs, but the app will always store its copy
   metadata_directory: "/config/metadata",
   extras_directory: "/config/extras",
+  postgres_backup_directory: nil,
+  pg_dump_executable: nil,
   tmpfile_directory: Path.join([System.tmp_dir!(), "pinchflat", "data"]),
   # Setting BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD implies you want to use basic auth.
   # If either is unset, basic auth will not be used.
