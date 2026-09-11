@@ -90,6 +90,13 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Delete Deletable Source? This deletes the source only and does not delete files."
       assert response =~ "Delete source"
     end
+
+    test "renders channel discovery in the sidebar", %{conn: conn} do
+      response = conn |> get(~p"/sources") |> html_response(200)
+
+      assert response =~ ~s(href="/discovery")
+      assert response =~ "Channel Discovery"
+    end
   end
 
   describe "new source" do
@@ -120,6 +127,34 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Members-only media may fail without cookies"
       assert response =~ "How source folders work"
       assert response =~ "Insert media profile template"
+    end
+
+    test "prefills the source form from discovery query params", %{conn: conn} do
+      original_url = "https://www.youtube.com/@pinchflattest"
+      custom_name = "A discovered channel"
+
+      response =
+        conn
+        |> get(~p"/sources/new", %{
+          "original_url" => original_url,
+          "custom_name" => custom_name,
+          "source_type" => "channel"
+        })
+        |> html_response(200)
+
+      assert response =~ ~s(value="#{original_url}")
+      assert response =~ ~s(value="#{custom_name}")
+      assert response =~ "sourceType: &#39;channel&#39;"
+    end
+
+    test "ignores an invalid source type prefill", %{conn: conn} do
+      response =
+        conn
+        |> get(~p"/sources/new", %{"source_type" => "not-a-source-type"})
+        |> html_response(200)
+
+      assert response =~ "sourceType: &#39;automatic&#39;"
+      refute response =~ "not-a-source-type"
     end
 
     test "renders source folder picker options from existing media directories", %{conn: conn} do

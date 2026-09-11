@@ -169,6 +169,10 @@ config :pinchflat, Oban,
        {"#{current_minute} #{current_hour} * * *", Pinchflat.YtDlp.UpdateWorker},
        {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
        {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker},
+       # Discovery is opt-in in the database. The worker cancels this cheap
+       # scheduled job while disabled, so a setting change does not require a
+       # runtime config reload or a scheduler restart.
+       {"0 3 * * *", Pinchflat.Discovery.Worker},
        # Monthly, after retention (1AM) and quality upgrades (2AM) have had a
        # chance to delete records whose space the VACUUM can then reclaim
        {"0 3 1 * *", Pinchflat.Diagnostics.DatabaseMaintenanceWorker}

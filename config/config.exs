@@ -41,6 +41,21 @@ config :pinchflat,
   # instant. Kept low by default (and tied to YT_DLP_WORKER_CONCURRENCY at runtime)
   # so we don't hammer YouTube and earn a rate-limit/IP ban. Overridden in runtime.exs.
   reconcile_backfill_concurrency: 2,
+  channel_discovery: [
+    max_sources: 100,
+    max_candidates: 100,
+    max_validated: 50,
+    sample_pool_size: 50,
+    sample_size: 12,
+    max_metadata_bytes: 512 * 1024,
+    max_text_bytes: 1 * 1024 * 1024,
+    max_entries: 25,
+    max_output_bytes: 256 * 1024,
+    validation_concurrency: 4,
+    validation_timeout: 5_000,
+    featured_timeout: 15_000,
+    validation_refresh_after_seconds: 86_400
+  ],
   timezone: "UTC",
   base_route_path: "/"
 

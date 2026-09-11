@@ -127,6 +127,38 @@
     />
   </section>
 
+  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.discovery)">
+    <h3 class="text-2xl text-theme-on-surface">Channel Discovery</h3>
+
+    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
+      Find channel suggestions from your locally stored metadata and subscribed channels.
+    </p>
+
+    <div x-data={"{ channelDiscoveryEnabled: #{f[:channel_discovery_enabled].value} }"}>
+      <.input
+        field={f[:channel_discovery_enabled]}
+        type="toggle"
+        label="Enable Channel Discovery"
+        help="Opt in to scheduled channel discovery scans. This is disabled by default and only runs after you enable it."
+        x-model="channelDiscoveryEnabled"
+      />
+      <.input
+        field={f[:channel_discovery_mentions_enabled]}
+        type="toggle"
+        label="Discover Channels from Mentions"
+        help="Scan locally stored descriptions and metadata for channel references. Only applies when Channel Discovery is enabled."
+        x-bind:disabled="!channelDiscoveryEnabled"
+      />
+      <.input
+        field={f[:channel_discovery_featured_enabled]}
+        type="toggle"
+        label="Discover Featured Channels"
+        help="Look for channels featured by your existing subscriptions. Only applies when Channel Discovery is enabled."
+        x-bind:disabled="!channelDiscoveryEnabled"
+      />
+    </div>
+  </section>
+
   <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.ytdlp)">
     <h3 class="text-2xl text-theme-on-surface">yt-dlp</h3>
 
@@ -186,7 +218,7 @@
     class="w-full sm:w-auto"
     rounding="rounded-m3-sm"
     form="settings-form"
-    x-show="match(groups.notifications) || match(groups.extractor) || match(groups.ytdlp) || ((advancedMode || query.trim()) && match(groups.codec))"
+    x-show="match(groups.notifications) || match(groups.extractor) || match(groups.discovery) || match(groups.ytdlp) || ((advancedMode || query.trim()) && match(groups.codec))"
   >
     Save Settings
   </.button>
@@ -195,7 +227,7 @@
 <p
   class="theme-surface-raised px-5 py-8 text-center text-sm text-theme-on-surface-muted sm:px-7.5"
   x-cloak
-  x-show="!match(groups.notifications) && !match(groups.extractor) && !match(groups.ytdlp) && !match(groups.cookies) && !((advancedMode || query.trim()) && match(groups.codec))"
+  x-show="!match(groups.notifications) && !match(groups.extractor) && !match(groups.discovery) && !match(groups.ytdlp) && !match(groups.cookies) && !((advancedMode || query.trim()) && match(groups.codec))"
 >
   No settings match "<span x-text="query.trim()"></span>".
 </p>
