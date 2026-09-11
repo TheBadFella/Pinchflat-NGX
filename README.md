@@ -70,7 +70,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: pinchyt
       POSTGRES_PASSWORD: change-me
@@ -81,7 +81,7 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     restart: unless-stopped
 
 volumes:
@@ -89,7 +89,10 @@ volumes:
 ```
 
 The PostgreSQL image creates and migrates its own schema, but it does not copy data from an existing SQLite database.
-Keep using `latest` for an existing SQLite installation until you have migrated its data separately.
+This PostgreSQL 18 example is intended for a fresh installation. PostgreSQL 16 or earlier volumes are not
+compatible with the PostgreSQL 18 server as-is; use an explicit PostgreSQL upgrade or `pg_dump`/`pg_restore`
+procedure before reusing existing PostgreSQL data. Keep using `latest` for an existing SQLite installation until
+you have migrated its data separately.
 
 #### PostgreSQL database backups
 
