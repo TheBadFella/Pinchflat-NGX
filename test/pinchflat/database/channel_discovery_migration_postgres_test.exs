@@ -21,6 +21,10 @@ defmodule Pinchflat.Database.ChannelDiscoveryMigrationPostgresTest do
 
   @text_columns ~w(canonical_url artwork_url evidence generators)
   @external_prefix "migration-test-"
+  @channel_discovery_migration {
+    20_260_911_100_000,
+    Pinchflat.Repo.Migrations.WidenChannelDiscoveryTextColumns
+  }
 
   setup_all do
     Ecto.Adapters.SQL.Sandbox.mode(Repo, :auto)
@@ -73,14 +77,12 @@ defmodule Pinchflat.Database.ChannelDiscoveryMigrationPostgresTest do
   end
 
   defp migrate_down do
-    assert [20_260_911_100_000] = Ecto.Migrator.run(Repo, migrations_path(), :down, step: 1)
+    assert [20_260_911_100_000] = Ecto.Migrator.run(Repo, [@channel_discovery_migration], :down, step: 1)
   end
 
   defp migrate_up do
-    assert [20_260_911_100_000] = Ecto.Migrator.run(Repo, migrations_path(), :up, step: 1)
+    assert [20_260_911_100_000] = Ecto.Migrator.run(Repo, [@channel_discovery_migration], :up, step: 1)
   end
-
-  defp migrations_path, do: Path.join(File.cwd!(), "priv/repo/migrations")
 
   defp insert_suggestion(attrs) do
     attrs =

@@ -10,6 +10,7 @@ defmodule PinchflatWeb.Settings.SettingHTML do
   attr :changeset, Ecto.Changeset, required: true
   attr :action, :string, required: true
   attr :concurrency_fields, :map, required: true
+  attr :backup_status, :map, required: true
 
   def setting_form(assigns)
 
@@ -44,6 +45,19 @@ defmodule PinchflatWeb.Settings.SettingHTML do
   end
 
   def concurrency_help(%{locked: false}, unlocked_help), do: unlocked_help
+
+  def format_backup_size(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes} B"
+
+  def format_backup_size(bytes) when is_integer(bytes) and bytes < 1024 * 1024 do
+    "#{Float.round(bytes / 1024, 1)} KB"
+  end
+
+  def format_backup_size(bytes) when is_integer(bytes) do
+    "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+  end
+
+  def format_backup_datetime(%DateTime{} = datetime), do: Calendar.strftime(datetime, "%Y-%m-%d %H:%M:%S UTC")
+  def format_backup_datetime(_datetime), do: "-"
 
   defp download_workers_help do
     "How many videos can download at once. Each 1080p job opens two network streams, so start at 1–2 if you see timeouts or 'Network is unreachable'. Takes effect immediately."

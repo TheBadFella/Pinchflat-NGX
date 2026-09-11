@@ -33,7 +33,8 @@ defmodule Pinchflat.Settings.Setting do
     :yt_dlp_remote_metadata_worker_concurrency,
     :channel_discovery_enabled,
     :channel_discovery_mentions_enabled,
-    :channel_discovery_featured_enabled
+    :channel_discovery_featured_enabled,
+    :postgres_backup_retention_count
   ]
 
   @time_formats ~w(24h 12h)
@@ -82,6 +83,7 @@ defmodule Pinchflat.Settings.Setting do
     field :channel_discovery_enabled, :boolean, default: false
     field :channel_discovery_mentions_enabled, :boolean, default: false
     field :channel_discovery_featured_enabled, :boolean, default: false
+    field :postgres_backup_retention_count, :integer, default: 7
 
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
@@ -103,6 +105,7 @@ defmodule Pinchflat.Settings.Setting do
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: 20
     )
+    |> validate_number(:postgres_backup_retention_count, greater_than_or_equal_to: 1, less_than_or_equal_to: 100)
   end
 
   @doc """

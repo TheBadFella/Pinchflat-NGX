@@ -119,6 +119,22 @@ defmodule Pinchflat.SettingsTest do
                Settings.change_setting(setting, %{yt_dlp_download_worker_concurrency: 21})
     end
 
+    test "requires PostgreSQL backup retention to be between 1 and 100" do
+      setting = Settings.record()
+
+      assert %Ecto.Changeset{valid?: true} =
+               Settings.change_setting(setting, %{postgres_backup_retention_count: 1})
+
+      assert %Ecto.Changeset{valid?: true} =
+               Settings.change_setting(setting, %{postgres_backup_retention_count: 100})
+
+      assert %Ecto.Changeset{valid?: false} =
+               Settings.change_setting(setting, %{postgres_backup_retention_count: 0})
+
+      assert %Ecto.Changeset{valid?: false} =
+               Settings.change_setting(setting, %{postgres_backup_retention_count: 101})
+    end
+
     test "requires a pinned version when the policy is pinned" do
       setting = Settings.record()
 

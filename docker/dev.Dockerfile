@@ -20,6 +20,20 @@ COPY --from=node /usr/local/ /usr/local/
 
 # Install debian packages
 RUN set -eux; \
+  if [ "${DATABASE_ADAPTER}" = "postgres" ]; then \
+    apt-get -o Acquire::Retries=5 update -qq; \
+    apt-get install -y --no-install-recommends ca-certificates curl; \
+    install -d -m 0755 /usr/share/postgresql-common/pgdg; \
+    curl -4 -fsSL --retry 5 --retry-all-errors \
+      "https://www.postgresql.org/media/keys/ACCC4CF8.asc" \
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc; \
+    . /etc/os-release; \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list; \
+    DATABASE_CLIENT_PACKAGE="postgresql-client-16"; \
+  else \
+    DATABASE_CLIENT_PACKAGE=""; \
+  fi; \
   for attempt in 1 2 3 4 5; do \
     rm -rf /var/lib/apt/lists/*; \
     apt-get clean; \
@@ -31,7 +45,8 @@ RUN set -eux; \
       update -qq && \
       apt-get install -y --no-install-recommends inotify-tools curl git openssh-client jq \
         python3 python3-setuptools python3-wheel python3-dev pipx \
-        python3-mutagen locales procps build-essential graphviz zsh unzip; then \
+        python3-mutagen locales procps build-essential graphviz zsh unzip \
+        ${DATABASE_CLIENT_PACKAGE}; then \
       break; \
     fi; \
     if [ "$attempt" -eq 5 ]; then exit 1; fi; \

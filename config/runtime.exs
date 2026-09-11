@@ -197,6 +197,7 @@ if config_env() == :prod do
   log_path = System.get_env("LOG_PATH", Path.join([config_path, "logs", "pinchflat.log"]))
   metadata_path = System.get_env("METADATA_PATH", Path.join([config_path, "metadata"]))
   extras_path = System.get_env("EXTRAS_PATH", Path.join([config_path, "extras"]))
+  postgres_backup_path = System.get_env("POSTGRES_BACKUP_PATH", Path.join([extras_path, "backups"]))
   tmpfile_path = System.get_env("TMPFILE_PATH", Path.join([System.tmp_dir!(), "pinchflat", "data"]))
   # This one can be changed if you want
   tz_data_path = System.get_env("TZ_DATA_PATH", Path.join([extras_path, "elixir_tz_data"]))
@@ -215,6 +216,7 @@ if config_env() == :prod do
     media_directory: media_path,
     metadata_directory: metadata_path,
     extras_directory: extras_path,
+    postgres_backup_directory: postgres_backup_path,
     tmpfile_directory: tmpfile_path,
     dns_cluster_query: System.get_env("DNS_CLUSTER_QUERY"),
     expose_feed_endpoints: expose_feed_endpoints,

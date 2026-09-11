@@ -127,6 +127,24 @@
     />
   </section>
 
+  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.backups)">
+    <h3 class="text-2xl text-theme-on-surface">PostgreSQL Backups</h3>
+    <%= if @backup_status.available do %>
+      <.input
+        field={f[:postgres_backup_retention_count]}
+        type="number"
+        min="1"
+        max="100"
+        label="Backups to Keep"
+        help="After each successful backup, PinchYT keeps this many completed PostgreSQL dumps and removes older ones. Failed or partial dumps are never retained."
+      />
+    <% else %>
+      <p id="postgres-backups-unavailable" class="mt-2 text-sm theme-status-warning">
+        PostgreSQL backups are unavailable in the SQLite image. Use the PostgreSQL image to create database dumps.
+      </p>
+    <% end %>
+  </section>
+
   <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.discovery)">
     <h3 class="text-2xl text-theme-on-surface">Channel Discovery</h3>
 
@@ -213,12 +231,66 @@
   {live_render(@conn, Pinchflat.Settings.DefaultCookieBehaviourLive, id: "default-cookie-behaviour-live")}
 </section>
 
+<section id="postgres-backups" class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="match(groups.backups)">
+  <h3 class="text-2xl text-theme-on-surface">PostgreSQL Backup Files</h3>
+  <%= if @backup_status.available do %>
+    <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-theme-on-surface-muted">
+        Dumps are stored in PinchYT's persistent configuration volume and are available only through this authenticated UI.
+      </p>
+      <.link href={~p"/settings/backups"} method="post" class="w-full shrink-0 sm:w-auto">
+        <.button color="theme-primary-button" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">
+          <.icon name="hero-circle-stack" class="mr-1 h-4 w-4" /> Create and Download Backup
+        </.button>
+      </.link>
+    </div>
+
+    <%= if @backup_status.backups == [] do %>
+      <p class="mt-4 text-sm text-theme-on-surface-muted">No completed PostgreSQL backups are available yet.</p>
+    <% else %>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-theme-outline">
+              <th class="py-2 text-left text-theme-on-surface-muted">Backup</th>
+              <th class="py-2 text-left text-theme-on-surface-muted">Created</th>
+              <th class="py-2 text-left text-theme-on-surface-muted">Size</th>
+              <th class="py-2 text-left text-theme-on-surface-muted">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for backup <- @backup_status.backups do %>
+              <tr class="border-b border-theme-outline/50">
+                <td class="py-2 font-mono text-xs text-theme-on-surface">{backup.filename}</td>
+                <td class="py-2 text-theme-on-surface">{format_backup_datetime(backup.modified_at)}</td>
+                <td class="py-2 text-theme-on-surface">{format_backup_size(backup.size)}</td>
+                <td class="py-2">
+                  <.link
+                    href={~p"/settings/backups/#{backup.filename}"}
+                    class="text-theme-primary hover:underline"
+                  >
+                    Download
+                  </.link>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  <% else %>
+    <p class="mt-2 text-sm theme-status-warning">
+      PostgreSQL backup files are unavailable because this installation uses SQLite.
+    </p>
+  <% end %>
+</section>
+
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   <.button
     class="w-full sm:w-auto"
     rounding="rounded-m3-sm"
     form="settings-form"
-    x-show="match(groups.notifications) || match(groups.extractor) || match(groups.discovery) || match(groups.ytdlp) || ((advancedMode || query.trim()) && match(groups.codec))"
+    x-show="match(groups.notifications) || match(groups.extractor) || match(groups.backups) || match(groups.discovery) || match(groups.ytdlp) || ((advancedMode || query.trim()) && match(groups.codec))"
   >
     Save Settings
   </.button>
@@ -227,7 +299,7 @@
 <p
   class="theme-surface-raised px-5 py-8 text-center text-sm text-theme-on-surface-muted sm:px-7.5"
   x-cloak
-  x-show="!match(groups.notifications) && !match(groups.extractor) && !match(groups.discovery) && !match(groups.ytdlp) && !match(groups.cookies) && !((advancedMode || query.trim()) && match(groups.codec))"
+  x-show="!match(groups.notifications) && !match(groups.extractor) && !match(groups.discovery) && !match(groups.ytdlp) && !match(groups.cookies) && !match(groups.backups) && !((advancedMode || query.trim()) && match(groups.codec))"
 >
   No settings match "<span x-text="query.trim()"></span>".
 </p>

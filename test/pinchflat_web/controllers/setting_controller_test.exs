@@ -14,6 +14,11 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ "Extractor Settings"
       assert html =~ "Cookies"
       assert html =~ "Base yt-dlp Config"
+      assert html =~ "PostgreSQL Backups"
+
+      if Pinchflat.Database.sqlite?() do
+        assert html =~ "PostgreSQL backups are unavailable in the SQLite image"
+      end
     end
   end
 
@@ -131,6 +136,17 @@ defmodule PinchflatWeb.SettingControllerTest do
 
       assert redirected_to(conn) == ~p"/diagnostics"
       assert conn.assigns[:flash]["error"] == "Log file couldn't be found"
+    end
+  end
+
+  describe "postgresql backups" do
+    @tag :sqlite_only
+
+    test "reports that backup creation is unavailable for SQLite", %{conn: conn} do
+      conn = post(conn, ~p"/settings/backups")
+
+      assert redirected_to(conn) == ~p"/settings"
+      assert conn.assigns[:flash]["error"] =~ "unavailable when PinchYT uses SQLite"
     end
   end
 end
