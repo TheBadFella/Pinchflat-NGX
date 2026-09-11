@@ -30,7 +30,7 @@ RUN set -eux; \
     . /etc/os-release; \
     echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list; \
-    DATABASE_CLIENT_PACKAGE="postgresql-client-16"; \
+    DATABASE_CLIENT_PACKAGE="postgresql-client-18"; \
   else \
     DATABASE_CLIENT_PACKAGE=""; \
   fi; \
