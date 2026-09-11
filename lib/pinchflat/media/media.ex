@@ -30,6 +30,51 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Returns mutually exclusive media statistics for a source.
+
+  The direct-status aggregate applies this precedence to legacy rows that match
+  more than one predicate: downloaded, unavailable or removed, failed,
+  prevented, then skipped. A second aggregate counts only policy-eligible
+  pending rows after excluding those higher-precedence statuses. The skipped
+  bucket is then split into pending and unavailable/skipped, so the five
+  returned counts cover every media item without one query per status.
+
+  Returns a map with `:downloaded`, `:pending`, `:failed`, `:prevented`, and
+  `:unavailable` counts.
+  """
+  def source_media_statistics(%Source{} = source) do
+    direct_counts = source_media_direct_status_counts(source)
+
+    pending_count =
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:media_profile)
+      |> where(
+        ^dynamic(
+          [mi, _source, _media_profile],
+          # Keep nullable failure fields explicit: SQL `NOT` over a NULL
+          # comparison is NULL and would otherwise hide healthy pending rows.
+          ^MediaQuery.for_source(source) and
+            ^MediaQuery.pending() and
+            is_nil(mi.unavailable_at) and
+            is_nil(mi.culled_at) and
+            is_nil(mi.last_error) and
+            (is_nil(mi.error_type) or mi.error_type != :permanent)
+        )
+      )
+      |> Repo.aggregate(:count, :id)
+
+    skipped_count = Map.get(direct_counts, :skipped, 0)
+
+    %{
+      downloaded: Map.get(direct_counts, :downloaded, 0),
+      pending: pending_count,
+      failed: Map.get(direct_counts, :failed, 0),
+      prevented: Map.get(direct_counts, :prevented, 0),
+      unavailable: max(skipped_count - pending_count, 0) + Map.get(direct_counts, :unavailable, 0)
+    }
+  end
+
+  @doc """
   Preloads associations used by API serialization.
 
   Returns [%MediaItem{}, ...] | %MediaItem{}.
@@ -319,6 +364,59 @@ defmodule Pinchflat.Media do
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.download_failed()))
   end
+
+  defp source_media_direct_status_counts(%Source{} = source) do
+    from(mi in MediaQuery.new(),
+      where: ^MediaQuery.for_source(source),
+      group_by:
+        fragment(
+          """
+          CASE
+            WHEN ? IS NOT NULL THEN 'downloaded'
+            WHEN ? IS NOT NULL OR ? IS NOT NULL THEN 'unavailable'
+            WHEN ? IS NOT NULL OR ? = 'permanent' THEN 'failed'
+            WHEN ? = 1 THEN 'prevented'
+            ELSE 'skipped'
+          END
+          """,
+          mi.media_filepath,
+          mi.unavailable_at,
+          mi.culled_at,
+          mi.last_error,
+          mi.error_type,
+          mi.prevent_download
+        ),
+      select: %{
+        status:
+          fragment(
+            """
+            CASE
+              WHEN ? IS NOT NULL THEN 'downloaded'
+              WHEN ? IS NOT NULL OR ? IS NOT NULL THEN 'unavailable'
+              WHEN ? IS NOT NULL OR ? = 'permanent' THEN 'failed'
+              WHEN ? = 1 THEN 'prevented'
+              ELSE 'skipped'
+            END
+            """,
+            mi.media_filepath,
+            mi.unavailable_at,
+            mi.culled_at,
+            mi.last_error,
+            mi.error_type,
+            mi.prevent_download
+          ),
+        count: count(mi.id)
+      }
+    )
+    |> Repo.all()
+    |> Enum.into(%{}, fn %{status: status, count: count} -> {direct_status_key(status), count} end)
+  end
+
+  defp direct_status_key("downloaded"), do: :downloaded
+  defp direct_status_key("unavailable"), do: :unavailable
+  defp direct_status_key("failed"), do: :failed
+  defp direct_status_key("prevented"), do: :prevented
+  defp direct_status_key("skipped"), do: :skipped
 
   defp do_delete_media_files(media_item) do
     mapped_struct = Map.from_struct(media_item)

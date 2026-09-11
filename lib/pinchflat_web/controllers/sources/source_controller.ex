@@ -181,11 +181,14 @@ defmodule PinchflatWeb.Sources.SourceController do
         conn |> put_status(:ok) |> json(source)
 
       _ ->
+        media_statistics = Media.source_media_statistics(source)
+
         render(conn, :show,
           source: source,
           active_tab: active_tab,
           tab_href: fn tab -> ~p"/sources/#{source}?#{[tab: tab]}" end,
-          selection_media_items: selection_media_items
+          selection_media_items: selection_media_items,
+          media_statistics: media_statistics
         )
     end
   end

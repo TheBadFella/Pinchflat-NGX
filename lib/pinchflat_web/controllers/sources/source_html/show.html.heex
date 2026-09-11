@@ -74,6 +74,8 @@
       </div>
     </section>
 
+    <.source_statistics statistics={@media_statistics} />
+
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown source={@source} conn={@conn} /></:tab_append>
 

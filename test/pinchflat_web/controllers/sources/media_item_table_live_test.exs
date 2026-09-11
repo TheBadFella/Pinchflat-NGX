@@ -36,6 +36,38 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       assert html =~ "Members-only"
       assert html =~ media_item.title
     end
+
+    test "groups records by newest upload year and exposes accessible collapse state", %{conn: conn, source: source} do
+      newest =
+        media_item_fixture(
+          source_id: source.id,
+          title: "NEWEST_YEAR_ITEM",
+          uploaded_at: ~U[2025-06-01 12:00:00Z]
+        )
+
+      older =
+        media_item_fixture(
+          source_id: source.id,
+          title: "OLDER_YEAR_ITEM",
+          uploaded_at: ~U[2024-06-01 12:00:00Z]
+        )
+
+      {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      newest_id = ~s(id="media-year-downloaded-2025")
+      older_id = ~s(id="media-year-downloaded-2024")
+
+      assert html =~ newest.title
+      assert html =~ older.title
+      assert html =~ ~s(aria-label="Toggle 2025 media")
+      assert html =~ ~s(aria-label="Toggle 2024 media")
+      assert html =~ ~s(aria-expanded="true")
+      assert html =~ ~s(aria-expanded="false")
+      assert html =~ ~s(aria-controls="media-year-downloaded-2025")
+      assert html =~ ~s(x-show="open")
+
+      assert elem(:binary.match(html, newest_id), 0) < elem(:binary.match(html, older_id), 0)
+    end
   end
 
   describe "media_state" do

@@ -536,6 +536,36 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "show source" do
+    test "renders source media statistics with mutually exclusive counts", %{conn: conn} do
+      source = source_fixture()
+
+      media_item_fixture(source_id: source.id)
+      media_item_fixture(source_id: source.id)
+
+      for _index <- 1..3 do
+        media_item_fixture(source_id: source.id, media_filepath: nil)
+      end
+
+      media_item_fixture(source_id: source.id, media_filepath: nil, last_error: "Network is unreachable")
+
+      media_item_fixture(
+        source_id: source.id,
+        media_filepath: nil,
+        prevent_download: true,
+        download_prevented_reason: :manual
+      )
+
+      media_item_fixture(source_id: source.id, media_filepath: nil, unavailable_at: DateTime.utc_now())
+
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      assert response =~ ~s(aria-label="Downloaded: 2")
+      assert response =~ ~s(aria-label="Pending: 3")
+      assert response =~ ~s(aria-label="Failed: 1")
+      assert response =~ ~s(aria-label="Prevented: 1")
+      assert response =~ ~s(aria-label="Unavailable / Skipped: 1")
+    end
+
     test "renders delayed download summary for manual playlists", %{conn: conn} do
       source = source_fixture(%{collection_type: :playlist, selection_mode: :manual, download_media: false})
 
