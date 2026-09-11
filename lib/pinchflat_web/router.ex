@@ -66,6 +66,7 @@ defmodule PinchflatWeb.Router do
     pipe_through :browser
 
     get "/", Pages.PageController, :home
+    live "/discovery", DiscoveryLive
     post "/sources/cookies/upload", Sources.SourceController, :upload_cookies
     post "/sources/cookies/save", Sources.SourceController, :save_cookies
 

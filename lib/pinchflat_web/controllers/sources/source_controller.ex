@@ -77,7 +77,7 @@ defmodule PinchflatWeb.Sources.SourceController do
                 original_url: nil,
                 marked_for_deletion_at: nil
             }
-            |> Sources.change_source()
+            |> Sources.change_source(prefill_source_attrs(params))
             |> maybe_default_cookie_behaviour()
         ],
         cookie_file_assigns()
@@ -678,6 +678,30 @@ defmodule PinchflatWeb.Sources.SourceController do
       changeset
     end
   end
+
+  defp prefill_source_attrs(params) do
+    %{}
+    |> maybe_put_prefill("original_url", params["original_url"])
+    |> maybe_put_prefill("custom_name", params["custom_name"])
+    |> maybe_put_source_type_prefill(params["source_type"])
+  end
+
+  defp maybe_put_prefill(attrs, key, value) when is_binary(value) and value != "" do
+    Map.put(attrs, key, value)
+  end
+
+  defp maybe_put_prefill(attrs, _key, _value), do: attrs
+
+  defp maybe_put_source_type_prefill(attrs, source_type) when is_binary(source_type) do
+    case Enum.find_value(Source.source_type_options(), fn {_label, option} ->
+           if Atom.to_string(option) == source_type, do: option
+         end) do
+      nil -> attrs
+      option -> Map.put(attrs, "source_type", option)
+    end
+  end
+
+  defp maybe_put_source_type_prefill(attrs, _source_type), do: attrs
 
   defp tab_param(params, allowed_tabs, default_tab) do
     tab = params["tab"]

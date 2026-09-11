@@ -3,7 +3,7 @@ name: pinchyt-preview
 services:
   pot-provider:
     image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
-    profiles: ["pot-provider"]
+    profiles: ['pot-provider']
     restart: unless-stopped
     # The provider is intentionally internal-only. Do not add a ports mapping.
     healthcheck:

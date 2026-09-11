@@ -241,6 +241,14 @@ defmodule PinchflatWeb.AuthControllerTest do
       assert redirected_to(conn) == "/auth/login?redirect_to=%2F"
     end
 
+    test "the channel discovery route requires an SSO session when enabled", %{conn: conn} do
+      Application.put_env(:pinchflat, :oidc, @oidc_config)
+
+      conn = get(conn, ~p"/discovery")
+
+      assert redirected_to(conn) == "/auth/login?redirect_to=%2Fdiscovery"
+    end
+
     test "the login flow returns the user to the page that triggered it", %{session_conn: conn} do
       Application.put_env(:pinchflat, :oidc, @oidc_config)
 

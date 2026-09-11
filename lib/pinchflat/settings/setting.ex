@@ -30,7 +30,10 @@ defmodule Pinchflat.Settings.Setting do
     :time_format,
     :yt_dlp_download_worker_concurrency,
     :yt_dlp_index_worker_concurrency,
-    :yt_dlp_remote_metadata_worker_concurrency
+    :yt_dlp_remote_metadata_worker_concurrency,
+    :channel_discovery_enabled,
+    :channel_discovery_mentions_enabled,
+    :channel_discovery_featured_enabled
   ]
 
   @time_formats ~w(24h 12h)
@@ -74,6 +77,11 @@ defmodule Pinchflat.Settings.Setting do
     field :yt_dlp_download_worker_concurrency, :integer
     field :yt_dlp_index_worker_concurrency, :integer
     field :yt_dlp_remote_metadata_worker_concurrency, :integer
+
+    # Channel discovery is opt-in at both the feature and generator level.
+    field :channel_discovery_enabled, :boolean, default: false
+    field :channel_discovery_mentions_enabled, :boolean, default: false
+    field :channel_discovery_featured_enabled, :boolean, default: false
 
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
