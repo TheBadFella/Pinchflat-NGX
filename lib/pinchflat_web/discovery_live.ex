@@ -27,7 +27,7 @@ defmodule PinchflatWeb.DiscoveryLive do
 
     if connected?(socket), do: Discovery.subscribe()
 
-    {:ok, socket}
+    {:ok, assign(socket, :page_title, "Channel Discovery")}
   end
 
   def handle_event("refresh", _params, socket) do
@@ -116,48 +116,49 @@ defmodule PinchflatWeb.DiscoveryLive do
 
   def render(assigns) do
     ~H"""
-    <div id="discovery-page" class="space-y-6" data-view="channel-discovery">
-      <header id="discovery-header" class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 class="text-2xl font-semibold text-theme-on-surface">Channel Discovery</h1>
-          <p class="mt-2 max-w-2xl text-sm text-theme-on-surface-muted">
+    <div id="discovery-page" data-view="channel-discovery">
+      <header id="discovery-header" class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <h2 class="text-title-md2 font-bold text-theme-on-surface">Channel Discovery</h2>
+          <p class="mt-1 max-w-2xl text-sm text-theme-on-surface-muted">
             Find channels from local metadata and your existing subscriptions.
           </p>
         </div>
 
-        <div class="flex flex-wrap gap-2" role="group" aria-label="Discovery actions">
-          <button
+        <nav class="flex flex-wrap items-center gap-3" role="group" aria-label="Discovery actions">
+          <.button
             id="discovery-refresh"
             type="button"
-            class="theme-outline-button inline-flex items-center gap-2 rounded-m3-sm px-4 py-2 text-sm font-medium"
+            color="theme-outline-button"
+            rounding="rounded-m3-sm"
             phx-click="refresh"
             data-action="refresh"
           >
-            <.icon name="hero-arrow-path" class="h-4 w-4" aria-hidden="true" /> Refresh
-          </button>
-          <button
+            <.icon name="hero-arrow-path" class="mr-2 h-4 w-4" aria-hidden="true" /> Refresh
+          </.button>
+          <.button
             id="discovery-scan"
             type="button"
-            class="theme-primary-button inline-flex items-center gap-2 rounded-m3-sm px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+            rounding="rounded-m3-sm"
+            disabled={@scan_busy}
             phx-click="scan"
             data-action="scan"
             data-scan-state={to_string(@scan_status)}
-            disabled={@scan_busy}
           >
-            <.icon name="hero-magnifying-glass" class="h-4 w-4" aria-hidden="true" />
+            <.icon name="hero-magnifying-glass" class="mr-2 h-4 w-4" aria-hidden="true" />
             {scan_button_label(@scan_busy, @scan_status)}
-          </button>
-        </div>
+          </.button>
+        </nav>
       </header>
 
       <section
         id="discovery-status-panel"
-        class="theme-surface-raised p-5"
+        class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5"
         aria-labelledby="discovery-status-heading"
         data-discovery-enabled={to_string(@discovery_enabled)}
       >
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="discovery-status-heading" class="text-lg font-semibold text-theme-on-surface">Discovery status</h2>
+          <h3 id="discovery-status-heading" class="text-lg font-semibold text-theme-on-surface">Discovery status</h3>
           <span
             id="discovery-scan-status"
             class={["text-sm font-medium", scan_status_class(@scan_status)]}
@@ -169,38 +170,44 @@ defmodule PinchflatWeb.DiscoveryLive do
           </span>
         </div>
 
-        <p id="discovery-status" class="mt-2 text-sm text-theme-on-surface-muted" role="status" aria-live="polite">
-          {@notice || "Ready to scan."}
+        <p
+          :if={@notice}
+          id="discovery-status"
+          class="mt-2 text-sm text-theme-on-surface-muted"
+          role="status"
+          aria-live="polite"
+        >
+          {@notice}
         </p>
 
         <dl id="discovery-settings" class="mt-5 grid gap-3 sm:grid-cols-3">
-          <div class="theme-surface-accent p-3" data-setting="channel_discovery_enabled">
+          <div class="theme-surface-accent px-4 py-3" data-setting="channel_discovery_enabled">
             <dt class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">Scheduled scans</dt>
-            <dd class="mt-1">
+            <dd class="mt-2">
               <span class={[
-                "inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
                 setting_badge_class(@discovery_enabled)
               ]}>
                 {setting_label(@discovery_enabled)}
               </span>
             </dd>
           </div>
-          <div class="theme-surface-accent p-3" data-setting="channel_discovery_mentions_enabled">
+          <div class="theme-surface-accent px-4 py-3" data-setting="channel_discovery_mentions_enabled">
             <dt class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">Mention discovery</dt>
-            <dd class="mt-1">
+            <dd class="mt-2">
               <span class={[
-                "inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
                 setting_badge_class(@mentions_enabled)
               ]}>
                 {setting_label(@mentions_enabled)}
               </span>
             </dd>
           </div>
-          <div class="theme-surface-accent p-3" data-setting="channel_discovery_featured_enabled">
+          <div class="theme-surface-accent px-4 py-3" data-setting="channel_discovery_featured_enabled">
             <dt class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">Featured discovery</dt>
-            <dd class="mt-1">
+            <dd class="mt-2">
               <span class={[
-                "inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
                 setting_badge_class(@featured_enabled)
               ]}>
                 {setting_label(@featured_enabled)}
@@ -218,10 +225,14 @@ defmodule PinchflatWeb.DiscoveryLive do
         </p>
       </section>
 
-      <section id="discovery-suggestions" aria-labelledby="discovery-suggestions-heading">
+      <section
+        id="discovery-suggestions"
+        class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5"
+        aria-labelledby="discovery-suggestions-heading"
+      >
         <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="discovery-suggestions-heading" class="text-xl font-semibold text-theme-on-surface">Suggestions</h2>
+            <h3 id="discovery-suggestions-heading" class="text-lg font-semibold text-theme-on-surface">Suggestions</h3>
             <p class="mt-1 text-sm text-theme-on-surface-muted">Review channels before adding them as sources.</p>
           </div>
           <span class="text-sm text-theme-on-surface-muted" data-visible-count={to_string(length(@visible_suggestions))}>
@@ -232,14 +243,14 @@ defmodule PinchflatWeb.DiscoveryLive do
         <div
           :if={@visible_suggestions == []}
           id="discovery-empty"
-          class="theme-surface-accent p-8 text-center"
+          class="theme-surface-accent px-5 py-8 text-center"
           role="status"
         >
           <h3 id="discovery-empty-heading" class="text-lg font-semibold text-theme-on-surface">
             No channel suggestions yet
           </h3>
           <p class="mx-auto mt-2 max-w-xl text-sm text-theme-on-surface-muted">
-            Refresh the sample or run a scan to look for validated channel suggestions.
+            Run a scan or refresh this list to look for validated channel suggestions.
           </p>
         </div>
 
@@ -252,7 +263,7 @@ defmodule PinchflatWeb.DiscoveryLive do
           <article
             :for={suggestion <- @visible_suggestions}
             id={suggestion_dom_id(suggestion)}
-            class="theme-surface-raised flex flex-col gap-4 p-5"
+            class="theme-surface-accent flex flex-col gap-4 px-5 py-5"
             data-suggestion-id={suggestion_external_id(suggestion)}
             data-suggestion-state="validated"
           >
@@ -279,12 +290,12 @@ defmodule PinchflatWeb.DiscoveryLive do
 
             <div class="flex items-center justify-between gap-3 text-sm">
               <span class="text-theme-on-surface-muted">Discovery score</span>
-              <span class="theme-badge-success rounded-full px-2 py-1 font-medium" data-score={to_string(suggestion.score)}>
+              <span class="theme-badge-success rounded-full px-3 py-1 font-medium" data-score={to_string(suggestion.score)}>
                 {suggestion.score}
               </span>
             </div>
 
-            <dl class="theme-surface-accent p-3 text-sm">
+            <dl class="border-t border-theme-outline/50 pt-3 text-sm">
               <dt class="text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">Evidence</dt>
               <dd class="mt-1 break-words text-theme-on-surface">{suggestion.evidence}</dd>
             </dl>
@@ -293,7 +304,7 @@ defmodule PinchflatWeb.DiscoveryLive do
               <button
                 id={"accept-suggestion-#{suggestion_external_id(suggestion)}"}
                 type="button"
-                class="theme-primary-button rounded-m3-sm px-4 py-2 text-sm font-medium"
+                class="theme-primary-button inline-flex items-center rounded-m3-sm px-8 py-4 text-sm font-medium"
                 phx-click="accept"
                 phx-value-external_channel_id={suggestion_external_id(suggestion)}
                 data-action="accept"
@@ -304,7 +315,7 @@ defmodule PinchflatWeb.DiscoveryLive do
               <button
                 id={"dismiss-suggestion-#{suggestion_external_id(suggestion)}"}
                 type="button"
-                class="theme-outline-button rounded-m3-sm px-4 py-2 text-sm font-medium"
+                class="theme-outline-button inline-flex items-center px-8 py-4 text-sm font-medium"
                 phx-click="dismiss"
                 phx-value-external_channel_id={suggestion_external_id(suggestion)}
                 data-action="dismiss"
@@ -317,12 +328,16 @@ defmodule PinchflatWeb.DiscoveryLive do
         </div>
       </section>
 
-      <section id="discovery-dismissed" aria-labelledby="discovery-dismissed-heading" class="theme-surface-raised p-5">
+      <section
+        id="discovery-dismissed"
+        class="theme-surface-raised px-5 py-5 sm:px-7.5"
+        aria-labelledby="discovery-dismissed-heading"
+      >
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="discovery-dismissed-heading" class="text-xl font-semibold text-theme-on-surface">
+            <h3 id="discovery-dismissed-heading" class="text-lg font-semibold text-theme-on-surface">
               Dismissed suggestions
-            </h2>
+            </h3>
             <p class="mt-1 text-sm text-theme-on-surface-muted">
               Restore a dismissed channel if you want to review it again.
             </p>
@@ -335,7 +350,7 @@ defmodule PinchflatWeb.DiscoveryLive do
         <p
           :if={@dismissed_suggestions == []}
           id="discovery-dismissed-empty"
-          class="mt-4 text-sm text-theme-on-surface-muted"
+          class="theme-surface-accent mt-4 px-5 py-4 text-sm text-theme-on-surface-muted"
           role="status"
         >
           No dismissed suggestions.
@@ -345,7 +360,7 @@ defmodule PinchflatWeb.DiscoveryLive do
           <li
             :for={suggestion <- @dismissed_suggestions}
             id={"dismissed-#{suggestion_external_id(suggestion)}"}
-            class="flex flex-wrap items-center justify-between gap-3 border-t border-theme-outline/60 pt-3"
+            class="theme-surface-accent flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             data-suggestion-id={suggestion_external_id(suggestion)}
             data-suggestion-state="dismissed"
           >
@@ -356,7 +371,7 @@ defmodule PinchflatWeb.DiscoveryLive do
             <button
               id={"restore-suggestion-#{suggestion_external_id(suggestion)}"}
               type="button"
-              class="theme-outline-button rounded-m3-sm px-4 py-2 text-sm font-medium"
+              class="theme-outline-button inline-flex items-center px-8 py-4 text-sm font-medium"
               phx-click="restore"
               phx-value-external_channel_id={suggestion_external_id(suggestion)}
               data-action="restore"

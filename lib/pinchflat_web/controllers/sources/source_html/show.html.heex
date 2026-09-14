@@ -1,12 +1,12 @@
-<div class="mb-6 flex gap-3 flex-row items-center justify-between">
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div class="flex gap-3 items-center min-w-0">
     <.link href={~p"/sources"}>
       <.icon
         name="hero-arrow-left"
-        class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
+        class="h-8 w-8 text-theme-on-surface-muted transition hover:text-theme-on-surface sm:h-10 sm:w-10"
       />
     </.link>
-    <h2 class="ml-4 break-words text-title-md2 font-bold text-theme-on-surface">
+    <h2 class="ml-2 break-words text-lg font-bold text-theme-on-surface sm:ml-4 sm:text-title-md2">
       {@source.custom_name}
     </h2>
   </div>
@@ -59,190 +59,197 @@
     <.blocking_banner source={@source} conditions={@blocking_conditions} />
     <.source_statistics statistics={@media_statistics} />
 
-    <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
-      <:tab_append><.actions_dropdown source={@source} conn={@conn} /></:tab_append>
-
-      <:tab title="Source" id="source">
-        <.source_info_panel source={@source} />
-      </:tab>
-
-      <:tab title="Pending" id="pending">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "pending"}
-        )}
-      </:tab>
-
-      <:tab title="Failed" id="failed">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "failed"}
-        )}
-      </:tab>
-
-      <:tab
-        :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
-        title="Selection"
-        id="selection"
-      >
-        <div
-          x-data="{ toggleAll(value) { this.$root.querySelectorAll('input[data-selection-checkbox]').forEach(input => input.checked = value) } }"
-          class="space-y-5 text-theme-on-surface"
-        >
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 class="text-xl font-bold">Playlist Selection</h3>
-
-              <p class="mt-1 text-sm text-theme-on-surface-muted">
-                Choose which indexed playlist items should be eligible for download.
-              </p>
-            </div>
-
-            <div class="flex gap-2">
-              <button
-                type="button"
-                class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
-                x-on:click="toggleAll(true)"
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
-                x-on:click="toggleAll(false)"
-              >
-                Clear All
-              </button>
-            </div>
+    <div x-data="{ showUnset: false }">
+      <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
+        <:tab_append>
+          <div class="flex items-center gap-4">
+            <.switch :if={@active_tab == "source"} model="showUnset" label="Show unset fields" />
+            <.actions_dropdown source={@source} conn={@conn} />
           </div>
+        </:tab_append>
 
-          <.form for={%{}} as={:selection} action={~p"/sources/#{@source}/apply_selection"} method="post">
-            <div class="mb-4 grid gap-3 sm:max-w-md">
-              <label for="selection_range" class="text-sm font-medium text-theme-on-surface">
-                Playlist Index Range
-              </label>
-              <input
-                id="selection_range"
-                name="selection_range"
-                type="text"
-                placeholder="1-10,15,20-25"
-                class="rounded-xl border border-theme-outline bg-theme-surface-2 px-4 py-3 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none"
-              />
-              <p class="text-xs text-theme-on-surface-muted">
-                Optional. This selects items by playlist index and combines with any checked boxes below.
-              </p>
-            </div>
+        <:tab title="Source" id="source">
+          <.source_info_panel source={@source} />
+        </:tab>
 
-            <div
-              :if={Enum.empty?(@selection_media_items)}
-              class="theme-surface-accent rounded-xl px-5 py-4 text-sm text-theme-on-surface-muted"
-            >
-              No playlist items are indexed yet. Once indexing finishes, they will appear here.
-            </div>
+        <:tab title="Pending" id="pending">
+          {live_render(
+            @conn,
+            PinchflatWeb.Sources.MediaItemTableLive,
+            session: %{"source_id" => @source.id, "media_state" => "pending"}
+          )}
+        </:tab>
 
-            <div
-              :if={!Enum.empty?(@selection_media_items)}
-              class="overflow-hidden rounded-xl border border-theme-outline/70"
-            >
-              <div class="grid grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/70 bg-theme-surface-5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
-                <div>Pick</div>
+        <:tab title="Failed" id="failed">
+          {live_render(
+            @conn,
+            PinchflatWeb.Sources.MediaItemTableLive,
+            session: %{"source_id" => @source.id, "media_state" => "failed"}
+          )}
+        </:tab>
 
-                <div>Item</div>
+        <:tab
+          :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
+          title="Selection"
+          id="selection"
+        >
+          <div
+            x-data="{ toggleAll(value) { this.$root.querySelectorAll('input[data-selection-checkbox]').forEach(input => input.checked = value) } }"
+            class="space-y-5 text-theme-on-surface"
+          >
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 class="text-xl font-bold">Playlist Selection</h3>
 
-                <div>Index</div>
+                <p class="mt-1 text-sm text-theme-on-surface-muted">
+                  Choose which indexed playlist items should be eligible for download.
+                </p>
               </div>
 
-              <label
-                :for={media_item <- @selection_media_items}
-                for={"selection-media-#{media_item.id}"}
-                class="grid cursor-pointer grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/50 px-4 py-3 last:border-b-0 hover:bg-theme-surface-5/50"
-              >
-                <div class="pt-1">
-                  <input
-                    id={"selection-media-#{media_item.id}"}
-                    data-selection-checkbox
-                    type="checkbox"
-                    name="selected_media_ids[]"
-                    value={media_item.id}
-                    checked={!media_item.prevent_download}
-                    class="rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0"
-                  />
-                </div>
-
-                <div class="min-w-0">
-                  <p class="break-words font-medium text-theme-on-surface">{media_item.title}</p>
-                  <p class="mt-1 text-xs text-theme-on-surface-muted">
-                    {Calendar.strftime(media_item.uploaded_at, "%Y-%m-%d")}
-                  </p>
-                </div>
-
-                <div class="text-sm text-theme-on-surface-muted">#{media_item.playlist_index}</div>
-              </label>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+                  x-on:click="toggleAll(true)"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+                  x-on:click="toggleAll(false)"
+                >
+                  Clear All
+                </button>
+              </div>
             </div>
 
-            <div class="mt-5 flex flex-wrap gap-3">
-              <button
-                type="submit"
-                name="selection_action"
-                value="save"
-                class="theme-outline-button inline-flex px-5 py-3 text-sm font-medium"
+            <.form for={%{}} as={:selection} action={~p"/sources/#{@source}/apply_selection"} method="post">
+              <div class="mb-4 grid gap-3 sm:max-w-md">
+                <label for="selection_range" class="text-sm font-medium text-theme-on-surface">
+                  Playlist Index Range
+                </label>
+                <input
+                  id="selection_range"
+                  name="selection_range"
+                  type="text"
+                  placeholder="1-10,15,20-25"
+                  class="rounded-xl border border-theme-outline bg-theme-surface-2 px-4 py-3 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none"
+                />
+                <p class="text-xs text-theme-on-surface-muted">
+                  Optional. This selects items by playlist index and combines with any checked boxes below.
+                </p>
+              </div>
+
+              <div
+                :if={Enum.empty?(@selection_media_items)}
+                class="theme-surface-accent rounded-xl px-5 py-4 text-sm text-theme-on-surface-muted"
               >
-                Save Selection
-              </button>
-              <button
-                type="submit"
-                name="selection_action"
-                value="download"
-                class="inline-flex w-auto items-center justify-center rounded-m3-sm bg-theme-primary px-5 py-3 text-sm font-medium text-theme-on-primary"
+                No playlist items are indexed yet. Once indexing finishes, they will appear here.
+              </div>
+
+              <div
+                :if={!Enum.empty?(@selection_media_items)}
+                class="overflow-hidden rounded-xl border border-theme-outline/70"
               >
-                Download Selected
-              </button>
-            </div>
-          </.form>
-        </div>
-      </:tab>
+                <div class="grid grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/70 bg-theme-surface-5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+                  <div>Pick</div>
 
-      <:tab title="Active Tasks" id="active-tasks">
-        {live_render(
-          @conn,
-          Pinchflat.Pages.JobTableLive,
-          session: %{"source_id" => @source.id}
-        )}
-      </:tab>
+                  <div>Item</div>
 
-      <:tab title="Downloaded" id="downloaded">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "downloaded"}
-        )}
-      </:tab>
+                  <div>Index</div>
+                </div>
 
-      <:tab title="Job Queue" id="job-queue">
-        {live_render(
-          @conn,
-          Pinchflat.Pages.JobQueueLive,
-          session: %{"source_id" => @source.id}
-        )}
-      </:tab>
+                <label
+                  :for={media_item <- @selection_media_items}
+                  for={"selection-media-#{media_item.id}"}
+                  class="grid cursor-pointer grid-cols-[max-content_minmax(0,1fr)_max-content] gap-4 border-b border-theme-outline/50 px-4 py-3 last:border-b-0 hover:bg-theme-surface-5/50"
+                >
+                  <div class="pt-1">
+                    <input
+                      id={"selection-media-#{media_item.id}"}
+                      data-selection-checkbox
+                      type="checkbox"
+                      name="selected_media_ids[]"
+                      value={media_item.id}
+                      checked={!media_item.prevent_download}
+                      class="rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0"
+                    />
+                  </div>
 
-      <:tab title="Excluded" id="other">
-        {live_render(
-          @conn,
-          PinchflatWeb.Sources.MediaItemTableLive,
-          session: %{"source_id" => @source.id, "media_state" => "other"}
-        )}
-      </:tab>
+                  <div class="min-w-0">
+                    <p class="break-words font-medium text-theme-on-surface">{media_item.title}</p>
+                    <p class="mt-1 text-xs text-theme-on-surface-muted">
+                      {Calendar.strftime(media_item.uploaded_at, "%Y-%m-%d")}
+                    </p>
+                  </div>
 
-      <:tab title="Podcast" id="podcast">
-        <.feed_option icon="hero-rss" title="RSS feed" url={rss_feed_url(@conn, @source)}>
-          <:description>
-            Subscribe to this source in a podcast app. The feed lists downloaded media from this source.
-          </:description>
-        </.feed_option>
-      </:tab>
-    </.tabbed_layout>
+                  <div class="text-sm text-theme-on-surface-muted">#{media_item.playlist_index}</div>
+                </label>
+              </div>
+
+              <div class="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  name="selection_action"
+                  value="save"
+                  class="theme-outline-button inline-flex px-5 py-3 text-sm font-medium"
+                >
+                  Save Selection
+                </button>
+                <button
+                  type="submit"
+                  name="selection_action"
+                  value="download"
+                  class="inline-flex w-auto items-center justify-center rounded-m3-sm bg-theme-primary px-5 py-3 text-sm font-medium text-theme-on-primary"
+                >
+                  Download Selected
+                </button>
+              </div>
+            </.form>
+          </div>
+        </:tab>
+
+        <:tab title="Active Tasks" id="active-tasks">
+          {live_render(
+            @conn,
+            Pinchflat.Pages.JobTableLive,
+            session: %{"source_id" => @source.id}
+          )}
+        </:tab>
+
+        <:tab title="Downloaded" id="downloaded">
+          {live_render(
+            @conn,
+            PinchflatWeb.Sources.MediaItemTableLive,
+            session: %{"source_id" => @source.id, "media_state" => "downloaded"}
+          )}
+        </:tab>
+
+        <:tab title="Job Queue" id="job-queue">
+          {live_render(
+            @conn,
+            Pinchflat.Pages.JobQueueLive,
+            session: %{"source_id" => @source.id}
+          )}
+        </:tab>
+
+        <:tab title="Excluded" id="other">
+          {live_render(
+            @conn,
+            PinchflatWeb.Sources.MediaItemTableLive,
+            session: %{"source_id" => @source.id, "media_state" => "other"}
+          )}
+        </:tab>
+
+        <:tab title="Podcast" id="podcast">
+          <.feed_option icon="hero-rss" title="RSS feed" url={rss_feed_url(@conn, @source)}>
+            <:description>
+              Subscribe to this source in a podcast app. The feed lists downloaded media from this source.
+            </:description>
+          </.feed_option>
+        </:tab>
+      </.tabbed_layout>
+    </div>
   </div>
 </div>

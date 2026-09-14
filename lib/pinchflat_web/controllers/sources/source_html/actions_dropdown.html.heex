@@ -1,4 +1,4 @@
-<.button_dropdown text="Actions" class="justify-center w-full sm:w-50">
+<.button_dropdown text="Actions" class="justify-center min-w-40">
   <:option>
     <.link href={rss_feed_url(@conn, @source)} x-data="{ copied: false }" x-on:click={~s"
           $event.preventDefault();
