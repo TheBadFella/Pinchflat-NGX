@@ -97,6 +97,163 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
+  Library-style source header: artwork, collection type, status, compact URL,
+  next index time, and description.
+  """
+  attr :source, :any, required: true
+  attr :status, :atom, required: true
+  attr :pending_tasks, :list, required: true
+
+  def source_library_header(assigns) do
+    status_pill = status_pill(assigns.status)
+
+    assigns =
+      assigns
+      |> assign(:status_pill, status_pill)
+      |> assign(:next_check, next_check_at(assigns.pending_tasks))
+      |> assign(:has_poster, source_image?(assigns.source, :poster))
+      |> assign(:url_label, source_url_label(assigns.source.original_url))
+
+    ~H"""
+    <section id="source-library-header" class="theme-surface-accent mb-6 rounded-m3-lg px-5 py-5 sm:px-6">
+      <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
+        <div class="relative h-28 w-28 shrink-0 overflow-hidden rounded-m3-md bg-theme-surface-4 sm:h-32 sm:w-32">
+          <img
+            :if={@has_poster}
+            src={poster_preview_url(@source)}
+            alt={"Artwork for #{@source.custom_name}"}
+            class="h-full w-full object-cover"
+          />
+          <div
+            :if={!@has_poster}
+            class="flex h-full w-full flex-col items-center justify-center gap-1 bg-theme-primary-container/30 text-theme-on-primary-container"
+          >
+            <span class="text-2xl font-bold">{source_initials(@source)}</span>
+          </div>
+        </div>
+
+        <div class="min-w-0 flex-1 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <.collection_type_badge collection_type={@source.collection_type} />
+            <span class={["inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", @status_pill.class]}>
+              <.icon name={@status_pill.icon} class="h-3.5 w-3.5" />
+              {@status_pill.label}
+            </span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-theme-on-surface-muted">
+            <a
+              :if={@source.original_url}
+              href={@source.original_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-theme-primary hover:underline"
+            >
+              {@url_label}
+            </a>
+            <span :if={@next_check == :now}>Next check: checking now</span>
+            <span :if={match?(%DateTime{}, @next_check)}>
+              Next check: <.datetime_in_zone datetime={@next_check} format="%Y-%m-%d %H:%M" />
+            </span>
+          </div>
+
+          <p
+            :if={@source.description}
+            class="max-w-3xl whitespace-pre-wrap text-sm text-theme-on-surface-muted"
+          >
+            {@source.description}
+          </p>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  @doc """
+  Grouped source settings, replacing the raw attribute dump. Unset fields stay
+  hidden until the user asks for them.
+  """
+  attr :source, :any, required: true
+
+  def source_info_panel(assigns) do
+    assigns =
+      assigns
+      |> assign(:groups, info_groups(assigns.source))
+      |> assign(:internal_fields, internal_fields(assigns.source))
+
+    ~H"""
+    <div id="source-info-panel" class="flex flex-col gap-6 text-theme-on-surface" x-data="{ showUnset: false }">
+      <div class="flex justify-end">
+        <.switch model="showUnset" label="Show unset fields" />
+      </div>
+
+      <section :for={group <- @groups} class="theme-surface-accent rounded-m3-md px-5 py-4">
+        <h3 class="mb-3 flex items-center gap-2 text-lg font-semibold">
+          <.icon name={group.icon} class="h-5 w-5 text-theme-on-surface-muted" />
+          {group.title}
+        </h3>
+
+        <dl class="divide-y divide-theme-outline/50">
+          <div
+            :for={field <- group.fields}
+            class="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4"
+            x-show={if(field_set?(field), do: "true", else: "showUnset")}
+            x-cloak={unless field_set?(field), do: true}
+          >
+            <dt class="text-sm font-medium text-theme-on-surface-muted">
+              <.tooltip :if={field.tooltip} tooltip={field.tooltip} position="bottom">
+                <span>{field.label}</span>
+              </.tooltip>
+              <span :if={!field.tooltip}>{field.label}</span>
+            </dt>
+            <dd class="min-w-0 text-sm">
+              <.source_info_value field={field} />
+              <p class="mt-1 text-xs text-theme-on-surface-muted">{field.help}</p>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <details class="theme-surface-accent rounded-m3-md px-5 py-4">
+        <summary class="cursor-pointer text-sm font-medium text-theme-on-surface-muted">Internal</summary>
+        <dl class="mt-3 divide-y divide-theme-outline/50">
+          <div :for={{label, value} <- @internal_fields} class="grid gap-1 py-2 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
+            <dt class="text-sm text-theme-on-surface-muted">{label}</dt>
+            <dd class="break-all font-mono text-xs text-theme-on-surface">{value || "—"}</dd>
+          </div>
+        </dl>
+      </details>
+    </div>
+    """
+  end
+
+  attr :field, :map, required: true
+
+  defp source_info_value(assigns) do
+    field = assigns.field
+    value = if field_set?(field), do: field.value, else: "—"
+
+    assigns = assign(assigns, :value, value)
+
+    ~H"""
+    <a
+      :if={@field.href && field_set?(@field)}
+      href={@field.href}
+      target={if @field.type == :url, do: "_blank"}
+      rel={if @field.type == :url, do: "noopener noreferrer"}
+      class="text-theme-primary hover:underline"
+    >
+      <span class={info_value_class(@field.type)}>{@value}</span>
+    </a>
+    <span :if={!@field.href || !field_set?(@field)} class={info_value_class(@field.type)}>{@value}</span>
+    """
+  end
+
+  defp info_value_class(type) when type in [:code, :long_code], do: "break-all font-mono text-xs"
+  defp info_value_class(:long), do: "whitespace-pre-wrap"
+  defp info_value_class(_type), do: "break-words"
+
+  @doc """
   The "why is nothing downloading?" banner. Renders **only the first** blocking
   condition — the most fundamental one, since fixing it may well clear the rest —
   and renders nothing at all when the source is healthy. There is deliberately no
@@ -654,9 +811,10 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       {"ID", to_string(source.id)},
       {"UUID", source.uuid},
       {"Collection ID", source.collection_id},
-      {"Slug", source.slug},
+      {"Download subdirectory", source.download_subdirectory},
       {"NFO filepath", source.nfo_filepath},
       {"Poster filepath", source.poster_filepath},
+      {"Custom poster filename", source.custom_poster_filename},
       {"Fanart filepath", source.fanart_filepath},
       {"Banner filepath", source.banner_filepath},
       {"Marked for deletion at", source.marked_for_deletion_at && to_string(source.marked_for_deletion_at)},
@@ -695,7 +853,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       media_profile.download_subs && "subtitles",
       media_profile.download_thumbnail && "thumbnails",
       media_profile.download_nfo && "NFO",
-      media_profile.podcast_enabled && "podcast"
+      Pinchflat.Profiles.MediaProfile.podcast?(media_profile) && "podcast"
     ]
     |> Enum.filter(&is_binary/1)
     |> Enum.join(" · ")

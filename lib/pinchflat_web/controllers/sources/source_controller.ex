@@ -181,14 +181,22 @@ defmodule PinchflatWeb.Sources.SourceController do
         conn |> put_status(:ok) |> json(source)
 
       _ ->
-        media_statistics = Media.source_media_statistics(source)
+        indexing_failed? = Sources.indexing_failing?(source)
+
+        pending_tasks =
+          source
+          |> Pinchflat.Tasks.list_tasks_for(nil, [:available, :scheduled, :executing, :retryable])
+          |> Repo.preload(:job)
 
         render(conn, :show,
           source: source,
           active_tab: active_tab,
           tab_href: fn tab -> ~p"/sources/#{source}?#{[tab: tab]}" end,
           selection_media_items: selection_media_items,
-          media_statistics: media_statistics
+          media_statistics: Media.source_media_statistics(source),
+          blocking_conditions: Sources.blocking_conditions(source, indexing_failed?: indexing_failed?),
+          source_status: Sources.status(source, indexing_failed?: indexing_failed?),
+          pending_tasks: pending_tasks
         )
     end
   end
@@ -798,11 +806,11 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp allowed_tabs_for(%Source{collection_type: :playlist, selection_mode: :manual}) do
-    ~w(source pending failed selection active-tasks downloaded job-queue other)
+    ~w(source pending failed selection active-tasks downloaded job-queue other podcast)
   end
 
   defp allowed_tabs_for(_source) do
-    ~w(source pending failed active-tasks downloaded job-queue other)
+    ~w(source pending failed active-tasks downloaded job-queue other podcast)
   end
 
   defp available_media_directories do

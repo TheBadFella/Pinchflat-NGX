@@ -612,6 +612,38 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "manual selection mode"
     end
 
+    test "renders grouped source details instead of a raw attribute dump", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Library Details Source", description: "A channel description"})
+
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      assert response =~ ~s(id="source-library-header")
+      assert response =~ ~s(id="source-info-panel")
+      assert response =~ "Identity"
+      assert response =~ "Indexing"
+      assert response =~ "Library Details Source"
+      assert response =~ "A channel description"
+      refute response =~ "Raw Attributes"
+    end
+
+    test "renders a blocking banner when downloads are disabled", %{conn: conn} do
+      source = source_fixture(%{download_media: false})
+
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      assert response =~ "index only"
+      assert response =~ "never downloaded"
+    end
+
+    test "renders the podcast tab", %{conn: conn} do
+      source = source_fixture()
+
+      response = conn |> get(~p"/sources/#{source}?#{[tab: "podcast"]}") |> html_response(200)
+
+      assert response =~ "RSS feed"
+      assert response =~ "/sources/#{source.uuid}/feed"
+    end
+
     test "renders start, pause, and stop actions in the source actions dropdown", %{conn: conn} do
       source = source_fixture(%{custom_name: "Dropdown Source"})
 

@@ -38,6 +38,7 @@ window.setSidebarCollapsed = (collapsed) => {
 
 window.settingsPage = () => ({
   query: '',
+  selectedGroup: '',
   advancedMode: JSON.parse(localStorage.getItem('advancedMode') || 'false'),
   groups: {
     notifications:
@@ -54,9 +55,30 @@ window.settingsPage = () => ({
       'cookies cookie netscape cookies.txt members-only age-restricted default cookie behavior'
   },
   init() {
+    this.applyHash()
+    window.addEventListener('hashchange', () => this.applyHash())
     this.$watch('advancedMode', (value) => {
       localStorage.setItem('advancedMode', JSON.stringify(value))
     })
+  },
+  applyHash() {
+    const hash = (window.location.hash || '').replace('#', '')
+
+    if (hash === 'postgres-backups' || hash === 'backups') {
+      this.selectedGroup = 'backups'
+      this.$nextTick(() => {
+        document.getElementById('postgres-backups')?.scrollIntoView({ block: 'start' })
+      })
+    }
+  },
+  selectGroup(id) {
+    this.selectedGroup = this.selectedGroup === id ? '' : id
+
+    if (this.selectedGroup === 'backups') {
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#postgres-backups`)
+    } else {
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    }
   },
   match(text) {
     const query = this.query.trim().toLowerCase()
@@ -64,6 +86,11 @@ window.settingsPage = () => ({
 
     const haystack = String(text || '').toLowerCase()
     return query.split(/\s+/).every((word) => haystack.includes(word))
+  },
+  matchGroup(id) {
+    if (this.selectedGroup && this.selectedGroup !== id) return false
+
+    return this.match(this.groups[id])
   }
 })
 
