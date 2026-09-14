@@ -93,4 +93,10 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
       assert SourceHTML.collection_type_label(nil) == nil
     end
   end
+
+  describe "collection_type_icon/1" do
+    test "uses a play icon for single-video sources" do
+      assert SourceHTML.collection_type_icon(:video) == "hero-play-circle"
+    end
+  end
 end
