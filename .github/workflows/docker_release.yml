@@ -102,6 +102,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
 
       - name: Build and push by digest
         id: build
@@ -168,8 +170,14 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # Versioned pushes/releases publish their version plus latest.
-          # Manual runs publish the requested tag plus latest.
+          # Disable the action's automatic `latest` tag. Both sqlite and postgres
+          # merge jobs run on the same git tag; latest=auto would apply `latest`
+          # to whichever job finished last, including postgres.
+          flavor: |
+            latest=false
+          # SQLite is `latest` and `<version>`. PostgreSQL is `latest-postgres`
+          # and `<version>-postgres`. Moving tags are only written on published
+          # GitHub releases and manual workflow runs.
           tags: |
             type=ref,event=tag,suffix=${{ matrix.database == 'postgres' && '-postgres' || '' }}
             type=raw,value=${{ matrix.database == 'postgres' && 'latest-postgres' || 'latest' }},enable=${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
