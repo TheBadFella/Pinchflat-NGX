@@ -11,12 +11,15 @@ defmodule PinchflatWeb.DiscoveryLiveTest do
 
   @channel_id "UC" <> String.duplicate("a", 22)
 
-  test "renders Channel Discovery and the empty state when connected", %{conn: conn} do
-    {:ok, view, html} = live(conn, "/discovery")
+  test "renders Channel Discovery in the app shell", %{conn: conn} do
+    html = conn |> get(~p"/discovery") |> html_response(200)
 
-    assert is_pid(view.pid)
     assert html =~ "Channel Discovery"
     assert html =~ "No channel suggestions yet"
+    assert html =~ "Search all media"
+    assert html =~ ~s(href="/sources")
+    assert html =~ "mx-auto max-w-screen-2xl"
+    assert html =~ "data-phx-session"
   end
 
   test "renders the explicit disabled scheduled state", %{conn: conn} do

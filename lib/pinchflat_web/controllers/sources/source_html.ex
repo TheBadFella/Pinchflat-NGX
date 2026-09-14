@@ -70,7 +70,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         {:pending, "Pending", "theme-status-info"},
         {:failed, "Failed", "theme-status-error"},
         {:prevented, "Prevented", "theme-status-warning"},
-        {:unavailable, "Unavailable / Skipped", "text-theme-on-surface-muted"}
+        {:unavailable, "Skipped", "text-theme-on-surface-muted"}
       ])
 
     ~H"""
@@ -83,12 +83,15 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       <dl class="grid grid-cols-2 divide-x divide-y divide-theme-outline/50 sm:grid-cols-5 sm:divide-y-0">
         <div
           :for={{key, label, value_class} <- @statistics_items}
-          class="flex min-w-0 flex-col gap-1 px-3 py-2 first:pl-0 last:pr-0 sm:px-4"
+          class={[
+            "flex min-w-0 flex-col gap-1 px-3 py-2 first:pl-0 last:pr-0 sm:px-4",
+            key == :unavailable && "col-span-2 sm:col-span-1"
+          ]}
         >
           <dt class="truncate text-xs font-medium uppercase tracking-wide text-theme-on-surface-muted">{label}</dt>
           <dd
             class={["text-xl font-semibold tabular-nums", value_class]}
-            aria-label={"#{label}: #{Map.fetch!(@statistics, key)}"}
+            aria-label={"#{if(key == :unavailable, do: "Unavailable / Skipped", else: label)}: #{Map.fetch!(@statistics, key)}"}
           >
             <.localized_number number={Map.fetch!(@statistics, key)} />
           </dd>
@@ -178,18 +181,21 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       |> assign(:internal_fields, internal_fields(assigns.source))
 
     ~H"""
-    <div id="source-info-panel" class="flex flex-col gap-6 text-theme-on-surface" x-data="{ showUnset: false }">
-      <div class="flex justify-end">
-        <.switch model="showUnset" label="Show unset fields" />
-      </div>
-
-      <section :for={group <- @groups} class="theme-surface-accent rounded-m3-md px-5 py-4">
-        <h3 class="mb-3 flex items-center gap-2 text-lg font-semibold">
+    <div id="source-info-panel" class="flex flex-col gap-4 text-theme-on-surface">
+      <section :for={group <- @groups} class="theme-surface-accent rounded-m3-md px-5 py-3">
+        <h3
+          class="flex items-center gap-2 text-lg font-semibold leading-none"
+          x-bind:class={"showUnset || #{group.any_set?} ? 'mb-3' : ''"}
+        >
           <.icon name={group.icon} class="h-5 w-5 text-theme-on-surface-muted" />
           {group.title}
         </h3>
 
-        <dl class="divide-y divide-theme-outline/50">
+        <dl
+          class="divide-y divide-theme-outline/50"
+          x-show={"showUnset || #{group.any_set?}"}
+          x-cloak={unless group.any_set?, do: true}
+        >
           <div
             :for={field <- group.fields}
             class="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4"
@@ -210,8 +216,10 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         </dl>
       </section>
 
-      <details class="theme-surface-accent rounded-m3-md px-5 py-4">
-        <summary class="cursor-pointer text-sm font-medium text-theme-on-surface-muted">Internal</summary>
+      <details class="theme-surface-accent rounded-m3-md px-5 py-3">
+        <summary class="flex min-h-6 cursor-pointer list-none items-center text-sm font-medium text-theme-on-surface-muted">
+          Internal
+        </summary>
         <dl class="mt-3 divide-y divide-theme-outline/50">
           <div :for={{label, value} <- @internal_fields} class="grid gap-1 py-2 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
             <dt class="text-sm text-theme-on-surface-muted">{label}</dt>
@@ -687,6 +695,9 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       %{title: "Filters", icon: "hero-funnel", fields: filter_fields(source)},
       %{title: "Storage", icon: "hero-folder", fields: storage_fields(source)}
     ]
+    |> Enum.map(fn group ->
+      Map.put(group, :any_set?, Enum.any?(group.fields, &field_set?/1))
+    end)
   end
 
   defp identity_fields(source) do

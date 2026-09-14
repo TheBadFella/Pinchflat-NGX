@@ -63,21 +63,21 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       <span
         x-on:click.prevent="dropdownOpen = !dropdownOpen"
         class={[
-          "cursor-pointer inline-flex gap-2.5 rounded-m3-sm bg-theme-primary px-5.5 py-3",
+          "cursor-pointer inline-flex items-center gap-2.5 rounded-m3-sm bg-theme-primary px-5.5 py-4",
           "font-medium text-theme-on-primary shadow-m3-1 transition hover:brightness-110"
         ]}
       >
         {@text}
         <CoreComponents.icon
           name="hero-chevron-down"
-          class="fill-current duration-200 ease-linear mt-1"
+          class="h-4 w-4 fill-current duration-200 ease-linear"
           x-bind:class="dropdownOpen && 'rotate-180'"
         />
       </span>
       <div
         x-show="dropdownOpen"
         x-on:click.outside="dropdownOpen = false"
-        class="absolute left-0 top-full z-40 mt-2 w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-3 text-theme-on-surface shadow-m3-2"
+        class="absolute right-0 top-full z-40 mt-2 min-w-full w-max max-w-[min(18rem,calc(100vw-2rem))] rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-3 text-theme-on-surface shadow-m3-2"
       >
         <ul class="flex flex-col">
           <li :for={option <- @option}>

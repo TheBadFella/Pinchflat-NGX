@@ -1,6 +1,8 @@
 defmodule PinchflatWeb.Sources.SourceHTMLTest do
   use Pinchflat.DataCase
 
+  import Pinchflat.SourcesFixtures
+
   alias PinchflatWeb.Sources.SourceHTML
 
   # `next_check_at/1` only reads each task's job worker and scheduled_at, so a
@@ -97,6 +99,18 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
   describe "collection_type_icon/1" do
     test "uses a play icon for single-video sources" do
       assert SourceHTML.collection_type_icon(:video) == "hero-play-circle"
+    end
+  end
+
+  describe "info_groups/1" do
+    test "marks filter and storage groups unset when those fields are blank" do
+      source = Repo.preload(source_fixture(), :media_profile)
+      flags = Map.new(SourceHTML.info_groups(source), &{&1.title, &1.any_set?})
+
+      assert flags["Identity"]
+      assert flags["Indexing"]
+      refute flags["Filters"]
+      refute flags["Storage"]
     end
   end
 end
