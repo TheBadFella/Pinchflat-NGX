@@ -321,6 +321,12 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
   defp action_on_error(media_item, job_id, message, should_force) do
     case DownloadError.classify(message) do
+      {:rate_limited, progress_status} ->
+        persist_download_failure(media_item, :transient, should_force)
+        maybe_update_progress(job_id, %{progress_status: progress_status})
+        Logger.error("yt-dlp download will not be retried: #{inspect(message)}")
+        {:ok, :non_retry}
+
       {:permanent, progress_status} ->
         persist_download_failure(media_item, :permanent, should_force)
         maybe_update_progress(job_id, %{progress_status: progress_status})

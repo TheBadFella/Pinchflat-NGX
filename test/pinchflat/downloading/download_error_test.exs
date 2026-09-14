@@ -3,14 +3,14 @@ defmodule Pinchflat.Downloading.DownloadErrorTest do
 
   alias Pinchflat.Downloading.DownloadError
 
-  test "retains rate-limit errors as permanent failures" do
+  test "classifies rate-limit errors as non-retryable without a permanent block" do
     assert DownloadError.classify("HTTP Error 429: Too Many Requests") ==
-             {:permanent, "Stopped: rate limited by remote source"}
+             {:rate_limited, "Stopped: rate limited by remote source"}
   end
 
   test "retains the smart-apostrophe bot challenge rule" do
     assert DownloadError.classify("Sign in to confirm you\u2019re not a bot") ==
-             {:permanent, "Stopped: rate limited by remote source"}
+             {:rate_limited, "Stopped: rate limited by remote source"}
   end
 
   test "classifies unavailable media as a permanent failure" do

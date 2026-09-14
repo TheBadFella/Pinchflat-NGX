@@ -174,6 +174,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
 
       assert task.progress_status == "Stopped: rate limited by remote source"
       assert media_item.last_error =~ "HTTP Error 429"
+      refute media_item.prevent_download
+      assert media_item.error_type == :transient
     end
 
     test "does not permanently block a download when local staging is unavailable", %{media_item: media_item} do
