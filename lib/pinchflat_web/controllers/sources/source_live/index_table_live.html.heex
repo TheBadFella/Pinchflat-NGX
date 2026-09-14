@@ -195,8 +195,10 @@
       </article>
     </div>
 
-    <div id="source-table" data-view="table" class="hidden md:flex md:flex-col md:min-w-max">
-      <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
+    <div id="source-table" data-view="table" class="hidden md:block">
+      <div class="overflow-x-auto">
+        <div class="min-w-max">
+          <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
         <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
           <div data-source-id={source.id} class="flex min-w-0 flex-col gap-2">
             <div class="flex min-w-0 items-center gap-3">
@@ -341,6 +343,8 @@
           </div>
         </:col>
       </.table>
+        </div>
+      </div>
 
       <section class="my-5 flex justify-center">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />

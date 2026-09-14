@@ -55,6 +55,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   """
   def collection_type_icon(:channel), do: "hero-tv"
   def collection_type_icon(:playlist), do: "hero-queue-list"
+  def collection_type_icon(:video), do: "hero-play-circle"
   def collection_type_icon(_), do: "hero-question-mark-circle"
 
   @doc """
