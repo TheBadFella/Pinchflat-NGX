@@ -365,7 +365,7 @@ defmodule Pinchflat.Sources do
 
     [
       not source.download_media &&
-        "This source is set to index only — new media is catalogged but never downloaded."
+        "This source is set to index only — new media is cataloged but never downloaded."
         |> then(&{:downloads_disabled, &1}),
       indexing_failed? &&
         {:indexing_failed, "The most recent indexing run for this source failed, so new media isn't being discovered."},
@@ -441,18 +441,10 @@ defmodule Pinchflat.Sources do
     :exit, _ -> false
   end
 
-  # Where this source's downloads actually land. A podcast-publishing source
-  # downloads into `podcast_directory` (see `DownloadOptionBuilder.base_directory/1`),
-  # which is often a separate volume — checking `media_directory` for it would
-  # diagnose the wrong disk.
-  defp storage_directory(%Source{} = source) do
-    source = Repo.preload(source, :media_profile)
-
-    if source.media_profile && source.media_profile.podcast_enabled do
-      Application.get_env(:pinchflat, :podcast_directory)
-    else
-      Application.get_env(:pinchflat, :media_directory)
-    end
+  # Where this source's downloads actually land. PinchYT writes all downloads
+  # under `media_directory` (see `DownloadOptionBuilder`).
+  defp storage_directory(%Source{} = _source) do
+    Application.get_env(:pinchflat, :media_directory)
   end
 
   # One `stat` per page render, not per media item. This reports the mode bits

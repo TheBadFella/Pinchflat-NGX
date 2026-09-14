@@ -86,6 +86,7 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
     test "names each collection type" do
       assert SourceHTML.collection_type_label(:channel) == "Channel"
       assert SourceHTML.collection_type_label(:playlist) == "Playlist"
+      assert SourceHTML.collection_type_label(:video) == "Video"
     end
 
     test "returns nil for a source with no recorded type" do

@@ -28,6 +28,83 @@
     </div>
   </div>
 
+  <div class="flex flex-wrap gap-2 px-1" role="tablist" aria-label="Settings groups">
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('')"
+      x-bind:class="!selectedGroup ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="!selectedGroup"
+    >
+      All
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('notifications')"
+      x-bind:class="selectedGroup === 'notifications' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'notifications'"
+    >
+      Notifications
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('extractor')"
+      x-bind:class="selectedGroup === 'extractor' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'extractor'"
+    >
+      Extractor
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('discovery')"
+      x-bind:class="selectedGroup === 'discovery' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'discovery'"
+    >
+      Channel Discovery
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('backups')"
+      data-settings-group="backups"
+      x-bind:class="selectedGroup === 'backups' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'backups'"
+    >
+      PostgreSQL Backups
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('ytdlp')"
+      x-bind:class="selectedGroup === 'ytdlp' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'ytdlp'"
+    >
+      yt-dlp
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-on:click="selectGroup('cookies')"
+      x-bind:class="selectedGroup === 'cookies' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'cookies'"
+    >
+      Cookies
+    </button>
+    <button
+      type="button"
+      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      x-show="advancedMode || query.trim()"
+      x-on:click="selectGroup('codec')"
+      x-bind:class="selectedGroup === 'codec' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'codec'"
+    >
+      Codec Options
+    </button>
+  </div>
+
   <.setting_form
     conn={@conn}
     changeset={@changeset}

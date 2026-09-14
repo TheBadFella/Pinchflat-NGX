@@ -15,6 +15,9 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ "Cookies"
       assert html =~ "Base yt-dlp Config"
       assert html =~ "PostgreSQL Backups"
+      assert html =~ "PostgreSQL Backup Files"
+      assert html =~ ~s(id="postgres-backups")
+      assert html =~ ~s(data-settings-group="backups")
 
       if Pinchflat.Database.sqlite?() do
         assert html =~ "PostgreSQL backups are unavailable in the SQLite image"

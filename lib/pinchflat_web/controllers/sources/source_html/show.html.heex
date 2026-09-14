@@ -22,42 +22,24 @@
 
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="max-w-full">
-    <section class="theme-surface-accent mb-6 rounded-m3-lg px-6 py-5 text-theme-on-surface">
+    <.source_library_header source={@source} status={@source_status} pending_tasks={@pending_tasks} />
+
+    <section
+      :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
+      class="theme-surface-accent mb-6 rounded-m3-lg px-6 py-5 text-theme-on-surface"
+    >
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div class="space-y-2">
-          <div class="flex flex-wrap items-center gap-3">
-            <span class={[
-              "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
-              if(@source.selection_mode == :manual,
-                do: "bg-theme-tertiary-container/40 text-theme-on-surface",
-                else: "bg-theme-primary-container/30 text-theme-on-surface"
-              )
-            ]}>
-              {if @source.selection_mode == :manual, do: "Mode: Delayed", else: "Mode: Automatic"}
-            </span>
-            <span class={[
-              "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
-              if(@source.download_media,
-                do: "bg-theme-primary-container/30 text-theme-on-surface",
-                else: "bg-theme-surface-3 text-theme-on-surface-muted"
-              )
-            ]}>
-              {if @source.download_media, do: "Status: Active", else: "Status: Paused"}
-            </span>
-          </div>
-
+          <span class="inline-flex items-center rounded-full bg-theme-tertiary-container/40 px-3 py-1 text-xs font-medium">
+            Mode: Delayed
+          </span>
           <p class="max-w-3xl text-sm text-theme-on-surface-muted">
-            <%= if @source.selection_mode == :manual do %>
-              This playlist is in manual selection mode. Items not selected in the `Selection` tab are excluded from
-              downloading until you restore automatic downloads.
-            <% else %>
-              This source is using normal automatic downloads for all eligible media items.
-            <% end %>
+            This playlist is in manual selection mode. Items not selected in the `Selection` tab are excluded from
+            downloading until you restore automatic downloads.
           </p>
         </div>
 
         <.form
-          :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
           for={%{}}
           as={:restore_source}
           action={~p"/sources/#{@source}/restore_automatic_downloads"}
@@ -74,25 +56,14 @@
       </div>
     </section>
 
+    <.blocking_banner source={@source} conditions={@blocking_conditions} />
     <.source_statistics statistics={@media_statistics} />
 
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown source={@source} conn={@conn} /></:tab_append>
 
       <:tab title="Source" id="source">
-        <div class="flex flex-col gap-10 text-theme-on-surface">
-          <section>
-            <h3 class="mb-2 mt-6 text-xl font-bold">Raw Attributes</h3>
-
-            <section>
-              <strong>Media Profile:</strong>
-              <.subtle_link href={~p"/media_profiles/#{@source.media_profile_id}"}>
-                {@source.media_profile.name}
-              </.subtle_link>
-            </section>
-            <.list_items_from_map map={Map.from_struct(@source)} />
-          </section>
-        </div>
+        <.source_info_panel source={@source} />
       </:tab>
 
       <:tab title="Pending" id="pending">
@@ -263,6 +234,14 @@
           PinchflatWeb.Sources.MediaItemTableLive,
           session: %{"source_id" => @source.id, "media_state" => "other"}
         )}
+      </:tab>
+
+      <:tab title="Podcast" id="podcast">
+        <.feed_option icon="hero-rss" title="RSS feed" url={rss_feed_url(@conn, @source)}>
+          <:description>
+            Subscribe to this source in a podcast app. The feed lists downloaded media from this source.
+          </:description>
+        </.feed_option>
       </:tab>
     </.tabbed_layout>
   </div>
