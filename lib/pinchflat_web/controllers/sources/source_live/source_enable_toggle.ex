@@ -28,12 +28,15 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggle do
   end
 
   def update(assigns, socket) do
+    # IndexTableLive loads sources as maps with preloaded `%SourceMetadata{}`.
+    # Passing that map into `change_source/2` feeds the struct to `cast_assoc/3`
+    # and Phoenix converts the resulting `Ecto.CastError` into HTTP 400.
     initial_data = %{
       dom_id_base: dom_id_base(assigns.id),
       source_id: assigns.source.id,
       source: assigns.source,
       error: nil,
-      form: Sources.change_source(%Source{}, assigns.source)
+      form: Sources.change_source(%Source{}, %{enabled: assigns.source.enabled})
     }
 
     socket

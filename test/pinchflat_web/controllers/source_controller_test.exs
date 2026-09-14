@@ -56,6 +56,13 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Sources"
     end
 
+    test "returns 200 when a source has stored metadata", %{conn: conn} do
+      source_with_metadata(%{custom_name: "Indexed Source"})
+
+      conn = get(conn, ~p"/sources")
+      assert html_response(conn, 200) =~ "Indexed Source"
+    end
+
     test "renders download mode identifiers for automatic and delayed playlists", %{conn: conn} do
       source_fixture(%{custom_name: "Automatic Source", collection_type: :playlist, selection_mode: :all})
       source_fixture(%{custom_name: "Delayed Source", collection_type: :playlist, selection_mode: :manual})

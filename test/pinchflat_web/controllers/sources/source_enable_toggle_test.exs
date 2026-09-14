@@ -3,6 +3,7 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
 
   import Phoenix.LiveViewTest
 
+  alias Pinchflat.Metadata.SourceMetadata
   alias PinchflatWeb.Sources.SourceLive.SourceEnableToggle
 
   describe "initial rendering" do
@@ -40,6 +41,20 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggleTest do
 
       assert desktop_html =~ ~s(id="source_enable_toggle_source_1_enabled_input")
       assert mobile_html =~ ~s(id="source_enable_toggle_source_1_enabled_mobile_input")
+    end
+
+    test "renders when the source map includes a preloaded metadata struct" do
+      source = %{
+        id: 1,
+        enabled: true,
+        custom_name: "Indexed Channel",
+        metadata: %SourceMetadata{id: 1, metadata_filepath: "/tmp/metadata.json.gz"}
+      }
+
+      html = render_component(SourceEnableToggle, %{id: :foo, source: source})
+
+      assert html =~ ~s(name="source[enabled]")
+      assert html =~ "Monitor Indexed Channel"
     end
   end
 end
