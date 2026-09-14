@@ -86,7 +86,10 @@ defmodule Pinchflat.Backups do
   @spec create_backup(keyword()) :: {:ok, backup()} | {:error, atom()}
   def create_backup(opts \\ []) do
     if available?() do
-      :global.trans({__MODULE__, :create_backup}, fn -> do_create_backup(opts) end)
+      case :global.trans({__MODULE__, :create_backup}, fn -> do_create_backup(opts) end) do
+        :aborted -> {:error, :busy}
+        result -> result
+      end
     else
       {:error, :unavailable}
     end

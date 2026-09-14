@@ -176,6 +176,26 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.last_error =~ "HTTP Error 429"
     end
 
+    test "does not permanently block a download when local staging is unavailable", %{media_item: media_item} do
+      staging_root = Path.join(System.tmp_dir!(), "pinchyt-worker-staging-#{System.unique_integer([:positive])}")
+      original_staging_root = Application.get_env(:pinchflat, :download_staging_directory)
+
+      File.mkdir_p!(staging_root)
+      Application.put_env(:pinchflat, :download_staging_directory, staging_root)
+      stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 0} end)
+
+      on_exit(fn ->
+        Application.put_env(:pinchflat, :download_staging_directory, original_staging_root)
+        File.rm_rf!(staging_root)
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+      refute media_item.prevent_download
+      assert media_item.error_type == :transient
+    end
+
     test "clears the last error when a manual retry begins", %{media_item: media_item} do
       media_item = Repo.reload!(media_item)
       {:ok, media_item} = Media.update_media_item(media_item, %{last_error: "Old error"})

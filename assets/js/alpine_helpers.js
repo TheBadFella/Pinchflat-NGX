@@ -75,7 +75,11 @@ window.settingsPage = () => ({
     this.selectedGroup = this.selectedGroup === id ? '' : id
 
     if (this.selectedGroup === 'backups') {
-      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#postgres-backups`)
+      history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}#postgres-backups`
+      )
     } else {
       history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
     }

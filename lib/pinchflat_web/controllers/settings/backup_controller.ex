@@ -24,6 +24,9 @@ defmodule PinchflatWeb.Settings.BackupController do
       {:error, :pg_dump_unavailable} ->
         failure(conn, "PostgreSQL backup tooling is not available in this image.")
 
+      {:error, :busy} ->
+        failure(conn, "A PostgreSQL backup is already running. Try again in a moment.")
+
       {:error, _reason} ->
         failure(conn, "The PostgreSQL backup could not be created. Check the application logs.")
     end

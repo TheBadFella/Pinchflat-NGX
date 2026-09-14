@@ -47,6 +47,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   """
   def collection_type_label(:channel), do: "Channel"
   def collection_type_label(:playlist), do: "Playlist"
+  def collection_type_label(:video), do: "Video"
   def collection_type_label(_), do: nil
 
   @doc """
@@ -700,7 +701,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       field(
         "Type",
         collection_type_label(source.collection_type),
-        "Whether this source is a channel or a playlist. Set from the URL when the source was added"
+        "Whether this source is a channel, playlist, or single video. Set from the URL when the source was added"
       ),
       field(
         "Source URL",
