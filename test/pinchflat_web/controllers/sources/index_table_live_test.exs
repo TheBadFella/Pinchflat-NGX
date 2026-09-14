@@ -18,6 +18,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert html =~ source.custom_name
     end
 
+    test "lists sources that have stored metadata", %{conn: conn} do
+      source = source_with_metadata(%{custom_name: "Indexed Source"})
+
+      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert html =~ source.custom_name
+    end
+
     test "omits sources that have marked_for_deletion_at set", %{conn: conn} do
       source = source_fixture(marked_for_deletion_at: DateTime.utc_now())
 
