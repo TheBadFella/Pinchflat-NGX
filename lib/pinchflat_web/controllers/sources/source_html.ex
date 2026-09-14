@@ -134,7 +134,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
           </div>
         </div>
 
-        <div class="min-w-0 flex-1 space-y-3">
+        <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <.collection_type_badge collection_type={@source.collection_type} />
             <span class={["inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", @status_pill.class]}>
@@ -143,7 +143,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
             </span>
           </div>
 
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-theme-on-surface-muted">
+          <div class="mt-2 flex flex-col items-start gap-1.5 text-sm text-theme-on-surface-muted">
             <a
               :if={@source.original_url}
               href={@source.original_url}
@@ -157,14 +157,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
             <span :if={match?(%DateTime{}, @next_check)}>
               Next check: <.datetime_in_zone datetime={@next_check} format="%Y-%m-%d %H:%M" />
             </span>
+            <p :if={@source.description} class="whitespace-pre-line text-left">{String.trim(@source.description)}</p>
           </div>
-
-          <p
-            :if={@source.description}
-            class="max-w-3xl whitespace-pre-wrap text-sm text-theme-on-surface-muted"
-          >
-            {@source.description}
-          </p>
         </div>
       </div>
     </section>
