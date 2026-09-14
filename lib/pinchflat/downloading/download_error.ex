@@ -19,13 +19,20 @@ defmodule Pinchflat.Downloading.DownloadError do
     "This video is available to this channel's members"
   ]
 
-  @doc "Returns `{:permanent, progress_status}` or `:transient`."
+  @doc """
+  Returns `{:rate_limited, progress_status}`, `{:permanent, progress_status}`,
+  or `:transient`.
+
+  Rate limits and bot challenges must not retry immediately, but they are not
+  durable blocks: a later index or a bulk retry should pick the item up again.
+  True unavailability (removed, members-only, age-gated) stays permanent.
+  """
   def classify(message) do
     message = to_string(message)
 
     cond do
       String.contains?(message, @rate_limited_errors) ->
-        {:permanent, "Stopped: rate limited by remote source"}
+        {:rate_limited, "Stopped: rate limited by remote source"}
 
       String.contains?(message, @permanent_download_errors) ->
         {:permanent, "Stopped: download unavailable"}
