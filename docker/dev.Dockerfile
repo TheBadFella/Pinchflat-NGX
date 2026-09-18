@@ -92,10 +92,11 @@ RUN set -eux; \
   yt-dlp --update-to nightly && \
   # Keep the optional bgutil plugin outside the app's mounted config. It is only
   # loaded when POT_PROVIDER_URL is configured by the application.
-  install -d /opt/pinchyt/yt-dlp-plugins && \
+  install -d /opt/pinchflat-ngx/yt-dlp-plugins && \
   curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_PLUGIN_VERSION}/bgutil-ytdlp-pot-provider.zip" \
-    -o /opt/pinchyt/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip && \
-  chmod -R a+rX /opt/pinchyt/yt-dlp-plugins && \
+    -o /opt/pinchflat-ngx/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip && \
+  ln -s /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt/yt-dlp-plugins && \
+  chmod -R a+rX /opt/pinchflat-ngx/yt-dlp-plugins && \
   # Install Apprise
   export PIPX_HOME=/opt/pipx && \
   export PIPX_BIN_DIR=/usr/local/bin && \
