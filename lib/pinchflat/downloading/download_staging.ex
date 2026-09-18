@@ -217,7 +217,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   end
 
   defp writable_directory?(directory) do
-    probe = Path.join(directory, ".pinchyt-write-test-#{Ecto.UUID.generate()}")
+    probe = Path.join(directory, ".pinchflat-ngx-write-test-#{Ecto.UUID.generate()}")
 
     case File.write(probe, "") do
       :ok ->
@@ -374,7 +374,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   end
 
   defp copy_then_rename(source, destination) do
-    temporary_destination = destination <> ".pinchyt-copy-#{Ecto.UUID.generate()}"
+    temporary_destination = destination <> ".pinchflat-ngx-copy-#{Ecto.UUID.generate()}"
 
     case File.cp(source, temporary_destination) do
       :ok ->

@@ -30,7 +30,7 @@ defmodule Pinchflat.AppReleaseCheckTest do
       current = AppReleaseCheck.current_version()
 
       expect(HTTPClientMock, :get, fn url, _headers ->
-        assert url =~ "TheBadFella/PinchYT/releases/latest"
+        assert url =~ "TheBadFella/pinchflat-ngx/releases/latest"
         {:ok, Jason.encode!(%{"tag_name" => current})}
       end)
 

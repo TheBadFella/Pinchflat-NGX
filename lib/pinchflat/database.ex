@@ -1,6 +1,6 @@
 defmodule Pinchflat.Database do
   @moduledoc """
-  Describes the database adapter selected when this PinchYT build was compiled.
+  Describes the database adapter selected when this Pinchflat-ngx build was compiled.
 
   SQLite remains the default build. PostgreSQL images are compiled separately
   so Ecto, Oban, migrations, and database-specific queries all agree on the

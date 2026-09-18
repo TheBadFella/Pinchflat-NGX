@@ -85,7 +85,7 @@ defmodule Pinchflat.Downloading.DownloadStagingTest do
     assert {:ok, transferred} = DownloadStaging.transfer(paths.metadata, staging_directory, transfer_mode: :copy)
     assert File.exists?(transferred["filepath"])
     assert File.read!(transferred["filepath"]) == "video"
-    refute Enum.any?(Path.wildcard(Path.join(media_root, "**/*.pinchyt-copy-*")))
+    refute Enum.any?(Path.wildcard(Path.join(media_root, "**/*.pinchflat-ngx-copy-*")))
     refute File.exists?(paths.metadata["filepath"])
   end
 

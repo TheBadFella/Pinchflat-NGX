@@ -10,7 +10,8 @@ defmodule Pinchflat.YtDlp.PoTokenProvider do
   alias Pinchflat.HTTP.HTTPClient
 
   @health_timeout 3_000
-  @plugin_dir "/opt/pinchyt/yt-dlp-plugins"
+  @plugin_dir "/opt/pinchflat-ngx/yt-dlp-plugins"
+  @legacy_plugin_dir "/opt/pinchyt/yt-dlp-plugins"
 
   @doc """
   Returns typed yt-dlp extractor arguments for a configured provider.
@@ -29,10 +30,18 @@ defmodule Pinchflat.YtDlp.PoTokenProvider do
   its bundled plugin directory is present.
   """
   def plugin_options do
-    if enabled?() and plugin_directory_present?() do
-      [plugin_dirs: @plugin_dir]
+    if enabled?() do
+      active_plugin_dir()
     else
       []
+    end
+  end
+
+  defp active_plugin_dir do
+    cond do
+      plugin_directory_present?(@plugin_dir) -> [plugin_dirs: @plugin_dir]
+      plugin_directory_present?(@legacy_plugin_dir) -> [plugin_dirs: @legacy_plugin_dir]
+      true -> []
     end
   end
 
@@ -142,8 +151,8 @@ defmodule Pinchflat.YtDlp.PoTokenProvider do
     Application.get_env(:pinchflat, :http_client, HTTPClient)
   end
 
-  defp plugin_directory_present? do
-    case File.ls(@plugin_dir) do
+  defp plugin_directory_present?(dir) do
+    case File.ls(dir) do
       {:ok, [_entry | _rest]} -> true
       _ -> false
     end

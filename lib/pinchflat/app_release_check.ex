@@ -1,13 +1,13 @@
 defmodule Pinchflat.AppReleaseCheck do
   @moduledoc """
-  Compares the running PinchYT version with the latest GitHub release so the
+  Compares the running Pinchflat-ngx version with the latest GitHub release so the
   sidebar can show when an update is available.
   """
 
   alias Pinchflat.Utils.VersionUtils
 
-  @repo_api "https://api.github.com/repos/TheBadFella/PinchYT"
-  @headers [{"User-Agent", "PinchYT"}, {"Accept", "application/vnd.github+json"}]
+  @repo_api "https://api.github.com/repos/TheBadFella/pinchflat-ngx"
+  @headers [{"User-Agent", "Pinchflat-ngx"}, {"Accept", "application/vnd.github+json"}]
   @cache_key {__MODULE__, :latest}
   @cache_ttl_ms :timer.hours(6)
 

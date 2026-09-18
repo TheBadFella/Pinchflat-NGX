@@ -1,6 +1,6 @@
 defmodule Pinchflat.Backups.PgDumpRunner do
   @moduledoc """
-  Runs `pg_dump` through PinchYT's cancellation-aware command wrapper.
+  Runs `pg_dump` through Pinchflat-ngx's cancellation-aware command wrapper.
 
   This module deliberately does not log command arguments, environment values,
   or command output. The caller is responsible for logging a redacted summary

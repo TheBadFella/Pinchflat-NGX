@@ -110,6 +110,9 @@ defmodule Pinchflat.BackupsTest do
       assert Backups.backup_filename?("pinchyt-postgres-20260911-120000-0000000000000001.dump")
       refute Backups.backup_filename?("pinchyt-postgres-20260911-120000-0000000000000001.dump.partial")
       refute Backups.backup_filename?("../pinchyt-postgres-20260911-120000-0000000000000001.dump")
+
+      assert Backups.backup_filename?("pinchflat-ngx-postgres-20260911-120000-000001-0000000000000001.dump")
+      refute Backups.backup_filename?("pinchflat-ngx-postgres-20260911-120000-000001-0000000000000001.dump.partial")
     end
 
     test "removes stale partial files but leaves recent partial files", %{directory: directory} do
