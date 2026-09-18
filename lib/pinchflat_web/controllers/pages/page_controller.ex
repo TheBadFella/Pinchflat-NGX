@@ -6,6 +6,12 @@ defmodule PinchflatWeb.Pages.PageController do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
 
+  def home(%{method: "HEAD"} = conn, _params) do
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(200, "")
+  end
+
   def home(conn, params) do
     done_onboarding = params["onboarding"] == "0"
     force_onboarding = params["onboarding"] == "1"

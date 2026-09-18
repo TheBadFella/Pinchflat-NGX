@@ -55,7 +55,7 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggle do
          assign(socket,
            source: updated_source,
            error: nil,
-           form: Sources.change_source(updated_source)
+           form: Sources.change_source(%Source{}, %{enabled: updated_source.enabled})
          )}
 
       {:error, _changeset} ->
@@ -63,7 +63,7 @@ defmodule PinchflatWeb.Sources.SourceLive.SourceEnableToggle do
          assign(socket,
            source: source,
            error: "Could not update monitoring state.",
-           form: Sources.change_source(source)
+           form: Sources.change_source(%Source{}, %{enabled: source.enabled})
          )}
     end
   end

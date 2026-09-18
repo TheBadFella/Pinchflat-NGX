@@ -32,5 +32,11 @@ defmodule PinchflatWeb.PageControllerTest do
       assert html_response(conn, 200) =~ "Failed"
       assert html_response(conn, 200) =~ "Latest"
     end
+
+    test "responds with 200 and empty body for HEAD requests", %{conn: conn} do
+      conn = head(conn, ~p"/")
+      assert response(conn, 200) == ""
+      assert response_content_type(conn, :html) =~ "text/html"
+    end
   end
 end
