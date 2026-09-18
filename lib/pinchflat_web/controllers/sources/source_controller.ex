@@ -32,10 +32,9 @@ defmodule PinchflatWeb.Sources.SourceController do
   )
 
   def index(conn, _params) do
-    sources = Sources.list_sources() |> Sources.preload_api_assocs()
-
     case get_format(conn) do
       "json" ->
+        sources = Sources.list_sources() |> Sources.preload_api_assocs()
         conn |> put_status(:ok) |> json(%{data: sources})
 
       _ ->
