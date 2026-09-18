@@ -53,7 +53,7 @@ defmodule PinchflatWeb.Settings.BackupController do
 
   defp unavailable(conn) do
     conn
-    |> put_flash(:error, "PostgreSQL backups are unavailable when PinchYT uses SQLite.")
+    |> put_flash(:error, "PostgreSQL backups are unavailable when Pinchflat-ngx uses SQLite.")
     |> redirect(to: ~p"/settings")
   end
 

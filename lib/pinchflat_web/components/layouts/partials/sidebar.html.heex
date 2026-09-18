@@ -20,7 +20,7 @@
       >
         <img
           x-bind:src="sidebarCollapsed ? document.body.dataset.sidebarIcon : document.body.dataset.sidebarLogo"
-          alt="Pinchflat"
+          alt="Pinchflat-ngx"
           class="object-contain"
           x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'w-auto'"
         />
@@ -101,7 +101,12 @@
           href="https://github.com/kieraneglin/pinchflat/wiki"
           icon_class="scale-110"
         />
-        <.sidebar_item icon="si-github" text="Github" target="_blank" href="https://github.com/TheBadFella/PinchYT" />
+        <.sidebar_item
+          icon="si-github"
+          text="Github"
+          target="_blank"
+          href="https://github.com/TheBadFella/pinchflat-ngx"
+        />
         <.sidebar_item icon="si-discord" text="Discord" target="_blank" href="https://discord.gg/j7T6dCuwU4" />
         <li>
           <span

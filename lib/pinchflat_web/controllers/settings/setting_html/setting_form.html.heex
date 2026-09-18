@@ -136,7 +136,7 @@
         min="1"
         max="100"
         label="Backups to Keep"
-        help="After each successful backup, PinchYT keeps this many completed PostgreSQL dumps and removes older ones. Failed or partial dumps are never retained."
+        help="After each successful backup, Pinchflat-ngx keeps this many completed PostgreSQL dumps and removes older ones. Failed or partial dumps are never retained."
       />
     <% else %>
       <p id="postgres-backups-unavailable" class="mt-2 text-sm theme-status-warning">
@@ -236,7 +236,7 @@
   <%= if @backup_status.available do %>
     <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p class="text-sm text-theme-on-surface-muted">
-        Dumps are stored in PinchYT's persistent configuration volume and are available only through this authenticated UI.
+        Dumps are stored in Pinchflat-ngx's persistent configuration volume and are available only through this authenticated UI.
       </p>
       <.link href={~p"/settings/backups"} method="post" class="w-full shrink-0 sm:w-auto">
         <.button color="theme-primary-button" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">

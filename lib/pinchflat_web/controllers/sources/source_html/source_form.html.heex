@@ -27,9 +27,9 @@
       },
       get sourceTypeHelp() {
         return {
-          automatic: 'URL of a channel, playlist, or single video (required). Automatic detection preserves existing PinchYT behavior.',
-          channel: 'URL of a YouTube channel (required). PinchYT will reject a URL that resolves to a playlist or video.',
-          playlist: 'URL of a YouTube playlist (required). PinchYT will reject a URL that resolves to a channel or video.',
+          automatic: 'URL of a channel, playlist, or single video (required). Automatic detection preserves existing Pinchflat-ngx behavior.',
+          channel: 'URL of a YouTube channel (required). Pinchflat-ngx will reject a URL that resolves to a playlist or video.',
+          playlist: 'URL of a YouTube playlist (required). Pinchflat-ngx will reject a URL that resolves to a channel or video.',
           video: 'URL of a single YouTube video (required). Video sources are indexed once and fast indexing is disabled automatically.'
         }[this.sourceType] || 'URL of a channel, playlist, or single video (required).'
       },
@@ -74,7 +74,7 @@
         options={Source.source_type_options()}
         type="select"
         label="Source Type"
-        help="Choose Automatic to keep PinchYT's existing URL detection, or select the type you expect before inspection."
+        help="Choose Automatic to keep Pinchflat-ngx's existing URL detection, or select the type you expect before inspection."
         x-model="sourceType"
       />
       <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-md font-medium text-theme-on-surface">
@@ -106,7 +106,7 @@
       field={f[:custom_name]}
       type="text"
       label="Source Name"
-      help="The name shown throughout PinchYT. It will be refreshed from source metadata unless locked."
+      help="The name shown throughout Pinchflat-ngx. It will be refreshed from source metadata unless locked."
     />
     <.input
       field={f[:custom_name_locked]}
@@ -118,7 +118,7 @@
       field={f[:description]}
       type="textarea"
       label="Description"
-      help="The source description shown in PinchYT. It will be refreshed from source metadata unless locked."
+      help="The source description shown in Pinchflat-ngx. It will be refreshed from source metadata unless locked."
     />
     <.input
       field={f[:description_locked]}
@@ -250,7 +250,7 @@
         role="alert"
       >
         Members-only media may fail without cookies. Configure a cookies.txt file and select a cookie behaviour if
-        you want PinchYT to access it; this setting will not enable cookies automatically.
+        you want Pinchflat-ngx to access it; this setting will not enable cookies automatically.
       </div>
       <div
         x-cloak

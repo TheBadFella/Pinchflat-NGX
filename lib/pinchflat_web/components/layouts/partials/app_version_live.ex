@@ -1,6 +1,6 @@
 defmodule Pinchflat.AppVersionLive do
   @moduledoc """
-  Sidebar card for the running PinchYT and yt-dlp versions.
+  Sidebar card for the running Pinchflat-ngx and yt-dlp versions.
   """
 
   use PinchflatWeb, :live_view
@@ -14,16 +14,16 @@ defmodule Pinchflat.AppVersionLive do
       <div class="flex flex-col gap-1.5">
         <div class="flex min-w-0 flex-nowrap items-center justify-between gap-1.5">
           <.link
-            href="https://github.com/TheBadFella/PinchYT/releases"
+            href="https://github.com/TheBadFella/pinchflat-ngx/releases"
             target="_blank"
             class="shrink-0 font-medium text-theme-on-surface transition hover:text-theme-primary"
-            title={"PinchYT #{@current_version}"}
+            title={"Pinchflat-ngx #{@current_version}"}
           >
-            PinchYT
+            Pinchflat-ngx
           </.link>
           <.version_chip
-            label={pinchyt_chip_label(@status)}
-            tooltip={pinchyt_chip_tooltip(@status)}
+            label={app_chip_label(@status)}
+            tooltip={app_chip_tooltip(@status)}
             warning={match?({:update_available, _, _}, @status)}
           />
         </div>
@@ -83,13 +83,13 @@ defmodule Pinchflat.AppVersionLive do
     """
   end
 
-  defp pinchyt_chip_label({:latest, _current}), do: "Latest"
+  defp app_chip_label({:latest, _current}), do: "Latest"
 
-  defp pinchyt_chip_label({:update_available, current, _latest}), do: current
+  defp app_chip_label({:update_available, current, _latest}), do: current
 
-  defp pinchyt_chip_tooltip({:latest, current}), do: current
+  defp app_chip_tooltip({:latest, current}), do: current
 
-  defp pinchyt_chip_tooltip({:update_available, _current, latest}) do
+  defp app_chip_tooltip({:update_available, _current, latest}) do
     "Update available: #{latest}"
   end
 

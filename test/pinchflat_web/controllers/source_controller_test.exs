@@ -120,8 +120,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Channel URL"
       assert response =~ "Playlist URL"
       assert response =~ "Video URL"
-      assert response =~ "preserves existing PinchYT behavior."
-      refute response =~ ~S(PinchYT\'s)
+      assert response =~ "preserves existing Pinchflat-ngx behavior."
+      refute response =~ ~S(Pinchflat-ngx\'s)
       assert response =~ "Source Metadata"
       assert response =~ "Lock Source Name"
       assert response =~ "Lock Description"
