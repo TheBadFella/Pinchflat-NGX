@@ -1,11 +1,11 @@
-# Agent guidelines for PinchYT
+# Agent guidelines for Pinchflat-ngx
 
 Guidelines for AI agents working on this Elixir/Phoenix codebase.
 
 ## Project Overview
 
-PinchYT is a self-hosted media management fork. Its internal Elixir application
-and modules retain the Pinchflat name. It uses:
+Pinchflat-ngx (formerly PinchYT) is a self-hosted media management fork. Its internal Elixir
+application and modules retain the Pinchflat name. It uses:
 
 - **Backend**: Elixir 1.17+, Phoenix 1.7, Ecto with SQLite
 - **Frontend**: Phoenix LiveView, Tailwind CSS, esbuild
@@ -119,7 +119,7 @@ end
 ### UI Theming Guardrails
 
 - Follow Material Design 3 tokens and design foundations for UI work.
-- Treat UI work ported from other forks, upstream, or generated patches as unfinished until it has been adapted to PinchYT's current design system.
+- Treat UI work ported from other forks, upstream, or generated patches as unfinished until it has been adapted to Pinchflat-ngx's current design system.
 - Before adding or changing a screen, inspect nearby pages and shared components to match the existing layout density, surfaces, spacing, typography, buttons, tabs, badges, tables, and empty states.
 - Use shared semantic theme classes from `assets/css/app.css` instead of page-local hardcoded palette combinations.
 - Do not introduce raw palette classes like `text-red-*`, `bg-red-*`, `border-green-*`, or `zinc-*` in `lib/pinchflat_web`.
