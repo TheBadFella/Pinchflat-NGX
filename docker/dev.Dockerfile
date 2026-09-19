@@ -92,7 +92,7 @@ RUN set -eux; \
   yt-dlp --update-to nightly && \
   # Keep the optional bgutil plugin outside the app's mounted config. It is only
   # loaded when POT_PROVIDER_URL is configured by the application.
-  install -d /opt/pinchflat-ngx/yt-dlp-plugins && \
+  install -d /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt && \
   curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_PLUGIN_VERSION}/bgutil-ytdlp-pot-provider.zip" \
     -o /opt/pinchflat-ngx/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip && \
   ln -s /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt/yt-dlp-plugins && \

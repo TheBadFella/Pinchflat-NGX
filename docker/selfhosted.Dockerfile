@@ -184,7 +184,7 @@ RUN mkdir -p /config /downloads /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt /
   chmod ugo+rw /etc/elixir_tzdata_data /etc/yt-dlp /etc/yt-dlp/plugins /usr/local/bin /usr/local/bin/yt-dlp
 
 # The official bgutil plugin is installed as a zip in a dedicated directory.
-# PinchYT adds --plugin-dirs only when POT_PROVIDER_URL is valid, so the
+# Pinchflat-ngx adds --plugin-dirs only when POT_PROVIDER_URL is valid, so the
 # disabled configuration keeps the existing yt-dlp command line unchanged.
 RUN curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${BGUTIL_PLUGIN_VERSION}/bgutil-ytdlp-pot-provider.zip" \
       -o /opt/pinchflat-ngx/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip && \

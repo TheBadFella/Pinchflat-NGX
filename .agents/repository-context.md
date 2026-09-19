@@ -1,6 +1,6 @@
-# PinchYT engineering context
+# Pinchflat-ngx engineering context
 
-Maintain the PinchYT media fork and its Material Design theme.
+Maintain the Pinchflat-ngx media fork and its Material Design theme.
 
 Stack observed on 2026-09-06: Elixir/Phoenix LiveView + Ecto/SQLite + Oban. Recheck manifests and scoped instructions when the implementation changes.
 
@@ -19,7 +19,7 @@ Stack observed on 2026-09-06: Elixir/Phoenix LiveView + Ecto/SQLite + Oban. Rech
 
 - Use Docker for development/testing as required by AGENTS; inspect binds and isolate media/database paths first.
 - Preserve Oban uniqueness/retries, retention safety and fixture-based yt-dlp/HTTP behavior.
-- Use semantic Material Design classes and current Tailwind CSS theme paths. Pinchflat remains the internal module name; PinchYT is the fork/product name.
+- Use semantic Material Design classes and current Tailwind CSS theme paths. Pinchflat remains the internal module name; Pinchflat-ngx is the fork/product name.
 
 ## Verification recipes
 
@@ -37,4 +37,4 @@ Use synthetic fixture DB/media by default, inspect backup sensitivity before any
 
 ## Communication
 
-Keep public PinchYT naming separate from Pinchflat code modules. Do not rewrite class names, yt-dlp flags, file templates or API identifiers.
+Keep public Pinchflat-ngx naming separate from Pinchflat code modules. Do not rewrite class names, yt-dlp flags, file templates or API identifiers.
