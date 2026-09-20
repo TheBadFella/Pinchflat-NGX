@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/TheBadFella/pinchflat-ngx/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/TheBadFella/pinchflat-ngx?style=for-the-badge&color=D0BCFF&labelColor=211F26"></a>
   <a href="https://github.com/TheBadFella/pinchflat-ngx/actions/workflows/lint_and_test.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/TheBadFella/pinchflat-ngx/lint_and_test.yml?style=for-the-badge&label=checks&labelColor=211F26"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/TheBadFella/pinchflat-ngx?style=for-the-badge&color=EFB8C8&labelColor=211F26"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-EFB8C8?style=for-the-badge&labelColor=211F26"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/linux-amd64%20%7C%20arm64-CCC2DC?style=for-the-badge&labelColor=211F26">
 </p>
 
@@ -20,17 +20,9 @@
 </p>
 
 <p align="center">
-  <a href="docs/assets/screenshots/dashboard.png"><strong>Dashboard</strong></a> &bull;
-  <a href="docs/assets/screenshots/sources-table.png"><strong>Sources Table</strong></a> &bull;
-  <a href="docs/assets/screenshots/sources-grid.png"><strong>Sources Grid</strong></a> &bull;
-  <a href="docs/assets/screenshots/source-details.png"><strong>Source Details</strong></a> &bull;
-  <a href="docs/assets/screenshots/channel-discovery.png"><strong>Channel Discovery</strong></a> &bull;
-  <a href="docs/assets/screenshots/diagnostics.png"><strong>Diagnostics</strong></a>
-</p>
-
-<p align="center">
   <a href="#what-pinchflat-ngx-adds"><strong>Overview</strong></a> &bull;
   <a href="#why-pinchflat-ngx"><strong>Comparison</strong></a> &bull;
+  <a href="#screenshots"><strong>Screenshots</strong></a> &bull;
   <a href="#get-started"><strong>Get Started</strong></a> &bull;
   <a href="#postgresql-image"><strong>PostgreSQL</strong></a> &bull;
   <a href="#optional-local-download-staging"><strong>NAS Staging</strong></a> &bull;
@@ -107,7 +99,7 @@
 - **Collapsible sidebar:** Collapse desktop navigation when you want a denser workspace.
 - **Mobile polish:** Source, job, history, profile, and settings views adapt cleanly to smaller screens.
 - **Settings search:** Filter Settings to find notifications, extractor options, cookies, and yt-dlp controls quickly.
-- **Interface gallery:** View captures of the [Dashboard](docs/assets/screenshots/dashboard.png), [Sources Table](docs/assets/screenshots/sources-table.png), [Sources Poster Grid](docs/assets/screenshots/sources-grid.png), [Source Details](docs/assets/screenshots/source-details.png), [Channel Discovery](docs/assets/screenshots/channel-discovery.png), and [System Diagnostics](docs/assets/screenshots/diagnostics.png).
+- **Interface gallery:** Explore the [Screenshots](#screenshots) gallery below for full captures of the interface.
 
 ### Downloads
 
@@ -147,6 +139,24 @@ OIDC replaces Basic Auth for browser routes when enabled. Feed endpoints retain 
 podcast clients; API endpoints and `/healthcheck` remain unauthenticated by design.
 
 **[Set up OIDC &rarr;](https://github.com/TheBadFella/pinchflat-ngx/wiki/OIDC-Single-Sign-On)**
+
+---
+
+## Screenshots
+
+Explore captures of the Material 3 AMOLED interface across key views:
+
+|                           [Poster Grid](docs/assets/screenshots/sources-grid.png)                            |                        [Source Details](docs/assets/screenshots/source-details.png)                         |
+| :----------------------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------------------: |
+| [![Sources Poster Grid](docs/assets/screenshots/sources-grid.png)](docs/assets/screenshots/sources-grid.png) | [![Source Details](docs/assets/screenshots/source-details.png)](docs/assets/screenshots/source-details.png) |
+
+|                        [Sources Table](docs/assets/screenshots/sources-table.png)                        |                       [System Diagnostics](docs/assets/screenshots/diagnostics.png)                       |
+| :------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------------: |
+| [![Sources Table](docs/assets/screenshots/sources-table.png)](docs/assets/screenshots/sources-table.png) | [![System Diagnostics](docs/assets/screenshots/diagnostics.png)](docs/assets/screenshots/diagnostics.png) |
+
+|                 [Dashboard & History](docs/assets/screenshots/dashboard.png)                 |                          [Channel Discovery](docs/assets/screenshots/channel-discovery.png)                          |
+| :------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------------: |
+| [![Dashboard](docs/assets/screenshots/dashboard.png)](docs/assets/screenshots/dashboard.png) | [![Channel Discovery](docs/assets/screenshots/channel-discovery.png)](docs/assets/screenshots/channel-discovery.png) |
 
 ---
 
