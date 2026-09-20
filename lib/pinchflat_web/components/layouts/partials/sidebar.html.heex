@@ -22,7 +22,7 @@
           x-bind:src="sidebarCollapsed ? document.body.dataset.sidebarIcon : document.body.dataset.sidebarLogo"
           alt="Pinchflat-ngx"
           class="object-contain"
-          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'w-auto'"
+          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'h-8 w-auto'"
         />
       </a>
       <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
