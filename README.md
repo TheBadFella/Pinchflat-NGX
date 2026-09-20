@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme-hero.svg" alt="Pinchflat-ngx — your media, under your control" width="100%">
+  <img src="docs/assets/logo.png" alt="Pinchflat-ngx logo" width="460">
 </p>
 
 <p align="center">
@@ -10,8 +10,9 @@
 </p>
 
 <p align="center">
-  A self-hosted YouTube media manager built on Pinchflat, with a Material 3 AMOLED interface,<br>
-  stronger source controls, and practical tools for running a hands-off media library.
+  An enhanced, self-hosted YouTube media manager built on Pinchflat.<br>
+  Engineered with a Material 3 AMOLED interface, SQLite &amp; PostgreSQL 18 support,<br>
+  OIDC single sign-on, and local disk staging for seamless network storage downloads.
 </p>
 
 <p align="center">
@@ -94,36 +95,8 @@ compatible with the PostgreSQL 18 server as-is; use an explicit PostgreSQL upgra
 procedure before reusing existing PostgreSQL data. Keep using `latest` for an existing SQLite installation until
 you have migrated its data separately.
 
-#### PostgreSQL database backups
-
-The PostgreSQL image includes pg_dump. Authenticated users can create a custom-format database backup from
-Settings -> PostgreSQL Backups. Credentials are taken from the running app's DATABASE_URL; Pinchflat-ngx passes them to
-pg_dump through PostgreSQL's PG* environment variables, never as command-line arguments or rendered UI text.
-
-Completed dumps are stored in the persistent configuration volume at /config/extras/backups by default. The
-Backups to Keep setting controls retention (1-100 completed dumps, with 7 as the default). A failed or cancelled
-dump is written to a temporary .partial file and is removed before the request finishes; stale partial files are
-also cleaned up before a later backup. The optional POSTGRES_BACKUP_PATH variable can point the backup directory at
-another persistent path.
-
-Generated filenames use a UTC timestamp through microsecond precision, in the form
-`pinchflat-ngx-postgres-YYYYMMDD-HHMMSS-ffffff-<id>.dump`. The high-resolution component keeps retention ordering
-deterministic when the filesystem reports equal modification times. Existing second-precision filenames remain
-strictly validated and can still be downloaded.
-
-These backups contain PostgreSQL database state only. They do not contain downloaded media, the /config runtime
-secrets, or the PostgreSQL server's own volume. Pinchflat-ngx does not restore a dump automatically and does not convert a
-SQLite database to PostgreSQL.
-
-To restore, stop Pinchflat-ngx first, provision a compatible PostgreSQL database, and use the matching PG* connection
-environment (or a protected .pgpass file) with pg_restore:
-
-    pg_restore --clean --if-exists --no-owner --no-privileges \
-      --dbname="$PGDATABASE" /config/extras/backups/pinchflat-ngx-postgres-YYYYMMDD-HHMMSS-ffffff-<id>.dump
-
-Restore into a database that is not being used by a running Pinchflat-ngx instance. Review the target and migration
-compatibility before using --clean; restore the database first, then start Pinchflat-ngx so its normal migration check can
-run. Restore the downloaded media files separately from your media backup.
+> [!TIP]
+> The PostgreSQL image supports in-app `pg_dump` backups and retention policies via **Settings > PostgreSQL Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
 
 ### Optional PO-token provider
 
