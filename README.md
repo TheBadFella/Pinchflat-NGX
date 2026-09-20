@@ -19,9 +19,14 @@
   <img src="docs/assets/screenshot.png" alt="Pinchflat-ngx web interface" width="100%">
 </p>
 
-> [!IMPORTANT]
-> Pinchflat-ngx is an independent, community-driven fork. [Pinchflat](https://github.com/kieraneglin/pinchflat) remains the upstream
-> project and the foundation of its download model.
+<p align="center">
+  <a href="docs/assets/screenshots/dashboard.png"><strong>Dashboard</strong></a> &bull;
+  <a href="docs/assets/screenshots/sources-table.png"><strong>Sources Table</strong></a> &bull;
+  <a href="docs/assets/screenshots/sources-grid.png"><strong>Sources Grid</strong></a> &bull;
+  <a href="docs/assets/screenshots/source-details.png"><strong>Source Details</strong></a> &bull;
+  <a href="docs/assets/screenshots/channel-discovery.png"><strong>Channel Discovery</strong></a> &bull;
+  <a href="docs/assets/screenshots/diagnostics.png"><strong>Diagnostics</strong></a>
+</p>
 
 <p align="center">
   <a href="#what-pinchflat-ngx-adds"><strong>Overview</strong></a> &bull;
@@ -102,6 +107,7 @@
 - **Collapsible sidebar:** Collapse desktop navigation when you want a denser workspace.
 - **Mobile polish:** Source, job, history, profile, and settings views adapt cleanly to smaller screens.
 - **Settings search:** Filter Settings to find notifications, extractor options, cookies, and yt-dlp controls quickly.
+- **Interface gallery:** View captures of the [Dashboard](docs/assets/screenshots/dashboard.png), [Sources Table](docs/assets/screenshots/sources-table.png), [Sources Poster Grid](docs/assets/screenshots/sources-grid.png), [Source Details](docs/assets/screenshots/source-details.png), [Channel Discovery](docs/assets/screenshots/channel-discovery.png), and [System Diagnostics](docs/assets/screenshots/diagnostics.png).
 
 ### Downloads
 
