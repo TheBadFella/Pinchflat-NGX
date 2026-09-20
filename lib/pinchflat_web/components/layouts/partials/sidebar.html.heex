@@ -10,19 +10,19 @@
   <% current_path = Phoenix.Controller.current_path(@conn) %>
   <section class="sticky top-0 z-10 bg-theme-surface">
     <div
-      class="flex items-center justify-between gap-2 px-4 py-3 lg:px-6 lg:py-4"
-      x-bind:class="sidebarCollapsed ? 'lg:flex-col lg:items-center lg:justify-start lg:gap-2 lg:px-2 lg:pt-4 lg:pb-2' : ''"
+      class="flex w-full items-center justify-between gap-2 px-4 py-3"
+      x-bind:class="sidebarCollapsed ? 'lg:flex-col lg:items-center lg:justify-start lg:gap-2 lg:px-0 lg:pt-4 lg:pb-2' : 'lg:px-6 lg:py-4'"
     >
       <a
         href={~p"/"}
-        class="flex items-center justify-center"
-        x-bind:class="sidebarCollapsed ? 'lg:h-12 lg:w-12 lg:rounded-xl' : ''"
+        class="flex items-center justify-center shrink-0"
+        x-bind:class="sidebarCollapsed ? 'mx-auto lg:h-12 lg:w-12 lg:rounded-xl' : ''"
       >
         <img
           x-bind:src="sidebarCollapsed ? document.body.dataset.sidebarIcon : document.body.dataset.sidebarLogo"
-          alt="Pinchflat"
+          alt="Pinchflat-ngx"
           class="object-contain"
-          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'w-auto'"
+          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'h-10 w-auto'"
         />
       </a>
       <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
@@ -30,14 +30,14 @@
       </button>
       <button
         type="button"
-        class="theme-outline-button hidden p-1.5 text-theme-on-surface lg:block"
-        x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:mt-1 lg:flex lg:h-12 lg:w-12 lg:items-center lg:justify-center lg:rounded-xl lg:p-0' : 'lg:flex lg:h-12 lg:w-12 lg:items-center lg:justify-center lg:rounded-xl lg:p-0'"
+        class="theme-outline-button hidden h-8 w-8 shrink-0 items-center justify-center rounded-m3-xs p-0 text-theme-on-surface lg:flex"
+        x-bind:class="sidebarCollapsed ? 'mx-auto mt-2' : ''"
         x-on:click="sidebarCollapsed = !sidebarCollapsed; window.setSidebarCollapsed(sidebarCollapsed)"
         x-bind:title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       >
         <.icon
           name="hero-chevron-double-left"
-          class="fill-current transition-transform"
+          class="h-4 w-4 fill-current transition-transform"
           x-bind:class="sidebarCollapsed ? 'rotate-180' : ''"
         />
       </button>
@@ -98,37 +98,22 @@
           icon="hero-book-open"
           text="Docs"
           target="_blank"
-          href="https://github.com/kieraneglin/pinchflat/wiki"
+          href="https://github.com/TheBadFella/pinchflat-ngx/wiki"
           icon_class="scale-110"
         />
-        <.sidebar_item icon="si-github" text="Github" target="_blank" href="https://github.com/TheBadFella/PinchYT" />
-        <.sidebar_item icon="si-discord" text="Discord" target="_blank" href="https://discord.gg/j7T6dCuwU4" />
-        <li>
-          <span
-            class={[
-              "font-medium text-theme-on-surface",
-              "group relative flex min-h-11 items-center gap-2.5 rounded-m3-sm px-4 py-2 duration-300 ease-in-out",
-              "duration-300 ease-in-out cursor-pointer",
-              "hover:bg-theme-surface-3"
-            ]}
-            x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
-            phx-click={show_modal("donate-modal")}
-          >
-            <.icon
-              name="hero-currency-dollar"
-              class="h-5 w-5 shrink-0 scale-110"
-              x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
-            /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">Donate</span>
-            <span
-              x-cloak
-              x-show="sidebarCollapsed"
-              class="pointer-events-none absolute top-1/2 z-[1000] hidden -translate-y-1/2 whitespace-nowrap rounded-m3-xs border border-theme-outline/80 bg-theme-surface-3 px-2 py-1 text-sm text-theme-on-surface opacity-0 shadow-m3-2 transition duration-150 group-hover:opacity-100 lg:block"
-              style="left: calc(100% + 0.75rem);"
-            >
-              Donate
-            </span>
-          </span>
-        </li>
+        <.sidebar_item
+          icon="si-github"
+          text="Github"
+          target="_blank"
+          href="https://github.com/TheBadFella/pinchflat-ngx"
+        />
+        <.sidebar_item
+          icon="si-kofi"
+          text="Donate"
+          target="_blank"
+          href="https://ko-fi.com/badfella"
+          icon_class="scale-110"
+        />
 
         <li class="pt-2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
           {live_render(@conn, Pinchflat.AppVersionLive, id: "app-version-live")}

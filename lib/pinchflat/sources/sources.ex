@@ -441,7 +441,7 @@ defmodule Pinchflat.Sources do
     :exit, _ -> false
   end
 
-  # Where this source's downloads actually land. PinchYT writes all downloads
+  # Where this source's downloads actually land. Pinchflat-ngx writes all downloads
   # under `media_directory` (see `DownloadOptionBuilder`).
   defp storage_directory(%Source{} = _source) do
     Application.get_env(:pinchflat, :media_directory)

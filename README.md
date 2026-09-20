@@ -1,188 +1,58 @@
 <p align="center">
-  <img src="docs/assets/readme-hero.svg" alt="PinchYT — your media, under your control" width="100%">
+  <img src="docs/assets/logo.svg" alt="Pinchflat-ngx logo" width="460">
 </p>
 
 <p align="center">
-  <a href="https://github.com/TheBadFella/PinchYT/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/TheBadFella/PinchYT?style=for-the-badge&color=D0BCFF&labelColor=211F26"></a>
-  <a href="https://github.com/TheBadFella/PinchYT/actions/workflows/lint_and_test.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/TheBadFella/PinchYT/lint_and_test.yml?style=for-the-badge&label=checks&labelColor=211F26"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/TheBadFella/PinchYT?style=for-the-badge&color=EFB8C8&labelColor=211F26"></a>
+  <a href="https://github.com/TheBadFella/pinchflat-ngx/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/TheBadFella/pinchflat-ngx?style=for-the-badge&color=D0BCFF&labelColor=211F26"></a>
+  <a href="https://github.com/TheBadFella/pinchflat-ngx/actions/workflows/lint_and_test.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/TheBadFella/pinchflat-ngx/lint_and_test.yml?style=for-the-badge&label=checks&labelColor=211F26"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/TheBadFella/pinchflat-ngx?style=for-the-badge&color=EFB8C8&labelColor=211F26"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/linux-amd64%20%7C%20arm64-CCC2DC?style=for-the-badge&labelColor=211F26">
 </p>
 
 <p align="center">
-  A self-hosted YouTube media manager built on Pinchflat, with a Material 3 AMOLED interface,<br>
-  stronger source controls, and practical tools for running a hands-off media library.
+  An enhanced, self-hosted YouTube media manager built on Pinchflat.<br>
+  Engineered with a Material 3 AMOLED interface, SQLite &amp; PostgreSQL 18 support,<br>
+  OIDC single sign-on, and local disk staging for seamless network storage downloads.
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshot.png" alt="PinchYT web interface" width="100%">
+  <img src="docs/assets/screenshot.png" alt="Pinchflat-ngx web interface" width="100%">
 </p>
 
-> [!IMPORTANT]
-> PinchYT is an independent, personal fork. [Pinchflat](https://github.com/kieraneglin/pinchflat) remains the upstream
-> project and the foundation of its download model.
+<p align="center">
+  <a href="docs/assets/screenshots/dashboard.png"><strong>Dashboard</strong></a> &bull;
+  <a href="docs/assets/screenshots/sources-table.png"><strong>Sources Table</strong></a> &bull;
+  <a href="docs/assets/screenshots/sources-grid.png"><strong>Sources Grid</strong></a> &bull;
+  <a href="docs/assets/screenshots/source-details.png"><strong>Source Details</strong></a> &bull;
+  <a href="docs/assets/screenshots/channel-discovery.png"><strong>Channel Discovery</strong></a> &bull;
+  <a href="docs/assets/screenshots/diagnostics.png"><strong>Diagnostics</strong></a>
+</p>
 
-## Get started
+<p align="center">
+  <a href="#what-pinchflat-ngx-adds"><strong>Overview</strong></a> &bull;
+  <a href="#why-pinchflat-ngx"><strong>Comparison</strong></a> &bull;
+  <a href="#get-started"><strong>Get Started</strong></a> &bull;
+  <a href="#postgresql-image"><strong>PostgreSQL</strong></a> &bull;
+  <a href="#optional-local-download-staging"><strong>NAS Staging</strong></a> &bull;
+  <a href="#single-sign-on"><strong>OIDC SSO</strong></a> &bull;
+  <a href="#documentation"><strong>Documentation</strong></a>
+</p>
 
-| 1 · Deploy                                                                           | 2 · Configure                                                                            | 3 · Build your library                                                    |
-| :----------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------- | :------------------------------------------------------------------------ |
-| Run the multi-platform image from GHCR.                                              | Set your timezone and choose Basic Auth or OIDC.                                         | Create a media profile, then add a channel, playlist, or video.           |
-| **[Installation guide →](https://github.com/TheBadFella/PinchYT/wiki/Installation)** | **[Configuration →](https://github.com/TheBadFella/PinchYT/wiki/Environment-Variables)** | **[Pinchflat concepts →](https://github.com/kieraneglin/pinchflat/wiki)** |
+---
 
-```yaml
-services:
-  pinchyt:
-    image: ghcr.io/thebadfella/pinchyt:latest
-    environment:
-      TZ: America/Regina
-    ports:
-      - '8945:8945'
-    volumes:
-      - ./config:/config
-      - ./downloads:/downloads
-    restart: unless-stopped
-```
+## What Pinchflat-ngx adds
 
-Save this as `compose.yaml`, replace the timezone if needed, and run `docker compose up -d`. Open
-<http://localhost:8945> when the container is healthy.
+### Why Pinchflat-ngx?
 
-### PostgreSQL image
-
-The `latest` image continues to use SQLite. To start a new installation with PostgreSQL, use the
-`latest-postgres` image and set `DATABASE_URL`:
-
-```yaml
-services:
-  pinchyt:
-    image: ghcr.io/thebadfella/pinchyt:latest-postgres
-    environment:
-      DATABASE_ADAPTER: postgres
-      DATABASE_URL: ecto://pinchyt:change-me@postgres/pinchyt
-      TZ: America/Regina
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - '8945:8945'
-    volumes:
-      - ./config:/config
-      - ./downloads:/downloads
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_DB: pinchyt
-      POSTGRES_PASSWORD: change-me
-      POSTGRES_USER: pinchyt
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U pinchyt -d pinchyt']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - postgres-data:/var/lib/postgresql
-    restart: unless-stopped
-
-volumes:
-  postgres-data:
-```
-
-The PostgreSQL image creates and migrates its own schema, but it does not copy data from an existing SQLite database.
-This PostgreSQL 18 example is intended for a fresh installation. PostgreSQL 16 or earlier volumes are not
-compatible with the PostgreSQL 18 server as-is; use an explicit PostgreSQL upgrade or `pg_dump`/`pg_restore`
-procedure before reusing existing PostgreSQL data. Keep using `latest` for an existing SQLite installation until
-you have migrated its data separately.
-
-#### PostgreSQL database backups
-
-The PostgreSQL image includes pg_dump. Authenticated users can create a custom-format database backup from
-Settings -> PostgreSQL Backups. Credentials are taken from the running app's DATABASE_URL; PinchYT passes them to
-pg_dump through PostgreSQL's PG* environment variables, never as command-line arguments or rendered UI text.
-
-Completed dumps are stored in the persistent configuration volume at /config/extras/backups by default. The
-Backups to Keep setting controls retention (1-100 completed dumps, with 7 as the default). A failed or cancelled
-dump is written to a temporary .partial file and is removed before the request finishes; stale partial files are
-also cleaned up before a later backup. The optional POSTGRES_BACKUP_PATH variable can point the backup directory at
-another persistent path.
-
-Generated filenames use a UTC timestamp through microsecond precision, in the form
-`pinchyt-postgres-YYYYMMDD-HHMMSS-ffffff-<id>.dump`. The high-resolution component keeps retention ordering
-deterministic when the filesystem reports equal modification times. Existing second-precision filenames remain
-strictly validated and can still be downloaded.
-
-These backups contain PostgreSQL database state only. They do not contain downloaded media, the /config runtime
-secrets, or the PostgreSQL server's own volume. PinchYT does not restore a dump automatically and does not convert a
-SQLite database to PostgreSQL.
-
-To restore, stop PinchYT first, provision a compatible PostgreSQL database, and use the matching PG* connection
-environment (or a protected .pgpass file) with pg_restore:
-
-    pg_restore --clean --if-exists --no-owner --no-privileges \
-      --dbname="$PGDATABASE" /config/extras/backups/pinchyt-postgres-YYYYMMDD-HHMMSS-ffffff-<id>.dump
-
-Restore into a database that is not being used by a running PinchYT instance. Review the target and migration
-compatibility before using --clean; restore the database first, then start PinchYT so its normal migration check can
-run. Restore the downloaded media files separately from your media backup.
-
-### Optional PO-token provider
-
-The default compose above keeps the provider disabled. If YouTube presents SABR or authentication problems, add the
-following service and environment variable to your compose file:
-
-```yaml
-services:
-  pinchyt:
-    environment:
-      TZ: America/Regina
-      POT_PROVIDER_URL: http://pot-provider:4416
-
-  pot-provider:
-    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
-    profiles: [pot-provider]
-    restart: unless-stopped
-    # No ports mapping: the unauthenticated provider stays on the Compose network.
-```
-
-Start the opt-in service with `docker compose --profile pot-provider up -d`. PinchYT images include the matching bgutil
-yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. See the
-[official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
-[yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
-
-### Optional local download staging
-
-Set `DOWNLOAD_STAGING_PATH` to an absolute path inside the container when downloads should complete on a local disk
-before their finished artifacts are transferred to `/downloads`. The default is disabled, so existing deployments keep
-their current direct-to-library behavior. Each download receives its own directory, and the database is updated only
-after the complete artifact set reaches the media root.
-
-For a local staging disk, add a bind mount such as:
-
-```yaml
-services:
-  pinchyt:
-    environment:
-      DOWNLOAD_STAGING_PATH: /staging
-    volumes:
-      - ./download-staging:/staging
-```
-
-For a NAS library with local temporary storage, mount the local staging disk separately from the NAS destination:
-
-```yaml
-services:
-  pinchyt:
-    environment:
-      DOWNLOAD_STAGING_PATH: /staging
-    volumes:
-      - /fast-local-disk/pinchyt-staging:/staging
-      - /mnt/nas/media:/downloads
-```
-
-Staging and the media directory may be on different filesystems. PinchYT uses a temporary destination name and an
-atomic rename after copying in that case. Staging paths must be absolute, writable, and different from the media root.
-
-## What PinchYT adds
+| Feature                  | Upstream Pinchflat         | Pinchflat-ngx                                          |
+| :----------------------- | :------------------------- | :----------------------------------------------------- |
+| **Database**             | SQLite only                | SQLite & PostgreSQL 18                                 |
+| **User Interface**       | Legacy theme               | Material 3 AMOLED Dark Mode                            |
+| **Authentication**       | HTTP Basic Auth only       | Basic Auth + OAuth2 / OIDC (Authentik, Authelia, etc.) |
+| **Download Pipeline**    | Direct write only          | Local Disk Staging (NAS / NFS-friendly)                |
+| **YouTube Reliability**  | Stock yt-dlp               | PO-token Provider (bgutil) integration                 |
+| **Queue Operations**     | Basic worker pool          | Live Diagnostics, Granular Worker Tuning               |
+| **Single Video Sources** | No (Channel/Playlist only) | Yes (One-off direct video downloads)                   |
 
 <table>
   <tr>
@@ -237,6 +107,7 @@ atomic rename after copying in that case. Staging paths must be absolute, writab
 - **Collapsible sidebar:** Collapse desktop navigation when you want a denser workspace.
 - **Mobile polish:** Source, job, history, profile, and settings views adapt cleanly to smaller screens.
 - **Settings search:** Filter Settings to find notifications, extractor options, cookies, and yt-dlp controls quickly.
+- **Interface gallery:** View captures of the [Dashboard](docs/assets/screenshots/dashboard.png), [Sources Table](docs/assets/screenshots/sources-table.png), [Sources Poster Grid](docs/assets/screenshots/sources-grid.png), [Source Details](docs/assets/screenshots/source-details.png), [Channel Discovery](docs/assets/screenshots/channel-discovery.png), and [System Diagnostics](docs/assets/screenshots/diagnostics.png).
 
 ### Downloads
 
@@ -257,7 +128,7 @@ atomic rename after copying in that case. Staging paths must be absolute, writab
   discarded queues.
 - **Worker concurrency:** Set separate limits for downloads, indexing, and metadata in Settings. Environment variables
   can override those saved values.
-- **Release status:** See whether PinchYT is current and which yt-dlp update policy is active.
+- **Release status:** See whether Pinchflat-ngx is current and which yt-dlp update policy is active.
 - **Operational diagnostics:** Use structured source, indexing, enqueue, and skipped-download logs alongside responsive
   integrity and maintenance tools.
 - **Repository-friendly Compose layout:** Development Compose files live in `docker/`, while the root `compose.yaml`
@@ -269,30 +140,168 @@ atomic rename after copying in that case. Staging paths must be absolute, writab
 
 ### Single sign-on
 
-PinchYT can protect the web interface with OAuth2/OpenID Connect. It supports provider discovery, PKCE, state and nonce
+Pinchflat-ngx can protect the web interface with OAuth2/OpenID Connect. It supports provider discovery, PKCE, state and nonce
 validation, configurable scopes, and fixed callback URLs for reverse-proxy deployments.
 
 OIDC replaces Basic Auth for browser routes when enabled. Feed endpoints retain Basic Auth and route-token support for
 podcast clients; API endpoints and `/healthcheck` remain unauthenticated by design.
 
-**[Set up OIDC →](https://github.com/TheBadFella/PinchYT/wiki/OIDC-Single-Sign-On)**
+**[Set up OIDC &rarr;](https://github.com/TheBadFella/pinchflat-ngx/wiki/OIDC-Single-Sign-On)**
+
+---
+
+## Get started
+
+| 1 &middot; Deploy                                                                               | 2 &middot; Configure                                                                                | 3 &middot; Build your library                                                  |
+| :---------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------- |
+| Run the multi-platform image from GHCR.                                                         | Set your timezone and choose Basic Auth or OIDC.                                                    | Create a media profile, then add a channel, playlist, or video.                |
+| **[Installation guide &rarr;](https://github.com/TheBadFella/pinchflat-ngx/wiki/Installation)** | **[Configuration &rarr;](https://github.com/TheBadFella/pinchflat-ngx/wiki/Environment-Variables)** | **[Pinchflat concepts &rarr;](https://github.com/kieraneglin/pinchflat/wiki)** |
+
+```yaml
+services:
+  pinchflat-ngx:
+    image: ghcr.io/thebadfella/pinchflat-ngx:latest
+    environment:
+      TZ: America/Regina
+    ports:
+      - '8945:8945'
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    restart: unless-stopped
+```
+
+Save this as `compose.yaml`, replace the timezone if needed, and run `docker compose up -d`. Open
+<http://localhost:8945> when the container is healthy.
+
+### PostgreSQL image
+
+The `latest` image continues to use SQLite. To start a new installation with PostgreSQL, use the
+`latest-postgres` image and set `DATABASE_URL`:
+
+```yaml
+services:
+  pinchflat-ngx:
+    image: ghcr.io/thebadfella/pinchflat-ngx:latest-postgres
+    environment:
+      DATABASE_ADAPTER: postgres
+      DATABASE_URL: ecto://pinchflat-ngx:change-me@postgres/pinchflat-ngx
+      TZ: America/Regina
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8945:8945'
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: pinchflat-ngx
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_USER: pinchflat-ngx
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pinchflat-ngx -d pinchflat-ngx']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+```
+
+The PostgreSQL image creates and migrates its own schema, but it does not copy data from an existing SQLite database.
+This PostgreSQL 18 example is intended for a fresh installation. PostgreSQL 16 or earlier volumes are not
+compatible with the PostgreSQL 18 server as-is; use an explicit PostgreSQL upgrade or `pg_dump`/`pg_restore`
+procedure before reusing existing PostgreSQL data. Keep using `latest` for an existing SQLite installation until
+you have migrated its data separately.
+
+> [!TIP]
+> The PostgreSQL image supports in-app `pg_dump` backups and retention policies via **Settings > PostgreSQL Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
+
+### Optional PO-token provider
+
+The default compose above keeps the provider disabled. If YouTube presents SABR or authentication problems, add the
+following service and environment variable to your compose file:
+
+```yaml
+services:
+  pinchflat-ngx:
+    environment:
+      TZ: America/Regina
+      POT_PROVIDER_URL: http://pot-provider:4416
+
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    profiles: [pot-provider]
+    restart: unless-stopped
+    # No ports mapping: the unauthenticated provider stays on the Compose network.
+```
+
+Start the opt-in service with `docker compose --profile pot-provider up -d`. Pinchflat-ngx images include the matching bgutil
+yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. See the
+[official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
+[yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
+
+### Optional local download staging
+
+Set `DOWNLOAD_STAGING_PATH` to an absolute path inside the container when downloads should complete on a local disk
+before their finished artifacts are transferred to `/downloads`. The default is disabled, so existing deployments keep
+their current direct-to-library behavior. Each download receives its own directory, and the database is updated only
+after the complete artifact set reaches the media root.
+
+For a local staging disk, add a bind mount such as:
+
+```yaml
+services:
+  pinchflat-ngx:
+    environment:
+      DOWNLOAD_STAGING_PATH: /staging
+    volumes:
+      - ./download-staging:/staging
+```
+
+For a NAS library with local temporary storage, mount the local staging disk separately from the NAS destination:
+
+```yaml
+services:
+  pinchflat-ngx:
+    environment:
+      DOWNLOAD_STAGING_PATH: /staging
+    volumes:
+      - /fast-local-disk/pinchflat-ngx-staging:/staging
+      - /mnt/nas/media:/downloads
+```
+
+Staging and the media directory may be on different filesystems. Pinchflat-ngx uses a temporary destination name and an
+atomic rename after copying in that case. Staging paths must be absolute, writable, and different from the media root.
+
+---
 
 ## Documentation
 
-| Start here                                                                                 | Run it safely                                                                                | Understand the fork                                                              |
-| :----------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------- |
-| [Installation](https://github.com/TheBadFella/PinchYT/wiki/Installation)                   | [Backups and restore](https://github.com/TheBadFella/PinchYT/wiki/Backups-and-Restore)       | [PinchYT features](https://github.com/TheBadFella/PinchYT/wiki/PinchYT-Features) |
-| [Environment variables](https://github.com/TheBadFella/PinchYT/wiki/Environment-Variables) | [Upgrading and rollback](https://github.com/TheBadFella/PinchYT/wiki/Upgrading-and-Rollback) | [Upstream Pinchflat wiki](https://github.com/kieraneglin/pinchflat/wiki)         |
-| [OIDC single sign-on](https://github.com/TheBadFella/PinchYT/wiki/OIDC-Single-Sign-On)     | [Diagnostics](https://github.com/TheBadFella/PinchYT/wiki/Diagnostics)                       | API documentation at `/api/docs` on your instance                                |
+| Start here                                                                                       | Run it safely                                                                                      | Understand the fork                                                                                |
+| :----------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
+| [Installation](https://github.com/TheBadFella/pinchflat-ngx/wiki/Installation)                   | [Backups and restore](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore)       | [Pinchflat-ngx features](https://github.com/TheBadFella/pinchflat-ngx/wiki/Pinchflat-ngx-Features) |
+| [Environment variables](https://github.com/TheBadFella/pinchflat-ngx/wiki/Environment-Variables) | [Upgrading and rollback](https://github.com/TheBadFella/pinchflat-ngx/wiki/Upgrading-and-Rollback) | [Upstream Pinchflat wiki](https://github.com/kieraneglin/pinchflat/wiki)                           |
+| [OIDC single sign-on](https://github.com/TheBadFella/pinchflat-ngx/wiki/OIDC-Single-Sign-On)     | [Diagnostics](https://github.com/TheBadFella/pinchflat-ngx/wiki/Diagnostics)                       | API documentation at `/api/docs` on your instance                                                  |
 
-The PinchYT wiki documents behavior added or changed by this fork. Shared concepts such as naming templates, media
+The Pinchflat-ngx wiki documents behavior added or changed by this fork. Shared concepts such as naming templates, media
 profiles, podcast feeds, SponsorBlock, retention, and custom scripts remain documented by upstream.
+
+---
 
 ## Support and development
 
-- [Report a bug](https://github.com/TheBadFella/PinchYT/issues/new?template=bug_report.md)
-- [Request a feature](https://github.com/TheBadFella/PinchYT/issues/new?template=feature_request.md)
-- [Browse releases](https://github.com/TheBadFella/PinchYT/releases)
+- [Report a bug](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=bug_report.md)
+- [Request a feature](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=feature_request.md)
+- [Browse releases](https://github.com/TheBadFella/pinchflat-ngx/releases)
 - Read [AGENTS.md](AGENTS.md) for development commands and repository conventions
 
-PinchYT is distributed under the terms in [LICENSE](LICENSE).
+Pinchflat-ngx is distributed under the terms in [LICENSE](LICENSE).

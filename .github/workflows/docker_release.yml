@@ -101,7 +101,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchflat-ngx
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchyt
           flavor: |
             latest=false
 
@@ -116,7 +118,7 @@ jobs:
             DATABASE_ADAPTER=${{ matrix.database }}
             YT_DLP_CACHE_BUST=${{ env.YT_DLP_CACHE_BUST }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchflat-ngx,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=build-${{ matrix.database }}-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,scope=build-${{ matrix.database }}-${{ env.PLATFORM_PAIR }},mode=max
           sbom: true
@@ -169,7 +171,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchflat-ngx
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchyt
           # Disable the action's automatic `latest` tag. Both sqlite and postgres
           # merge jobs run on the same git tag; latest=auto would apply `latest`
           # to whichever job finished last, including postgres.
@@ -188,8 +192,8 @@ jobs:
         run: |
           # shellcheck disable=SC2046
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchflat-ngx@sha256:%s ' *)
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/pinchflat-ngx:${{ steps.meta.outputs.version }}

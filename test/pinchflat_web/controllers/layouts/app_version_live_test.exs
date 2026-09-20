@@ -29,7 +29,7 @@ defmodule PinchflatWeb.AppVersionLiveTest do
 
     {:ok, _view, html} = live_isolated(conn, AppVersionLive)
 
-    assert html =~ "PinchYT"
+    assert html =~ "Pinchflat-ngx"
     assert html =~ "Latest"
     assert html =~ "yt-dlp"
     assert html =~ "Nightly"

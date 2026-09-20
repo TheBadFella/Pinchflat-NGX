@@ -16,10 +16,12 @@ defmodule Pinchflat.Backups do
 
   @default_retention_count 7
   @partial_stale_after_seconds 60 * 60
-  @backup_prefix "pinchyt-postgres-"
+  @backup_prefix "pinchflat-ngx-postgres-"
+  @legacy_backup_prefix "pinchyt-postgres-"
   @backup_extension ".dump"
   @partial_extension ".partial"
-  @filename_pattern ~r/\Apinchyt-postgres-(\d{8})-(\d{6})-(\d{6})-([a-f0-9]{16})\.dump\z/
+  @filename_pattern ~r/\Apinchflat-ngx-postgres-(\d{8})-(\d{6})-(\d{6})-([a-f0-9]{16})\.dump\z/
+  @legacy_pinchyt_filename_pattern ~r/\Apinchyt-postgres-(\d{8})-(\d{6})-(\d{6})-([a-f0-9]{16})\.dump\z/
   @legacy_filename_pattern ~r/\Apinchyt-postgres-(\d{8})-(\d{6})-([a-f0-9]{16})\.dump\z/
 
   @type backup :: %{
@@ -146,7 +148,9 @@ defmodule Pinchflat.Backups do
 
     with {:ok, filenames} <- File.ls(directory) do
       Enum.each(filenames, fn filename ->
-        if String.starts_with?(filename, @backup_prefix) and String.ends_with?(filename, @partial_extension) do
+        if String.ends_with?(filename, @partial_extension) and
+             (String.starts_with?(filename, @backup_prefix) or
+                String.starts_with?(filename, @legacy_backup_prefix)) do
           path = Path.join(directory, filename)
 
           with {:ok, %File.Stat{type: :regular, mtime: mtime}} <- File.lstat(path),
@@ -172,7 +176,8 @@ defmodule Pinchflat.Backups do
 
   @doc false
   def backup_filename?(filename) when is_binary(filename) do
-    Regex.match?(@filename_pattern, filename) or Regex.match?(@legacy_filename_pattern, filename)
+    Regex.match?(@filename_pattern, filename) or Regex.match?(@legacy_pinchyt_filename_pattern, filename) or
+      Regex.match?(@legacy_filename_pattern, filename)
   end
 
   def backup_filename?(_filename), do: false
@@ -293,15 +298,21 @@ defmodule Pinchflat.Backups do
 
   defp filename_order_key(filename) do
     case Regex.run(@filename_pattern, filename, capture: :all_but_first) do
-      [date, time, microseconds, suffix] -> {date <> time <> microseconds, suffix, 1}
+      [date, time, microseconds, suffix] -> {date <> time <> microseconds, suffix, 2}
       _ -> legacy_filename_order_key(filename)
     end
   end
 
   defp legacy_filename_order_key(filename) do
-    case Regex.run(@legacy_filename_pattern, filename, capture: :all_but_first) do
-      [date, time, suffix] -> {date <> time <> "000000", suffix, 0}
-      _ -> {"", "", -1}
+    case Regex.run(@legacy_pinchyt_filename_pattern, filename, capture: :all_but_first) do
+      [date, time, microseconds, suffix] ->
+        {date <> time <> microseconds, suffix, 1}
+
+      _ ->
+        case Regex.run(@legacy_filename_pattern, filename, capture: :all_but_first) do
+          [date, time, suffix] -> {date <> time <> "000000", suffix, 0}
+          _ -> {"", "", -1}
+        end
     end
   end
 

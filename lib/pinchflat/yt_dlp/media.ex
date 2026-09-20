@@ -154,7 +154,7 @@ defmodule Pinchflat.YtDlp.Media do
   end
 
   @doc """
-  Normalizes yt-dlp availability values to the values stored by PinchYT.
+  Normalizes yt-dlp availability values to the values stored by Pinchflat-ngx.
 
   Unknown, blank, and missing values return `nil`.
 

@@ -12,9 +12,9 @@ defmodule PinchflatWeb.ApiSpec do
   def spec do
     %OpenApi{
       info: %Info{
-        title: "Pinchflat API",
+        title: "Pinchflat-ngx API",
         version: "1.0.0",
-        description: "API for accessing Pinchflat media management data"
+        description: "API for accessing Pinchflat-ngx media management data"
       },
       servers: [
         %Server{

@@ -1,17 +1,30 @@
 <header class="sticky top-0 z-999 flex min-h-20 w-full border-b border-theme-outline/70 bg-theme-bg/95 backdrop-blur">
-  <div class="flex flex-grow items-center justify-between px-4 py-4 lg:justify-end md:px-6 2xl:px-11">
-    <div class="flex items-center gap-2 sm:gap-4 lg:hidden w-2/6">
-      <section class="pr-1"><img src={~p"/images/icon-2024-03-20.png"} alt="Pinchflat" class="w-10" /></section>
+  <div class="flex flex-grow items-center justify-between px-4 py-4 md:px-6 2xl:px-11">
+    <div class="flex items-center gap-2 sm:gap-4 lg:hidden shrink-0">
+      <section class="pr-1">
+        <img src={~p"/images/icon-2024-03-20.png"} alt="Pinchflat-ngx" class="h-9 w-9 object-contain" />
+      </section>
 
       <button
         class="theme-outline-button z-99999 mx-2 block p-2 lg:hidden"
         @click.stop="sidebarVisible = !sidebarVisible"
+        aria-label="Toggle navigation menu"
       >
         <.icon name="hero-bars-3" />
       </button>
     </div>
 
-    <div class="flex w-4/6 items-center lg:w-3/6 xl:w-2/6">
+    <div
+      x-cloak
+      x-show="sidebarCollapsed"
+      class="hidden lg:flex items-center pl-2 select-none"
+    >
+      <span class="text-xl font-bold tracking-tight text-theme-on-surface flex items-center">
+        <span>Pinchflat</span><span class="text-theme-primary font-semibold">-ngx</span>
+      </span>
+    </div>
+
+    <div class="flex flex-1 items-center justify-end max-w-xl ml-auto pl-2">
       <div class="theme-surface-accent w-full rounded-m3-sm">
         <div class="relative">
           <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">

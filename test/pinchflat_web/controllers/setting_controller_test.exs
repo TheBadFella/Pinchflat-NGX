@@ -149,7 +149,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       conn = post(conn, ~p"/settings/backups")
 
       assert redirected_to(conn) == ~p"/settings"
-      assert conn.assigns[:flash]["error"] =~ "unavailable when PinchYT uses SQLite"
+      assert conn.assigns[:flash]["error"] =~ "unavailable when Pinchflat-ngx uses SQLite"
     end
   end
 end

@@ -110,6 +110,30 @@ defmodule Pinchflat.BackupsTest do
       assert Backups.backup_filename?("pinchyt-postgres-20260911-120000-0000000000000001.dump")
       refute Backups.backup_filename?("pinchyt-postgres-20260911-120000-0000000000000001.dump.partial")
       refute Backups.backup_filename?("../pinchyt-postgres-20260911-120000-0000000000000001.dump")
+
+      assert Backups.backup_filename?("pinchflat-ngx-postgres-20260911-120000-000001-0000000000000001.dump")
+      refute Backups.backup_filename?("pinchflat-ngx-postgres-20260911-120000-000001-0000000000000001.dump.partial")
+    end
+
+    test "lists and resolves download path for both legacy filename formats", %{directory: directory} do
+      legacy_microsecond = "pinchyt-postgres-20260911-120000-000001-0000000000000001.dump"
+      legacy_second = "pinchyt-postgres-20260911-120000-0000000000000002.dump"
+      new_dump = "pinchflat-ngx-postgres-20260911-120000-000002-0000000000000003.dump"
+
+      File.write!(Path.join(directory, legacy_microsecond), "legacy_ms")
+      File.write!(Path.join(directory, legacy_second), "legacy_s")
+      File.write!(Path.join(directory, new_dump), "new")
+
+      backups = Backups.list_backups(directory: directory)
+      filenames = Enum.map(backups, & &1.filename)
+
+      assert legacy_microsecond in filenames
+      assert legacy_second in filenames
+      assert new_dump in filenames
+
+      assert Backups.backup_filename?(legacy_microsecond)
+      assert Backups.backup_filename?(legacy_second)
+      assert Backups.backup_filename?(new_dump)
     end
 
     test "removes stale partial files but leaves recent partial files", %{directory: directory} do
