@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Pinchflat-ngx logo" width="460">
+  <img src="docs/assets/logo.svg" alt="Pinchflat-ngx logo" width="460">
 </p>
 
 <p align="center">
