@@ -15,14 +15,14 @@
     >
       <a
         href={~p"/"}
-        class="flex items-center justify-center"
+        class="flex items-center justify-center shrink-0"
         x-bind:class="sidebarCollapsed ? 'mx-auto lg:h-12 lg:w-12 lg:rounded-xl' : ''"
       >
         <img
           x-bind:src="sidebarCollapsed ? document.body.dataset.sidebarIcon : document.body.dataset.sidebarLogo"
           alt="Pinchflat-ngx"
           class="object-contain"
-          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'h-8 w-auto'"
+          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'h-10 w-auto'"
         />
       </a>
       <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
@@ -30,7 +30,7 @@
       </button>
       <button
         type="button"
-        class="theme-outline-button hidden h-8 w-8 items-center justify-center rounded-m3-xs p-0 text-theme-on-surface lg:flex"
+        class="theme-outline-button hidden h-8 w-8 shrink-0 items-center justify-center rounded-m3-xs p-0 text-theme-on-surface lg:flex"
         x-bind:class="sidebarCollapsed ? 'mx-auto mt-2' : ''"
         x-on:click="sidebarCollapsed = !sidebarCollapsed; window.setSidebarCollapsed(sidebarCollapsed)"
         x-bind:title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
