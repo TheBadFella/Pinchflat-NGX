@@ -107,33 +107,13 @@
           target="_blank"
           href="https://github.com/TheBadFella/pinchflat-ngx"
         />
-        <.sidebar_item icon="si-discord" text="Discord" target="_blank" href="https://discord.gg/j7T6dCuwU4" />
-        <li>
-          <span
-            class={[
-              "font-medium text-theme-on-surface",
-              "group relative flex min-h-11 items-center gap-2.5 rounded-m3-sm px-4 py-2 duration-300 ease-in-out",
-              "duration-300 ease-in-out cursor-pointer",
-              "hover:bg-theme-surface-3"
-            ]}
-            x-bind:class="sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : ''"
-            phx-click={show_modal("donate-modal")}
-          >
-            <.icon
-              name="hero-currency-dollar"
-              class="h-5 w-5 shrink-0 scale-110"
-              x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
-            /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">Donate</span>
-            <span
-              x-cloak
-              x-show="sidebarCollapsed"
-              class="pointer-events-none absolute top-1/2 z-[1000] hidden -translate-y-1/2 whitespace-nowrap rounded-m3-xs border border-theme-outline/80 bg-theme-surface-3 px-2 py-1 text-sm text-theme-on-surface opacity-0 shadow-m3-2 transition duration-150 group-hover:opacity-100 lg:block"
-              style="left: calc(100% + 0.75rem);"
-            >
-              Donate
-            </span>
-          </span>
-        </li>
+        <.sidebar_item
+          icon="si-kofi"
+          text="Donate"
+          target="_blank"
+          href="https://ko-fi.com/badfella"
+          icon_class="scale-110"
+        />
 
         <li class="pt-2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
           {live_render(@conn, Pinchflat.AppVersionLive, id: "app-version-live")}
