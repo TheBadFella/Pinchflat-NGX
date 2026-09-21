@@ -5,7 +5,7 @@ ARG INSTALL_SHELL_TOOLS=0
 
 ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 
-FROM node:24-bookworm-slim AS node
+FROM node:25-bookworm-slim AS node
 
 FROM ${DEV_IMAGE}
 
