@@ -405,12 +405,12 @@ defmodule Pinchflat.Downloading.DownloadStaging do
     |> Map.update("infojson_filename", nil, &rewrite_optional_path(&1, path_map))
     |> Map.update("thumbnails", [], fn thumbnails ->
       Enum.map(
-        thumbnails,
+        thumbnails || [],
         &Map.update(&1, "filepath", nil, fn filepath -> rewrite_optional_path(filepath, path_map) end)
       )
     end)
     |> Map.update("requested_subtitles", %{}, fn requested_subtitles ->
-      Map.new(requested_subtitles, fn {language, attrs} ->
+      Map.new(requested_subtitles || %{}, fn {language, attrs} ->
         {language, Map.update(attrs, "filepath", nil, fn filepath -> rewrite_optional_path(filepath, path_map) end)}
       end)
     end)
