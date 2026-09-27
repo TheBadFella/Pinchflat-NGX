@@ -87,7 +87,7 @@ RUN set -eux; \
   # Download yt-dlp nightly
   echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
   export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \
-  curl -L ${YT_DLP_DOWNLOAD} -o /usr/local/bin/yt-dlp && \
+  curl -4 -fL --retry 5 --retry-all-errors ${YT_DLP_DOWNLOAD} -o /usr/local/bin/yt-dlp && \
   chmod a+rx /usr/local/bin/yt-dlp && \
   # Keep the optional bgutil plugin outside the app's mounted config. It is only
   # loaded when POT_PROVIDER_URL is configured by the application.
