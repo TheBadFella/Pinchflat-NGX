@@ -75,7 +75,11 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       render(conn, :import_new,
         media_profiles: media_profiles(),
-        results: %{items: results, duplicates: duplicates},
+        results: %{
+          items: results,
+          added: Enum.count(results, fn {_url, result} -> result == :ok end),
+          duplicates: duplicates
+        },
         error: nil
       )
     else

@@ -6,13 +6,20 @@
 </div>
 
 <div class="theme-surface-raised px-5 py-6 sm:px-7.5">
-  <p class="mb-6 text-theme-on-surface-muted">Upload a text file with one YouTube channel, playlist, or video URL per line. Blank and repeated lines are skipped. Each source uses the media profile selected below.</p>
+  <p class="mb-6 text-theme-on-surface-muted">
+    Upload a text file with one YouTube channel, playlist, or video URL per line. Blank and repeated lines are skipped. Each source uses the media profile selected below.
+  </p>
 
   <.form for={%{}} as={:import} action={~p"/sources/import"} method="post" multipart class="max-w-xl space-y-5">
     <.input name="import[file]" type="file" value={nil} accept=".txt,text/plain" label="Text file" required />
     <div>
       <label for="import_media_profile_id" class="block text-sm font-medium text-theme-on-surface">Media Profile</label>
-      <select id="import_media_profile_id" name="import[media_profile_id]" required class="mt-2 w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-theme-on-surface">
+      <select
+        id="import_media_profile_id"
+        name="import[media_profile_id]"
+        required
+        class="mt-2 w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-theme-on-surface"
+      >
         <option value="">Choose a profile</option>
         <option :for={profile <- @media_profiles} value={profile.id}>{profile.name}</option>
       </select>
@@ -25,9 +32,7 @@
   <div :if={@results} class="mt-8 space-y-4" aria-live="polite">
     <h3 class="font-semibold text-theme-on-surface">Import results</h3>
     <p class="text-theme-on-surface-muted">
-      {Enum.count(@results.items, fn {_url, result} -> result == :ok end)} added,
-      {Enum.count(@results.items, fn {_url, result} -> result != :ok end)} failed,
-      {@results.duplicates} repeated lines skipped.
+      {@results.added} added, {length(@results.items) - @results.added} failed, {@results.duplicates} repeated lines skipped.
     </p>
     <ul class="space-y-2">
       <li :for={{url, result} <- @results.items} class="break-all text-sm text-theme-on-surface">
