@@ -189,6 +189,15 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
   end
 
   describe "update/1" do
+    setup do
+      executable = Path.join(System.tmp_dir!(), "yt-dlp-update-test-#{System.unique_integer([:positive])}")
+      File.cp!(@original_executable, executable)
+      File.chmod!(executable, 0o755)
+      Application.put_env(:pinchflat, :yt_dlp_executable, executable)
+      on_exit(fn -> File.rm(executable) end)
+      {:ok, executable: executable}
+    end
+
     test "adds the update arg for the stable target" do
       assert {:ok, output} = Runner.update("stable")
 
@@ -217,6 +226,14 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
       wrap_executable("/app/test/support/scripts/yt-dlp-mocks/100_exit_code.sh", fn ->
         assert {:error, _output} = Runner.update("nightly")
       end)
+    end
+
+    test "keeps the current executable when an update modifies its copy then fails", %{executable: executable} do
+      script = "#!/bin/sh\necho changed >> \"$0\"\nexit 100\n"
+      File.write!(executable, script)
+
+      assert {:error, _} = Runner.update("stable")
+      assert File.read!(executable) == script
     end
   end
 
