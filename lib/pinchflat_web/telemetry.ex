@@ -34,7 +34,7 @@ defmodule PinchflatWeb.Telemetry do
       }
       |> Map.merge(task_event_payload(job.id))
 
-    PinchflatWeb.Endpoint.broadcast("job:state", "change", payload)
+    PinchflatWeb.Endpoint.broadcast_if_running("job:state", "change", payload)
   end
 
   def metrics do
