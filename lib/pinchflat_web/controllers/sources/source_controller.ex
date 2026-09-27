@@ -97,13 +97,17 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def new(conn, params) do
+    profiles = media_profiles()
+    default_profile_id = if profile = List.first(profiles), do: profile.id, else: nil
+    default_source = %Source{cookie_behaviour: default_cookie_behaviour(), media_profile_id: default_profile_id}
+
     # This lets me preload the settings from another source for more efficient creation
     cs_struct =
       case to_string(params["template_id"]) do
         # A fresh source pre-selects the configured default cookie behaviour;
         # cloning from a template keeps that template's cookie behaviour instead
-        "" -> %Source{cookie_behaviour: default_cookie_behaviour()}
-        template_id -> Repo.get(Source, template_id) || %Source{cookie_behaviour: default_cookie_behaviour()}
+        "" -> default_source
+        template_id -> Repo.get(Source, template_id) || default_source
       end
 
     render(
@@ -111,7 +115,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       :new,
       Keyword.merge(
         [
-          media_profiles: media_profiles(),
+          media_profiles: profiles,
           available_folders: available_media_directories(),
           current_path: ~p"/sources/new",
           layout: get_onboarding_layout(),
