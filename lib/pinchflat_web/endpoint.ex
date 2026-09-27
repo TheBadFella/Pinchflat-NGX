@@ -1,6 +1,21 @@
 defmodule PinchflatWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :pinchflat
 
+  @doc """
+  Like `broadcast/3`, but a no-op while the endpoint isn't running yet.
+
+  Oban starts (and runs jobs) before the Endpoint during boot. A plain
+  `broadcast/3` raises `ArgumentError` at that point, which fails the job and
+  makes `:telemetry` permanently detach the job-state handler.
+
+  Returns :ok | {:error, term()}
+  """
+  def broadcast_if_running(topic, event, payload) do
+    broadcast(topic, event, payload)
+  rescue
+    ArgumentError -> :ok
+  end
+
   # The session is stored in the cookie, signed and encrypted. The signature
   # prevents tampering; the encryption keeps the contents (SSO user claims,
   # OAuth state/nonce) unreadable to other local users of the browser profile.
