@@ -162,7 +162,7 @@ defmodule Pinchflat.Tasks do
     |> Repo.update()
     |> tap(fn
       {:ok, updated_task} ->
-        PinchflatWeb.Endpoint.broadcast("job:progress", "update", task_progress_payload(updated_task))
+        PinchflatWeb.Endpoint.broadcast_if_running("job:progress", "update", task_progress_payload(updated_task))
 
       _ ->
         :ok
