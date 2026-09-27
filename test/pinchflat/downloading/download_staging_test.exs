@@ -78,6 +78,18 @@ defmodule Pinchflat.Downloading.DownloadStagingTest do
     refute File.exists?(staging_directory)
   end
 
+  test "accepts null optional metadata from yt-dlp", %{media_root: media_root} do
+    assert {:ok, staging_directory} = DownloadStaging.prepare(27)
+    staged_file = Path.join(staging_directory, "clip.mp4")
+    File.write!(staged_file, "video")
+
+    metadata = %{"filepath" => staged_file, "requested_subtitles" => nil, "thumbnails" => nil}
+
+    assert {:ok, transferred} = DownloadStaging.transfer(metadata, staging_directory)
+    assert transferred["filepath"] == Path.join(media_root, "clip.mp4")
+    assert File.exists?(transferred["filepath"])
+  end
+
   test "uses copy to a destination temporary name before the final rename", %{media_root: media_root} do
     assert {:ok, staging_directory} = DownloadStaging.prepare(21)
     paths = create_artifacts(staging_directory)
