@@ -70,6 +70,8 @@ defmodule PinchflatWeb.Router do
 
     post "/sources/cookies/upload", Sources.SourceController, :upload_cookies
     post "/sources/cookies/save", Sources.SourceController, :save_cookies
+    get "/sources/import", Sources.SourceController, :import_new
+    post "/sources/import", Sources.SourceController, :import_create
 
     resources "/media_profiles", MediaProfiles.MediaProfileController
     resources "/search", Searches.SearchController, only: [:show], singleton: true
