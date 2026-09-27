@@ -107,13 +107,27 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   @impl YtDlpCommandRunner
   def update(target) do
     command = backend_executable()
+    candidate = "#{command}.update-#{Ecto.UUID.generate()}"
 
-    case retry_self_update(command, target) do
-      {:ok, output} ->
+    try do
+      with :ok <- File.cp(command, candidate),
+           :ok <- File.chmod(candidate, 0o755),
+           {:ok, output} <- update_candidate(candidate, target),
+           :ok <- File.rename(candidate, command) do
         {:ok, output}
+      else
+        {:error, reason} when is_binary(reason) -> {:error, reason}
+        {:error, reason} -> {:error, "yt-dlp update failed: #{inspect(reason)}"}
+      end
+    after
+      File.rm(candidate)
+    end
+  end
 
-      {:error, output} ->
-        maybe_fallback_to_direct_download(command, output, target)
+  defp update_candidate(candidate, target) do
+    case retry_self_update(candidate, target) do
+      {:ok, output} -> {:ok, output}
+      {:error, output} -> maybe_fallback_to_direct_download(candidate, output, target)
     end
   end
 
