@@ -107,6 +107,13 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "new source" do
+    test "preselects a media profile", %{conn: conn, create_attrs: %{media_profile_id: profile_id}} do
+      response = conn |> get(~p"/sources/new") |> html_response(200)
+
+      assert response =~
+               ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{profile_id}"/
+    end
+
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/sources/new")
       response = html_response(conn, 200)
