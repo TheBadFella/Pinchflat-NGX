@@ -74,6 +74,18 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
       assert {:error, :download_failed, :some_error} = MediaDownloader.download_for_media_item(media_item)
     end
 
+    test "keeps a long yt-dlp error without failing the database update", %{media_item: media_item} do
+      message = String.duplicate("Downloading webpage\n", 20) <> "ERROR: Video unavailable"
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+        _url, :download, _opts, _ot, _addl -> {:error, message, 1}
+      end)
+
+      assert {:error, :download_failed, ^message} = MediaDownloader.download_for_media_item(media_item)
+      assert Repo.reload!(media_item).last_error == message
+    end
+
     test "unknown errors are passed through", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
