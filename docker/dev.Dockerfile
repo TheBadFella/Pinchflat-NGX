@@ -84,12 +84,11 @@ RUN set -eux; \
   unzip -q /tmp/deno.zip deno -d /usr/local/bin && \
   chmod a+rx /usr/local/bin/deno && \
   rm -f /tmp/deno.zip && \
-  # Download and update YT-DLP
+  # Download yt-dlp nightly
   echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
   export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \
-  curl -L ${YT_DLP_DOWNLOAD} -o /usr/local/bin/yt-dlp && \
+  curl -4 -fL --retry 5 --retry-all-errors ${YT_DLP_DOWNLOAD} -o /usr/local/bin/yt-dlp && \
   chmod a+rx /usr/local/bin/yt-dlp && \
-  yt-dlp --update-to nightly && \
   # Keep the optional bgutil plugin outside the app's mounted config. It is only
   # loaded when POT_PROVIDER_URL is configured by the application.
   install -d /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt && \
