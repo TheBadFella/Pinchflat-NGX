@@ -106,6 +106,47 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "import sources" do
+    test "shows the upload form", %{conn: conn} do
+      response = conn |> get(~p"/sources/import") |> html_response(200)
+      assert response =~ "one YouTube channel, playlist, or video URL per line"
+      assert response =~ "Media Profile"
+    end
+
+    test "adds each URL once and reports invalid lines", %{conn: conn, create_attrs: attrs, extras_directory: directory} do
+      valid_url = attrs.original_url
+      path = Path.join(directory, "sources.txt")
+      File.write!(path, "\n#{valid_url}\n#{valid_url}\nhttps://youtube.com/watch\n")
+      upload = %Plug.Upload{path: path, filename: "sources.txt", content_type: "text/plain"}
+
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
+
+      response =
+        conn
+        |> post(~p"/sources/import", import: %{file: upload, media_profile_id: to_string(attrs.media_profile_id)})
+        |> html_response(200)
+
+      assert response =~ "1 added"
+      assert response =~ "1 failed"
+      assert response =~ "1 repeated lines skipped"
+      assert Repo.aggregate(Pinchflat.Sources.Source, :count) == 1
+    end
+
+    test "rejects an empty file without adding sources", %{conn: conn, create_attrs: attrs, extras_directory: directory} do
+      path = Path.join(directory, "empty.txt")
+      File.write!(path, "\n  \n")
+      upload = %Plug.Upload{path: path, filename: "empty.txt", content_type: "text/plain"}
+
+      response =
+        conn
+        |> post(~p"/sources/import", import: %{file: upload, media_profile_id: to_string(attrs.media_profile_id)})
+        |> html_response(200)
+
+      assert response =~ "1 to 100 URLs"
+      assert Repo.aggregate(Pinchflat.Sources.Source, :count) == 0
+    end
+  end
+
   describe "new source" do
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/sources/new")

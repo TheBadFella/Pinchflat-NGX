@@ -42,6 +42,60 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  def import_new(conn, _params) do
+    render(conn, :import_new, media_profiles: media_profiles(), results: nil, error: nil)
+  end
+
+  def import_create(conn, %{"import" => %{"file" => %Plug.Upload{} = upload, "media_profile_id" => profile_id}}) do
+    with {id, ""} <- Integer.parse(profile_id),
+         %MediaProfile{} <- Repo.get(MediaProfile, id),
+         {:ok, %{size: size}} when size <= 100_000 <- File.stat(upload.path),
+         {:ok, contents} <- File.read(upload.path),
+         true <- String.valid?(contents),
+         urls = contents |> String.split(~r/\R/) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")),
+         true <- length(urls) in 1..100 do
+      unique_urls = Enum.uniq(urls)
+      duplicates = length(urls) - length(unique_urls)
+
+      results =
+        Enum.map(unique_urls, fn url ->
+          case Sources.create_source(%{"original_url" => url, "media_profile_id" => id}) do
+            {:ok, _source} ->
+              {url, :ok}
+
+            {:error, changeset} ->
+              message =
+                changeset
+                |> format_changeset_errors()
+                |> Enum.map_join("; ", fn {field, errors} -> "#{field} #{Enum.join(errors, ", ")}" end)
+
+              {url, message}
+          end
+        end)
+
+      render(conn, :import_new,
+        media_profiles: media_profiles(),
+        results: %{items: results, duplicates: duplicates},
+        error: nil
+      )
+    else
+      _ ->
+        render(conn, :import_new,
+          media_profiles: media_profiles(),
+          results: nil,
+          error: "Choose a profile and a text file with 1 to 100 URLs (100 KB maximum)."
+        )
+    end
+  end
+
+  def import_create(conn, _params) do
+    render(conn, :import_new,
+      media_profiles: media_profiles(),
+      results: nil,
+      error: "Choose a profile and a text file with 1 to 100 URLs (100 KB maximum)."
+    )
+  end
+
   def new(conn, params) do
     # This lets me preload the settings from another source for more efficient creation
     cs_struct =
