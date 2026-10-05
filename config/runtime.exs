@@ -229,6 +229,16 @@ if config_env() == :prod do
 
   {db_pool_size, _} = Integer.parse(System.get_env("DATABASE_POOL_SIZE", "10"))
 
+  # Optional override for how long (ms) a query may hold a connection before it is
+  # cancelled. Unset keeps the adapter defaults (45s for SQLite via config.exs, Ecto's
+  # 15s for PostgreSQL). Setting this too high can tie up connections longer, delay
+  # other queries and make the UI feel stuck while a slow query runs.
+  db_timeout_opts =
+    case System.get_env("DATABASE_TIMEOUT_MS", "") |> String.trim() |> Integer.parse() do
+      {ms, ""} when ms > 0 -> [timeout: ms]
+      _ -> []
+    end
+
   case database_adapter do
     :sqlite ->
       db_path = System.get_env("DATABASE_PATH", Path.join([config_path, "db", "pinchflat.db"]))
@@ -237,20 +247,22 @@ if config_env() == :prod do
 
       # WAL lets readers run concurrently, so a larger pool mainly buys headroom
       # for the web UI and other jobs while a long operation holds connections.
-      config :pinchflat, Pinchflat.Repo,
-        database: db_path,
-        journal_mode: journal_mode,
-        pool_size: db_pool_size
+      config :pinchflat,
+             Pinchflat.Repo,
+             [database: db_path, journal_mode: journal_mode, pool_size: db_pool_size] ++ db_timeout_opts
 
     :postgres ->
       database_url =
         System.get_env("DATABASE_URL") ||
           raise "DATABASE_URL is required by the PostgreSQL image"
 
-      config :pinchflat, Pinchflat.Repo,
-        url: database_url,
-        pool_size: db_pool_size,
-        socket_options: if(enable_ipv6, do: [:inet6], else: [])
+      config :pinchflat,
+             Pinchflat.Repo,
+             [
+               url: database_url,
+               pool_size: db_pool_size,
+               socket_options: if(enable_ipv6, do: [:inet6], else: [])
+             ] ++ db_timeout_opts
   end
 
   config :pinchflat, Pinchflat.PromEx, disabled: !enable_prometheus
