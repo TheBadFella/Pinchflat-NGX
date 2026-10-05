@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question / Help
+    url: https://github.com/TheBadFella/Pinchflat-NGX/discussions
+    about: Ask setup questions or get help in Discussions.

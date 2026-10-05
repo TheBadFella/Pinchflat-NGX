@@ -1,0 +1,72 @@
+name: Bug Report
+description: Report something that is not working in Pinchflat-NGX.
+title: '[Bug] '
+labels: ['Bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please [search existing issues](https://github.com/TheBadFella/Pinchflat-NGX/issues) first. For setup questions, use [Discussions](https://github.com/TheBadFella/Pinchflat-NGX/discussions).
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened?
+      description: Describe the problem and any error you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: List the steps that led to the problem. If you cannot reproduce it reliably, say so.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Enter the version shown in the app, rather than just the image tag such as latest. If you cannot open the app, enter your image tag.
+      placeholder: '2026.9.28'
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite
+        - PostgreSQL
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation
+      options:
+        - Docker Compose
+        - Docker
+        - Other
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Occasionally
+        - Only happened once
+        - Not sure
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant logs or screenshots
+      description: Optional. Paste the relevant log lines or attach screenshots. Remove passwords, tokens, cookies and any private information before sharing.

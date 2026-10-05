@@ -1,0 +1,33 @@
+name: Enhancement Request
+description: Suggest an improvement to Pinchflat-NGX.
+title: '[Enhancement] '
+labels: ['Enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please [search existing issues](https://github.com/TheBadFella/Pinchflat-NGX/issues) first. For setup questions, use [Discussions](https://github.com/TheBadFella/Pinchflat-NGX/discussions).
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Tell us what you want to accomplish.
+    validations:
+      required: true
+  - type: textarea
+    id: difficulty
+    attributes:
+      label: What makes it difficult today?
+      description: Describe what is missing or getting in your way.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: How would you like it to work?
+      description: Optional. You do not need to design a solution to suggest an improvement.
+  - type: textarea
+    id: examples
+    attributes:
+      label: Any examples or screenshots?
+      description: Optional. Remove passwords, tokens, cookies and any private information before sharing.
