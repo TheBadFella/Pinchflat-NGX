@@ -231,11 +231,12 @@ if config_env() == :prod do
 
   # Optional override for how long (ms) a query may hold a connection before it is
   # cancelled. Unset keeps the adapter defaults (45s for SQLite via config.exs, Ecto's
-  # 15s for PostgreSQL). Setting this too high can tie up connections longer, delay
-  # other queries and make the UI feel stuck while a slow query runs.
+  # 15s for PostgreSQL). Accepted range is 15000-300000 (15s-5min); values outside
+  # it are ignored and the defaults apply. Setting this high can tie up connections
+  # longer, delay other queries and make the UI feel stuck while a slow query runs.
   db_timeout_opts =
     case System.get_env("DATABASE_TIMEOUT_MS", "") |> String.trim() |> Integer.parse() do
-      {ms, ""} when ms > 0 -> [timeout: ms]
+      {ms, ""} when ms >= 15_000 and ms <= 300_000 -> [timeout: ms]
       _ -> []
     end
 
