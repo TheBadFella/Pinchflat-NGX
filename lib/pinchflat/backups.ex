@@ -275,18 +275,78 @@ defmodule Pinchflat.Backups do
   end
 
   defp backup_metadata(path) do
-    with {:ok, %File.Stat{type: :regular, size: size, mtime: mtime}} <- File.lstat(path),
-         {:ok, modified_at} <- datetime_from_erl(mtime) do
-      %{
-        filename: Path.basename(path),
-        modified_at: modified_at,
-        path: path,
-        size: size
-      }
+    filename = Path.basename(path)
+
+    case File.lstat(path) do
+      {:ok, %File.Stat{type: :regular, size: size, mtime: mtime}} ->
+        modified_at =
+          parse_filename_timestamp(filename) ||
+            case datetime_from_erl(mtime) do
+              {:ok, dt} -> dt
+              _ -> nil
+            end
+
+        if modified_at do
+          %{
+            filename: filename,
+            modified_at: modified_at,
+            path: path,
+            size: size
+          }
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_filename_timestamp(filename) do
+    cond do
+      match = Regex.run(@filename_pattern, filename, capture: :all_but_first) ->
+        case match do
+          [date, time, microseconds, _suffix] -> do_parse_timestamp(date, time, microseconds)
+          _ -> nil
+        end
+
+      match = Regex.run(@legacy_pinchyt_filename_pattern, filename, capture: :all_but_first) ->
+        case match do
+          [date, time, microseconds, _suffix] -> do_parse_timestamp(date, time, microseconds)
+          _ -> nil
+        end
+
+      match = Regex.run(@legacy_filename_pattern, filename, capture: :all_but_first) ->
+        case match do
+          [date, time, microseconds, _suffix] -> do_parse_timestamp(date, time, microseconds)
+          [date, time, _suffix] -> do_parse_timestamp(date, time, "000000")
+          _ -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  defp do_parse_timestamp(
+         <<year::binary-size(4), month::binary-size(2), day::binary-size(2)>>,
+         <<hour::binary-size(2), minute::binary-size(2), second::binary-size(2)>>,
+         microsecond_str
+       ) do
+    with {y, ""} <- Integer.parse(year),
+         {m, ""} <- Integer.parse(month),
+         {d, ""} <- Integer.parse(day),
+         {h, ""} <- Integer.parse(hour),
+         {min, ""} <- Integer.parse(minute),
+         {s, ""} <- Integer.parse(second),
+         {usec, ""} <- Integer.parse(microsecond_str),
+         {:ok, naive} <- NaiveDateTime.new(y, m, d, h, min, s, {usec, 6}),
+         {:ok, datetime} <- DateTime.from_naive(naive, "Etc/UTC") do
+      datetime
     else
       _ -> nil
     end
   end
+
+  defp do_parse_timestamp(_date, _time, _usec), do: nil
 
   defp newer_backup?(left, right) do
     case DateTime.compare(left.modified_at, right.modified_at) do

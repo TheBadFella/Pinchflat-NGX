@@ -44,12 +44,19 @@ defmodule Pinchflat.Tasks do
         true
       end
 
+    state_filter =
+      if Pinchflat.Database.postgres?() do
+        dynamic([_t, j], fragment("?::text", j.state) in ^stringified_states)
+      else
+        dynamic([_t, j], fragment("CAST(? AS text)", j.state) in ^stringified_states)
+      end
+
     Repo.all(
       from t in Task,
         join: j in assoc(t, :job),
         where: field(t, ^record_type) == ^record.id,
         where: ^worker_name_finder,
-        where: j.state in ^stringified_states
+        where: ^state_filter
     )
   end
 

@@ -149,7 +149,7 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
 
       assert QueueDiagnostics.reset_retryable_jobs() == 2
 
-      assert %{state: "available", attempt: 1, errors: []} = Repo.get(Oban.Job, job_one.id)
+      assert %{state: "available"} = Repo.get(Oban.Job, job_one.id)
       assert %{state: "available"} = Repo.get(Oban.Job, job_two.id)
     end
 
@@ -168,7 +168,7 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
       set_job_state(job, "retryable", attempt: 5, errors: [%{"error" => "boom"}])
 
       assert QueueDiagnostics.reset_job(job.id) == 1
-      assert %{state: "available", attempt: 1, errors: []} = Repo.get(Oban.Job, job.id)
+      assert %{state: "available"} = Repo.get(Oban.Job, job.id)
     end
 
     test "resets a discarded job" do

@@ -170,17 +170,19 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   end
 
   @doc """
-  Resets all retryable jobs by clearing their error history and marking as available.
+  Resets all retryable jobs by transitioning them to available via Oban.
   Returns the number of jobs reset.
   """
   def reset_retryable_jobs do
-    {count, _} =
+    query =
       from(j in Oban.Job,
         where: j.state == "retryable"
       )
-      |> Repo.update_all(set: [state: "available", attempt: 1, errors: [], scheduled_at: DateTime.utc_now()])
 
-    count
+    case Oban.retry_all_jobs(query) do
+      {:ok, count} -> count
+      _ -> 0
+    end
   end
 
   @doc """
@@ -192,14 +194,16 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   executing jobs are recovered at boot by `Pinchflat.Boot.PreJobStartupTasks`.
   """
   def reset_job(job_id) do
-    {count, _} =
-      from(j in Oban.Job,
-        where: j.id == ^job_id,
-        where: j.state in ["retryable", "discarded"]
-      )
-      |> Repo.update_all(set: [state: "available", attempt: 1, errors: [], scheduled_at: DateTime.utc_now()])
+    case Repo.get_by(Oban.Job, id: job_id) do
+      %Oban.Job{state: state} = job when state in ["retryable", "discarded"] ->
+        case Oban.retry_job(job) do
+          :ok -> 1
+          _ -> 0
+        end
 
-    count
+      _ ->
+        0
+    end
   end
 
   @doc """

@@ -183,8 +183,8 @@ config :pinchflat, Oban,
     maintenance: 1
   ],
   plugins: [
-    # Keep old jobs for 30 days for display in the UI
-    {Oban.Plugins.Pruner, max_age: 30 * 24 * 60 * 60},
+    # Keep old jobs for 7 days for display in the UI
+    {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
     # Rescue orphaned jobs stuck in "executing" state after crash/restart
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
     {Oban.Plugins.Cron, crontab: cron_jobs}
@@ -209,7 +209,7 @@ if config_env() == :prod do
   enable_ipv6 = String.length(System.get_env("ENABLE_IPV6", "")) > 0
   enable_prometheus = String.length(System.get_env("ENABLE_PROMETHEUS", "")) > 0
 
-  config :logger, level: String.to_existing_atom(System.get_env("LOG_LEVEL", "debug"))
+  config :logger, level: String.to_existing_atom(System.get_env("LOG_LEVEL", "info"))
 
   config :pinchflat,
     yt_dlp_executable: System.find_executable("yt-dlp"),

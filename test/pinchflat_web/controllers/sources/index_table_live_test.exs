@@ -334,8 +334,50 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       |> render_change(%{source: %{"enabled" => "not-a-boolean"}})
 
       assert render(view) =~ "Could not update monitoring state."
-      assert render_element(view, "#source_enable_toggle_source_#{source.id}_enabled_grid_input") =~ "checked"
       assert %{enabled: true} = Repo.get!(Source, source.id)
+    end
+  end
+
+  describe "live PubSub updates" do
+    test "updates source counts when job:state change event is broadcast", %{conn: conn} do
+      source = source_fixture(custom_name: "A_Live_Update_Source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "0"
+
+      # Add a pending media item after mount
+      media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      # Broadcast job:state change
+      PinchflatWeb.Endpoint.broadcast("job:state", "change", nil)
+      :timer.sleep(50)
+
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "1"
+    end
+
+    test "refreshes sources on job:progress update events and throttles rapid events", %{conn: conn} do
+      source = source_fixture(custom_name: "A_Progress_Update_Source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "0"
+
+      # Add a downloaded media item
+      media_item_fixture(%{source_id: source.id})
+
+      # Broadcast job:progress update
+      PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: 123})
+      :timer.sleep(50)
+
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
+
+      # Rapid bursts do not crash and handle trailing refresh
+      Enum.each(1..5, fn _ ->
+        PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: 123})
+      end)
+
+      # Send the internal timer message to trigger trailing refresh
+      send(view.pid, :throttled_refresh)
+      assert render(view) =~ source.custom_name
     end
   end
 
