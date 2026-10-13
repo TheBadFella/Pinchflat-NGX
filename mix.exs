@@ -54,7 +54,7 @@ defmodule Pinchflat.MixProject do
       {:phoenix_ecto, "~> 4.4"},
       {:ecto, "~> 3.14"},
       {:ecto_sql, "~> 3.14"},
-      {:ecto_sqlite3, "~> 0.24.1"},
+      {:ecto_sqlite3, "~> 0.25.0"},
       {:ecto_sqlite3_extras, "~> 1.2.0"},
       {:postgrex, "~> 0.21"},
       {:phoenix_html, "~> 4.2"},
@@ -79,7 +79,7 @@ defmodule Pinchflat.MixProject do
       {:mox, "~> 1.0", only: :test},
       {:credo, "~> 1.7.7", only: [:dev, :test], runtime: false},
       {:credo_naming, "~> 2.1", only: [:dev, :test], runtime: false},
-      {:ex_check, "~> 0.16.0", only: [:dev, :test], runtime: false},
+      {:ex_check, "~> 0.17.0", only: [:dev, :test], runtime: false},
       {:faker, "~> 0.17", only: :test},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:open_api_spex, "~> 3.21"}
