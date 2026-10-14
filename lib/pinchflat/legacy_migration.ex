@@ -874,7 +874,7 @@ defmodule Pinchflat.LegacyMigration do
 
   defp check_schema(repo) do
     table_query =
-      if Application.get_env(:pinchflat, :database_adapter) == :postgres,
+      if repo_postgres?(repo),
         do: "SELECT to_regclass('schema_migrations')",
         else: "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
 
@@ -915,7 +915,7 @@ defmodule Pinchflat.LegacyMigration do
 
   defp check_fresh_schema(repo) do
     sql =
-      if Application.get_env(:pinchflat, :database_adapter) == :postgres,
+      if repo_postgres?(repo),
         do:
           "SELECT count(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_name IN ('sources','media_items','settings','media_profiles')",
         else:
@@ -930,7 +930,7 @@ defmodule Pinchflat.LegacyMigration do
     if max_version != @max_original_schema_version or count != 77,
       do: raise("Update the original Pinchflat to its latest image before migrating")
 
-    if Application.get_env(:pinchflat, :database_adapter) == :postgres,
+    if repo_postgres?(repo),
       do: raise("Legacy migration requires a SQLite database")
 
     columns = Ecto.Adapters.SQL.query!(repo, "PRAGMA table_info(sources)").rows |> Enum.map(&Enum.at(&1, 1))
@@ -1034,7 +1034,7 @@ defmodule Pinchflat.LegacyMigration do
 
   defp database_state(repo) do
     table_sql =
-      if Application.get_env(:pinchflat, :database_adapter) == :postgres,
+      if repo_postgres?(repo),
         do: "SELECT to_regclass('legacy_migration_records')",
         else: "SELECT name FROM sqlite_master WHERE type='table' AND name='legacy_migration_records'"
 
@@ -1067,6 +1067,8 @@ defmodule Pinchflat.LegacyMigration do
   rescue
     error -> {:error, error}
   end
+
+  defp repo_postgres?(repo), do: repo.__adapter__() == Ecto.Adapters.Postgres
 
   defp queue_options(limit) when is_integer(limit), do: [limit: limit]
   defp queue_options(options), do: options
