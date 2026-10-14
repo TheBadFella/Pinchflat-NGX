@@ -93,6 +93,10 @@ defmodule PinchflatWeb.Router do
     post "/reconciliation", Settings.ReconciliationController, :build
     post "/reconciliation/apply/:plan_id", Settings.ReconciliationController, :apply
 
+    get "/postgres_migration", PostgresMigrationController, :show
+    post "/postgres_migration/start", PostgresMigrationController, :start
+    post "/postgres_migration/complete", PostgresMigrationController, :complete
+
     get "/diagnostics", Settings.DiagnosticsController, :show
     post "/diagnostics/test_po_token_provider", Settings.DiagnosticsController, :test_po_token_provider
     post "/diagnostics/reset_retryable_jobs", Settings.DiagnosticsController, :reset_retryable_jobs

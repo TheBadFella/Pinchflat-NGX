@@ -72,7 +72,9 @@
 <% db = database_stats() %>
 <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <h3 class="text-lg font-semibold text-theme-on-surface">Database</h3>
+    <h3 class="text-lg font-semibold text-theme-on-surface">
+      Database type: {if sqlite_database?(), do: "SQLite", else: "PostgreSQL"}
+    </h3>
     <div :if={sqlite_database?()} class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
       {live_render(@conn, Pinchflat.Settings.IntegrityCheckLive,
         id: "integrity-check-live",

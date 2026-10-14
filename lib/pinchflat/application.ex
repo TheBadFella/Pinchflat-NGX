@@ -23,9 +23,8 @@ defmodule Pinchflat.Application do
       {Task.Supervisor, name: Pinchflat.LegacyMigration.ScanSupervisor},
       # Must be before startup tasks
       Pinchflat.Boot.PreJobStartupTasks,
-      Application.fetch_env!(:pinchflat, Oban)
-      |> Oban.child_spec()
-      |> Map.put(:start, {Pinchflat.LegacyMigration, :start_oban_link, [Application.fetch_env!(:pinchflat, Oban)]}),
+      {Pinchflat.Database.PostgresMigration, Application.fetch_env!(:pinchflat, Oban)},
+      {Task.Supervisor, name: Pinchflat.MigrationTasks},
       Pinchflat.Boot.PostJobStartupTasks,
       {DNSCluster, query: Application.get_env(:pinchflat, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Pinchflat.PubSub},

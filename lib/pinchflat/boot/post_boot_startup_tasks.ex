@@ -35,7 +35,9 @@ defmodule Pinchflat.Boot.PostBootStartupTasks do
   end
 
   def init(state) do
-    update_yt_dlp()
+    unless Pinchflat.Database.PostgresMigration.pending?() do
+      update_yt_dlp()
+    end
 
     {:ok, state}
   end

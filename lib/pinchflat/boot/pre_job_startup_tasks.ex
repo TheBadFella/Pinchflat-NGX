@@ -41,14 +41,18 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
   end
 
   def init(state) do
-    ensure_tmpfile_directory()
-    if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: cleanup_stale_download_staging()
-    reset_executing_jobs()
-    revive_stalled_reconcile_jobs()
-    create_blank_yt_dlp_files()
-    create_blank_user_script_file()
-    apply_default_settings()
-    if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: run_app_init_script()
+    Pinchflat.Database.PostgresMigration.initialize!()
+
+    unless Pinchflat.Database.PostgresMigration.pending?() do
+      ensure_tmpfile_directory()
+      if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: cleanup_stale_download_staging()
+      reset_executing_jobs()
+      revive_stalled_reconcile_jobs()
+      create_blank_yt_dlp_files()
+      create_blank_user_script_file()
+      apply_default_settings()
+      if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: run_app_init_script()
+    end
 
     {:ok, state}
   end
