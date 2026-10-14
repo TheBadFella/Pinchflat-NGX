@@ -232,19 +232,21 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
   defp fetch_storage_stats do
     setting = Settings.record()
+    enabled = Map.get(setting, :download_space_protection_enabled, false)
+    blocked = Map.get(setting, :download_space_protection_blocked, false)
 
     status =
       cond do
-        not setting.download_space_protection_enabled -> :disabled
-        setting.download_space_protection_blocked -> :blocked
+        not enabled -> :disabled
+        blocked -> :blocked
         true -> :healthy
       end
 
     %{
-      enabled: setting.download_space_protection_enabled,
-      blocked: setting.download_space_protection_blocked,
-      threshold: setting.download_space_protection_threshold_bytes,
-      free_bytes: setting.download_space_protection_free_bytes,
+      enabled: enabled,
+      blocked: blocked,
+      threshold: Map.get(setting, :download_space_protection_threshold_bytes),
+      free_bytes: Map.get(setting, :download_space_protection_free_bytes),
       status: status
     }
   end

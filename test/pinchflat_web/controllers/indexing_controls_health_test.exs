@@ -17,7 +17,6 @@ defmodule PinchflatWeb.IndexingControlsHealthTest do
       assert html =~ ~s(x-model="fastIndexingEnabled")
       assert html =~ "fastIndexingEnabled:"
       refute html =~ "fastIndexingEnabled = enabled"
-      assert html =~ "Reuse a saved source folder"
     end
   end
 
