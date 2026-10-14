@@ -18,6 +18,7 @@ defmodule Pinchflat.Utils.CliUtils do
   Custom options:
     - logging_arg_override: if set, the passed value will be logged in place of
       the actual arguments passed to the command
+    - output_transform: optional function applied before output is logged or returned
     - expected_exit_codes: exit codes (besides 0) that the caller treats as a
       normal outcome and handles itself — these are logged at debug instead of
       error so routine exits (eg: yt-dlp's 101 on --break-on-existing) don't
@@ -35,6 +36,7 @@ defmodule Pinchflat.Utils.CliUtils do
     Logger.info("[command_wrapper]: #{command} called with: #{logging_arg_override}")
 
     {output, status} = System.cmd(wrapper_command, actual_command, command_opts)
+    output = Keyword.get(opts, :output_transform, &Function.identity/1).(output)
     log_cmd_result(command, logging_arg_override, status, output, expected_exit_codes)
 
     {output, status}

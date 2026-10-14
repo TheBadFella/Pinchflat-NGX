@@ -1,9 +1,31 @@
 defmodule PinchflatWeb.Settings.AppriseServerLiveTest do
   use PinchflatWeb.ConnCase
+  require Logger
 
   import Phoenix.LiveViewTest
 
   alias Pinchflat.Settings.AppriseServerLive
+
+  test "filters notification credentials from debug mount logs", %{conn: conn} do
+    previous = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          Logger.debug("privacy195 ordinary debug logging still works")
+
+          {:ok, _view, _html} =
+            live_isolated(conn, AppriseServerLive, session: create_session("json://lab:SECRET_MOUNT195@localhost:1/ok"))
+        end)
+
+      assert log =~ "privacy195 ordinary debug logging still works"
+      refute log =~ "MOUNT"
+      refute log =~ "SECRET_MOUNT195"
+    after
+      Logger.configure(level: previous)
+    end
+  end
 
   describe "initial rendering" do
     test "renders the input", %{conn: conn} do
@@ -68,6 +90,17 @@ defmodule PinchflatWeb.Settings.AppriseServerLiveTest do
       assert view
              |> element("button")
              |> render_click()
+    end
+
+    test "reports failed delivery instead of a success checkmark", %{conn: conn} do
+      expect(AppriseRunnerMock, :run, fn ["cool-value"], _ -> {:error, "SECRET_UI187"} end)
+      {:ok, view, _html} = live_isolated(conn, AppriseServerLive, session: create_session("cool-value"))
+      html = view |> element("button") |> render_click()
+      assert html =~ "Test failed"
+      assert html =~ "hero-exclamation-triangle"
+      refute html =~ "Sent!"
+      refute html =~ "SECRET_UI187"
+      assert has_element?(view, "button[aria-label^='Test failed']")
     end
 
     test "sets the button icon to a checkmark", %{conn: conn} do

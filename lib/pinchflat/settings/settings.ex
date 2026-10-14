@@ -37,7 +37,7 @@ defmodule Pinchflat.Settings do
   def update_setting(%Setting{} = setting, attrs) do
     setting
     |> Setting.changeset(attrs)
-    |> Repo.update()
+    |> Repo.update(log: false)
     |> tap(fn
       {:ok, %Setting{} = updated_setting} -> cache_record(updated_setting)
       _ -> :ok

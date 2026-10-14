@@ -26,6 +26,31 @@ defmodule PinchflatWeb.SettingControllerTest do
   end
 
   describe "update settings" do
+    test "filters credentials in settings request logs", %{conn: conn} do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+
+      try do
+        log =
+          ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+            changed =
+              put(conn, ~p"/settings",
+                setting: %{
+                  apprise_server: "json://lab:SECRET_REQUEST187@example.invalid/",
+                  youtube_api_key: "SECRET_REQUEST187"
+                }
+              )
+
+            assert redirected_to(changed) == ~p"/settings"
+          end)
+
+        assert log =~ "SettingController.update"
+        refute log =~ "SECRET_REQUEST187"
+      after
+        Logger.configure(level: previous_level)
+      end
+    end
+
     test "saves and redirects when data is valid", %{conn: conn} do
       update_attrs = %{
         apprise_server: "test://server",

@@ -2,6 +2,7 @@ defmodule PinchflatWeb.PageControllerTest do
   use PinchflatWeb.ConnCase
 
   alias Pinchflat.LegacyMigration
+  alias Pinchflat.LegacyMigrationTestHelpers
   alias Pinchflat.Settings
 
   describe "GET / when testing onboarding" do
@@ -150,9 +151,10 @@ defmodule PinchflatWeb.PageControllerTest do
     end
 
     test "a rejected completion write leaves review pending and shows an error", %{conn: conn} do
-      Ecto.Adapters.SQL.query!(
+      LegacyMigrationTestHelpers.install_reject_status_update_trigger!(
         Pinchflat.Repo,
-        "CREATE TEMP TRIGGER reject_review_confirmation BEFORE UPDATE OF status ON legacy_migration_records WHEN NEW.status='pending_release' BEGIN SELECT RAISE(ABORT, 'review write rejected'); END"
+        "reject_review_confirmation",
+        "pending_release"
       )
 
       try do
@@ -162,14 +164,15 @@ defmodule PinchflatWeb.PageControllerTest do
         assert LegacyMigration.legacy_migration_pending?()
         assert is_nil(LegacyMigration.get_state().confirmed_at)
       after
-        Ecto.Adapters.SQL.query!(Pinchflat.Repo, "DROP TRIGGER reject_review_confirmation")
+        LegacyMigrationTestHelpers.drop_reject_status_update_trigger!(Pinchflat.Repo, "reject_review_confirmation")
       end
     end
 
     test "release persistence failure retains approval and can be retried", %{conn: conn} do
-      Ecto.Adapters.SQL.query!(
+      LegacyMigrationTestHelpers.install_reject_status_update_trigger!(
         Pinchflat.Repo,
-        "CREATE TEMP TRIGGER reject_release_completion BEFORE UPDATE OF status ON legacy_migration_records WHEN NEW.status='completed' BEGIN SELECT RAISE(ABORT, 'release rejected'); END"
+        "reject_release_completion",
+        "completed"
       )
 
       try do
@@ -181,7 +184,7 @@ defmodule PinchflatWeb.PageControllerTest do
         assert html =~ "Retry resuming work"
         assert html =~ "Some queues may remain paused"
       after
-        Ecto.Adapters.SQL.query!(Pinchflat.Repo, "DROP TRIGGER reject_release_completion")
+        LegacyMigrationTestHelpers.drop_reject_status_update_trigger!(Pinchflat.Repo, "reject_release_completion")
       end
 
       changed = post(recycle(conn), ~p"/migration/confirm_review")

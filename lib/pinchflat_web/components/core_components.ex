@@ -416,7 +416,7 @@ defmodule PinchflatWeb.CoreComponents do
             aria-label={@aria_label}
             {@rest}
           />
-          <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50">
+          <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface">
           </div>
 
           <div class={[
