@@ -10,31 +10,71 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
   end
 
   describe "run/2" do
+    test "does not expose notification credentials in command logs or returned output" do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+
+      try do
+        log =
+          ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+            assert {:ok, output} = Runner.run("json://lab:SECRET_APPRISE184@receiver.invalid/SECRET_APPRISE184", [])
+            refute output =~ "SECRET_APPRISE184"
+          end)
+
+        assert log =~ "command_wrapper"
+        refute log =~ "SECRET_APPRISE184"
+      after
+        Logger.configure(level: previous_level)
+      end
+    end
+
+    test "provider failures cannot expose credentials in returned errors or logs" do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+
+      try do
+        record_arguments(
+          fn ->
+            log =
+              ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+                assert {:error, error} =
+                         Runner.run("json://lab:SECRET_APPRISE184@receiver.invalid/SECRET_APPRISE184", [])
+
+                assert error =~ "status 2"
+                refute error =~ "SECRET_APPRISE184"
+              end)
+
+            assert log =~ "exited: 2"
+            refute log =~ "SECRET_APPRISE184"
+          end,
+          2
+        )
+      after
+        Logger.configure(level: previous_level)
+      end
+    end
+
     test "returns :ok when the command succeeds" do
       assert {:ok, _} = Runner.run("server_1", [])
     end
 
-    test "includes the servers as the first argument" do
-      assert {:ok, output} = Runner.run(["server_1", "server_2"], [])
+    test "forwards servers and command arguments without exposing provider output" do
+      args =
+        record_arguments(fn ->
+          assert {:ok, ""} = Runner.run(["server_1", "server_2"], ["--dry-run"])
+        end)
 
-      assert String.contains?(output, "server_1 server_2")
+      assert args == ["--verbose", "--dry-run", "server_1", "server_2"]
     end
 
     test "lets you pass a single server as a string" do
-      assert {:ok, output} = Runner.run("server_1", [])
-
-      assert String.contains?(output, "server_1")
+      assert record_arguments(fn -> assert {:ok, ""} = Runner.run("server_1", []) end) == ["--verbose", "server_1"]
     end
 
-    test "passes all arguments to the command" do
-      assert {:ok, output} = Runner.run("server_1", ["--dry-run"])
-
-      assert String.contains?(output, "--dry-run")
-    end
-
-    test "returns the output when the command fails" do
+    test "returns the exit status when the command fails" do
       wrap_executable("/bin/false", fn ->
-        assert {:error, ""} = Runner.run("server_1", [])
+        assert {:error, "Apprise exited with status 1. Check the notification server configuration."} =
+                 Runner.run("server_1", [])
       end)
     end
 
@@ -50,6 +90,22 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
       assert {:ok, output} = Runner.version()
 
       assert String.contains?(output, "--version")
+    end
+  end
+
+  defp record_arguments(fun, exit_status \\ 0) do
+    directory = Path.join(System.tmp_dir!(), "apprise-arguments-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(directory)
+    script = Path.join(directory, "record.sh")
+    output = Path.join(directory, "arguments.txt")
+    File.write!(script, "#!/bin/sh\nprintf '%s\\n' \"$@\" > '#{output}'\nprintf '%s\\n' \"$@\"\nexit #{exit_status}\n")
+    File.chmod!(script, 0o700)
+
+    try do
+      wrap_executable(script, fun)
+      output |> File.read!() |> String.split("\n", trim: true)
+    after
+      File.rm_rf!(directory)
     end
   end
 

@@ -446,9 +446,9 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ~H"""
     <label class="group flex cursor-pointer select-none items-center gap-2.5 text-sm text-theme-on-surface-muted hover:text-theme-on-surface">
       <input type="checkbox" x-model={@model} class="peer sr-only" />
-      <span class="relative inline-block h-5 w-9 shrink-0">
+      <span class="relative inline-block h-5 w-9 shrink-0 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary">
         <span
-          class="block h-full w-full rounded-full bg-theme-surface-4 transition peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary"
+          class="block h-full w-full rounded-full bg-theme-surface-4 transition"
           x-bind:class={"#{@model} && 'bg-theme-primary!'"}
         ></span>
         <span

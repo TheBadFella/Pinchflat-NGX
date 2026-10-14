@@ -172,6 +172,7 @@ defmodule Pinchflat.Sources.Source do
 
     source
     |> cast(attrs, @allowed_fields)
+    |> normalize_show_url()
     |> dynamic_default(:custom_name, fn cs -> get_field(cs, :collection_name) end)
     |> dynamic_default(:uuid, fn _ -> Ecto.UUID.generate() end)
     |> validate_required(required_fields)
@@ -281,6 +282,23 @@ defmodule Pinchflat.Sources.Source do
   end
 
   def supported_youtube_url?(_url), do: false
+
+  defp normalize_show_url(changeset) do
+    update_change(changeset, :original_url, fn url ->
+      case URI.parse(url || "") do
+        %URI{scheme: scheme, host: host, path: "/show/VL" <> playlist_id, userinfo: nil}
+        when scheme in ["http", "https"] and host in ["youtube.com", "www.youtube.com"] ->
+          if Regex.match?(~r/\APL[A-Za-z0-9_-]+\z/, playlist_id) do
+            "https://www.youtube.com/playlist?list=#{playlist_id}"
+          else
+            url
+          end
+
+        _ ->
+          url
+      end
+    end)
+  end
 
   defp validate_original_url(%{changes: %{original_url: url}} = changeset) when is_binary(url) do
     if String.contains?(url, ["youtube.com", "youtu.be"]) && !supported_youtube_url?(url) do

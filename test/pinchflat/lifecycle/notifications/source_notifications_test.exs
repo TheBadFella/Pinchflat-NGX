@@ -116,9 +116,9 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
 
         assert opts == [
                  title: "[Pinchflat] New media found",
-                 body: "Found 2 new media item(s) for #{source.custom_name}. Downloading them now",
-                 href: "https://pinchflat.example.com/sources/#{source.id}",
-                 format: "markdown"
+                 body:
+                   "Found 2 new media item(s) for #{source.custom_name}. Downloading them now\n\n" <>
+                     "https://pinchflat.example.com/sources/#{source.id}"
                ]
 
         {:ok, ""}
