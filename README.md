@@ -232,6 +232,8 @@ compatible with the PostgreSQL 18 server as-is; use an explicit PostgreSQL upgra
 procedure before reusing existing PostgreSQL data. Keep using `latest` for an existing SQLite installation until
 you have migrated its data separately.
 
+Both images support an optional [database query timeout](docs/database-timeout.md) for slow operations.
+
 > [!TIP]
 > The PostgreSQL image supports in-app `pg_dump` backups and retention policies via **Settings > PostgreSQL Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
 
