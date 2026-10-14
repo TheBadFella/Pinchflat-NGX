@@ -145,6 +145,7 @@ config :logger, :default_formatter,
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
+config :phoenix, :filter_parameters, ["password", "secret", "token", "apprise_server", "youtube_api_key"]
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 config :pinchflat, Pinchflat.PromEx,

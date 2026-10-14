@@ -212,12 +212,15 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute response =~ "not-a-source-type"
     end
 
-    test "renders source folder picker options from existing media directories", %{conn: conn} do
+    test "renders source folder picker options from saved source folders", %{conn: conn} do
       media_root = Path.join(System.tmp_dir!(), "pinchflat-source-folder-picker-#{System.unique_integer([:positive])}")
       original_media_root = Application.get_env(:pinchflat, :media_directory)
 
       Application.put_env(:pinchflat, :media_directory, media_root)
       File.mkdir_p!(Path.join([media_root, "Kids", "Bluey"]))
+      File.mkdir_p!(Path.join([media_root, "DiskOnly"]))
+      source_fixture(%{download_subdirectory: "Kids"})
+      source_fixture(%{download_subdirectory: "Kids/Bluey"})
 
       on_exit(fn ->
         Application.put_env(:pinchflat, :media_directory, original_media_root)
@@ -230,6 +233,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Pick existing source folder"
       assert response =~ "Kids"
       assert response =~ "Kids/Bluey"
+      refute response =~ ~s(data-folder="DiskOnly")
     end
 
     test "renders cookie management controls", %{conn: conn} do

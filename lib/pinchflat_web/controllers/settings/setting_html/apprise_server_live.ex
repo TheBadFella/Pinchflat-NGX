@@ -24,6 +24,7 @@ defmodule Pinchflat.Settings.AppriseServerLive do
             class="h-12 w-12"
             phx-click="send_apprise_test"
             tooltip={@tooltip}
+            aria-label={@tooltip}
             disabled={blank?(@value)}
           />
         </div>
@@ -46,10 +47,24 @@ defmodule Pinchflat.Settings.AppriseServerLive do
     if blank?(assigns.value) do
       {:noreply, socket}
     else
-      backend_runner().run([assigns.value], title: "Pinchflat Test", body: "This is a test message from Pinchflat")
+      feedback =
+        case backend_runner().run([assigns.value],
+               title: "Pinchflat Test",
+               body: "This is a test message from Pinchflat"
+             ) do
+          {:ok, _} ->
+            %{icon_name: "hero-check", tooltip: "Sent!"}
+
+          {:error, _} ->
+            %{
+              icon_name: "hero-exclamation-triangle",
+              tooltip: "Test failed. Check the notification server configuration."
+            }
+        end
+
       Process.send_after(self(), :reset_button_icon, 4_000)
 
-      {:noreply, assign(socket, %{icon_name: "hero-check", tooltip: "Sent!"})}
+      {:noreply, assign(socket, feedback)}
     end
   end
 
