@@ -1,9 +1,9 @@
 ---
-name: change-pinchyt
-description: Implement, diagnose or review PinchYT behavior changes against the user's intent and repository contracts. Use for features, bugs or refactors; use unslop-pinchyt for prose-only edits.
+name: change-pinchflat-ngx
+description: Implement, diagnose or review Pinchflat-ngx behavior changes against the user's intent and repository contracts. Use for features, bugs or refactors; use unslop-pinchflat-ngx for prose-only edits.
 ---
 
-# Change PinchYT
+# Change Pinchflat-ngx
 
 Read [repository context](../../repository-context.md) and applicable AGENTS instructions. Inspect the affected implementation, tests and current Git status before editing. Preserve pre-existing changes.
 
@@ -25,8 +25,8 @@ Compare two dimensions separately: does the change implement the requested behav
 
 Review the actual work in scope: staged, unstaged and relevant untracked files for local work; a resolved merge-base for branch review. Do not review only HEAD when the user asks about uncommitted changes. Use the conversation as acceptance criteria when no spec exists. A missing spec limits review; it does not justify inventing one or publishing tickets.
 
-Use [verify-pinchyt](../verify-pinchyt/SKILL.md) for relevant checks. Complete both review dimensions locally unless independent agents are explicitly authorized and useful. Repository skills do not themselves grant permission to send messages, commit/push/merge, spend provider credits or deploy services.
+Use [verify-pinchflat-ngx](../verify-pinchflat-ngx/SKILL.md) for relevant checks. Complete both review dimensions locally unless independent agents are explicitly authorized and useful. Repository skills do not themselves grant permission to send messages, commit/push/merge, spend provider credits or deploy services.
 
-Report changed behavior, evidence and unresolved limitations. Route prose through [unslop-pinchyt](../unslop-pinchyt/SKILL.md) without changing technical meaning.
+Report changed behavior, evidence and unresolved limitations. Route prose through [unslop-pinchflat-ngx](../unslop-pinchflat-ngx/SKILL.md) without changing technical meaning.
 
 Adapted from Matt Pocock diagnosis/TDD/review/domain-design and Pstack blast-radius/simplicity. [Sources and licenses](../../skill-provenance.md).

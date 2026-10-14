@@ -415,13 +415,11 @@ defmodule Pinchflat.Sources do
   defp everything_before_cutoff?(%Source{download_cutoff_date: nil}, _counts), do: false
 
   defp everything_before_cutoff?(%Source{} = source, counts) do
-    cutoff = source.download_cutoff_date
-
     before_cutoff_count =
-      from(mi in MediaItem,
-        where: mi.source_id == ^source.id,
-        where: mi.published_at < ^cutoff and is_nil(mi.media_downloaded_at)
-      )
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:source)
+      |> where(^MediaQuery.for_source(source))
+      |> where(^dynamic(not (^MediaQuery.upload_date_after_source_cutoff()) and not (^MediaQuery.downloaded())))
       |> Repo.aggregate(:count)
 
     before_cutoff_count > 0 and before_cutoff_count == counts.skipped
