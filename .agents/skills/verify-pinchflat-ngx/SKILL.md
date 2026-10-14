@@ -1,9 +1,9 @@
 ---
-name: verify-pinchyt
-description: Choose and run proportionate verification for PinchYT changes using its existing tests and operational boundaries. Use before claiming a fix works or when assessing missing proof.
+name: verify-pinchflat-ngx
+description: Choose and run proportionate verification for Pinchflat-ngx changes using its existing tests and operational boundaries. Use before claiming a fix works or when assessing missing proof.
 ---
 
-# Verify PinchYT
+# Verify Pinchflat-ngx
 
 Read [repository context](../../repository-context.md) for commands, prerequisites and contracts. Read scoped AGENTS files for the changed area. This is a verification recipe, not a claim that an app instance is available.
 
