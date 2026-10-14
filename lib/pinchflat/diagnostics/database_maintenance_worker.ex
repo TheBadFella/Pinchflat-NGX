@@ -114,17 +114,24 @@ defmodule Pinchflat.Diagnostics.DatabaseMaintenanceWorker do
   end
 
   # Pausing stops queues from starting new jobs but lets executing ones run to
-  # completion. Resuming in `after` covers vacuum failures; a crashed node
-  # resets pause state on its own since it's held in memory, not the database.
+  # completion. Resuming in `after` covers vacuum failures. Preserves previously paused
+  # queues so running maintenance does not accidentally unpause user-paused queues.
   defp with_paused_queues(fun) do
     queues = QueueDiagnostics.queue_names()
+
+    # Record which queues were active (unpaused) before we pause them
+    active_queues =
+      Enum.filter(queues, fn q ->
+        info = Oban.check_queue(queue: q) || %{}
+        not Map.get(info, :paused, false)
+      end)
 
     Enum.each(queues, &Oban.pause_queue(queue: &1))
 
     try do
       fun.()
     after
-      Enum.each(queues, &Oban.resume_queue(queue: &1))
+      Enum.each(active_queues, &Oban.resume_queue(queue: &1))
     end
   end
 

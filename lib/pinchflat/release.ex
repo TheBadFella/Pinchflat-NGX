@@ -13,7 +13,11 @@ defmodule Pinchflat.Release do
     load_app()
 
     for repo <- repos() do
-      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
+      {:ok, _, _} =
+        Ecto.Migrator.with_repo(repo, fn repo ->
+          Pinchflat.LegacyMigration.pre_migration_check(repo)
+          Ecto.Migrator.run(repo, :up, all: true)
+        end)
     end
   end
 

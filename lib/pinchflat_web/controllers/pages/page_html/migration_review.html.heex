@@ -1,0 +1,305 @@
+<div class="flex flex-col gap-6">
+  <div class="theme-surface-raised p-6 sm:p-8">
+    <div class="flex flex-col gap-2">
+      <div class="flex items-center gap-3">
+        <h1 class="text-2xl font-bold text-theme-on-surface sm:text-3xl">
+          Welcome to Pinchflat-NGX
+        </h1>
+        <span class="rounded-m3-xs bg-theme-primary/15 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-theme-primary">
+          Migration Review
+        </span>
+      </div>
+      <p class="text-base text-theme-on-surface-muted">
+        <%= if @state.status == "pending_release" do %>
+          Your review is confirmed. Background work needs another attempt to resume.
+        <% else %>
+          We're checking your existing library. Review the results below before continuing.
+        <% end %>
+      </p>
+      <%= if @state.status == "blocked" do %>
+        <p class="theme-status-error text-sm">
+          Migration review state could not be read. Background work remains held.
+          Check database access and restore the complete config backup before trying again.
+        </p>
+      <% end %>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div class="theme-status-card theme-status-card-info">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5">
+            <.icon name="hero-check-circle" class="h-5 w-5 text-theme-primary" />
+          </div>
+          <div>
+            <h4 class="text-sm font-semibold text-theme-on-surface">Database Schema Upgraded</h4>
+            <p class="mt-1 text-xs text-theme-on-surface-muted">
+              <%= if @state.provenance == "legacy_pinchflat" do %>
+                Existing source names have been protected from automatic updates.
+              <% else %>
+                Migration history could not be verified. Check the config backup before continuing.
+              <% end %>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-status-card theme-status-card-warning">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5">
+            <.icon name="hero-pause-circle" class="h-5 w-5 text-theme-warning" />
+          </div>
+          <div>
+            <h4 class="text-sm font-semibold text-theme-on-surface">
+              {if @state.status == "pending_release",
+                do: "Background restart needs attention",
+                else: "Background Operations Held"}
+            </h4>
+            <p class="mt-1 text-xs text-theme-on-surface-muted">
+              <%= if @state.status == "pending_release" do %>
+                Some queues may remain paused. Retry below to finish resuming work; your approval is already recorded.
+              <% else %>
+                Automatic downloads, indexing, metadata fetching, culling, and reconciliation are held. No library files will be modified or deleted until you confirm.
+              <% end %>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-surface-raised p-6" aria-live="polite">
+    <p :if={@summary.scanned_at} class="text-xs text-theme-on-surface-muted">
+      Last file check: {@summary.scanned_at}
+    </p>
+    <%= if @summary.status == :running do %>
+      <div x-init="setTimeout(() => window.location.reload(), 3000)">
+        <h2 class="text-lg font-semibold text-theme-on-surface">Checking files</h2>
+        <p class="text-sm text-theme-on-surface-muted">
+          <%= if @summary.totals_ready do %>
+            Checked {@summary.processed_count} of {@summary.db_downloaded_count} recorded downloads.
+          <% else %>
+            Reading database totals. File verification has not finished yet.
+          <% end %>
+          This page refreshes while the scan runs. Verification does not change library files.
+        </p>
+      </div>
+    <% else %>
+      <%= if @summary.status in [:error, :interrupted, :partial] do %>
+        <h2 class="theme-status-error text-lg font-semibold">Verification incomplete</h2>
+        <p class="text-sm text-theme-on-surface-muted">
+          {@summary.error || "The database changed during verification. Retry the scan before continuing."} These results do not cover the whole library. Retry verification to check it again.
+        </p>
+      <% else %>
+        <h2 class="text-lg font-semibold text-theme-on-surface">File check finished</h2>
+        <p class="text-sm text-theme-on-surface-muted">
+          Files were checked for readability and size. This does not check media contents or checksums.
+          Review any problems below before continuing.
+        </p>
+      <% end %>
+    <% end %>
+  </div>
+
+  <div :if={@summary.totals_ready} class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="theme-surface-raised p-6">
+      <div class="border-b border-theme-outline/70 pb-4">
+        <h2 class="text-lg font-semibold text-theme-on-surface">Database Records</h2>
+        <p class="text-xs text-theme-on-surface-muted">
+          Metadata and entries recorded in your migrated database.
+          <%= if !@summary.totals_ready do %>
+            Totals are not available yet; zeroes below are placeholders.
+          <% end %>
+        </p>
+      </div>
+
+      <div class="mt-4 grid grid-cols-2 gap-4">
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            <.pluralize count={@summary.sources_count} word="Source" />
+          </span>
+          <p class="mt-1 text-2xl font-bold text-theme-on-surface">
+            <.localized_number number={@summary.sources_count} />
+          </p>
+        </div>
+
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            Media <.pluralize count={@summary.media_profiles_count} word="Profile" />
+          </span>
+          <p class="mt-1 text-2xl font-bold text-theme-on-surface">
+            <.localized_number number={@summary.media_profiles_count} />
+          </p>
+        </div>
+
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            <.pluralize count={@summary.db_downloaded_count} word="Recorded Download" />
+          </span>
+          <p class="mt-1 text-2xl font-bold text-theme-on-surface">
+            <.localized_number number={@summary.db_downloaded_count} />
+          </p>
+        </div>
+
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            Recorded Library Size
+          </span>
+          <p class="mt-1 text-2xl font-bold text-theme-on-surface">
+            <.readable_filesize byte_size={@summary.db_downloaded_bytes} />
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="theme-surface-raised p-6">
+      <div class="border-b border-theme-outline/70 pb-4">
+        <h2 class="text-lg font-semibold text-theme-on-surface">Verified on Disk</h2>
+        <p class="text-xs text-theme-on-surface-muted">
+          Physical accessibility and file sizes verified against storage mounts
+        </p>
+      </div>
+
+      <div class="mt-4 grid grid-cols-2 gap-4">
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            Downloads Mount
+          </span>
+          <div class="mt-1 flex items-center gap-2">
+            <%= if @summary.mounts.media_accessible do %>
+              <span class="theme-status-success text-sm font-semibold">Accessible</span>
+            <% else %>
+              <span class="theme-status-error text-sm font-semibold">Inaccessible</span>
+            <% end %>
+          </div>
+          <span
+            class="mt-1 block truncate font-mono text-xs text-theme-on-surface-muted"
+            title={@summary.mounts.media_directory}
+          >
+            {@summary.mounts.media_directory}
+          </span>
+        </div>
+
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            Config Mount
+          </span>
+          <div class="mt-1 flex items-center gap-2">
+            <%= if @summary.mounts.config_accessible do %>
+              <span class="theme-status-success text-sm font-semibold">Accessible</span>
+            <% else %>
+              <span class="theme-status-error text-sm font-semibold">Inaccessible</span>
+            <% end %>
+          </div>
+          <span
+            class="mt-1 block truncate font-mono text-xs text-theme-on-surface-muted"
+            title={@summary.mounts.config_directory}
+          >
+            {@summary.mounts.config_directory}
+          </span>
+        </div>
+
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            Verified Files
+          </span>
+          <p class="mt-1 text-2xl font-bold text-theme-on-surface">
+            <.localized_number number={@summary.verified_count} />
+            <span class="text-xs font-normal text-theme-on-surface-muted">
+              / <.localized_number number={@summary.db_downloaded_count} />
+            </span>
+          </p>
+        </div>
+
+        <div class="theme-surface p-4">
+          <span class="text-xs font-medium text-theme-on-surface-muted">
+            Verified Disk Size
+          </span>
+          <p class="mt-1 text-2xl font-bold text-theme-on-surface">
+            <.readable_filesize byte_size={@summary.verified_bytes} />
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <%= if @summary.missing_count > 0 do %>
+    <div class="theme-surface-raised p-6">
+      <div class="theme-status-card theme-status-card-error">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5">
+            <.icon name="hero-exclamation-triangle" class="h-5 w-5 text-theme-error" />
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-theme-on-surface">
+              {@summary.missing_count} Recorded File(s) Not Accessible On Disk
+            </h3>
+            <p class="mt-1 text-xs text-theme-on-surface-muted">
+              Some media items recorded in the database could not be opened at their expected paths.
+              Check that your container volume mounts for downloads match your original Pinchflat configuration.
+              This scan leaves database records and files unchanged. After confirmation, your configured background policies resume.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead>
+            <tr class="border-b border-theme-outline/70 text-theme-on-surface-muted">
+              <th class="py-2 pr-4 font-medium">ID</th>
+              <th class="py-2 pr-4 font-medium">Title</th>
+              <th class="py-2 pr-4 font-medium">Expected Filepath</th>
+              <th class="py-2 font-medium">Reason</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-theme-outline/50">
+            <%= for item <- Enum.take(@summary.missing_items, 20) do %>
+              <tr>
+                <td class="py-2 pr-4 font-mono text-theme-on-surface">{item.id}</td>
+                <td class="py-2 pr-4 font-medium text-theme-on-surface">{item.title}</td>
+                <td class="max-w-xs truncate py-2 pr-4 font-mono text-theme-on-surface-muted" title={item.filepath}>
+                  {item.filepath}
+                </td>
+                <td class="theme-status-error py-2 font-mono">{item.error}</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+        <%= if @summary.missing_count > 20 do %>
+          <p class="mt-2 text-xs text-theme-on-surface-muted">
+            Showing first 20 of {@summary.missing_count} inaccessible items.
+          </p>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="theme-surface-raised flex flex-col items-center justify-between gap-4 p-6 sm:flex-row">
+    <div class="flex flex-col gap-1 text-center sm:text-left">
+      <span class="text-sm font-semibold text-theme-on-surface">
+        Ready to proceed?
+      </span>
+      <p class="text-xs text-theme-on-surface-muted">
+        Confirming will release work held for this review. Previously paused queues and disabled sources stay that way.
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <.form :let={_f} for={%{}} as={:rescan} action={~p"/migration/rescan"} method="post">
+        <.button type="submit" class="theme-outline-button" disabled={@summary.status == :running}>
+          <.icon name="hero-arrow-path" class="mr-1.5 h-4 w-4" /> Re-scan Disk
+        </.button>
+      </.form>
+
+      <.form :let={_f} for={%{}} as={:confirm} action={~p"/migration/confirm_review"} method="post">
+        <.button
+          type="submit"
+          class="theme-primary-button"
+          disabled={@state.status == "blocked" || (!@summary.complete && @state.status != "pending_release")}
+        >
+          {if @state.status == "pending_release", do: "Retry resuming work", else: "Looks good, continue"}
+          <.icon name="hero-arrow-right" class="ml-1.5 h-4 w-4" />
+        </.button>
+      </.form>
+    </div>
+  </div>
+</div>

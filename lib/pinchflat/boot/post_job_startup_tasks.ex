@@ -40,8 +40,17 @@ defmodule Pinchflat.Boot.PostJobStartupTasks do
   end
 
   def init(state) do
-    Pinchflat.Settings.QueueConcurrency.apply!()
-    reschedule_missing_indexing_tasks()
+    if Pinchflat.LegacyMigration.legacy_migration_pending?() do
+      Logger.info(
+        "[PostJobStartupTasks] Legacy migration review is pending; holding mutating queues and skipping indexing reschedule"
+      )
+
+      Pinchflat.LegacyMigration.hold_mutating_queues!()
+    else
+      Pinchflat.Settings.QueueConcurrency.apply!()
+      reschedule_missing_indexing_tasks()
+      Pinchflat.LegacyMigration.resume_artwork_repairs!()
+    end
 
     {:ok, state}
   end
@@ -54,7 +63,7 @@ defmodule Pinchflat.Boot.PostJobStartupTasks do
   # This runs after PreJobStartupTasks has already reset stuck `executing` jobs to
   # `retryable`, so a live chain always has a task in one of the pending states
   # checked below and won't be double-scheduled.
-  defp reschedule_missing_indexing_tasks do
+  def reschedule_missing_indexing_tasks do
     sources_query = from(s in Source, where: s.enabled == true and is_nil(s.marked_for_deletion_at))
 
     sources_query

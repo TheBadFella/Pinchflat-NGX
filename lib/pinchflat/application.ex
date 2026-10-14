@@ -8,6 +8,7 @@ defmodule Pinchflat.Application do
 
   @impl true
   def start(_type, _args) do
+    Application.put_env(:pinchflat, :legacy_migration_scan_session, Ecto.UUID.generate())
     check_and_update_timezone()
     attach_oban_telemetry()
     Logger.add_handlers(:pinchflat)
@@ -18,9 +19,13 @@ defmodule Pinchflat.Application do
       Pinchflat.PromEx,
       PinchflatWeb.Telemetry,
       Pinchflat.Repo,
+      Pinchflat.Diagnostics.MigrationRepair.TokenStore,
+      {Task.Supervisor, name: Pinchflat.LegacyMigration.ScanSupervisor},
       # Must be before startup tasks
       Pinchflat.Boot.PreJobStartupTasks,
-      {Oban, Application.fetch_env!(:pinchflat, Oban)},
+      Application.fetch_env!(:pinchflat, Oban)
+      |> Oban.child_spec()
+      |> Map.put(:start, {Pinchflat.LegacyMigration, :start_oban_link, [Application.fetch_env!(:pinchflat, Oban)]}),
       Pinchflat.Boot.PostJobStartupTasks,
       {DNSCluster, query: Application.get_env(:pinchflat, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Pinchflat.PubSub},

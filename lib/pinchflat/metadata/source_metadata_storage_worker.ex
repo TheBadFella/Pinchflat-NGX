@@ -28,8 +28,18 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   Returns {:ok, %Task{}} | {:error, :duplicate_job} | {:error, %Ecto.Changeset{}}
   """
   def kickoff_with_task(source, opts \\ []) do
-    %{id: source.id}
-    |> SourceMetadataStorageWorker.new(opts)
+    {worker_args, oban_opts} = Keyword.split(opts, [:mode])
+    mode = Keyword.get(worker_args, :mode)
+
+    args =
+      if mode do
+        %{id: source.id, mode: to_string(mode)}
+      else
+        %{id: source.id}
+      end
+
+    args
+    |> SourceMetadataStorageWorker.new(oban_opts)
     |> Tasks.create_job_with_task(source)
   end
 
@@ -48,32 +58,39 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   Returns :ok
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"id" => source_id}}) do
+  def perform(%Oban.Job{args: %{"id" => source_id} = args}) do
+    mode = Map.get(args, "mode") || Map.get(args, :mode)
+    artwork_repair? = mode in ["artwork_repair", :artwork_repair]
+
     source = Repo.preload(Sources.get_source!(source_id), [:metadata, :media_profile])
 
-    with {:ok, series_directory} <- determine_series_directory(source),
-         {:ok, source_metadata, source_image_attrs, metadata_image_attrs} <-
-           fetch_source_metadata_and_images(series_directory, source) do
-      source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
+    series_directory_result =
+      if artwork_repair? do
+        {:ok, source.series_directory}
+      else
+        determine_series_directory(source)
+      end
 
-      metadata_attrs =
-        %{
-          series_directory: series_directory,
-          nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
-          metadata: Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
-        }
-        |> put_if_binary(:custom_name, source_name_from_metadata(source, source_metadata))
-        |> put_if_binary(:description, source_metadata["description"])
+    with {:ok, series_directory} <- series_directory_result,
+         {:ok, metadata_result} <-
+           fetch_source_metadata_and_images(series_directory, source, artwork_repair: artwork_repair?) do
+      case metadata_result do
+        :unavailable_fallback ->
+          handle_unavailable_fallback(source)
 
-      Sources.update_source(
-        source,
-        Map.merge(metadata_attrs, source_image_attrs),
-        # `run_post_commit_tasks: false` prevents this from running in an infinite loop
-        run_post_commit_tasks: false,
-        automated_metadata_refresh: true
-      )
-
-      :ok
+        {source_metadata, source_image_attrs, metadata_image_attrs} ->
+          if artwork_repair? do
+            handle_artwork_repair_metadata(source, source_metadata, source_image_attrs, metadata_image_attrs)
+          else
+            handle_standard_metadata(
+              source,
+              series_directory,
+              source_metadata,
+              source_image_attrs,
+              metadata_image_attrs
+            )
+          end
+      end
     else
       # A failed metadata/details fetch used to blow up here via a strict `{:ok, _} =` match,
       # producing an opaque MatchError crash-loop. Instead, surface source context and let the
@@ -99,19 +116,151 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     Ecto.StaleEntryError -> Logger.info("#{__MODULE__} discarded: source #{source_id} stale")
   end
 
-  defp fetch_source_metadata_and_images(series_directory, source) do
-    metadata_directory = MetadataFileHelpers.metadata_directory_for(source)
+  def perform(%Oban.Job{args: %{id: source_id} = args} = job) do
+    perform(%{job | args: Map.put(args, "id", source_id)})
+  end
 
-    with {:ok, metadata} <- maybe_ignore_unavailable_source_metadata(source, fetch_metadata_for_source(source)) do
-      metadata_image_attrs = SourceImageParser.store_source_images(metadata_directory, metadata)
+  defp handle_unavailable_fallback(source) do
+    if source.metadata && source.metadata.metadata_filepath do
+      Logger.info(
+        "Unavailable media encountered on existing source ##{source.id}; preserving existing metadata and paths"
+      )
 
-      if source.media_profile.download_source_images && series_directory do
-        source_image_attrs = SourceImageParser.store_source_images(series_directory, metadata)
+      :ok
+    else
+      source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, %{})
 
-        {:ok, metadata, source_image_attrs, metadata_image_attrs}
+      metadata_attrs = %{metadata: %{metadata_filepath: source_metadata_filepath}}
+
+      Sources.update_source(
+        source,
+        metadata_attrs,
+        run_post_commit_tasks: false,
+        automated_metadata_refresh: true
+      )
+
+      :ok
+    end
+  end
+
+  defp handle_artwork_repair_metadata(source, source_metadata, source_image_attrs, metadata_image_attrs) do
+    existing_metadata =
+      if source.metadata do
+        %{
+          metadata_filepath: source.metadata.metadata_filepath,
+          poster_filepath: source.metadata.poster_filepath,
+          fanart_filepath: source.metadata.fanart_filepath,
+          banner_filepath: source.metadata.banner_filepath
+        }
       else
-        {:ok, metadata, %{}, metadata_image_attrs}
+        source_metadata_filepath =
+          MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
+
+        %{metadata_filepath: source_metadata_filepath}
       end
+
+    updated_metadata =
+      Enum.reduce(metadata_image_attrs, existing_metadata, fn {key, val}, acc ->
+        if Map.get(acc, key) == nil and val != nil do
+          Map.put(acc, key, val)
+        else
+          acc
+        end
+      end)
+
+    filtered_source_image_attrs =
+      Enum.reduce(source_image_attrs, %{}, fn {key, val}, acc ->
+        if Map.get(source, key) == nil and val != nil do
+          Map.put(acc, key, val)
+        else
+          acc
+        end
+      end)
+
+    metadata_attrs = %{metadata: updated_metadata}
+
+    Sources.update_source(
+      source,
+      Map.merge(metadata_attrs, filtered_source_image_attrs),
+      run_post_commit_tasks: false,
+      automated_metadata_refresh: true
+    )
+
+    :ok
+  end
+
+  defp handle_standard_metadata(
+         source,
+         series_directory,
+         source_metadata,
+         source_image_attrs,
+         metadata_image_attrs
+       ) do
+    source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
+
+    merged_metadata =
+      if source.custom_name_locked and source.metadata do
+        existing_meta = %{
+          metadata_filepath: source_metadata_filepath,
+          poster_filepath: source.metadata.poster_filepath,
+          fanart_filepath: source.metadata.fanart_filepath,
+          banner_filepath: source.metadata.banner_filepath
+        }
+
+        Enum.reduce(metadata_image_attrs, existing_meta, fn {key, val}, acc ->
+          if Map.get(acc, key) == nil and val != nil do
+            Map.put(acc, key, val)
+          else
+            acc
+          end
+        end)
+      else
+        Map.merge(%{metadata_filepath: source_metadata_filepath}, metadata_image_attrs)
+      end
+
+    metadata_attrs =
+      %{
+        series_directory: series_directory,
+        nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+        metadata: merged_metadata
+      }
+      |> put_if_binary(:custom_name, source_name_from_metadata(source, source_metadata))
+      |> put_if_binary(:description, source_metadata["description"])
+
+    Sources.update_source(
+      source,
+      Map.merge(metadata_attrs, source_image_attrs),
+      run_post_commit_tasks: false,
+      automated_metadata_refresh: true
+    )
+
+    :ok
+  end
+
+  defp fetch_source_metadata_and_images(series_directory, source, opts) do
+    metadata_directory = MetadataFileHelpers.metadata_directory_for(source)
+    artwork_repair? = Keyword.get(opts, :artwork_repair, false)
+    overwrite? = !artwork_repair? and !source.custom_name_locked
+
+    case maybe_ignore_unavailable_source_metadata(source, fetch_metadata_for_source(source)) do
+      {:ok, _metadata, :unavailable_fallback} ->
+        {:ok, :unavailable_fallback}
+
+      {:ok, metadata} ->
+        metadata_image_attrs =
+          SourceImageParser.store_source_images(metadata_directory, metadata, overwrite: overwrite?)
+
+        if source.media_profile.download_source_images && series_directory do
+          source_image_attrs =
+            SourceImageParser.store_source_images(series_directory, metadata, overwrite: overwrite?)
+
+          {:ok, {metadata, source_image_attrs, metadata_image_attrs}}
+        else
+          {:ok, {metadata, %{}, metadata_image_attrs}}
+        end
+
+      err ->
+        err
     end
   end
 
@@ -127,7 +276,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     if Settings.get!(:ignore_unavailable_media) && UnavailableMedia.error?(message) do
       Logger.info("Ignoring unavailable media while fetching metadata for source ##{source.id}: #{inspect(message)}")
 
-      {:ok, %{}}
+      {:ok, %{}, :unavailable_fallback}
     else
       err
     end
@@ -149,6 +298,9 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
           {:ok, series_directory} -> {:ok, series_directory}
           {:error, _} -> {:ok, nil}
         end
+
+      {:ok, _metadata, :unavailable_fallback} ->
+        {:ok, source.series_directory}
 
       # Either the ignored-unavailable fallback (`{:ok, %{}}`) or a parseable response
       # that's missing `filename` - there's no filepath to derive a series directory from

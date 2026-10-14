@@ -23,10 +23,15 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   """
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    cull_cullable_media_items()
-    delete_media_items_from_before_cutoff()
+    if Pinchflat.LegacyMigration.legacy_migration_pending?() do
+      Logger.info("Legacy migration review is pending; skipping media retention culling")
+      :ok
+    else
+      cull_cullable_media_items()
+      delete_media_items_from_before_cutoff()
 
-    :ok
+      :ok
+    end
   end
 
   defp cull_cullable_media_items do

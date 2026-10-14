@@ -17,11 +17,11 @@ defmodule Pinchflat.Metadata.SourceImageParser do
   Returns a map with the possible keys :poster_filepath, :fanart_filepath, and
   :banner_filepath.
   """
-  def store_source_images(base_directory, source_metadata) do
+  def store_source_images(base_directory, source_metadata, opts \\ []) do
     (source_metadata["thumbnails"] || [])
     |> Enum.filter(&(&1["filepath"] != nil))
     |> select_useful_images(source_metadata)
-    |> Enum.map(&move_image(&1, base_directory))
+    |> Enum.map(&move_image(&1, base_directory, opts))
     |> Enum.into(%{})
   end
 
@@ -78,11 +78,15 @@ defmodule Pinchflat.Metadata.SourceImageParser do
     Map.get(best_candidate || %{}, "filepath")
   end
 
-  defp move_image({_key, attrs}, base_directory) do
+  defp move_image({_key, attrs}, base_directory, opts) do
     extension = Path.extname(attrs.current_filepath)
     final_filepath = Path.join([base_directory, "#{attrs.final_filename}#{extension}"])
 
-    FilesystemUtils.cp_p!(attrs.current_filepath, final_filepath)
+    overwrite? = Keyword.get(opts, :overwrite, true)
+
+    if overwrite? || !File.exists?(final_filepath) do
+      FilesystemUtils.cp_p!(attrs.current_filepath, final_filepath)
+    end
 
     {attrs.attribute_name, final_filepath}
   end

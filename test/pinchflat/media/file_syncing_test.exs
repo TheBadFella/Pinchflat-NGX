@@ -66,12 +66,12 @@ defmodule Pinchflat.Media.FileSyncingTest do
   end
 
   describe "sync_file_presence_on_disk/1" do
-    test "removes attributes whose files are missing" do
+    test "preserves primary media_filepath when file is missing on disk" do
       media_item = media_item_fixture(%{media_filepath: "/tmp/missing_file.mp4"})
 
       assert media_item.media_filepath
       assert [updated_media_item] = FileSyncing.sync_file_presence_on_disk([media_item])
-      refute updated_media_item.media_filepath
+      assert updated_media_item.media_filepath == "/tmp/missing_file.mp4"
     end
 
     test "doesn't remove attributes where the files still exist" do
@@ -82,23 +82,34 @@ defmodule Pinchflat.Media.FileSyncingTest do
       assert updated_media_item.media_filepath
     end
 
-    test "doesn't touch other attributes if some are missing and some aren't" do
+    test "preserves attributes when primary media file is missing on disk" do
       media_item = media_item_with_attachments()
       File.rm(media_item.media_filepath)
 
       assert media_item.thumbnail_filepath
       assert media_item.media_filepath
       assert [updated_media_item] = FileSyncing.sync_file_presence_on_disk([media_item])
-      assert updated_media_item.thumbnail_filepath
-      refute updated_media_item.media_filepath
+      assert updated_media_item.thumbnail_filepath == media_item.thumbnail_filepath
+      assert updated_media_item.media_filepath == media_item.media_filepath
     end
 
-    test "removes subtitle files that are missing" do
+    test "preserves missing sidecars when primary media file exists on disk" do
+      media_item = media_item_with_attachments()
+      File.rm(media_item.thumbnail_filepath)
+
+      assert media_item.thumbnail_filepath
+      assert media_item.media_filepath
+      assert [updated_media_item] = FileSyncing.sync_file_presence_on_disk([media_item])
+      assert updated_media_item.thumbnail_filepath == media_item.thumbnail_filepath
+      assert updated_media_item.media_filepath == media_item.media_filepath
+    end
+
+    test "preserves subtitle files when they are missing on disk" do
       media_item = media_item_fixture(%{subtitle_filepaths: [["en", "/tmp/missing_file.srt"]]})
 
       assert get_subtitle_filepath(media_item, "en")
       assert [updated_media_item] = FileSyncing.sync_file_presence_on_disk([media_item])
-      refute get_subtitle_filepath(updated_media_item, "en")
+      assert get_subtitle_filepath(updated_media_item, "en") == "/tmp/missing_file.srt"
     end
 
     test "doesn't remove subtitle files that still exist" do

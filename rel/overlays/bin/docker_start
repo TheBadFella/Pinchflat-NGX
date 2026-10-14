@@ -9,7 +9,10 @@ fi
 echo "Setting umask to ${UMASK}"
 umask ${UMASK}
 
-/app/bin/migrate
+if ! /app/bin/migrate; then
+  echo "Database migration failed. Restore the backup or fix the reported error before starting."
+  exit 1
+fi
 
 cd -P -- "$(dirname -- "$0")"
 PHX_SERVER=true exec ./pinchflat start

@@ -88,6 +88,120 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
       refute Repo.reload(source).series_directory
     end
 
+    test "preserves existing populated metadata and series directory when ignore_unavailable_media is enabled" do
+      Settings.set(ignore_unavailable_media: true)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _ot, _addl -> {:error, @members_only_error, 1}
+        _url, :get_source_metadata, _opts, _ot, _addl -> {:error, @members_only_error, 1}
+      end)
+
+      source =
+        source_fixture(%{
+          series_directory: "/downloads/Preserved Channel",
+          nfo_filepath: "/downloads/Preserved Channel/tvshow.nfo",
+          custom_name: "Original Preserved Name",
+          custom_name_locked: true,
+          description: "Original Preserved Description"
+        })
+        |> Repo.preload([:metadata])
+
+      metadata_filepath =
+        MetadataFileHelpers.compress_and_store_metadata_for(source, %{
+          "description" => "Original Preserved Description",
+          "title" => "Original Title"
+        })
+
+      {:ok, _} = Pinchflat.Sources.update_source(source, %{metadata: %{metadata_filepath: metadata_filepath}})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      reloaded = Repo.preload(Repo.reload(source), [:metadata])
+      assert reloaded.series_directory == "/downloads/Preserved Channel"
+      assert reloaded.nfo_filepath == "/downloads/Preserved Channel/tvshow.nfo"
+      assert reloaded.custom_name == "Original Preserved Name"
+      assert reloaded.description == "Original Preserved Description"
+      assert reloaded.metadata.metadata_filepath == metadata_filepath
+
+      {:ok, decompressed} = MetadataFileHelpers.read_compressed_metadata(reloaded.metadata.metadata_filepath)
+      assert decompressed["description"] == "Original Preserved Description"
+      assert decompressed["title"] == "Original Title"
+    end
+
+    for details_unavailable <- [true, false] do
+      test "preserves independent saved artifacts without a cache when details unavailable=#{details_unavailable}" do
+        Settings.set(ignore_unavailable_media: true)
+        details_unavailable = unquote(details_unavailable)
+
+        stub(YtDlpRunnerMock, :run, fn
+          _url, :get_source_details, _opts, _ot, _addl ->
+            if details_unavailable,
+              do: {:error, @members_only_error, 1},
+              else: {:ok, source_details_return_fixture()}
+
+          _url, :get_source_metadata, _opts, _ot, _addl ->
+            {:error, @members_only_error, 1}
+        end)
+
+        directory =
+          Path.join(
+            Application.get_env(:pinchflat, :metadata_directory),
+            "preserved-#{System.unique_integer([:positive])}"
+          )
+
+        File.mkdir_p!(directory)
+
+        paths =
+          Map.new([:nfo_filepath, :poster_filepath, :fanart_filepath, :banner_filepath], fn field ->
+            path = Path.join(directory, Atom.to_string(field))
+            File.write!(path, "saved artifact #{field}")
+            {field, path}
+          end)
+
+        bytes = Map.new(paths, fn {_field, path} -> {path, File.read!(path)} end)
+
+        on_exit(fn ->
+          Enum.each(bytes, fn {path, _} -> File.rm(path) end)
+          File.rmdir(directory)
+        end)
+
+        source =
+          source_fixture(
+            Map.merge(paths, %{
+              series_directory: directory,
+              custom_name: "Saved source",
+              custom_name_locked: false,
+              description: "Saved description",
+              enabled: false
+            })
+          )
+          |> Repo.preload(:metadata)
+
+        assert is_nil(source.metadata)
+
+        before =
+          Map.take(source, [
+            :uuid,
+            :series_directory,
+            :nfo_filepath,
+            :poster_filepath,
+            :fanart_filepath,
+            :banner_filepath,
+            :custom_name,
+            :custom_name_locked,
+            :description,
+            :description_locked,
+            :enabled
+          ])
+
+        assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+        reloaded = Repo.preload(Repo.reload!(source), :metadata)
+        assert Map.take(reloaded, Map.keys(before)) == before
+        assert {:ok, %{}} = MetadataFileHelpers.read_compressed_metadata(reloaded.metadata.metadata_filepath)
+        Enum.each(bytes, fn {path, original} -> assert File.read!(path) == original end)
+      end
+    end
+
     test "fails cleanly (no crash) for unavailable media when the setting is disabled" do
       Settings.set(ignore_unavailable_media: false)
 
@@ -637,6 +751,112 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
       source = Repo.reload(source)
 
       refute source.nfo_filepath
+    end
+  end
+
+  describe "perform/1 artwork repair mode and preservation" do
+    test "backfilling a missing poster does not replace an existing channel fanart" do
+      source = source_fixture(%{collection_type: :channel, custom_name_locked: true})
+      source = Repo.preload(source, :metadata)
+      folder = MetadataFileHelpers.metadata_directory_for(source)
+      File.rm_rf!(folder)
+      File.mkdir_p!(folder)
+      fanart = Path.join(folder, "fanart.jpg")
+      File.write!(fanart, "existing custom fanart")
+
+      {:ok, source} =
+        Sources.update_source(source, %{
+          metadata: %{
+            metadata_filepath: Path.join(folder, "source.json.gz"),
+            fanart_filepath: fanart,
+            poster_filepath: nil
+          }
+        })
+
+      avatar = Path.join(Application.get_env(:pinchflat, :tmpfile_directory), "review146-avatar.jpg")
+      banner = Path.join(Application.get_env(:pinchflat, :tmpfile_directory), "review146-banner.jpg")
+      File.write!(avatar, "new avatar")
+      File.write!(banner, "new banner")
+
+      stub(YtDlpRunnerMock, :run, fn
+        _, :get_source_details, _, _, _ ->
+          {:ok, Jason.encode!(%{"_type" => "playlist", "id" => "123"})}
+
+        _, :get_source_metadata, _, _, _ ->
+          {:ok,
+           Jason.encode!(%{
+             "channel" => "Remote name",
+             "description" => "Remote description",
+             "thumbnails" => [
+               %{"id" => "avatar_uncropped", "filepath" => avatar},
+               %{"id" => "banner_uncropped", "filepath" => banner}
+             ]
+           })}
+      end)
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      reloaded = Repo.preload(Repo.reload!(source), :metadata)
+      assert File.read!(reloaded.metadata.poster_filepath) == "new avatar"
+      assert File.read!(fanart) == "existing custom fanart"
+
+      File.rm(avatar)
+      File.rm(banner)
+    end
+
+    test "artwork_repair mode preserves custom_name, description, and NFO file" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          custom_name: "Original Preserved Name",
+          custom_name_locked: true,
+          description: "Original Preserved Description",
+          description_locked: true
+        })
+
+      source = Repo.preload(source, :metadata)
+      folder = MetadataFileHelpers.metadata_directory_for(source)
+      File.rm_rf!(folder)
+      File.mkdir_p!(folder)
+      nfo_file = Path.join(folder, "tvshow.nfo")
+      File.write!(nfo_file, "<tvshow><title>Original</title></tvshow>")
+
+      {:ok, source} =
+        Sources.update_source(source, %{
+          nfo_filepath: nfo_file,
+          metadata: %{
+            metadata_filepath: Path.join(folder, "source.json.gz"),
+            poster_filepath: nil
+          }
+        })
+
+      avatar = Path.join(Application.get_env(:pinchflat, :tmpfile_directory), "repair-avatar.jpg")
+      File.write!(avatar, "repaired poster")
+
+      stub(YtDlpRunnerMock, :run, fn
+        _, :get_source_metadata, _, _, _ ->
+          {:ok,
+           Jason.encode!(%{
+             "channel" => "Overwritten Channel",
+             "description" => "Overwritten Description",
+             "thumbnails" => [
+               %{"id" => "avatar_uncropped", "filepath" => avatar}
+             ]
+           })}
+      end)
+
+      assert :ok =
+               perform_job(SourceMetadataStorageWorker, %{
+                 "id" => source.id,
+                 "mode" => "artwork_repair"
+               })
+
+      reloaded = Repo.preload(Repo.reload!(source), :metadata)
+      assert reloaded.custom_name == "Original Preserved Name"
+      assert reloaded.description == "Original Preserved Description"
+      assert File.read!(nfo_file) == "<tvshow><title>Original</title></tvshow>"
+      assert File.read!(reloaded.metadata.poster_filepath) == "repaired poster"
+
+      File.rm(avatar)
     end
   end
 

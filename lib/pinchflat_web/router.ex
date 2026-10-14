@@ -15,6 +15,7 @@ defmodule PinchflatWeb.Router do
     plug :put_secure_browser_headers
     plug :allow_iframe_embed
     plug :require_sso_auth
+    plug :require_migration_review
   end
 
   # Session-enabled pipeline for the SSO login/authorize/callback routes.
@@ -31,6 +32,7 @@ defmodule PinchflatWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug :hold_migration_api_writes
     plug OpenApiSpex.Plug.PutApiSpec, module: PinchflatWeb.ApiSpec
   end
 
@@ -66,6 +68,8 @@ defmodule PinchflatWeb.Router do
     pipe_through :browser
 
     get "/", Pages.PageController, :home
+    post "/migration/confirm_review", Pages.PageController, :confirm_migration_review
+    post "/migration/rescan", Pages.PageController, :rescan_migration_review
     get "/discovery", DiscoveryController, :index
 
     post "/sources/cookies/upload", Sources.SourceController, :upload_cookies

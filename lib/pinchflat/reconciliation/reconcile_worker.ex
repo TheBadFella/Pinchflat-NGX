@@ -120,23 +120,27 @@ defmodule Pinchflat.Reconciliation.ReconcileWorker do
   end
 
   def perform(%Oban.Job{args: %{"op" => "apply", "plan_id" => plan_id}, id: job_id}) do
-    plan = Reconciliation.get_plan!(plan_id)
-
-    # `:applying` means a previous run was interrupted (eg: an ungraceful shutdown
-    # left the plan mid-apply). Resuming is safe: `apply_plan/1` only touches rows
-    # still `:planned` and skips anything stale, so it finishes exactly the work the
-    # interrupted run didn't reach without redoing what already landed.
-    if plan.status in [:ready, :applying] do
-      {:ok, _} = Reconciliation.update_plan(plan, %{status: :applying})
-
-      with_paused_queues(fn ->
-        wait_for_other_running_jobs(job_id)
-        {:ok, _} = PlanApplier.apply_plan(plan)
-      end)
-
-      :ok
+    if Pinchflat.LegacyMigration.legacy_migration_pending?() do
+      {:cancel, "Plan ##{plan_id} cannot be applied while legacy migration review is pending"}
     else
-      {:cancel, "Plan ##{plan_id} is #{plan.status} — only a ready or resuming plan can be applied"}
+      plan = Reconciliation.get_plan!(plan_id)
+
+      # `:applying` means a previous run was interrupted (eg: an ungraceful shutdown
+      # left the plan mid-apply). Resuming is safe: `apply_plan/1` only touches rows
+      # still `:planned` and skips anything stale, so it finishes exactly the work the
+      # interrupted run didn't reach without redoing what already landed.
+      if plan.status in [:ready, :applying] do
+        {:ok, _} = Reconciliation.update_plan(plan, %{status: :applying})
+
+        with_paused_queues(fn ->
+          wait_for_other_running_jobs(job_id)
+          {:ok, _} = PlanApplier.apply_plan(plan)
+        end)
+
+        :ok
+      else
+        {:cancel, "Plan ##{plan_id} is #{plan.status} — only a ready or resuming plan can be applied"}
+      end
     end
   rescue
     exception ->
@@ -157,17 +161,24 @@ defmodule Pinchflat.Reconciliation.ReconcileWorker do
   end
 
   # Pausing stops queues from starting new jobs but lets executing ones run to
-  # completion; resuming in `after` covers apply failures. Mirrors
-  # DatabaseMaintenanceWorker's quiet-window reservation.
+  # completion; resuming in `after` covers apply failures. Preserves previously paused
+  # queues so running reconcile does not accidentally unpause user-paused queues.
   defp with_paused_queues(fun) do
     queues = QueueDiagnostics.queue_names()
+
+    # Record which queues were active (unpaused) before we pause them
+    active_queues =
+      Enum.filter(queues, fn q ->
+        info = Oban.check_queue(queue: q) || %{}
+        not Map.get(info, :paused, false)
+      end)
 
     Enum.each(queues, &Oban.pause_queue(queue: &1))
 
     try do
       fun.()
     after
-      Enum.each(queues, &Oban.resume_queue(queue: &1))
+      Enum.each(active_queues, &Oban.resume_queue(queue: &1))
     end
   end
 

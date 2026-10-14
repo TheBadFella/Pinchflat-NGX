@@ -93,6 +93,21 @@ defmodule Pinchflat.Utils.FilesystemUtils do
   @doc """
   Copies a file from source to destination, creating directories as needed.
 
+  Returns :ok | {:error, any()}
+  """
+  def cp_p(source, destination) do
+    with :ok <- destination |> Path.dirname() |> File.mkdir_p(),
+         {:ok, _bytes} <- File.copy(source, destination) do
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+      err -> err
+    end
+  end
+
+  @doc """
+  Copies a file from source to destination, creating directories as needed.
+
   Returns :ok | raises on error
   """
   def cp_p!(source, destination) do
@@ -108,8 +123,6 @@ defmodule Pinchflat.Utils.FilesystemUtils do
   any directories the move left empty. Falls back to copy+delete when the
   destination is on a different filesystem (`File.rename/2` returns :exdev,
   e.g. a podcast library on its own volume).
-
-  Returns :ok | {:error, any()}
   """
   def move_p(source, destination) do
     with :ok <- destination |> Path.dirname() |> File.mkdir_p(),
@@ -123,12 +136,39 @@ defmodule Pinchflat.Utils.FilesystemUtils do
   end
 
   defp rename_or_copy(source, destination) do
-    case File.rename(source, destination) do
-      :ok ->
-        :ok
+    case File.lstat(source) do
+      {:ok, %{type: :symlink}} ->
+        relocate_symlink(source, destination)
 
-      {:error, :exdev} ->
-        with {:ok, _bytes} <- File.copy(source, destination) do
+      _ ->
+        case File.rename(source, destination) do
+          :ok ->
+            :ok
+
+          {:error, :exdev} ->
+            with {:ok, _bytes} <- File.copy(source, destination) do
+              File.rm(source)
+            end
+
+          err ->
+            err
+        end
+    end
+  end
+
+  defp relocate_symlink(source, destination) do
+    case File.read_link(source) do
+      {:ok, link_target} ->
+        # If the symlink was relative, resolve it relative to source's parent directory
+        # so the new symlink at destination remains valid and doesn't point to a broken relative path.
+        resolved_target =
+          if Path.type(link_target) == :relative do
+            Path.expand(link_target, Path.dirname(source))
+          else
+            link_target
+          end
+
+        with :ok <- File.ln_s(resolved_target, destination) do
           File.rm(source)
         end
 

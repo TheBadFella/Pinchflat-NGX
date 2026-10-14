@@ -91,5 +91,23 @@ defmodule Pinchflat.Reconciliation.ReconcileWorkerTest do
 
       assert Repo.reload(plan).status == :applied
     end
+
+    test "cancels apply when legacy migration review is pending" do
+      test_state_file =
+        Path.join(System.tmp_dir!(), "reconcile_test_#{System.unique_integer([:positive])}.json")
+
+      Application.put_env(:pinchflat, :legacy_migration_state_path, test_state_file)
+      Pinchflat.LegacyMigrationFixtures.pending_migration_fixture()
+
+      on_exit(fn ->
+        Application.delete_env(:pinchflat, :legacy_migration_state_path)
+        File.rm(test_state_file)
+      end)
+
+      {:ok, plan} = Reconciliation.create_plan(%{mode: :local, status: :ready})
+
+      assert {:cancel, message} = perform_job(ReconcileWorker, %{"op" => "apply", "plan_id" => plan.id})
+      assert message =~ "cannot be applied while legacy migration review is pending"
+    end
   end
 end
