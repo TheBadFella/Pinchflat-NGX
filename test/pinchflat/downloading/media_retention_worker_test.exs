@@ -32,6 +32,26 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
       assert Repo.reload!(old_media_item).culled_at
       assert DateTime.diff(now(), Repo.reload!(old_media_item).culled_at) < 1
     end
+
+    test "skips culling when legacy migration review is pending" do
+      test_state_file =
+        Path.join(System.tmp_dir!(), "retention_test_#{System.unique_integer([:positive])}.json")
+
+      Application.put_env(:pinchflat, :legacy_migration_state_path, test_state_file)
+      Pinchflat.LegacyMigrationFixtures.pending_migration_fixture()
+
+      on_exit(fn ->
+        Application.delete_env(:pinchflat, :legacy_migration_state_path)
+        File.rm(test_state_file)
+      end)
+
+      {_source, old_media_item, _new_media_item} = prepare_records_for_retention_date()
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(old_media_item.media_filepath)
+      refute Repo.reload!(old_media_item).prevent_download
+    end
   end
 
   describe "perform/1 when testing retention_period-based culling" do

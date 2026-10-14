@@ -96,6 +96,46 @@ defmodule PinchflatWeb.Plugs do
     send_unauthorized(conn)
   end
 
+  @doc """
+  Ensures that when legacy migration review is pending, browser requests are directed
+  to the migration review screen until the user confirms the review.
+  """
+  def require_migration_review(conn, _opts) do
+    if Pinchflat.LegacyMigration.legacy_migration_pending?() do
+      case conn.request_path do
+        "/" ->
+          conn
+
+        "/migration/confirm_review" ->
+          conn
+
+        "/migration/rescan" ->
+          conn
+
+        _ ->
+          conn
+          |> Phoenix.Controller.redirect(to: "/")
+          |> Plug.Conn.halt()
+      end
+    else
+      conn
+    end
+  end
+
+  @doc """
+  Keeps API writes held during migration review while allowing read-only requests.
+  """
+  def hold_migration_api_writes(conn, _opts) do
+    if conn.method not in ["GET", "HEAD", "OPTIONS"] && Pinchflat.LegacyMigration.legacy_migration_pending?() do
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(423, Jason.encode!(%{error: "Complete migration review before changing the library."}))
+      |> Plug.Conn.halt()
+    else
+      conn
+    end
+  end
+
   defp credential_set?(credential) do
     credential && credential != ""
   end

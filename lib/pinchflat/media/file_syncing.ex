@@ -36,7 +36,7 @@ defmodule Pinchflat.Media.FileSyncing do
   end
 
   @doc """
-  Nillifies any media item filepaths that don't exist on disk for a list of media items
+  Safely syncs media item filepaths without destroying references to missing files.
 
   returns [%MediaItem{}]
   """
@@ -71,23 +71,17 @@ defmodule Pinchflat.Media.FileSyncing do
 
   defp sync_media_item_files(media_item) do
     non_subtitle_keys = MediaItem.filepath_attributes() -- [:subtitle_filepaths]
-    subtitle_keys = MapUtils.from_nested_list(media_item.subtitle_filepaths)
     non_subtitles = Map.take(media_item, non_subtitle_keys)
 
-    # This one is checking for the negative (ie: only update if the file doesn't exist)
+    # Non-destructive file syncing: Never clear media_filepath or any sidecar
+    # (thumbnail, metadata, nfo, subtitles) when absent on disk. Preserving
+    # references avoids data loss when storage is unmounted or disconnected,
+    # prevents streaming 500 crashes, and keeps records reconcilable.
     new_non_subtitle_attrs =
       Enum.reduce(non_subtitles, %{}, fn {key, filepath}, acc ->
-        if filepath && File.exists?(filepath), do: acc, else: Map.put(acc, key, nil)
+        Map.put(acc, key, filepath)
       end)
 
-    # This one is checking for the positive (ie: only update if the file exists)
-    # This is because subtitles, being an array type in the DB, are most easily updated
-    # by a full replacement rather than finding the actual diff
-    new_subtitle_attrs =
-      Enum.reduce(subtitle_keys, [], fn {key, filepath}, acc ->
-        if filepath && File.exists?(filepath), do: acc ++ [[key, filepath]], else: acc
-      end)
-
-    Map.put(new_non_subtitle_attrs, :subtitle_filepaths, new_subtitle_attrs)
+    Map.put(new_non_subtitle_attrs, :subtitle_filepaths, media_item.subtitle_filepaths || [])
   end
 end

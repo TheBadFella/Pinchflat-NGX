@@ -31,7 +31,7 @@ defmodule Pinchflat.Media.FileSyncingWorkerTest do
       perform_job(FileSyncingWorker, %{"id" => source.id})
       updated_media_item = Repo.reload!(media_item)
 
-      refute updated_media_item.media_filepath
+      assert updated_media_item.media_filepath == "/tmp/missing.mp4"
     end
   end
 end

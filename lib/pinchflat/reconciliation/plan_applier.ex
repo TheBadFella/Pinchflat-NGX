@@ -17,6 +17,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Sources
+  alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Reconciliation
   alias Pinchflat.Metadata.NfoBuilder
@@ -89,24 +90,56 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   defp apply_media_item_rows(media_item_id, rows) do
     media_item = Repo.preload(Media.get_media_item!(media_item_id), [:metadata, source: :media_profile])
 
-    {changes, _} =
-      Enum.reduce(rows, {%{}, media_item}, fn row, {changes_acc, item} ->
+    {changes, applied_rows, _} =
+      Enum.reduce(rows, {%{}, [], media_item}, fn row, {changes_acc, applied_acc, item} ->
         case apply_media_item_row(item, row) do
           {:ok, new_changes} ->
-            mark_row(row, :done)
-            {Map.merge(changes_acc, new_changes, &merge_change/3), item}
+            {Map.merge(changes_acc, new_changes, &merge_change/3), [{row, :done} | applied_acc], item}
 
           {:skipped, reason} ->
             mark_row(row, :skipped, reason)
-            {changes_acc, item}
+            {changes_acc, applied_acc, item}
 
           {:error, reason} ->
             mark_row(row, :failed, reason)
-            {changes_acc, item}
+            {changes_acc, applied_acc, item}
         end
       end)
 
-    persist_media_item_changes(media_item, changes)
+    db_result =
+      try do
+        persist_media_item_changes(media_item, changes)
+      rescue
+        e ->
+          Logger.error("Reconcile update exception for media item ##{media_item.id}: #{Exception.message(e)}")
+          {:exception, Exception.message(e)}
+      end
+
+    case db_result do
+      :ok ->
+        Enum.each(applied_rows, fn {row, status} -> mark_row(row, status) end)
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        rollback_applied_moves(applied_rows)
+
+        Enum.each(applied_rows, fn {row, _status} ->
+          mark_row(row, :failed, "Database update failed: #{inspect(changeset.errors)}")
+        end)
+
+      {:error, reason} ->
+        rollback_applied_moves(applied_rows)
+
+        Enum.each(applied_rows, fn {row, _status} ->
+          mark_row(row, :failed, "Database update failed: #{inspect(reason)}")
+        end)
+
+      {:exception, message} ->
+        rollback_applied_moves(applied_rows)
+
+        Enum.each(applied_rows, fn {row, _status} ->
+          mark_row(row, :failed, "Database update raised exception: #{message}")
+        end)
+    end
   rescue
     Ecto.NoResultsError ->
       Enum.each(rows, &mark_row(&1, :skipped, "Media item no longer exists"))
@@ -142,25 +175,43 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
 
       {:error, changeset} ->
         Logger.error("Reconcile could not update media item ##{media_item.id}: #{inspect(changeset.errors)}")
-        :ok
+        {:error, changeset}
     end
   end
 
   defp apply_media_item_row(media_item, %{action: :move} = row) do
-    with :ok <- verify_current_path(media_item, row),
-         :ok <- verify_destination_free(row) do
-      case FSUtils.move_p(row.from_path, row.to_path) do
-        :ok -> {:ok, change_for_attribute(row.attribute, row.to_path)}
-        {:error, reason} -> {:error, "Move failed: #{inspect(reason)}"}
-      end
+    case check_interrupted_media_move(media_item, row) do
+      {:already_moved, change} ->
+        {:ok, change}
+
+      :not_already_moved ->
+        with :ok <- verify_current_path(media_item, row),
+             :ok <- verify_destination_free(row) do
+          # If from_path is shared by another entity, copy instead of moving to prevent stranding
+          move_or_copy =
+            if path_shared?(row.from_path, media_item_id: media_item.id) do
+              FSUtils.cp_p(row.from_path, row.to_path)
+            else
+              FSUtils.move_p(row.from_path, row.to_path)
+            end
+
+          case move_or_copy do
+            :ok -> {:ok, change_for_attribute(row.attribute, row.to_path)}
+            {:error, reason} -> {:error, "Move failed: #{inspect(reason)}"}
+          end
+        end
     end
   end
 
   defp apply_media_item_row(media_item, %{action: :delete} = row) do
-    with :ok <- verify_current_path(media_item, row) do
-      case FSUtils.delete_file_and_remove_empty_directories(row.from_path) do
-        :ok -> {:ok, change_for_attribute(row.attribute, nil)}
-        {:error, reason} -> {:error, "Delete failed: #{inspect(reason)}"}
+    with :ok <- verify_current_path_for_delete(media_item, row) do
+      if path_shared?(row.from_path, media_item_id: media_item.id) do
+        {:ok, change_for_attribute(row.attribute, nil)}
+      else
+        case FSUtils.delete_file_and_remove_empty_directories(row.from_path) do
+          :ok -> {:ok, change_for_attribute(row.attribute, nil)}
+          {:error, reason} -> {:error, "Delete failed: #{inspect(reason)}"}
+        end
       end
     end
   end
@@ -181,6 +232,27 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       {:ok, _} -> {:ok, %{}}
       {:error, :duplicate_job} -> {:ok, %{}}
       {:error, reason} -> {:error, "Could not schedule re-download: #{inspect(reason)}"}
+    end
+  end
+
+  defp check_interrupted_media_move(media_item, row) do
+    current = current_path_for_attribute(media_item, row.attribute)
+
+    if current == row.from_path and row.from_path != row.to_path and
+         not File.exists?(row.from_path) and not is_nil(row.to_path) and File.exists?(row.to_path) do
+      {:already_moved, change_for_attribute(row.attribute, row.to_path)}
+    else
+      :not_already_moved
+    end
+  end
+
+  defp verify_current_path_for_delete(media_item, row) do
+    current = current_path_for_attribute(media_item, row.attribute)
+
+    if current != row.from_path do
+      {:skipped, "Stale: file has moved since the plan was created"}
+    else
+      :ok
     end
   end
 
@@ -327,12 +399,24 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   end
 
   defp discover_subtitles(rootname) do
-    "#{rootname}.*.srt"
-    |> Path.wildcard()
-    |> Map.new(fn path ->
-      lang = path |> Path.rootname(".srt") |> Path.extname() |> String.trim_leading(".")
-      {lang, path}
-    end)
+    dir = Path.dirname(rootname)
+    base = Path.basename(rootname)
+
+    case File.ls(dir) do
+      {:ok, filenames} ->
+        filenames
+        |> Enum.filter(fn name ->
+          String.starts_with?(name, base <> ".") and String.ends_with?(name, ".srt")
+        end)
+        |> Map.new(fn name ->
+          path = Path.join(dir, name)
+          lang = path |> Path.rootname(".srt") |> Path.extname() |> String.trim_leading(".")
+          {lang, path}
+        end)
+
+      _ ->
+        %{}
+    end
   end
 
   defp read_stored_metadata(%MediaItem{metadata: %{metadata_filepath: filepath}}) when is_binary(filepath) do
@@ -350,24 +434,56 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   defp apply_source_rows(source_id, rows) do
     source = Repo.preload(Sources.get_source!(source_id), [:metadata, :media_profile])
 
-    changes =
-      Enum.reduce(rows, %{}, fn row, changes_acc ->
+    {changes, applied_rows} =
+      Enum.reduce(rows, {%{}, []}, fn row, {changes_acc, applied_acc} ->
         case apply_source_row(source, row) do
           {:ok, new_changes} ->
-            mark_row(row, :done)
-            Map.merge(changes_acc, new_changes)
+            {Map.merge(changes_acc, new_changes), [{row, :done} | applied_acc]}
 
           {:skipped, reason} ->
             mark_row(row, :skipped, reason)
-            changes_acc
+            {changes_acc, applied_acc}
 
           {:error, reason} ->
             mark_row(row, :failed, reason)
-            changes_acc
+            {changes_acc, applied_acc}
         end
       end)
 
-    persist_source_changes(source, changes)
+    db_result =
+      try do
+        persist_source_changes(source, changes)
+      rescue
+        e ->
+          Logger.error("Reconcile update exception for source ##{source.id}: #{Exception.message(e)}")
+          {:exception, Exception.message(e)}
+      end
+
+    case db_result do
+      :ok ->
+        Enum.each(applied_rows, fn {row, status} -> mark_row(row, status) end)
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        rollback_applied_moves(applied_rows)
+
+        Enum.each(applied_rows, fn {row, _status} ->
+          mark_row(row, :failed, "Database update failed: #{inspect(changeset.errors)}")
+        end)
+
+      {:error, reason} ->
+        rollback_applied_moves(applied_rows)
+
+        Enum.each(applied_rows, fn {row, _status} ->
+          mark_row(row, :failed, "Database update failed: #{inspect(reason)}")
+        end)
+
+      {:exception, message} ->
+        rollback_applied_moves(applied_rows)
+
+        Enum.each(applied_rows, fn {row, _status} ->
+          mark_row(row, :failed, "Database update raised exception: #{message}")
+        end)
+    end
   rescue
     Ecto.NoResultsError ->
       Enum.each(rows, &mark_row(&1, :skipped, "Source no longer exists"))
@@ -382,7 +498,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
 
       {:error, changeset} ->
         Logger.error("Reconcile could not update source ##{source.id}: #{inspect(changeset.errors)}")
-        :ok
+        {:error, changeset}
     end
   end
 
@@ -396,20 +512,38 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
   end
 
   defp apply_source_row(source, %{action: :move} = row) do
-    with :ok <- verify_current_source_path(source, row),
-         :ok <- verify_destination_free(row) do
-      case FSUtils.move_p(row.from_path, row.to_path) do
-        :ok -> {:ok, source_change_for_attribute(row.attribute, row.to_path)}
-        {:error, reason} -> {:error, "Move failed: #{inspect(reason)}"}
-      end
+    case check_interrupted_source_move(source, row) do
+      {:already_moved, change} ->
+        {:ok, change}
+
+      :not_already_moved ->
+        with :ok <- verify_current_source_path(source, row),
+             :ok <- verify_destination_free(row) do
+          # If from_path is shared by another entity, copy instead of moving to prevent stranding
+          move_or_copy =
+            if path_shared?(row.from_path, source_id: source.id) do
+              FSUtils.cp_p(row.from_path, row.to_path)
+            else
+              FSUtils.move_p(row.from_path, row.to_path)
+            end
+
+          case move_or_copy do
+            :ok -> {:ok, source_change_for_attribute(row.attribute, row.to_path)}
+            {:error, reason} -> {:error, "Move failed: #{inspect(reason)}"}
+          end
+        end
     end
   end
 
   defp apply_source_row(source, %{action: :delete} = row) do
-    with :ok <- verify_current_source_path(source, row) do
-      case FSUtils.delete_file_and_remove_empty_directories(row.from_path) do
-        :ok -> {:ok, source_change_for_attribute(row.attribute, nil)}
-        {:error, reason} -> {:error, "Delete failed: #{inspect(reason)}"}
+    with :ok <- verify_current_source_path_for_delete(source, row) do
+      if path_shared?(row.from_path, source_id: source.id) do
+        {:ok, source_change_for_attribute(row.attribute, nil)}
+      else
+        case FSUtils.delete_file_and_remove_empty_directories(row.from_path) do
+          :ok -> {:ok, source_change_for_attribute(row.attribute, nil)}
+          {:error, reason} -> {:error, "Delete failed: #{inspect(reason)}"}
+        end
       end
     end
   end
@@ -442,6 +576,27 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
     {:error, "Unknown source action/attribute: #{row.action}/#{row.attribute}"}
   end
 
+  defp check_interrupted_source_move(source, row) do
+    current = Map.get(source, source_attribute_column(row.attribute))
+
+    if current == row.from_path and row.from_path != row.to_path and
+         not File.exists?(row.from_path) and not is_nil(row.to_path) and File.exists?(row.to_path) do
+      {:already_moved, source_change_for_attribute(row.attribute, row.to_path)}
+    else
+      :not_already_moved
+    end
+  end
+
+  defp verify_current_source_path_for_delete(source, row) do
+    current = Map.get(source, source_attribute_column(row.attribute))
+
+    if current != row.from_path do
+      {:skipped, "Stale: file has moved since the plan was created"}
+    else
+      :ok
+    end
+  end
+
   defp verify_current_source_path(source, row) do
     current = Map.get(source, source_attribute_column(row.attribute))
 
@@ -461,11 +616,115 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
     %{source_attribute_column(attribute) => path}
   end
 
+  defp rollback_applied_moves(applied_rows) do
+    Enum.each(applied_rows, fn {row, _status} ->
+      if row.action == :move and not is_nil(row.from_path) and not is_nil(row.to_path) do
+        from_exists = File.exists?(row.from_path)
+        to_exists = File.exists?(row.to_path)
+
+        cond do
+          # The file was copied (shared); source is still there, clean up uncommitted destination copy
+          from_exists and to_exists ->
+            FSUtils.delete_file_and_remove_empty_directories(row.to_path)
+
+          # The file was moved; source is gone, restore it from destination
+          not from_exists and to_exists ->
+            FSUtils.move_p(row.to_path, row.from_path)
+
+          true ->
+            :ok
+        end
+      end
+    end)
+  end
+
+  defp path_shared?(nil, _opts), do: false
+
+  defp path_shared?(from_path, opts) do
+    media_item_id = Keyword.get(opts, :media_item_id)
+    source_id = Keyword.get(opts, :source_id)
+
+    path_shared_by_other_media_item?(from_path, media_item_id) or
+      path_shared_by_other_source?(from_path, source_id)
+  end
+
+  defp path_shared_by_other_media_item?(nil, _media_item_id), do: false
+
+  defp path_shared_by_other_media_item?(from_path, media_item_id) do
+    scalar_query =
+      from(m in MediaItem,
+        where:
+          m.media_filepath == ^from_path or
+            m.thumbnail_filepath == ^from_path or
+            m.metadata_filepath == ^from_path or
+            m.nfo_filepath == ^from_path
+      )
+
+    scalar_query =
+      if media_item_id do
+        where(scalar_query, [m], m.id != ^media_item_id)
+      else
+        scalar_query
+      end
+
+    if Repo.exists?(scalar_query) do
+      true
+    else
+      subtitles_query =
+        if Pinchflat.Database.sqlite?() do
+          from(m in MediaItem,
+            where: fragment("instr(?, ?) > 0", m.subtitle_filepaths, ^from_path)
+          )
+        else
+          from(m in MediaItem,
+            where: fragment("?::text LIKE ?", m.subtitle_filepaths, ^("%" <> from_path <> "%"))
+          )
+        end
+
+      subtitles_query =
+        if media_item_id do
+          where(subtitles_query, [m], m.id != ^media_item_id)
+        else
+          subtitles_query
+        end
+
+      Repo.exists?(subtitles_query)
+    end
+  end
+
+  defp path_shared_by_other_source?(nil, _source_id), do: false
+
+  defp path_shared_by_other_source?(from_path, source_id) do
+    query =
+      from(s in Source,
+        where: is_nil(s.marked_for_deletion_at),
+        where:
+          s.poster_filepath == ^from_path or
+            s.fanart_filepath == ^from_path or
+            s.banner_filepath == ^from_path or
+            s.nfo_filepath == ^from_path
+      )
+
+    query =
+      if source_id do
+        where(query, [s], s.id != ^source_id)
+      else
+        query
+      end
+
+    Repo.exists?(query)
+  end
+
   # ---- Wrap-up ----
 
   defp mark_row(row, status, detail \\ nil) do
     attrs = if detail, do: %{status: status, detail: detail}, else: %{status: status}
-    {:ok, _} = Reconciliation.update_plan_item(row, attrs)
+
+    try do
+      {:ok, _} = Reconciliation.update_plan_item(row, attrs)
+    rescue
+      _ -> :ok
+    end
   end
 
   defp kickoff_podcast_exports(_rows), do: :ok
