@@ -26,6 +26,31 @@ defmodule Pinchflat.SettingsTest do
   end
 
   describe "update_setting/2" do
+    test "does not log notification credentials or API keys when saving settings" do
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+
+      try do
+        log =
+          ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+            assert {:ok, _} =
+                     Settings.update_setting(Settings.record(), %{
+                       apprise_server: "json://lab:SECRET_SETTINGS187@example.invalid/hook",
+                       youtube_api_key: "SECRET_SETTINGS187"
+                     })
+
+            assert Settings.get!(:apprise_server) =~ "SECRET_SETTINGS187"
+            assert Settings.get!(:youtube_api_key) == "SECRET_SETTINGS187"
+            Repo.query!("SELECT 1")
+          end)
+
+        assert log =~ "SELECT 1"
+        refute log =~ "SECRET_SETTINGS187"
+      after
+        Logger.configure(level: previous_level)
+      end
+    end
+
     test "updates the setting" do
       setting = Settings.record()
 

@@ -12,7 +12,8 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   @behaviour AppriseCommandRunner
 
   @doc """
-  Runs an apprise command and returns the string output.
+  Runs an apprise command. Provider output is withheld because notification URLs
+  and provider errors can contain credentials. Failures retain the CLI exit status.
   Can take a single server string or a list of servers as well as additional
   arguments to pass to the command.
 
@@ -28,11 +29,15 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
     default_opts = [:verbose]
     parsed_opts = CliUtils.parse_options(default_opts ++ command_opts)
 
-    {output, exit_code} = CliUtils.wrap_cmd(backend_executable(), parsed_opts ++ endpoints)
+    {output, exit_code} =
+      CliUtils.wrap_cmd(backend_executable(), parsed_opts ++ endpoints, [],
+        logging_arg_override: "[notification arguments withheld]",
+        output_transform: fn _output -> "" end
+      )
 
     case exit_code do
       0 -> {:ok, String.trim(output)}
-      _ -> {:error, String.trim(output)}
+      _ -> {:error, "Apprise exited with status #{exit_code}. Check the notification server configuration."}
     end
   end
 

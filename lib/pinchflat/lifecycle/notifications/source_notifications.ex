@@ -39,7 +39,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
       [
         title: "[Pinchflat] New media found",
         body: notification_body(source, changed_count)
-      ] ++ notification_link_opts(source)
+      ]
 
     case backend_runner().run(servers, opts) do
       {:ok, _} ->
@@ -82,16 +82,14 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   end
 
   defp notification_body(source, changed_count) do
-    "Found #{changed_count} new media item(s) for #{source.custom_name}. Downloading them now"
-  end
+    body = "Found #{changed_count} new media item(s) for #{source.custom_name}. Downloading them now"
 
-  defp notification_link_opts(source) do
     case Settings.get(:external_base_url) do
       {:ok, base_url} when is_binary(base_url) and base_url != "" ->
-        [href: source_url(base_url, source), format: "markdown"]
+        "#{body}\n\n#{source_url(base_url, source)}"
 
       _ ->
-        []
+        body
     end
   end
 
