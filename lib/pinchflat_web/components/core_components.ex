@@ -330,7 +330,13 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <div>
       <label class="flex items-center gap-4 text-sm leading-6">
-        <input type="hidden" name={@name} value="false" />
+        <input
+          type="hidden"
+          name={@name}
+          value="false"
+          disabled={rest_attr(@rest, "disabled")}
+          x-bind:disabled={rest_attr(@rest, "x-bind:disabled")}
+        />
         <input
           type="checkbox"
           id={@id}
@@ -392,8 +398,14 @@ defmodule PinchflatWeb.CoreComponents do
       </.label>
 
       <div class="flex flex-col">
-        <label for={@id} class="relative inline-flex w-fit cursor-pointer items-center">
-          <input type="hidden" name={@name} value="false" />
+        <label for={@id} class="relative inline-flex min-h-[44px] w-fit cursor-pointer items-center">
+          <input
+            type="hidden"
+            name={@name}
+            value="false"
+            disabled={rest_attr(@rest, "disabled")}
+            x-bind:disabled={rest_attr(@rest, "x-bind:disabled")}
+          />
           <input
             type="checkbox"
             id={@id}
@@ -424,6 +436,7 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{type: "select"} = assigns) do
     assigns =
       assigns
+      |> assign(:id, assigns.id || assigns.name)
       |> assign(:select_options, normalize_select_options(assigns.options || []))
       |> assign(:prompt_option, prompt_option(assigns.prompt))
       |> assign(:select_options_json, Phoenix.json_library().encode!(normalize_select_options(assigns.options || [])))
@@ -545,6 +558,7 @@ defmodule PinchflatWeb.CoreComponents do
         this.selectedLabel = match ? match.label : ''
       },
       selectOption(value) {
+        if (this.$refs.input.disabled) return
         this.$refs.input.value = value
         this.syncFromInput()
         this.open = false
@@ -553,6 +567,8 @@ defmodule PinchflatWeb.CoreComponents do
       },
       init() {
         this.syncFromInput()
+        const model = Array.from(this.$refs.input.attributes).find(attr => attr.name.startsWith('x-model'))
+        if (model) this.$watch(model.value, () => this.$nextTick(() => this.syncFromInput()))
       }
     }
     """
@@ -570,6 +586,7 @@ defmodule PinchflatWeb.CoreComponents do
           class="theme-field-shell relative w-full isolate"
           x-data={@custom_select_data}
           x-init="init()"
+          x-effect={"if (#{@rest_x_bind_disabled || "false"} || #{!!@rest_disabled}) open = false"}
           x-on:click.outside="open = false"
           x-bind:class="open ? 'theme-field-shell-active z-[90]' : 'z-10'"
         >
@@ -590,7 +607,7 @@ defmodule PinchflatWeb.CoreComponents do
               "disabled:cursor-not-allowed disabled:opacity-50",
               @inputclass
             ]}
-            x-on:click="open = !open"
+            x-on:click="if (!$refs.input.disabled) open = !open"
             x-on:keydown.escape.prevent="open = false"
             x-bind:aria-expanded="open"
             aria-haspopup="listbox"

@@ -41,18 +41,18 @@ defmodule PinchflatWeb.Pages.SystemHealthLiveTest do
 
       assert html =~ "Total"
       assert html =~ "Enabled"
-      assert html =~ "Never Indexed"
-      assert html =~ "Stale"
+      assert html =~ "Unknown"
+      assert html =~ "Overdue"
     end
   end
 
-  describe "stale sources" do
+  describe "source check evidence" do
     test "shows stale sources section when sources haven't been indexed", %{conn: conn} do
       source = source_fixture(last_indexed_at: nil)
 
       {:ok, _view, html} = live_isolated(conn, SystemHealthLive, session: %{})
 
-      assert html =~ "Sources Not Indexed Recently"
+      assert html =~ "Indexing checks to review"
       assert html =~ source.custom_name
     end
 
@@ -62,18 +62,20 @@ defmodule PinchflatWeb.Pages.SystemHealthLiveTest do
 
       {:ok, _view, html} = live_isolated(conn, SystemHealthLive, session: %{})
 
-      assert html =~ "Sources Not Indexed Recently"
+      assert html =~ "Indexing checks to review"
       assert html =~ source.custom_name
     end
 
-    test "does not show stale sources when recently indexed", %{conn: conn} do
+    test "recent full scan with unavailable queue observation is unknown, not a stale claim", %{conn: conn} do
       recent_time = DateTime.utc_now() |> DateTime.add(-1, :hour)
       source = source_fixture(last_indexed_at: recent_time)
 
       {:ok, _view, html} = live_isolated(conn, SystemHealthLive, session: %{})
 
-      refute html =~ "Sources Not Indexed Recently"
-      refute html =~ source.custom_name
+      assert html =~ "Indexing checks to review"
+      assert html =~ source.custom_name
+      assert html =~ "Unknown"
+      refute html =~ "They may be stuck"
     end
   end
 
