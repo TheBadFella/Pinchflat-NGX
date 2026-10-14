@@ -9,7 +9,10 @@ defmodule PinchflatWeb.ErrorHTMLTest do
   end
 
   test "renders 500.html" do
-    assert render_to_string(PinchflatWeb.ErrorHTML, "500", "html", []) =~ "Internal Server Error"
+    html = render_to_string(PinchflatWeb.ErrorHTML, "500", "html", [])
+    assert html =~ "Internal Server Error"
+    assert html =~ "https://github.com/TheBadFella/Pinchflat-NGX/issues/new/choose"
+    refute html =~ "kieraneglin/pinchflat/issues/new"
   end
 
   test "renders a 404 through the standalone error layout", %{conn: conn} do

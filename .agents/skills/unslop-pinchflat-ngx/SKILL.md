@@ -1,9 +1,9 @@
 ---
-name: unslop-pinchyt
-description: Edit PinchYT documentation, UI prose and change summaries for plain, precise language while preserving technical meaning and the project's tone. Use for prose cleanup or unslop requests, not code refactoring.
+name: unslop-pinchflat-ngx
+description: Edit Pinchflat-ngx documentation, UI prose and change summaries for plain, precise language while preserving technical meaning and the project's tone. Use for prose cleanup or unslop requests, not code refactoring.
 ---
 
-# Unslop for PinchYT
+# Unslop for Pinchflat-ngx
 
 Read the applicable repository instructions. Work only on the prose requested or already being changed.
 
@@ -16,7 +16,7 @@ Read the applicable repository instructions. Work only on the prose requested or
 
 ## Project voice
 
-Keep public PinchYT naming separate from Pinchflat code modules. Do not rewrite class names, yt-dlp flags, file templates or API identifiers.
+Use **Pinchflat-ngx** for the fork and product name. Keep **Pinchflat** for Elixir modules and internal code identifiers. Do not rewrite class names, yt-dlp flags, file templates or API identifiers.
 
 For code-quality cleanup, use the repository's engineering workflow and tests. This skill edits language; it does not authorize deleting guards, compatibility code, tests or documentation.
 
