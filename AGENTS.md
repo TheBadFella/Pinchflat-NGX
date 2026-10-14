@@ -477,8 +477,8 @@ Lefthook runs on commit (configured in `lefthook.yml`):
 
 ## Repository skills
 
-- For documentation, UI prose and change summaries, read [unslop-pinchyt](.agents/skills/unslop-pinchyt/SKILL.md).
-- For verification, read [verify-pinchyt](.agents/skills/verify-pinchyt/SKILL.md).
-- For implementation, debugging or review, read [change-pinchyt](.agents/skills/change-pinchyt/SKILL.md).
+- For documentation, UI prose and change summaries, read [unslop-pinchflat-ngx](.agents/skills/unslop-pinchflat-ngx/SKILL.md).
+- For verification, read [verify-pinchflat-ngx](.agents/skills/verify-pinchflat-ngx/SKILL.md).
+- For implementation, debugging or review, read [change-pinchflat-ngx](.agents/skills/change-pinchflat-ngx/SKILL.md).
 
 Load the relevant skill, not the full catalog. These workflows preserve the user's scope and the repository's specific contracts. [Source revisions and licenses](.agents/skill-provenance.md).

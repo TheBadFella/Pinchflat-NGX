@@ -120,7 +120,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       Keyword.merge(
         [
           media_profiles: profiles,
-          available_folders: available_media_directories(),
+          available_folders: saved_source_folders(),
           current_path: ~p"/sources/new",
           layout: get_onboarding_layout(),
           # Most of these don't actually _need_ to be nullified at this point,
@@ -200,7 +200,7 @@ defmodule PinchflatWeb.Sources.SourceController do
                 [
                   changeset: changeset,
                   media_profiles: media_profiles(),
-                  available_folders: available_media_directories(),
+                  available_folders: saved_source_folders(),
                   current_path: ~p"/sources/new",
                   layout: get_onboarding_layout(),
                   new_source: true,
@@ -274,7 +274,7 @@ defmodule PinchflatWeb.Sources.SourceController do
           source: source,
           changeset: changeset,
           media_profiles: media_profiles(),
-          available_folders: available_media_directories(),
+          available_folders: saved_source_folders(),
           current_path: ~p"/sources/#{source}/edit"
         ],
         cookie_file_assigns()
@@ -609,7 +609,7 @@ defmodule PinchflatWeb.Sources.SourceController do
                   source: source,
                   changeset: changeset,
                   media_profiles: media_profiles(),
-                  available_folders: available_media_directories(),
+                  available_folders: saved_source_folders(),
                   current_path: ~p"/sources/#{source}/edit"
                 ],
                 cookie_file_assigns()
@@ -672,7 +672,7 @@ defmodule PinchflatWeb.Sources.SourceController do
               source: source,
               changeset: changeset,
               media_profiles: media_profiles(),
-              available_folders: available_media_directories(),
+              available_folders: saved_source_folders(),
               current_path: ~p"/sources/#{source}/edit"
             ],
             cookie_file_assigns()
@@ -874,46 +874,13 @@ defmodule PinchflatWeb.Sources.SourceController do
     ~w(source pending failed active-tasks downloaded job-queue other podcast)
   end
 
-  defp available_media_directories do
-    base_dir = Application.get_env(:pinchflat, :media_directory)
-
-    if File.dir?(base_dir) do
-      list_media_directories(base_dir)
-      |> Enum.sort()
-    else
-      []
-    end
-  end
-
-  defp list_media_directories(base_dir, relative_dir \\ "") do
-    current_dir =
-      case relative_dir do
-        "" -> base_dir
-        _ -> Path.join(base_dir, relative_dir)
-      end
-
-    case File.ls(current_dir) do
-      {:ok, entries} ->
-        entries
-        |> Enum.sort()
-        |> Enum.flat_map(fn entry ->
-          relative_path =
-            case relative_dir do
-              "" -> entry
-              _ -> Path.join(relative_dir, entry)
-            end
-
-          absolute_path = Path.join(base_dir, relative_path)
-
-          if File.dir?(absolute_path) do
-            [relative_path | list_media_directories(base_dir, relative_path)]
-          else
-            []
-          end
-        end)
-
-      {:error, _reason} ->
-        []
-    end
+  defp saved_source_folders do
+    Source
+    |> where([source], not is_nil(source.download_subdirectory) and source.download_subdirectory != "")
+    |> select([source], source.download_subdirectory)
+    |> distinct(true)
+    |> order_by([source], asc: source.download_subdirectory)
+    |> limit(200)
+    |> Repo.all()
   end
 end
