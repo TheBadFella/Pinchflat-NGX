@@ -40,16 +40,18 @@ defmodule Pinchflat.Boot.PostJobStartupTasks do
   end
 
   def init(state) do
-    if Pinchflat.LegacyMigration.legacy_migration_pending?() do
-      Logger.info(
-        "[PostJobStartupTasks] Legacy migration review is pending; holding mutating queues and skipping indexing reschedule"
-      )
+    unless Pinchflat.Database.PostgresMigration.pending?() do
+      if Pinchflat.LegacyMigration.legacy_migration_pending?() do
+        Logger.info(
+          "[PostJobStartupTasks] Legacy migration review is pending; holding mutating queues and skipping indexing reschedule"
+        )
 
-      Pinchflat.LegacyMigration.hold_mutating_queues!()
-    else
-      Pinchflat.Settings.QueueConcurrency.apply!()
-      reschedule_missing_indexing_tasks()
-      Pinchflat.LegacyMigration.resume_artwork_repairs!()
+        Pinchflat.LegacyMigration.hold_mutating_queues!()
+      else
+        Pinchflat.Settings.QueueConcurrency.apply!()
+        reschedule_missing_indexing_tasks()
+        Pinchflat.LegacyMigration.resume_artwork_repairs!()
+      end
     end
 
     {:ok, state}

@@ -197,6 +197,7 @@ if config_env() == :prod do
   log_path = System.get_env("LOG_PATH", Path.join([config_path, "logs", "pinchflat.log"]))
   metadata_path = System.get_env("METADATA_PATH", Path.join([config_path, "metadata"]))
   extras_path = System.get_env("EXTRAS_PATH", Path.join([config_path, "extras"]))
+  sqlite_migration_source = System.get_env("SQLITE_MIGRATION_SOURCE")
   postgres_backup_path = System.get_env("POSTGRES_BACKUP_PATH", Path.join([extras_path, "backups"]))
   tmpfile_path = System.get_env("TMPFILE_PATH", Path.join([System.tmp_dir!(), "pinchflat", "data"]))
   # This one can be changed if you want
@@ -217,6 +218,7 @@ if config_env() == :prod do
     metadata_directory: metadata_path,
     extras_directory: extras_path,
     postgres_backup_directory: postgres_backup_path,
+    sqlite_migration_source: if(sqlite_migration_source in [nil, ""], do: nil, else: sqlite_migration_source),
     tmpfile_directory: tmpfile_path,
     dns_cluster_query: System.get_env("DNS_CLUSTER_QUERY"),
     expose_feed_endpoints: expose_feed_endpoints,
