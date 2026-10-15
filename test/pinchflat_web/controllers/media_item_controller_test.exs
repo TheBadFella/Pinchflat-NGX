@@ -254,7 +254,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
       assert conn.status == 200
       assert {"content-length", to_string(filesize)} in conn.resp_headers
-      assert {"content-range", "bytes 0-#{filesize - 1}/#{filesize}"} in conn.resp_headers
+      assert get_resp_header(conn, "content-range") == []
       assert {"content-disposition", "inline; filename=\"#{media_item.title}\""} in conn.resp_headers
     end
 
@@ -276,6 +276,93 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
       assert conn.status == 200
       assert conn.resp_body == contents
+    end
+  end
+
+  describe "streaming range boundaries" do
+    setup do
+      item = media_item_with_attachments()
+      File.write!(item.media_filepath, "0123456789")
+      %{media_item: item}
+    end
+
+    test "suffix ranges return the last bytes and clamp to the file", %{conn: conn, media_item: item} do
+      for {range, expected, header} <- [
+            {"bytes=-3", "789", "bytes 7-9/10"},
+            {"bytes=-20", "0123456789", "bytes 0-9/10"},
+            {"bytes=9-", "9", "bytes 9-9/10"}
+          ] do
+        response = conn |> put_req_header("range", range) |> get(~p"/media/#{item.uuid}/stream")
+        assert response.status == 206
+        assert response.resp_body == expected
+        assert get_resp_header(response, "content-range") == [header]
+      end
+    end
+
+    test "unsatisfiable valid ranges return 416", %{conn: conn, media_item: item} do
+      for range <- ["bytes=10-", "bytes=11-20", "bytes=-0"] do
+        response = conn |> put_req_header("range", range) |> get(~p"/media/#{item.uuid}/stream")
+        assert response.status == 416
+        assert response.resp_body == ""
+        assert get_resp_header(response, "content-range") == ["bytes */10"]
+      end
+    end
+
+    test "malformed and unsupported ranges return the full file", %{conn: conn, media_item: item} do
+      for range <- [
+            "bytes=8-2",
+            "bytes=20-10",
+            "bytes=1oops-2",
+            "bytes=1-2oops",
+            "bytes=1-+2",
+            "bytes=-",
+            "bytes=0-1,4-5",
+            "items=0-2"
+          ] do
+        response = conn |> put_req_header("range", range) |> get(~p"/media/#{item.uuid}/stream")
+        assert response.status == 200
+        assert response.resp_body == "0123456789"
+        assert get_resp_header(response, "content-range") == []
+      end
+    end
+
+    test "empty full file has no invalid content-range", %{conn: conn, media_item: item} do
+      File.write!(item.media_filepath, "")
+      response = get(conn, ~p"/media/#{item.uuid}/stream")
+      assert response.status == 200
+      assert response.resp_body == ""
+      assert get_resp_header(response, "content-length") == ["0"]
+      assert get_resp_header(response, "content-range") == []
+    end
+
+    test "empty file ranges are unsatisfiable", %{conn: conn, media_item: item} do
+      File.write!(item.media_filepath, "")
+
+      for range <- ["bytes=0-", "bytes=-3"] do
+        response = conn |> put_req_header("range", range) |> get(~p"/media/#{item.uuid}/stream")
+        assert response.status == 416
+        assert get_resp_header(response, "content-range") == ["bytes */0"]
+      end
+    end
+
+    test "HEAD ignores Range and returns full representation headers", %{conn: conn, media_item: item} do
+      response = conn |> put_req_header("range", "bytes=0-1") |> head(~p"/media/#{item.uuid}/stream")
+      assert response.status == 200
+      assert get_resp_header(response, "content-length") == ["10"]
+      assert get_resp_header(response, "content-range") == []
+      assert response.resp_body == ""
+    end
+
+    test "If-Range falls back to the full representation without a matching validator", %{conn: conn, media_item: item} do
+      response =
+        conn
+        |> put_req_header("range", "bytes=0-1")
+        |> put_req_header("if-range", "\"old\"")
+        |> get(~p"/media/#{item.uuid}/stream")
+
+      assert response.status == 200
+      assert response.resp_body == "0123456789"
+      assert get_resp_header(response, "content-range") == []
     end
   end
 
