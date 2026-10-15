@@ -136,10 +136,15 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
           conn
           |> put_resp_content_type(mime_type)
           |> put_resp_header("accept-ranges", "bytes")
-          |> put_resp_header("content-range", "bytes 0-#{file_size - 1}/#{file_size}")
           |> put_resp_header("content-length", to_string(file_size))
           |> put_resp_header("content-disposition", "inline; filename=\"#{media_item.title}\"")
           |> send_file(200, media_item.media_filepath)
+
+        {:error, :unsatisfiable_range} ->
+          conn
+          |> put_resp_header("accept-ranges", "bytes")
+          |> put_resp_header("content-range", "bytes */#{file_size}")
+          |> send_resp(416, "")
       end
     else
       send_resp(conn, 404, "File not found")
@@ -147,9 +152,11 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   end
 
   defp parse_range(conn, file_size) do
-    with [range_header | _] <- get_req_header(conn, "range"),
-         ["bytes", range] <- String.split(range_header, "="),
-         [start_pos, end_pos] <- String.split(range, "-") do
+    # We do not advertise validators, so an If-Range request must receive the full file.
+    with "GET" <- conn.method,
+         [] <- get_req_header(conn, "if-range"),
+         [range_header] <- get_req_header(conn, "range"),
+         [start_pos, end_pos] <- Regex.run(~r/^bytes=([0-9]*)-([0-9]*)$/, range_header, capture: :all_but_first) do
       validate_range(start_pos, end_pos, file_size)
     else
       _ -> {:error, :invalid_range}
@@ -157,21 +164,30 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   end
 
   defp validate_range(start_pos, end_pos, file_size) do
-    case {Integer.parse(start_pos), Integer.parse(end_pos)} do
-      {:error, :error} ->
+    case {start_pos, end_pos} do
+      {"", ""} ->
         {:error, :invalid_range}
 
-      {{start_pos, _}, :error} ->
-        {:ok, {start_pos, file_size - 1}}
+      {"", suffix} ->
+        suffix_range(String.to_integer(suffix), file_size)
 
-      # See RFC7233
-      {{start_pos, _}, {end_pos, _}} when end_pos >= file_size ->
-        {:ok, {start_pos, file_size - 1}}
+      {start, ""} ->
+        start = String.to_integer(start)
+        byte_range(start, max(start, file_size - 1), file_size)
 
-      {{start_pos, _}, {end_pos, _}} ->
-        {:ok, {start_pos, end_pos}}
+      {start, last} ->
+        byte_range(String.to_integer(start), String.to_integer(last), file_size)
     end
   end
+
+  defp suffix_range(suffix, file_size) when suffix == 0 or file_size == 0,
+    do: {:error, :unsatisfiable_range}
+
+  defp suffix_range(suffix, file_size), do: {:ok, {max(file_size - suffix, 0), file_size - 1}}
+
+  defp byte_range(start, last, _file_size) when last < start, do: {:error, :invalid_range}
+  defp byte_range(start, _last, file_size) when start >= file_size, do: {:error, :unsatisfiable_range}
+  defp byte_range(start, last, file_size), do: {:ok, {start, min(last, file_size - 1)}}
 
   defp tab_param(params, allowed_tabs, default_tab) do
     tab = params["tab"]

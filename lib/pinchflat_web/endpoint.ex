@@ -74,6 +74,7 @@ defmodule PinchflatWeb.Endpoint do
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride
+  plug :ignore_head_range
   plug Plug.Head
   plug Plug.Session, @session_options
 
@@ -81,6 +82,10 @@ defmodule PinchflatWeb.Endpoint do
   plug :strip_trailing_extension
 
   plug PinchflatWeb.Router
+
+  # Plug.Head converts HEAD to GET; remove Range before that conversion.
+  defp ignore_head_range(%Plug.Conn{method: "HEAD"} = conn, _opts), do: Plug.Conn.delete_req_header(conn, "range")
+  defp ignore_head_range(conn, _opts), do: conn
 
   # Disables logging in Plug.Telemetry for healthcheck requests
   def log_level(%Plug.Conn{path_info: ["healthcheck"]}), do: false
