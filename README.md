@@ -317,6 +317,7 @@ profiles, podcast feeds, SponsorBlock, retention, and custom scripts remain docu
 - [Report a bug](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=bug_report.md)
 - [Request a feature](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=feature_request.md)
 - [Browse releases](https://github.com/TheBadFella/pinchflat-ngx/releases)
+- [Roadmap](docs/roadmap.md) for tracked enhancements not yet scheduled
 - Read [AGENTS.md](AGENTS.md) for development commands and repository conventions
 
 Pinchflat-ngx is distributed under the terms in [LICENSE](LICENSE).
