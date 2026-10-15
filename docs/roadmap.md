@@ -1,6 +1,6 @@
 # Roadmap
 
-GitHub issues are still the place to open requests. This page lists work **not** included in **[Release 2026.10.15](releases/2026.10.15.md)**.
+GitHub issues are still the place to open requests. This page lists work **not** included in the **2026.10.15** release. Release notes are published on [GitHub Releases](https://github.com/TheBadFella/Pinchflat-NGX/releases) when we tag, not as a file in this repo.
 
 Each item is a short title and two lines of context.
 
@@ -64,4 +64,4 @@ Requires choosing a production feed endpoint before default-on behavior makes se
 
 ## Shipped in 2026.10.15
 
-See [Release 2026.10.15](releases/2026.10.15.md) for the full list: migration (**#86**, **#87**, **#85**, **#109**, **#107**), infra (**#105–#109**, **#96**, **#102**), interface polish (selects, branding, long names, small-screen Sources, toggles), source diagnostics, safer media streaming, download space protection, client fallback chains, and cookie health warnings.
+See the [2026.10.15 release notes](https://github.com/TheBadFella/Pinchflat-NGX/releases/tag/2026.10.15) on GitHub (available after the tag is published). That wave includes migration (**#86**, **#87**, **#85**, **#109**, **#107**), infra (**#105–#109**, **#96**, **#102**), interface polish (selects, branding, long names, small-screen Sources, toggles), source diagnostics, safer media streaming, download space protection, client fallback chains, and cookie health warnings.
