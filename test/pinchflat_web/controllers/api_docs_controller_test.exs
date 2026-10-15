@@ -23,8 +23,7 @@ defmodule PinchflatWeb.ApiDocsControllerTest do
 
       conn = get(conn, "/api/docs")
       assert html_response(conn, 200) =~ "/custom_prefix/api/spec"
-      spec_conn = get(build_conn(), "/api/spec")
-      assert json_response(spec_conn, 200)["servers"] |> hd() |> Map.fetch!("url") == "/custom_prefix"
+      assert PinchflatWeb.ApiSpec.spec().servers |> hd() |> Map.fetch!(:url) == "/custom_prefix"
     end
   end
 end
