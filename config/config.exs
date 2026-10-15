@@ -86,7 +86,7 @@ config :pinchflat, PinchflatWeb.Endpoint,
   url: [host: "localhost", port: 8945],
   # NOTE: this must be updated if ever deployed traditionally (ie: not self-hosted)
   check_origin: false,
-  adapter: Phoenix.Endpoint.Cowboy2Adapter,
+  adapter: Bandit.PhoenixAdapter,
   render_errors: [
     formats: [html: PinchflatWeb.ErrorHTML, json: PinchflatWeb.ErrorJSON],
     # Error pages use a dedicated standalone layout (no `layout:` — inner layout
@@ -145,7 +145,6 @@ config :logger, :default_formatter,
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
-config :phoenix, :filter_parameters, ["password", "secret", "token", "apprise_server", "youtube_api_key"]
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 config :pinchflat, Pinchflat.PromEx,
