@@ -314,8 +314,8 @@ profiles, podcast feeds, SponsorBlock, retention, and custom scripts remain docu
 
 ## Support and development
 
-- [Report a bug](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=bug_report.md)
-- [Request a feature](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=feature_request.md)
+- [Report a bug](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=enhancement_request.yml)
 - [Browse releases](https://github.com/TheBadFella/pinchflat-ngx/releases)
 - [Roadmap](docs/roadmap.md) for tracked enhancements not yet scheduled
 - Read [AGENTS.md](AGENTS.md) for development commands and repository conventions

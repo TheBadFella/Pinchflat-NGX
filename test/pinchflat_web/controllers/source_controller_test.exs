@@ -49,6 +49,14 @@ defmodule PinchflatWeb.SourceControllerTest do
      }}
   end
 
+  test "source with only cutoff-skipped media renders instead of returning 500", %{conn: conn} do
+    source = source_fixture(download_cutoff_date: ~D[2025-11-22])
+    media_item_fixture(source_id: source.id, uploaded_at: ~U[2025-11-21 23:59:59Z], media_filepath: nil)
+
+    html = conn |> get(~p"/sources/#{source}") |> html_response(200)
+    assert html =~ "Every indexed item was published before this source&#39;s download cutoff date"
+  end
+
   describe "index" do
     # Most of the tests are in `index_table_list_test.exs`
     test "returns 200", %{conn: conn} do
