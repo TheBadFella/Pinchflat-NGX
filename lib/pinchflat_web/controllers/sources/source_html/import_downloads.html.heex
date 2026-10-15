@@ -1,0 +1,56 @@
+<div class="mb-6 flex items-center gap-3">
+  <.link href={~p"/sources/#{@source}"} aria-label="Back to source">
+    <.icon name="hero-arrow-left" class="h-10 w-10 text-theme-on-surface-muted" />
+  </.link>
+  <h2 class="text-title-md2 font-bold text-theme-on-surface">Import Existing Downloads</h2>
+</div>
+
+<div class="theme-surface-raised space-y-6 px-5 py-6 sm:px-7.5">
+  <p class="text-theme-on-surface-muted">
+    Import files into {@source.custom_name} using their yt-dlp .info.json sidecars. Pause this source first and wait for its jobs to finish.
+    The scan stays inside your downloads mount and skips symlinks. Files are never moved or downloaded.
+  </p>
+  <.form
+    for={%{}}
+    as={:import}
+    action={~p"/sources/#{@source}/import_downloads/preview"}
+    method="post"
+    class="max-w-xl space-y-4"
+  >
+    <.input
+      id="local-import-directory"
+      name="import[directory]"
+      value={@directory}
+      label="Folder relative to downloads"
+      placeholder="Channel Name"
+      help="Leave blank to scan the downloads root. Each scan is limited to 5,000 files."
+    />
+    <.button type="submit">Preview Import</.button>
+  </.form>
+  <p :if={@error} class="text-theme-error" role="alert">{@error}</p>
+  <div :if={@preview} class="space-y-4" aria-live="polite">
+    <h3 class="font-semibold text-theme-on-surface">Preview</h3>
+    <p class="text-theme-on-surface-muted">
+      {Enum.count(@preview.entries, &(&1.status == :ready))} ready to import; {Enum.count(
+        @preview.entries,
+        &(&1.status != :ready)
+      )} skipped.
+      Imported files are protected from automatic retention deletion. You can change that protection per item later.
+    </p>
+    <ul class="space-y-2">
+      <li :for={entry <- @preview.entries} class="break-all text-sm text-theme-on-surface">
+        {entry.info_path}: {entry.status |> Atom.to_string() |> String.replace("_", " ")}
+      </li>
+    </ul>
+    <p :if={@preview.entries == []} class="text-theme-on-surface-muted">No .info.json sidecars found in this folder.</p>
+    <.form
+      :if={Enum.any?(@preview.entries, &(&1.status == :ready))}
+      for={%{}}
+      action={~p"/sources/#{@source}/import_downloads/apply"}
+      method="post"
+    >
+      <input type="hidden" name="token" value={@preview.token} />
+      <.button type="submit">Import Matching Files</.button>
+    </.form>
+  </div>
+</div>
