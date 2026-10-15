@@ -194,15 +194,15 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   executing jobs are recovered at boot by `Pinchflat.Boot.PreJobStartupTasks`.
   """
   def reset_job(job_id) do
-    case Repo.get_by(Oban.Job, id: job_id) do
-      %Oban.Job{state: state} = job when state in ["retryable", "discarded"] ->
-        case Oban.retry_job(job) do
-          :ok -> 1
-          _ -> 0
-        end
+    query =
+      from(j in Oban.Job,
+        where: j.id == ^job_id,
+        where: j.state in ["retryable", "discarded"]
+      )
 
-      _ ->
-        0
+    case Oban.retry_all_jobs(query) do
+      {:ok, count} -> count
+      _ -> 0
     end
   end
 

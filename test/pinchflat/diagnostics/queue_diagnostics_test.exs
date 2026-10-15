@@ -149,7 +149,7 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
 
       assert QueueDiagnostics.reset_retryable_jobs() == 2
 
-      assert %{state: "available"} = Repo.get(Oban.Job, job_one.id)
+      assert %{state: "available", attempt: 3, errors: [%{"error" => "boom"}]} = Repo.get(Oban.Job, job_one.id)
       assert %{state: "available"} = Repo.get(Oban.Job, job_two.id)
     end
 
@@ -165,10 +165,12 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
   describe "reset_job/1" do
     test "resets a retryable job" do
       {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
-      set_job_state(job, "retryable", attempt: 5, errors: [%{"error" => "boom"}])
+      set_job_state(job, "retryable", attempt: 5, max_attempts: 5, errors: [%{"error" => "boom"}])
 
       assert QueueDiagnostics.reset_job(job.id) == 1
-      assert %{state: "available"} = Repo.get(Oban.Job, job.id)
+
+      assert %{state: "available", attempt: 5, max_attempts: 6, errors: [%{"error" => "boom"}]} =
+               Repo.get(Oban.Job, job.id)
     end
 
     test "resets a discarded job" do
@@ -189,6 +191,35 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
 
     test "returns 0 when the job does not exist" do
       assert QueueDiagnostics.reset_job(-1) == 0
+    end
+
+    for state <- ["cancelled", "executing"] do
+      @concurrent_state state
+      test "refuses reset when a job becomes #{@concurrent_state} before the retry query" do
+        {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+        set_job_state(job, "retryable")
+        parent = self()
+        handler = "reset-job-race-#{System.unique_integer([:positive])}"
+
+        :telemetry.attach_many(
+          handler,
+          [[:oban, :engine, :retry_job, :start], [:oban, :engine, :retry_all_jobs, :start]],
+          fn _, _, _, {handler, parent, job, state} ->
+            if self() == parent do
+              :telemetry.detach(handler)
+              set_job_state(job, state)
+              send(parent, :job_state_changed)
+            end
+          end,
+          {handler, parent, job, @concurrent_state}
+        )
+
+        on_exit(fn -> :telemetry.detach(handler) end)
+        count = QueueDiagnostics.reset_job(job.id)
+        assert_received :job_state_changed
+        assert Repo.get!(Oban.Job, job.id).state == @concurrent_state
+        assert count == 0
+      end
     end
   end
 
