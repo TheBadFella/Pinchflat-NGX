@@ -1,15 +1,18 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex gap-3 items-center min-w-0">
-    <.link href={~p"/sources/#{@media_item.source_id}"}>
+    <.link href={~p"/sources/#{@media_item.source_id}"} class="shrink-0">
       <.icon
         name="hero-arrow-left"
         class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
       />
     </.link>
-    <h2 class="ml-4 truncate text-title-md2 font-bold text-theme-on-surface">{@media_item.title}</h2>
+
+    <h2 class="ml-4 min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
+      {@media_item.title}
+    </h2>
   </div>
 
-  <nav>
+  <nav class="shrink-0">
     <.link href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit"}>
       <.button rounding="rounded-m3-sm"><.icon name="hero-pencil-square" class="mr-2" /> Edit</.button>
     </.link>
@@ -36,6 +39,7 @@
               <.icon name="hero-no-symbol" class="text-amber-400" />
               <h3 class="font-bold text-xl">Unavailable</h3>
             </div>
+
             <span>
               This item was skipped because it is permanently unavailable{if @media_item.unavailable_reason,
                 do: ": #{@media_item.unavailable_reason}",
@@ -57,6 +61,7 @@
                     <.subtle_link href={@media_item.original_url} target="_blank">Open Original</.subtle_link>
                     <span class="mx-2">or</span>
                   </span>
+
                   <span>
                     <.subtle_link
                       href={~p"/media/#{@media_item.uuid}/stream?v=#{DateTime.to_unix(@media_item.updated_at)}"}
@@ -95,10 +100,13 @@
               <dl class="grid grid-cols-1 gap-3 text-sm">
                 <div class="flex items-start justify-between gap-3">
                   <dt class="text-theme-on-surface-muted">State</dt>
+
                   <dd class="text-right text-theme-on-surface">{task.job.state}</dd>
                 </div>
+
                 <div class="flex items-start justify-between gap-3">
                   <dt class="text-theme-on-surface-muted">Scheduled At</dt>
+
                   <dd class="text-right text-theme-on-surface">
                     <.datetime_in_zone datetime={task.job.scheduled_at} />
                   </dd>
