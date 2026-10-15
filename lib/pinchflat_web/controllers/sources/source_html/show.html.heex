@@ -1,23 +1,25 @@
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div class="flex gap-3 items-center min-w-0">
-    <.link href={~p"/sources"}>
+  <div class="flex w-full min-w-0 flex-1 items-center gap-3">
+    <.link href={~p"/sources"} class="shrink-0">
       <.icon
         name="hero-arrow-left"
         class="h-8 w-8 text-theme-on-surface-muted transition hover:text-theme-on-surface sm:h-10 sm:w-10"
       />
     </.link>
-    <h2 class="ml-2 break-words text-lg font-bold text-theme-on-surface sm:ml-4 sm:text-title-md2">
+
+    <h2 class="ml-2 min-w-0 [overflow-wrap:anywhere] text-lg font-bold text-theme-on-surface sm:ml-4 sm:text-title-md2">
       {@source.custom_name}
     </h2>
   </div>
 
-  <nav>
+  <nav class="flex shrink-0 flex-wrap items-center gap-2">
     <.link
       href={~p"/sources/#{@source}/import_downloads"}
       class="theme-outline-button mr-2 inline-flex px-4 py-2 text-sm"
     >
       Import Downloads
     </.link>
+
     <.link href={~p"/sources/#{@source}/edit"}>
       <.button rounding="rounded-m3-sm">
         <.icon name="hero-pencil-square" class="mr-2" /> Edit <span class="hidden sm:inline pl-1">Source</span>
@@ -29,7 +31,6 @@
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="max-w-full">
     <.source_library_header source={@source} status={@source_status} pending_tasks={@pending_tasks} />
-
     <section
       :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
       class="theme-surface-accent mb-6 rounded-m3-lg px-6 py-5 text-theme-on-surface"
@@ -39,6 +40,7 @@
           <span class="inline-flex items-center rounded-full bg-theme-tertiary-container/40 px-3 py-1 text-xs font-medium">
             Mode: Delayed
           </span>
+
           <p class="max-w-3xl text-sm text-theme-on-surface-muted">
             This playlist is in manual selection mode. Items not selected in the `Selection` tab are excluded from
             downloading until you restore automatic downloads.
@@ -61,10 +63,8 @@
         </.form>
       </div>
     </section>
-
     <.blocking_banner source={@source} conditions={@blocking_conditions} />
     <.source_statistics statistics={@media_statistics} />
-
     <div x-data="{ showUnset: false }">
       <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
         <:tab_append>
@@ -120,6 +120,7 @@
                 >
                   Select All
                 </button>
+
                 <button
                   type="button"
                   class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
@@ -135,6 +136,7 @@
                 <label for="selection_range" class="text-sm font-medium text-theme-on-surface">
                   Playlist Index Range
                 </label>
+
                 <input
                   id="selection_range"
                   name="selection_range"
@@ -185,6 +187,7 @@
 
                   <div class="min-w-0">
                     <p class="break-words font-medium text-theme-on-surface">{media_item.title}</p>
+
                     <p class="mt-1 text-xs text-theme-on-surface-muted">
                       {Calendar.strftime(media_item.uploaded_at, "%Y-%m-%d")}
                     </p>
@@ -203,6 +206,7 @@
                 >
                   Save Selection
                 </button>
+
                 <button
                   type="submit"
                   name="selection_action"

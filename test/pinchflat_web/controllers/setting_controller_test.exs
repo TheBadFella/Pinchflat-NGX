@@ -25,12 +25,23 @@ defmodule PinchflatWeb.SettingControllerTest do
     end
   end
 
+  test "mounts scoped sharing outside the settings form", %{conn: conn} do
+    document = conn |> get(~p"/settings") |> html_response(200) |> LazyHTML.from_document()
+
+    assert [_] =
+             document
+             |> LazyHTML.query("#api-access-settings [data-phx-session]")
+             |> LazyHTML.to_tree()
+
+    assert [_] = document |> LazyHTML.query("#api-access-settings #create-share-token-form") |> LazyHTML.to_tree()
+    assert [] == document |> LazyHTML.query("#settings-form #create-share-token-form") |> LazyHTML.to_tree()
+    assert [] == document |> LazyHTML.query("form form") |> LazyHTML.to_tree()
+  end
+
   describe "update settings" do
     test "filters credentials in settings request logs", %{conn: conn} do
-      previous_sql_level = Logger.get_module_level(Ecto.Adapters.SQL)
       previous_level = Logger.level()
       Logger.configure(level: :debug)
-      Logger.put_module_level(Ecto.Adapters.SQL, :error)
 
       try do
         log =
@@ -50,11 +61,6 @@ defmodule PinchflatWeb.SettingControllerTest do
         refute log =~ "SECRET_REQUEST187"
       after
         Logger.configure(level: previous_level)
-
-        case previous_sql_level do
-          [{Ecto.Adapters.SQL, level}] -> Logger.put_module_level(Ecto.Adapters.SQL, level)
-          [] -> Logger.delete_module_level(Ecto.Adapters.SQL)
-        end
       end
     end
 
@@ -182,6 +188,53 @@ defmodule PinchflatWeb.SettingControllerTest do
 
       assert redirected_to(conn) == ~p"/settings"
       assert conn.assigns[:flash]["error"] =~ "unavailable when Pinchflat-ngx uses SQLite"
+    end
+  end
+
+  describe "storage space protection and resume_downloads" do
+    test "saves storage protection settings", %{conn: conn} do
+      stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 30 * 1024 * 1024 * 1024} end)
+
+      update_attrs = %{
+        download_space_protection_enabled: true,
+        download_space_protection_threshold_bytes: 21_474_836_480
+      }
+
+      conn = put(conn, ~p"/settings", setting: update_attrs)
+      assert redirected_to(conn) == ~p"/settings"
+
+      conn = get(conn, ~p"/settings")
+      assert html_response(conn, 200) =~ "Storage &amp; Space Protection"
+      assert Pinchflat.Settings.get!(:download_space_protection_enabled) == true
+      assert Pinchflat.Settings.get!(:download_space_protection_threshold_bytes) == 21_474_836_480
+    end
+
+    test "resumes downloads when storage space is sufficient", %{conn: conn} do
+      Pinchflat.Settings.set(download_space_protection_enabled: true)
+      Pinchflat.Settings.set(download_space_protection_blocked: true)
+      Pinchflat.Settings.set(download_space_protection_threshold_bytes: 10 * 1024 * 1024 * 1024)
+
+      expect(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 20 * 1024 * 1024 * 1024} end)
+
+      conn = post(conn, ~p"/settings/resume_downloads")
+      assert redirected_to(conn) == ~p"/settings"
+      assert conn.assigns[:flash]["info"] =~ "Download protection block lifted"
+      assert Pinchflat.Settings.get!(:download_space_protection_blocked) == false
+    end
+
+    test "rejects resuming downloads when storage space is below recovery threshold", %{conn: conn} do
+      Pinchflat.Settings.set(download_space_protection_enabled: true)
+      Pinchflat.Settings.set(download_space_protection_blocked: true)
+      ten_gib = 10 * 1024 * 1024 * 1024
+      Pinchflat.Settings.set(download_space_protection_threshold_bytes: ten_gib)
+
+      # 10.2 GiB is below recovery threshold (11 GiB)
+      expect(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 10 * 1024 * 1024 * 1024 + 200_000_000} end)
+
+      conn = post(conn, ~p"/settings/resume_downloads")
+      assert redirected_to(conn) == ~p"/settings"
+      assert conn.assigns[:flash]["error"] =~ "still below the recovery threshold"
+      assert Pinchflat.Settings.get!(:download_space_protection_blocked) == true
     end
   end
 end
