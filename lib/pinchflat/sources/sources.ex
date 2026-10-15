@@ -12,6 +12,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.DirectoryMove
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
@@ -415,11 +416,13 @@ defmodule Pinchflat.Sources do
   defp everything_before_cutoff?(%Source{download_cutoff_date: nil}, _counts), do: false
 
   defp everything_before_cutoff?(%Source{} = source, counts) do
+    cutoff = source.download_cutoff_date
+
     before_cutoff_count =
-      MediaQuery.new()
-      |> MediaQuery.require_assoc(:source)
-      |> where(^MediaQuery.for_source(source))
-      |> where(^dynamic(not (^MediaQuery.upload_date_after_source_cutoff()) and not (^MediaQuery.downloaded())))
+      from(mi in MediaItem,
+        where: mi.source_id == ^source.id,
+        where: mi.published_at < ^cutoff and is_nil(mi.media_downloaded_at)
+      )
       |> Repo.aggregate(:count)
 
     before_cutoff_count > 0 and before_cutoff_count == counts.skipped
@@ -514,7 +517,6 @@ defmodule Pinchflat.Sources do
         |> maybe_change_source_from_url(attrs)
         |> maybe_change_indexing_frequency()
         |> maybe_change_source_directory_paths()
-        |> maybe_prevent_conflicting_source_directory_move()
         |> commit_and_handle_tasks(opts)
 
       changeset ->
@@ -530,7 +532,10 @@ defmodule Pinchflat.Sources do
   def preview_source_directory_move(%Source{} = source, attrs) do
     case change_source(source, attrs, :initial) do
       %Ecto.Changeset{valid?: true} = changeset ->
-        {:ok, source_directory_move_plan(changeset)}
+        case source_directory_move_plan(changeset) do
+          %{error: reason} -> {:error, directory_move_error(changeset, reason)}
+          plan -> {:ok, plan}
+        end
 
       changeset ->
         {:error, changeset}
@@ -833,42 +838,65 @@ defmodule Pinchflat.Sources do
 
   defp maybe_change_source_directory_paths(changeset), do: changeset
 
-  defp maybe_prevent_conflicting_source_directory_move(changeset) do
-    case source_directory_move_plan(changeset) do
-      %{conflicts: [_ | _]} ->
-        Ecto.Changeset.add_error(
-          changeset,
-          :download_subdirectory,
-          "cannot move files because the destination already contains files with the same names"
-        )
+  defp source_directory_move_plan(%{data: %{series_directory: old}, changes: changes})
+       when is_binary(old) and is_map_key(changes, :download_subdirectory) do
+    new = source_directory_for(changes.download_subdirectory)
 
-      _ ->
-        changeset
-    end
-  end
-
-  defp source_directory_move_plan(%{
-         data: %{__meta__: %{state: :loaded}, series_directory: old_series_directory},
-         changes: changes
-       })
-       when is_binary(old_series_directory) and is_map_key(changes, :download_subdirectory) do
-    new_series_directory = source_directory_for(changes.download_subdirectory)
-
-    if same_path?(old_series_directory, new_series_directory) do
+    if same_path?(old, new) do
       nil
     else
-      %{
-        old_directory: old_series_directory,
-        new_directory: new_series_directory,
-        old_directory_exists: File.dir?(old_series_directory),
-        new_directory_exists: File.exists?(new_series_directory),
-        file_count: count_files(old_series_directory),
-        conflicts: move_conflicts(old_series_directory, new_series_directory)
-      }
+      root = Path.expand(Application.fetch_env!(:pinchflat, :media_directory))
+
+      result =
+        cond do
+          not path_under_directory?(Path.expand(old), root) -> {:error, :outside_root}
+          protected_source_directory?(old, new) -> {:error, :protected_directory}
+          true -> DirectoryMove.preview(old, new)
+        end
+
+      case result do
+        {:ok, plan} -> plan
+        {:error, reason} -> %{error: reason}
+      end
     end
   end
 
   defp source_directory_move_plan(_changeset), do: nil
+
+  defp protected_source_directory?(old, new) do
+    Enum.any?([:metadata_directory, :extras_directory, :tmpfile_directory, :download_staging_directory], fn key ->
+      case Application.get_env(:pinchflat, key) do
+        root when is_binary(root) ->
+          Enum.any?([old, new], &(path_under_directory?(root, &1) or path_under_directory?(&1, root)))
+
+        _ ->
+          false
+      end
+    end)
+  end
+
+  defp directory_move_error(changeset, reason) do
+    message =
+      case reason do
+        :symlink -> "cannot move a folder containing symbolic links; remove the links or move the files manually"
+        :entry_limit -> "folder is too large for a safe automatic move; move the files manually"
+        :depth_limit -> "folder nesting is too deep for a safe automatic move"
+        :scan_timeout -> "storage did not respond in time; check the mount and try again"
+        :enoent -> "current folder is missing; check the storage mount before moving files"
+        :eacces -> "cannot read the folder; check storage permissions"
+        :nested_destination -> "destination cannot be inside the current folder"
+        :missing_files -> "tracked files are missing; reconnect storage before moving the folder"
+        :recovery_required -> "a previous folder move needs recovery; restart and check the application logs"
+        :busy -> "downloads or indexing are running for this source; wait before moving its folder"
+        :protected_directory -> "folder overlaps application metadata or staging storage; move it manually"
+        :shared_destination -> "destination folder is already owned by another source"
+        :shared_files -> "files in this folder are also referenced by another source"
+        :eexist -> "cannot move files because the destination already contains files with the same names"
+        _ -> "folder move could not be completed safely; check the storage and try again"
+      end
+
+    changeset |> Ecto.Changeset.add_error(:download_subdirectory, message) |> Map.put(:action, :update)
+  end
 
   defp source_directory_for(nil), do: Application.get_env(:pinchflat, :media_directory)
 
@@ -923,13 +951,23 @@ defmodule Pinchflat.Sources do
     end
   end
 
-  defp commit_and_handle_tasks(changeset, opts) do
+  defp commit_and_handle_tasks(%{valid?: true} = changeset, opts) do
+    case source_directory_move_plan(changeset) do
+      nil -> commit_without_move(changeset, opts)
+      %{error: reason} -> {:error, directory_move_error(changeset, reason)}
+      %{conflicts: [_ | _]} -> {:error, directory_move_error(changeset, :eexist)}
+      plan -> commit_directory_move(changeset, plan, opts)
+    end
+  end
+
+  defp commit_and_handle_tasks(changeset, opts), do: commit_without_move(changeset, opts)
+
+  defp commit_without_move(changeset, opts) do
     run_post_commit_tasks = Keyword.get(opts, :run_post_commit_tasks, true)
 
     case Repo.insert_or_update(changeset) do
       {:ok, %Source{} = source} ->
         log_source_created(changeset, source)
-        source = maybe_move_existing_source_files(changeset, source)
 
         if run_post_commit_tasks do
           maybe_handle_media_tasks(changeset, source)
@@ -944,122 +982,225 @@ defmodule Pinchflat.Sources do
     end
   end
 
-  defp maybe_move_existing_source_files(
-         %{
-           data: %{__meta__: %{state: :loaded}, series_directory: old_series_directory} = old_source,
-           changes: %{download_subdirectory: _}
-         },
-         %Source{series_directory: new_series_directory} = source
-       )
-       when is_binary(old_series_directory) and is_binary(new_series_directory) do
-    if same_path?(old_series_directory, new_series_directory) do
-      source
+  defp commit_directory_move(changeset, plan, opts) do
+    # ponytail: serialize folder moves while sharing a queue pause; per-source reservations if needed.
+    :global.trans({__MODULE__.DirectoryMove, self()}, fn ->
+      case with_move_queues_paused(fn -> do_commit_directory_move(changeset, plan, opts) end) do
+        {:error, :queues_not_paused} -> {:error, directory_move_error(changeset, :queues_not_paused)}
+        result -> result
+      end
+    end)
+  end
+
+  defp with_move_queues_paused(callback) do
+    queues = Pinchflat.Diagnostics.QueueDiagnostics.queue_names()
+
+    active =
+      Enum.filter(queues, fn queue ->
+        case Oban.check_queue(queue: queue) do
+          %{paused: false} -> true
+          _ -> false
+        end
+      end)
+
+    Enum.each(active, &Oban.pause_queue(queue: &1))
+
+    try do
+      if await_paused(active, 50), do: callback.(), else: {:error, :queues_not_paused}
+    after
+      Enum.each(active, &Oban.resume_queue(queue: &1))
+    end
+  end
+
+  defp await_paused([], _attempts), do: true
+  defp await_paused(_queues, 0), do: false
+
+  defp await_paused(queues, attempts) do
+    if Enum.all?(queues, &match?(%{paused: true}, Oban.check_queue(queue: &1))) do
+      true
     else
-      case move_directory_contents(old_series_directory, new_series_directory) do
-        :ok ->
-          update_media_filepaths_for_source(old_source, old_series_directory, new_series_directory)
-          Repo.reload!(source)
+      Process.sleep(20)
+      await_paused(queues, attempts - 1)
+    end
+  end
 
-        {:error, reason} ->
-          Logger.warning(
-            "source_directory_move_failed source_id=#{source.id} old_directory=#{old_series_directory} " <>
-              "new_directory=#{new_series_directory} reason=#{inspect(reason)}"
-          )
+  defp do_commit_directory_move(changeset, plan, opts) do
+    blocked =
+      cond do
+        active_source_jobs?(changeset.data) -> :busy
+        missing_source_files?(changeset.data, plan.old_directory) -> :missing_files
+        shared_directory_files?(changeset.data, plan.old_directory) -> :shared_files
+        shared_directory_files?(changeset.data, plan.new_directory) -> :shared_destination
+        true -> nil
+      end
 
-          source
+    if blocked do
+      {:error, directory_move_error(changeset, blocked)}
+    else
+      DirectoryMove.with_moves(
+        plan,
+        fn ->
+          Repo.transaction(fn ->
+            case Repo.update(changeset) do
+              {:ok, source} ->
+                update_media_filepaths_for_source(source, plan.old_directory, plan.new_directory)
+                update_metadata_filepaths_for_source(source, plan.old_directory, plan.new_directory)
+                run_move_tasks(changeset, source, opts)
+                Repo.reload!(source)
+
+              {:error, error} ->
+                Repo.rollback(error)
+            end
+          end)
+        end,
+        source_id: changeset.data.id
+      )
+      |> case do
+        {:error, %Ecto.Changeset{} = error} -> {:error, error}
+        {:error, reason} -> {:error, directory_move_error(changeset, reason)}
+        result -> result
       end
     end
+  rescue
+    _error in [
+      Postgrex.Error,
+      Exqlite.Error,
+      DBConnection.ConnectionError,
+      Ecto.InvalidChangesetError,
+      Ecto.StaleEntryError
+    ] ->
+      {:error, directory_move_error(changeset, :database_error)}
   end
 
-  defp maybe_move_existing_source_files(_changeset, source), do: source
+  defp missing_source_files?(source, directory) do
+    paths = source |> Map.take(Source.filepath_attributes()) |> Map.values()
+    items = Repo.all(from item in MediaItem, where: item.source_id == ^source.id)
+    metadata = source_metadata_for(source.id) ++ media_metadata_for(source.id)
 
-  defp move_directory_contents(old_directory, new_directory) do
-    if File.dir?(old_directory) do
-      move_path(old_directory, new_directory)
-    else
-      :ok
-    end
-  end
-
-  defp move_conflicts(old_directory, new_directory) do
-    cond do
-      !File.dir?(old_directory) ->
-        []
-
-      !File.exists?(new_directory) ->
-        []
-
-      true ->
-        do_move_conflicts(old_directory, new_directory)
-    end
-  end
-
-  defp do_move_conflicts(source_path, destination_path) do
-    cond do
-      File.dir?(source_path) && File.dir?(destination_path) ->
-        source_path
-        |> File.ls!()
-        |> Enum.flat_map(fn entry ->
-          do_move_conflicts(Path.join(source_path, entry), Path.join(destination_path, entry))
+    paths =
+      paths ++
+        Enum.flat_map(metadata, fn record ->
+          Map.values(Map.take(record, record.__struct__.filepath_attributes()))
         end)
 
-      File.exists?(destination_path) ->
-        [destination_path]
+    paths =
+      paths ++
+        Enum.flat_map(items, fn item ->
+          scalar =
+            item
+            |> Map.take(MediaItem.filepath_attributes() -- [:subtitle_filepaths, :predicted_media_filepath])
+            |> Map.values()
 
-      true ->
-        []
-    end
-  end
-
-  defp count_files(directory) do
-    if File.dir?(directory) do
-      directory
-      |> File.ls!()
-      |> Enum.map(&Path.join(directory, &1))
-      |> Enum.reduce(0, fn path, acc ->
-        if File.dir?(path), do: acc + count_files(path), else: acc + 1
-      end)
-    else
-      0
-    end
-  end
-
-  defp move_path(source_path, destination_path) do
-    cond do
-      File.dir?(source_path) && File.dir?(destination_path) ->
-        source_path
-        |> File.ls!()
-        |> Enum.reduce_while(:ok, fn entry, _acc ->
-          case move_path(Path.join(source_path, entry), Path.join(destination_path, entry)) do
-            :ok -> {:cont, :ok}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-        end)
-        |> tap(fn
-          :ok -> remove_empty_directory(source_path)
-          _ -> :ok
+          scalar ++ Enum.flat_map(item.subtitle_filepaths || [], &List.wrap/1)
         end)
 
-      File.exists?(destination_path) ->
-        {:error, :eexist}
+    Enum.any?(paths, fn path ->
+      is_binary(path) and String.starts_with?(path, directory <> "/") and
+        not File.regular?(path)
+    end)
+  end
 
-      true ->
-        destination_path
-        |> Path.dirname()
-        |> File.mkdir_p()
-        |> case do
-          :ok -> File.rename(source_path, destination_path)
-          {:error, reason} -> {:error, reason}
+  defp active_source_jobs?(source) do
+    tracked =
+      Repo.exists?(
+        from task in Task,
+          join: job in Oban.Job,
+          on: task.job_id == job.id,
+          left_join: item in MediaItem,
+          on: task.media_item_id == item.id,
+          where: job.state == "executing" and (task.source_id == ^source.id or item.source_id == ^source.id)
+      )
+
+    source_workers =
+      ~w(Pinchflat.Metadata.SourceMetadataStorageWorker Pinchflat.SlowIndexing.MediaCollectionIndexingWorker Pinchflat.FastIndexing.FastIndexingWorker)
+
+    tracked or
+      Enum.any?(
+        Repo.all(from job in Oban.Job, where: job.state == "executing", select: {job.worker, job.args}),
+        fn {worker, args} ->
+          args["source_id"] == source.id or (worker in source_workers and args["id"] == source.id)
         end
+      )
+  end
+
+  defp run_move_tasks(changeset, source, opts) do
+    if Keyword.get(opts, :run_post_commit_tasks, true) do
+      maybe_handle_media_tasks(changeset, source)
+      maybe_run_indexing_task(changeset, source)
+      maybe_run_metadata_storage_task(changeset, source)
     end
   end
 
-  defp remove_empty_directory(directory) do
-    case File.rmdir(directory) do
-      :ok -> :ok
-      {:error, :enoent} -> :ok
-      {:error, _reason} -> :ok
-    end
+  defp shared_directory_files?(source, directory) do
+    prefix = Path.expand(directory) <> "/"
+    fields = MediaItem.filepath_attributes() -- [:subtitle_filepaths]
+
+    condition =
+      Enum.reduce(fields, dynamic(false), fn field, acc ->
+        dynamic(
+          [item],
+          ^acc or fragment("substr(?, 1, ?) = ?", field(item, ^field), ^length(String.codepoints(prefix)), ^prefix)
+        )
+      end)
+
+    media_shared = Repo.exists?(from item in MediaItem, where: item.source_id != ^source.id, where: ^condition)
+
+    source_condition =
+      Enum.reduce(Source.filepath_attributes() ++ [:series_directory], dynamic(false), fn field, acc ->
+        dynamic(
+          [other],
+          ^acc or field(other, ^field) == ^directory or
+            fragment("substr(?, 1, ?) = ?", field(other, ^field), ^length(String.codepoints(prefix)), ^prefix)
+        )
+      end)
+
+    source_shared = Repo.exists?(from other in Source, where: other.id != ^source.id, where: ^source_condition)
+    # Subtitle paths are nested arrays. A literal substring check is conservative.
+    subtitle_shared =
+      if Pinchflat.Database.postgres?() do
+        Repo.exists?(
+          from item in MediaItem,
+            where:
+              item.source_id != ^source.id and
+                fragment("strpos(CAST(? AS text), ?) > 0", item.subtitle_filepaths, ^prefix)
+        )
+      else
+        Repo.exists?(
+          from item in MediaItem,
+            where:
+              item.source_id != ^source.id and
+                fragment("instr(CAST(? AS text), ?) > 0", item.subtitle_filepaths, ^prefix)
+        )
+      end
+
+    source_metadata_condition = path_prefix_condition(SourceMetadata.filepath_attributes(), prefix)
+
+    source_metadata_shared =
+      Repo.exists?(
+        from metadata in SourceMetadata, where: metadata.source_id != ^source.id, where: ^source_metadata_condition
+      )
+
+    media_metadata_condition = path_prefix_condition(Pinchflat.Metadata.MediaMetadata.filepath_attributes(), prefix)
+
+    media_metadata_shared =
+      Repo.exists?(
+        from metadata in Pinchflat.Metadata.MediaMetadata,
+          join: item in MediaItem,
+          on: item.id == metadata.media_item_id,
+          where: item.source_id != ^source.id,
+          where: ^media_metadata_condition
+      )
+
+    media_shared or source_shared or subtitle_shared or source_metadata_shared or media_metadata_shared
+  end
+
+  defp path_prefix_condition(fields, prefix) do
+    Enum.reduce(fields, dynamic(false), fn field, acc ->
+      dynamic(
+        [record],
+        ^acc or fragment("substr(?, 1, ?) = ?", field(record, ^field), ^length(String.codepoints(prefix)), ^prefix)
+      )
+    end)
   end
 
   defp update_media_filepaths_for_source(source, old_directory, new_directory) do
@@ -1080,18 +1221,41 @@ defmodule Pinchflat.Sources do
         |> Enum.into(%{})
 
       if map_size(attrs) > 0 do
-        Media.update_media_item(media_item, attrs)
+        case Media.update_media_item(media_item, attrs) do
+          {:ok, _} -> :ok
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
       end
     end)
   end
 
-  defp relocate_subtitle_filepaths(subtitle_filepaths, old_directory, new_directory) do
-    Enum.map(subtitle_filepaths || [], fn
-      [language, filepath] when is_binary(filepath) ->
-        [language, relocate_filepath(filepath, old_directory, new_directory)]
+  defp update_metadata_filepaths_for_source(source, old, new) do
+    records = source_metadata_for(source.id) ++ media_metadata_for(source.id)
 
-      subtitle ->
-        subtitle
+    Enum.each(records, fn record ->
+      attrs =
+        Map.new(record.__struct__.filepath_attributes(), fn field ->
+          {field, relocate_filepath(Map.get(record, field), old, new)}
+        end)
+
+      record |> Ecto.Changeset.change(attrs) |> Repo.update!()
+    end)
+  end
+
+  defp source_metadata_for(id), do: Repo.all(from metadata in SourceMetadata, where: metadata.source_id == ^id)
+
+  defp media_metadata_for(id) do
+    Repo.all(
+      from metadata in Pinchflat.Metadata.MediaMetadata,
+        join: item in MediaItem,
+        on: item.id == metadata.media_item_id,
+        where: item.source_id == ^id
+    )
+  end
+
+  defp relocate_subtitle_filepaths(subtitle_filepaths, old_directory, new_directory) do
+    Enum.map(subtitle_filepaths || [], fn values ->
+      Enum.map(List.wrap(values), &relocate_filepath(&1, old_directory, new_directory))
     end)
   end
 

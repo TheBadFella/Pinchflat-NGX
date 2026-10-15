@@ -44,6 +44,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
     Pinchflat.Database.PostgresMigration.initialize!()
 
     unless Pinchflat.Database.PostgresMigration.pending?() do
+      Pinchflat.Sources.DirectoryMove.recover!()
       ensure_tmpfile_directory()
       if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: cleanup_stale_download_staging()
       reset_executing_jobs()
