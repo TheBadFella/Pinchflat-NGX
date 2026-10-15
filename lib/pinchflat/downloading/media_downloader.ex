@@ -7,18 +7,19 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
   require Logger
 
-  alias Pinchflat.Repo
-  alias Pinchflat.Media
-  alias Pinchflat.Sources
-  alias Pinchflat.Media.DownloadState
-  alias Pinchflat.Media.MediaItem
-  alias Pinchflat.Utils.StringUtils
-  alias Pinchflat.Metadata.NfoBuilder
-  alias Pinchflat.Metadata.MetadataParser
-  alias Pinchflat.Metadata.MetadataFileHelpers
-  alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Downloading.DownloadStaging
+  alias Pinchflat.Media
+  alias Pinchflat.Media.DownloadState
+  alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Metadata.MetadataFileHelpers
+  alias Pinchflat.Metadata.MetadataParser
+  alias Pinchflat.Metadata.NfoBuilder
+  alias Pinchflat.Repo
+  alias Pinchflat.Sources
+  alias Pinchflat.Sources.Source
+  alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.Utils.StringUtils
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
@@ -38,6 +39,10 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       {:ok, media_item} ->
         # Returns {:ok, %MediaItem{}}
         Media.update_media_item(media_item, DownloadState.transition(media_item, :success))
+
+      {:error, guard_reason, message}
+      when guard_reason in [:cancelled, :migration_hold, :insufficient_storage] ->
+        {:error, guard_reason, message}
 
       {:error, error_atom, message} ->
         Media.update_media_item(reload_media_item_for_last_error(media_item), %{
@@ -88,7 +93,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         try do
           download_override_opts = maybe_add_staging_directory(override_opts, staging_directory)
 
-          case download_with_options(
+          case download_with_client_fallback_chain(
                  media_item.original_url,
                  media_with_preloads,
                  output_filepath,
@@ -113,6 +118,10 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
             {:error, :staging_unavailable, message} ->
               {:error, :staging_unavailable, message}
+
+            {:error, guard_reason, guard_message}
+            when guard_reason in [:cancelled, :migration_hold, :insufficient_storage] ->
+              {:error, guard_reason, guard_message}
 
             {:error, message, _exit_code} ->
               Logger.error("yt-dlp download error for media item ##{media_with_preloads.id}: #{inspect(message)}")
@@ -201,9 +210,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   end
 
   defp do_download_with_options(url, item_with_preloads, output_filepath, override_opts, options, emit_progress) do
+    client = Keyword.get(override_opts, :player_client, item_with_preloads.source.player_client)
     force_use_cookies = Keyword.get(override_opts, :force_use_cookies, false)
     source_uses_cookies = Sources.use_cookies?(item_with_preloads.source, :downloading)
-    should_use_cookies = force_use_cookies || source_uses_cookies
+    cookie_compatible? = client not in Source.cookie_incompatible_player_clients()
+    should_use_cookies = (force_use_cookies || source_uses_cookies) && cookie_compatible?
 
     runner_opts =
       [
@@ -229,7 +240,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       case {
         YtDlpMedia.get_downloadable_status(
           url,
-          DownloadOptionBuilder.build_youtube_options_for(item_with_preloads),
+          DownloadOptionBuilder.build_youtube_options_for(item_with_preloads, client),
           use_cookies: should_use_cookies
         ),
         should_use_cookies
@@ -254,12 +265,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
           {:error, :unsuitable_for_download}
 
         {{:error, _message, _exit_code} = err, false} ->
-          # If there was an error and we don't have cookies, this method will retry with cookies
-          # if doing so would help AND the source allows. Otherwise, it will return the error as-is
           maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
 
-        # This gets hit if cookies are enabled which, importantly, also covers the case where we
-        # retry a download with cookies and it fails again
         {{:error, message, exit_code}, true} ->
           {:error, message, exit_code}
 
@@ -293,9 +300,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err) do
     {:error, message, _} = err
     source = item_with_preloads.source
+    client = Keyword.get(override_opts, :player_client, source.player_client)
+    cookie_compatible? = client not in Source.cookie_incompatible_player_clients()
     message_contains_cookie_error = String.contains?(to_string(message), recoverable_cookie_errors())
 
-    if Sources.use_cookies?(source, :error_recovery) && message_contains_cookie_error do
+    if cookie_compatible? && Sources.use_cookies?(source, :error_recovery) && message_contains_cookie_error do
       download_with_options(
         url,
         item_with_preloads,
@@ -306,6 +315,191 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       err
     end
   end
+
+  defp download_with_client_fallback_chain(url, item_with_preloads, output_filepath, override_opts) do
+    chain =
+      if Keyword.has_key?(override_opts, :player_client) do
+        [Keyword.get(override_opts, :player_client)]
+      else
+        Source.effective_client_chain(item_with_preloads.source)
+      end
+
+    run_client_fallback_chain(url, item_with_preloads, output_filepath, override_opts, chain)
+  end
+
+  defp run_client_fallback_chain(url, item_with_preloads, output_filepath, override_opts, [client | remaining_clients]) do
+    client_opts = Keyword.put(override_opts, :player_client, client)
+
+    File.rm(output_filepath)
+
+    case download_with_options(url, item_with_preloads, output_filepath, client_opts) do
+      {:ok, _parsed_json} = success ->
+        success
+
+      {:error, :unsuitable_for_download} = err ->
+        err
+
+      {:error, :staging_unavailable, _msg} = err ->
+        err
+
+      {:error, message, _exit_code} = err ->
+        if remaining_clients != [] and client_fallback_eligible_error?(message) do
+          case check_fallback_guards(item_with_preloads, override_opts) do
+            {:error, guard_reason, guard_msg} ->
+              Logger.warning("Client fallback aborted for media item ##{item_with_preloads.id}: #{guard_msg}")
+              {:error, guard_reason, guard_msg}
+
+            :ok ->
+              next_client = hd(remaining_clients)
+
+              Logger.warning("""
+              yt-dlp client attempt failed for media item ##{item_with_preloads.id} \
+              using client #{inspect(client)}: #{inspect(message)}. \
+              Falling back to next client: #{inspect(next_client)} (#{length(remaining_clients)} remaining)
+              """)
+
+              maybe_report_progress(override_opts, %{
+                progress_percent: 0.0,
+                progress_status:
+                  "Client #{Source.player_client_label(client)} failed; retrying with #{Source.player_client_label(next_client)}"
+              })
+
+              run_client_fallback_chain(url, item_with_preloads, output_filepath, override_opts, remaining_clients)
+          end
+        else
+          err
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp run_client_fallback_chain(_url, _item_with_preloads, _output_filepath, _override_opts, []) do
+    {:error, "All configured player clients exhausted", 1}
+  end
+
+  defp check_fallback_guards(item_with_preloads, override_opts) do
+    cond do
+      media_item_cancelled_or_missing?(item_with_preloads.id, override_opts) ->
+        {:error, :cancelled, "Media download cancelled or media item removed"}
+
+      source_downloads_disabled?(item_with_preloads.source_id) ->
+        {:error, :cancelled, "Source media downloads disabled or source disabled"}
+
+      migration_hold_active?() ->
+        {:error, :migration_hold, "Database migration in progress"}
+
+      storage_low?(item_with_preloads, override_opts) ->
+        {:error, :insufficient_storage, "Insufficient storage space for fallback attempt"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp media_item_cancelled_or_missing?(item_id, override_opts) do
+    case Repo.get(MediaItem, item_id) do
+      nil -> true
+      %MediaItem{culled_at: culled_at} when not is_nil(culled_at) -> true
+      %MediaItem{prevent_download: true} -> true
+      _ -> match?({:ok, true}, check_task_cancelled(override_opts))
+    end
+  end
+
+  defp source_downloads_disabled?(source_id) do
+    case Repo.get(Source, source_id) do
+      nil -> true
+      %Source{download_media: false} -> true
+      %Source{enabled: false} -> true
+      _ -> false
+    end
+  end
+
+  defp check_task_cancelled(override_opts) do
+    case Keyword.get(override_opts, :job_id) do
+      job_id when is_integer(job_id) ->
+        case Repo.get(Oban.Job, job_id) do
+          nil -> {:ok, true}
+          %Oban.Job{state: state} when state in ["cancelled", "discarded"] -> {:ok, true}
+          _ -> {:ok, false}
+        end
+
+      _ ->
+        {:ok, false}
+    end
+  end
+
+  defp migration_hold_active? do
+    cond do
+      Code.ensure_loaded?(Pinchflat.Database.PostgresMigration) and
+          apply(Pinchflat.Database.PostgresMigration, :pending?, []) ->
+        true
+
+      Code.ensure_loaded?(Pinchflat.LegacyMigration) and
+          apply(Pinchflat.LegacyMigration, :legacy_migration_pending?, []) ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  defp storage_low?(_item_with_preloads, override_opts) do
+    if Code.ensure_loaded?(Pinchflat.Downloading.SpaceProtection) do
+      job_id = Keyword.get(override_opts, :job_id)
+
+      case apply(Pinchflat.Downloading.SpaceProtection, :preflight, [job_id]) do
+        :ok -> false
+        {:snooze, _} -> true
+        _ -> false
+      end
+    else
+      false
+    end
+  end
+
+  @doc false
+  def client_fallback_eligible_error?(message) when is_binary(message) do
+    msg = String.downcase(message)
+
+    non_fallback_indicators = [
+      "429",
+      "too many requests",
+      "rate-limit",
+      "private video",
+      "this video has been removed",
+      "join this channel to get access",
+      "members-only",
+      "requires payment",
+      "not made this video available in your country",
+      "requested format is not available",
+      "no space left on device",
+      "permission denied"
+    ]
+
+    has_non_fallback? = Enum.any?(non_fallback_indicators, &String.contains?(msg, &1))
+
+    if has_non_fallback? do
+      false
+    else
+      fallback_indicators = [
+        "http error 403",
+        "403: forbidden",
+        "confirm you’re not a bot",
+        "confirm you're not a bot",
+        "confirm your age",
+        "not available on this client",
+        "use --cookies",
+        "sign in if you've been granted access",
+        "sign in to view this video"
+      ]
+
+      Enum.any?(fallback_indicators, &String.contains?(msg, &1))
+    end
+  end
+
+  def client_fallback_eligible_error?(_), do: false
 
   defp recoverable_errors do
     [

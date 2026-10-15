@@ -19,7 +19,6 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.YtDlp.UnavailableMedia
   alias Pinchflat.Downloading.DownloadError
   alias Pinchflat.Downloading.MediaDownloader
-  alias Pinchflat.Downloading.SpaceProtection
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -52,36 +51,24 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   """
   @impl Oban.Worker
   def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args}) do
-    case SpaceProtection.preflight(job_id) do
+    should_force = Map.get(args, "force", false)
+    is_quality_upgrade = Map.get(args, "quality_upgrade?", false)
+    should_reset_last_error = Map.get(args, "reset_last_error", false)
+
+    media_item = fetch_and_run_prevent_download_user_script(media_item_id)
+
+    maybe_reset_last_error(media_item, should_reset_last_error)
+
+    case should_download_media(media_item, should_force, is_quality_upgrade) do
       :ok ->
-        should_force = Map.get(args, "force", false)
-        is_quality_upgrade = Map.get(args, "quality_upgrade?", false)
-        should_reset_last_error = Map.get(args, "reset_last_error", false)
+        download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id)
 
-        media_item = fetch_and_run_prevent_download_user_script(media_item_id)
+      {:skip, reason} ->
+        Logger.info(
+          "media_download_skipped media_item_id=#{media_item.id} source_id=#{media_item.source_id} reason=#{reason}"
+        )
 
-        maybe_reset_last_error(media_item, should_reset_last_error)
-
-        case should_download_media(media_item, should_force, is_quality_upgrade) do
-          :ok ->
-            download_media_and_schedule_jobs(
-              media_item,
-              is_quality_upgrade,
-              should_force,
-              should_reset_last_error,
-              job_id
-            )
-
-          {:skip, reason} ->
-            Logger.info(
-              "media_download_skipped media_item_id=#{media_item.id} source_id=#{media_item.source_id} reason=#{reason}"
-            )
-
-            :ok
-        end
-
-      {:snooze, seconds} ->
-        {:snooze, seconds}
+        :ok
     end
   rescue
     Ecto.NoResultsError -> Logger.info("#{__MODULE__} discarded: media item #{media_item_id} not found")
@@ -134,6 +121,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     overwrite_behaviour = if should_force || is_quality_upgrade, do: :force_overwrites, else: :no_force_overwrites
 
     override_opts = [
+      job_id: job_id,
       overwrite_behaviour: overwrite_behaviour,
       progress_handler: build_progress_handler(job_id, reset_last_error?: should_reset_last_error),
       skip_download_precheck: should_skip_download_precheck?(media_item)
@@ -166,6 +154,18 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         persist_download_failure(media_item, :transient, should_force)
         maybe_update_progress(job_id, %{progress_status: message})
         {:ok, :non_retry}
+
+      {:error, :cancelled, message} ->
+        maybe_update_progress(job_id, %{progress_status: message})
+        {:cancel, message}
+
+      {:error, :migration_hold, _message} ->
+        maybe_update_progress(job_id, %{progress_status: "Database migration in progress, retrying later"})
+        {:snooze, 30}
+
+      {:error, :insufficient_storage, message} ->
+        maybe_update_progress(job_id, %{progress_status: message})
+        {:snooze, 60}
 
       {:error, _error_atom, message} ->
         maybe_ignore_unavailable_media(media_item, job_id, message, should_force)
