@@ -548,10 +548,24 @@ defmodule PinchflatWeb.CoreComponents do
     custom_select_data = """
     {
       open: false,
+      openUpwards: false,
+      menuHeight: 288,
       options: #{assigns.select_options_json},
       prompt: #{assigns.prompt_json},
       selectedValue: '',
       selectedLabel: '',
+      positionMenu() {
+        const anchor = this.$refs.trigger.parentElement.getBoundingClientRect()
+        const viewport = window.visualViewport
+        const viewportTop = viewport?.offsetTop || 0
+        const headerBottom = document.querySelector('header')?.getBoundingClientRect().bottom || 0
+        const top = Math.max(viewportTop, headerBottom) + 8
+        const bottom = viewportTop + (viewport?.height || window.innerHeight) - 8
+        const below = Math.max(0, bottom - anchor.bottom - 8)
+        const above = Math.max(0, anchor.top - top - 8)
+        this.openUpwards = below < Math.min(288, above)
+        this.menuHeight = Math.min(288, this.openUpwards ? above : below)
+      },
       syncFromInput() {
         this.selectedValue = `${this.$refs.input.value ?? ''}`
         const match = this.options.find(option => option.value === this.selectedValue)
@@ -567,6 +581,7 @@ defmodule PinchflatWeb.CoreComponents do
       },
       init() {
         this.syncFromInput()
+        this.$watch('open', value => value && this.positionMenu())
         const model = Array.from(this.$refs.input.attributes).find(attr => attr.name.startsWith('x-model'))
         if (model) this.$watch(model.value, () => this.$nextTick(() => this.syncFromInput()))
       }
@@ -588,6 +603,8 @@ defmodule PinchflatWeb.CoreComponents do
           x-init="init()"
           x-effect={"if (#{@rest_x_bind_disabled || "false"} || #{!!@rest_disabled}) open = false"}
           x-on:click.outside="open = false"
+          x-on:resize.window="if (open) positionMenu()"
+          x-on:scroll.window.capture="if (open) positionMenu()"
           x-bind:class="open ? 'theme-field-shell-active z-[90]' : 'z-10'"
         >
           <input
@@ -601,6 +618,7 @@ defmodule PinchflatWeb.CoreComponents do
             x-on:change="syncFromInput()"
           />
           <button
+            x-ref="trigger"
             type="button"
             class={[
               "theme-input flex w-full items-center justify-between gap-3 rounded-m3-sm px-5 py-3 text-left outline-none transition",
@@ -629,35 +647,40 @@ defmodule PinchflatWeb.CoreComponents do
           <div
             x-cloak
             x-show="open"
-            x-transition.origin.top.left.duration.120ms
+            x-transition.scale.duration.120ms
             id={"#{@id}-options"}
-            class="theme-select-menu absolute left-0 top-full z-[100] mt-2 max-h-72 w-full overflow-y-auto p-2"
+            class="theme-select-menu absolute left-0 z-[100] flex w-full flex-col p-2"
+            x-bind:class="openUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
+            x-bind:style="{ maxHeight: menuHeight + 'px' }"
             role="listbox"
           >
-            <button
-              :if={@prompt_option}
-              type="button"
-              class="theme-select-option flex w-full items-center rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
-              x-bind:class="selectedValue === '' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-muted'"
-              x-on:click="selectOption('')"
-            >
-              {@prompt_option.label}
-            </button>
-            <button
-              :for={option <- @select_options}
-              type="button"
-              data-value={option.value}
-              class="theme-select-option flex w-full items-center justify-between gap-3 rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
-              x-bind:class={"selectedValue === '#{option.value}' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-muted'"}
-              x-on:click="selectOption($el.dataset.value)"
-            >
-              <span class="truncate">{option.label}</span>
-              <.icon
-                name="hero-check"
-                class="h-4 w-4 shrink-0 text-theme-primary"
-                x-show={"selectedValue === '#{option.value}'"}
-              />
-            </button>
+            <div class="theme-select-options min-h-0 overflow-y-auto">
+              <button
+                :if={@prompt_option}
+                type="button"
+                class="theme-select-option flex w-full items-center rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
+                x-bind:class="selectedValue === '' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-default'"
+                x-on:click="selectOption('')"
+              >
+                {@prompt_option.label}
+              </button>
+
+              <button
+                :for={option <- @select_options}
+                type="button"
+                data-value={option.value}
+                class="theme-select-option flex w-full items-center justify-between gap-3 rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
+                x-bind:class={"selectedValue === '#{option.value}' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-default'"}
+                x-on:click="selectOption($el.dataset.value)"
+              >
+                <span class="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">{option.label}</span>
+                <.icon
+                  name="hero-check"
+                  class="h-4 w-4 shrink-0 text-theme-primary"
+                  x-show={"selectedValue === '#{option.value}'"}
+                />
+              </button>
+            </div>
           </div>
         </div>
         {render_slot(@inner_block)}
