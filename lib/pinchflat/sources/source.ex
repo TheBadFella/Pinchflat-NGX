@@ -59,6 +59,7 @@ defmodule Pinchflat.Sources.Source do
     fast_index
     cookie_behaviour
     player_client
+    player_client_fallbacks
     selection_mode
     download_media
     download_public_media
@@ -118,6 +119,7 @@ defmodule Pinchflat.Sources.Source do
     field :fast_index, :boolean, default: false
     field :cookie_behaviour, Ecto.Enum, values: [:disabled, :when_needed, :all_operations], default: :disabled
     field :player_client, Ecto.Enum, values: @player_client_values
+    field :player_client_fallbacks, {:array, :string}, default: []
     field :selection_mode, Ecto.Enum, values: [:all, :manual], default: :all
     field :download_media, :boolean, default: true
     # Keep both policies enabled by default so existing sources retain their
@@ -161,7 +163,7 @@ defmodule Pinchflat.Sources.Source do
   end
 
   @doc false
-  def changeset(source, attrs, validation_stage) do
+  def changeset(source, attrs, validation_stage \\ :initial) do
     # See above for rationale
     required_fields =
       if validation_stage == :initial do
@@ -182,6 +184,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
     |> validate_index_cutoff_date()
+    |> normalize_player_client_fallbacks()
+    |> validate_player_client_fallbacks()
     |> validate_player_client_cookie_compatibility()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
@@ -208,8 +212,57 @@ defmodule Pinchflat.Sources.Source do
   """
   def player_client_label(nil), do: "Default"
 
-  def player_client_label(player_client) do
-    Keyword.get(@player_client_options, player_client, to_string(player_client))
+  def player_client_label(player_client) when is_atom(player_client) do
+    case Enum.find(@player_client_options, fn {_label, val} -> val == player_client end) do
+      {label, _val} -> label
+      nil -> to_string(player_client)
+    end
+  end
+
+  def player_client_label(player_client) when is_binary(player_client) do
+    case Enum.find(@player_client_options, fn {_label, val} -> to_string(val) == player_client end) do
+      {label, _val} -> label
+      nil -> player_client
+    end
+  end
+
+  @doc """
+  Returns the list of player clients that do not support account cookies.
+  """
+  def cookie_incompatible_player_clients, do: @cookie_incompatible_player_clients
+
+  @doc """
+  Returns the effective ordered client chain as a list of atoms (or `[nil]`).
+  Guarantees:
+  - Deduplicated
+  - At most 4 clients total
+  - If primary is nil and fallbacks is empty: `[nil]`
+  """
+  def effective_client_chain(nil), do: [nil]
+  def effective_client_chain(%Source{player_client: nil, player_client_fallbacks: []}), do: [nil]
+  def effective_client_chain(%Source{player_client: nil, player_client_fallbacks: nil}), do: [nil]
+
+  def effective_client_chain(%Source{player_client: primary, player_client_fallbacks: fallbacks}) do
+    valid_atoms_map = Map.new(@player_client_values, fn a -> {to_string(a), a} end)
+
+    converted_fallbacks =
+      (fallbacks || [])
+      |> Enum.map(fn
+        a when is_atom(a) -> a
+        s when is_binary(s) -> Map.get(valid_atoms_map, s)
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    chain =
+      [primary | converted_fallbacks]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.take(4)
+
+    case chain do
+      [] -> [nil]
+      items -> items
+    end
   end
 
   @doc """
@@ -405,20 +458,108 @@ defmodule Pinchflat.Sources.Source do
     end
   end
 
-  defp validate_player_client_cookie_compatibility(changeset) do
+  defp normalize_player_client_fallbacks(changeset) do
+    case get_change(changeset, :player_client_fallbacks) do
+      list when is_list(list) ->
+        cleaned =
+          list
+          |> Enum.map(&to_string/1)
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+
+        put_change(changeset, :player_client_fallbacks, cleaned)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp validate_player_client_fallbacks(changeset) do
     player_client = get_field(changeset, :player_client)
-    cookie_behaviour = get_field(changeset, :cookie_behaviour)
+    fallbacks = get_field(changeset, :player_client_fallbacks) || []
+
+    valid_client_strings = Enum.map(@player_client_values, &to_string/1)
+
+    invalid_entries =
+      Enum.reject(fallbacks, fn
+        entry when is_binary(entry) -> entry in valid_client_strings
+        entry when is_atom(entry) -> entry in @player_client_values
+        _ -> false
+      end)
 
     cond do
-      player_client == :web_creator and cookie_behaviour == :disabled ->
-        add_error(changeset, :player_client, "requires account cookies; select When Needed or All Operations")
+      not is_list(fallbacks) ->
+        add_error(changeset, :player_client_fallbacks, "must be a list")
 
-      player_client in @cookie_incompatible_player_clients and cookie_behaviour != :disabled ->
-        add_error(changeset, :player_client, "does not support account cookies; set Cookie Behaviour to Disabled")
+      invalid_entries != [] ->
+        add_error(
+          changeset,
+          :player_client_fallbacks,
+          "contains unsupported clients: #{Enum.join(invalid_entries, ", ")}"
+        )
+
+      is_nil(player_client) and fallbacks != [] ->
+        add_error(changeset, :player_client, "is required when fallback clients are configured")
+
+      length(Enum.uniq(fallbacks)) != length(fallbacks) ->
+        add_error(changeset, :player_client_fallbacks, "contains duplicate clients")
+
+      player_client != nil and to_string(player_client) in Enum.map(fallbacks, &to_string/1) ->
+        add_error(changeset, :player_client_fallbacks, "cannot include the primary client")
+
+      if(player_client, do: 1, else: 0) + length(fallbacks) > 4 ->
+        add_error(changeset, :player_client_fallbacks, "cannot exceed 4 total explicit clients")
 
       true ->
         changeset
     end
+  end
+
+  defp validate_player_client_cookie_compatibility(changeset) do
+    player_client = get_field(changeset, :player_client)
+    fallbacks = get_field(changeset, :player_client_fallbacks) || []
+    cookie_behaviour = get_field(changeset, :cookie_behaviour)
+
+    valid_atoms_map = Map.new(@player_client_values, fn a -> {to_string(a), a} end)
+
+    all_clients =
+      [player_client | fallbacks]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(fn
+        c when is_atom(c) -> c
+        c when is_binary(c) -> Map.get(valid_atoms_map, c)
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    Enum.reduce(all_clients, changeset, fn client, cs ->
+      cond do
+        client == :web_creator and cookie_behaviour == :disabled ->
+          if client == player_client do
+            add_error(cs, :player_client, "requires account cookies; select When Needed or All Operations")
+          else
+            add_error(
+              cs,
+              :player_client_fallbacks,
+              "#{player_client_label(client)} requires account cookies; select When Needed or All Operations"
+            )
+          end
+
+        client in @cookie_incompatible_player_clients and cookie_behaviour != :disabled ->
+          if client == player_client do
+            add_error(cs, :player_client, "does not support account cookies; set Cookie Behaviour to Disabled")
+          else
+            add_error(
+              cs,
+              :player_client_fallbacks,
+              "#{player_client_label(client)} does not support account cookies; set Cookie Behaviour to Disabled"
+            )
+          end
+
+        true ->
+          cs
+      end
+    end)
   end
 
   defp validate_min_and_max_durations(changeset) do

@@ -136,7 +136,7 @@
     />
     <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
 
-    <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
+    <section x-data="{ fastIndexingEnabled: null }">
       <.input
         field={f[:index_frequency_minutes]}
         options={friendly_index_frequencies()}
@@ -153,7 +153,11 @@
           label="Use Fast Indexing"
           label_suffix="(pro)"
           help="Not recommended for playlists. Single video sources always disable this option. Overrides 'Index Frequency'. See below for more details (seriously, there's a TL;DR that's worth reading)"
-          x-model="fastIndexingEnabled"
+          x-init="
+          // `enabled` is the data attribute that the toggle uses internally
+          fastIndexingEnabled = enabled
+          $watch('enabled', value => fastIndexingEnabled = !!value)
+        "
         />
       </div>
     </section>
@@ -191,7 +195,9 @@
         Phoenix.json_library().encode!(%{
           downloadMembersOnlyMedia: Ecto.Changeset.get_field(@changeset, :download_members_only_media),
           cookieBehaviour: to_string(Ecto.Changeset.get_field(@changeset, :cookie_behaviour)),
-          playerClient: to_string(Ecto.Changeset.get_field(@changeset, :player_client) || "")
+          playerClient: to_string(Ecto.Changeset.get_field(@changeset, :player_client) || ""),
+          fallbacks: (Ecto.Changeset.get_field(@changeset, :player_client_fallbacks) || []) |> Enum.map(&to_string/1),
+          candidateFallback: ""
         })
       }
     >
@@ -235,10 +241,125 @@
         field={f[:player_client]}
         options={friendly_player_clients()}
         type="select"
-        label="YouTube Player Client"
+        label="Primary YouTube Player Client"
         help="Overrides yt-dlp's default YouTube player-client selection for this source. Default is recommended unless you need a specific client."
         x-model="playerClient"
       />
+
+      <div class="mt-4 rounded-m3-sm border border-theme-outline/40 bg-theme-surface-2 p-4">
+        <div class="mb-3">
+          <h4 class="text-sm font-semibold text-theme-on-surface">Client Fallback Chain</h4>
+          <p class="text-xs text-theme-on-surface-muted mt-1">
+            If the primary client encounters an HTTP 403 or bot check, Pinchflat will sequentially try these fallback clients in order (up to 4 total clients).
+          </p>
+        </div>
+
+        <input type="hidden" name="source[player_client_fallbacks][]" value="" />
+
+        <div x-show="fallbacks.length > 0" class="space-y-2 mb-3">
+          <template x-for="(fb, idx) in fallbacks" x-bind:key="fb">
+            <div class="flex items-center justify-between rounded-m3-xs border border-theme-outline/30 bg-theme-surface-1 px-3 py-2 text-xs">
+              <input type="hidden" name="source[player_client_fallbacks][]" x-bind:value="fb" />
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-theme-on-surface-muted" x-text="`#${idx + 1}`"></span>
+                <span class="font-medium text-theme-on-surface font-mono" x-text="fb"></span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="theme-outline-button rounded-m3-xs px-2 py-1 text-xs"
+                  x-bind:disabled="idx === 0"
+                  @click="
+                    const temp = fallbacks[idx - 1];
+                    fallbacks[idx - 1] = fallbacks[idx];
+                    fallbacks[idx] = temp;
+                    fallbacks = [...fallbacks];
+                  "
+                  title="Move Up"
+                  aria-label="Move Up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="theme-outline-button rounded-m3-xs px-2 py-1 text-xs"
+                  x-bind:disabled="idx === fallbacks.length - 1"
+                  @click="
+                    const temp = fallbacks[idx + 1];
+                    fallbacks[idx + 1] = fallbacks[idx];
+                    fallbacks[idx] = temp;
+                    fallbacks = [...fallbacks];
+                  "
+                  title="Move Down"
+                  aria-label="Move Down"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  class="theme-outline-button rounded-m3-xs px-2 py-1 text-xs text-theme-error hover:border-theme-error"
+                  @click="
+                    fallbacks.splice(idx, 1);
+                    fallbacks = [...fallbacks];
+                  "
+                  title="Remove"
+                  aria-label="Remove"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div x-show="fallbacks.length === 0" class="text-xs text-theme-on-surface-muted italic mb-3">
+          No fallback clients configured. Only the primary client (or yt-dlp default) will be used.
+        </div>
+
+        <div class="flex items-center gap-2">
+          <select
+            x-model="candidateFallback"
+            x-bind:disabled="!playerClient || (playerClient ? 1 : 0) + fallbacks.length >= 4"
+            class="theme-input rounded-m3-xs px-3 py-1.5 text-xs text-theme-on-surface focus:ring-0"
+          >
+            <option value="">Select fallback client to add...</option>
+            <%= for {label, val} <- Source.player_client_options() do %>
+              <option
+                value={to_string(val)}
+                x-show={
+                  "playerClient !== '#{to_string(val)}' && !fallbacks.includes('#{to_string(val)}')"
+                }
+              >
+                {label} ({to_string(val)})
+              </option>
+            <% end %>
+          </select>
+          <button
+            type="button"
+            class="theme-outline-button inline-flex min-h-[32px] items-center rounded-m3-xs px-3 py-1 text-xs font-semibold"
+            x-bind:disabled="!candidateFallback || (playerClient ? 1 : 0) + fallbacks.length >= 4"
+            @click="
+              if (candidateFallback && !fallbacks.includes(candidateFallback) && candidateFallback !== playerClient) {
+                fallbacks.push(candidateFallback);
+                fallbacks = [...fallbacks];
+                candidateFallback = '';
+              }
+            "
+          >
+            + Add Fallback
+          </button>
+        </div>
+        <p x-show="!playerClient" class="text-xs text-theme-on-surface-muted mt-2">
+          Select a primary YouTube Player Client above to enable fallback chains.
+        </p>
+        <p
+          x-show="playerClient && (playerClient ? 1 : 0) + fallbacks.length >= 4"
+          class="text-xs text-theme-on-surface-muted mt-2"
+        >
+          Maximum of 4 total clients reached (1 primary + 3 fallbacks).
+        </p>
+      </div>
+
       <div
         x-cloak
         x-show="downloadMembersOnlyMedia && cookieBehaviour === 'disabled'"
@@ -250,7 +371,7 @@
       </div>
       <div
         x-cloak
-        x-show="playerClient === 'web_creator' && cookieBehaviour !== 'all_operations'"
+        x-show="[playerClient, ...fallbacks].includes('web_creator') && cookieBehaviour !== 'all_operations'"
         class="theme-status-card theme-status-card-warning text-sm"
         role="alert"
       >
@@ -258,11 +379,11 @@
       </div>
       <div
         x-cloak
-        x-show="['android', 'ios', 'tv_simply'].includes(playerClient) && cookieBehaviour !== 'disabled'"
+        x-show="[playerClient, ...fallbacks].some(c => ['android', 'ios', 'tv_simply'].includes(c)) && cookieBehaviour !== 'disabled'"
         class="theme-status-card theme-status-card-warning text-sm"
         role="alert"
       >
-        This player client does not support account cookies. Set Cookie Behaviour to Disabled before saving.
+        One or more configured player clients (Android, iOS, TV Simply) do not support account cookies. Set Cookie Behaviour to Disabled before saving.
       </div>
     </section>
 
@@ -500,7 +621,7 @@
       <p class="mt-4 text-sm text-theme-on-surface-muted">
         Need custom yt-dlp arguments for this source? After saving, add them to
         <code>extras/yt-dlp-configs/source-123-config.txt</code>
-        using the saved source ID. Pinchflat-ngx already loads
+        using the saved source ID. Pinchflat already loads
         per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
       </p>
     </section>
@@ -540,7 +661,7 @@
         class="border-t border-theme-outline/60 px-4 py-4 text-sm text-theme-on-surface md:px-6"
       >
         <p>
-          Pinchflat-ngx saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
+          Pinchflat saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
         </p>
 
         <p class="mt-3">
@@ -634,7 +755,7 @@
   <h3 class="text-2xl text-theme-on-surface">Paste Cookie Contents</h3>
 
   <p class="mt-2 text-sm text-theme-on-surface-muted">
-    Paste the full contents of the file and Pinchflat-ngx will create or replace `cookies.txt`.
+    Paste the full contents of the file and Pinchflat will create or replace `cookies.txt`.
   </p>
 
   <.form for={%{}} as={:cookies} action={~p"/sources/cookies/save"} method="post" class="mt-6 space-y-4">

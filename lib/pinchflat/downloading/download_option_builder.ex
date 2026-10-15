@@ -3,12 +3,12 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   Builds the options for yt-dlp to download media based on the given media profile.
   """
 
-  alias Pinchflat.Sources
-  alias Pinchflat.Sources.Source
-  alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.Downloading.OutputPathBuilder
   alias Pinchflat.Downloading.QualityOptionBuilder
-  alias Pinchflat.Downloading.DownloadStaging
+  alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Sources
+  alias Pinchflat.Sources.Source
   alias Pinchflat.YtDlp.PoTokenProvider
 
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
@@ -21,11 +21,18 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   def build(%MediaItem{} = media_item_with_preloads, override_opts \\ []) do
     media_profile = media_item_with_preloads.source.media_profile
 
+    youtube_options =
+      if Keyword.has_key?(override_opts, :player_client) do
+        build_youtube_options_for(media_item_with_preloads, Keyword.get(override_opts, :player_client))
+      else
+        build_youtube_options_for(media_item_with_preloads)
+      end
+
     with {:ok, output_options} <- output_options(media_item_with_preloads, override_opts),
          {:ok, thumbnail_options} <- thumbnail_options(media_item_with_preloads, override_opts) do
       built_options =
         default_options(override_opts) ++
-          build_youtube_options_for(media_item_with_preloads) ++
+          youtube_options ++
           subtitle_options(media_profile) ++
           thumbnail_options ++
           metadata_options(media_profile) ++
@@ -44,12 +51,15 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
   Returns [] when the source uses the default client selection.
   """
-  def build_player_client_options_for(%Source{} = source) do
-    player_client_options(source.player_client)
+  def build_player_client_options_for(source_or_item, client_override \\ nil)
+
+  def build_player_client_options_for(%Source{} = source, client_override) do
+    client = if is_nil(client_override), do: source.player_client, else: client_override
+    player_client_options(client)
   end
 
-  def build_player_client_options_for(%MediaItem{} = media_item) do
-    build_player_client_options_for(media_item.source)
+  def build_player_client_options_for(%MediaItem{} = media_item, client_override) do
+    build_player_client_options_for(media_item.source, client_override)
   end
 
   @doc """
@@ -57,12 +67,15 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   operation. The player-client override remains source-specific, while the
   optional provider argument is global and is omitted when disabled.
   """
-  def build_youtube_options_for(%Source{} = source) do
-    player_client_options(source.player_client) ++ PoTokenProvider.options()
+  def build_youtube_options_for(source_or_item, client_override \\ nil)
+
+  def build_youtube_options_for(%Source{} = source, client_override) do
+    client = if is_nil(client_override), do: source.player_client, else: client_override
+    player_client_options(client) ++ PoTokenProvider.options()
   end
 
-  def build_youtube_options_for(%MediaItem{} = media_item) do
-    build_youtube_options_for(media_item.source)
+  def build_youtube_options_for(%MediaItem{} = media_item, client_override) do
+    build_youtube_options_for(media_item.source, client_override)
   end
 
   @doc false
