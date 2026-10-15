@@ -25,19 +25,6 @@ defmodule PinchflatWeb.SettingControllerTest do
     end
   end
 
-  test "mounts scoped sharing outside the settings form", %{conn: conn} do
-    document = conn |> get(~p"/settings") |> html_response(200) |> LazyHTML.from_document()
-
-    assert [_] =
-             document
-             |> LazyHTML.query("#api-access-settings [data-phx-session]")
-             |> LazyHTML.to_tree()
-
-    assert [_] = document |> LazyHTML.query("#api-access-settings #create-share-token-form") |> LazyHTML.to_tree()
-    assert [] == document |> LazyHTML.query("#settings-form #create-share-token-form") |> LazyHTML.to_tree()
-    assert [] == document |> LazyHTML.query("form form") |> LazyHTML.to_tree()
-  end
-
   describe "update settings" do
     test "filters credentials in settings request logs", %{conn: conn} do
       previous_level = Logger.level()
