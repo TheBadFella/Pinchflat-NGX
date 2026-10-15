@@ -1374,7 +1374,7 @@
     "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
   },
   "timezone": "",
-  "title": "Pinchflat - PromEx PhoenixLiveView Dashboard",
+  "title": "Pinchflat-ngx - PromEx PhoenixLiveView Dashboard",
   "uid": "57C5565313BA3CBE98CC2A2F8C18248F",
   "version": 1
 }

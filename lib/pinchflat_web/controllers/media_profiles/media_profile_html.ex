@@ -79,9 +79,9 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
         "the upload date formatted as <code>sYYYYeMMDDII</code> where <code>II</code> is an index to prevent date collisions",
       media_playlist_index:
         "the place of the media item in the playlist. Do not use with channels. May not work if the playlist is updated",
-      media_item_id: "the ID of the media item in Pinchflat's database",
-      source_id: "the ID of the source in Pinchflat's database",
-      media_profile_id: "the ID of the media profile in Pinchflat's database"
+      media_item_id: "the ID of the media item in Pinchflat-ngx's database",
+      source_id: "the ID of the source in Pinchflat-ngx's database",
+      media_profile_id: "the ID of the media profile in Pinchflat-ngx's database"
     ]
   end
 

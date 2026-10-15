@@ -49,7 +49,7 @@ defmodule Pinchflat.Settings.AppriseServerLive do
     else
       feedback =
         case backend_runner().run([assigns.value],
-               title: "Pinchflat Test",
+               title: "Pinchflat-ngx Test",
                body: "This is a test message from Pinchflat"
              ) do
           {:ok, _} ->

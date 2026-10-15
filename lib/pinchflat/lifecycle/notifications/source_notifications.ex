@@ -37,7 +37,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   def send_new_media_notification(servers, source, changed_count) do
     opts =
       [
-        title: "[Pinchflat] New media found",
+        title: "[Pinchflat-ngx] New media found",
         body: notification_body(source, changed_count)
       ]
 

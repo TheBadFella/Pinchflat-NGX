@@ -1,6 +1,6 @@
 defmodule PinchflatWeb.Schemas do
   @moduledoc """
-  OpenAPI schemas for the Pinchflat API.
+  OpenAPI schemas for the Pinchflat-ngx API.
   """
 
   alias OpenApiSpex.Schema

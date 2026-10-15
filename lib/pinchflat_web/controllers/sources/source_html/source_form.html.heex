@@ -500,7 +500,7 @@
       <p class="mt-4 text-sm text-theme-on-surface-muted">
         Need custom yt-dlp arguments for this source? After saving, add them to
         <code>extras/yt-dlp-configs/source-123-config.txt</code>
-        using the saved source ID. Pinchflat already loads
+        using the saved source ID. Pinchflat-ngx already loads
         per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
       </p>
     </section>
@@ -540,7 +540,7 @@
         class="border-t border-theme-outline/60 px-4 py-4 text-sm text-theme-on-surface md:px-6"
       >
         <p>
-          Pinchflat saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
+          Pinchflat-ngx saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
         </p>
 
         <p class="mt-3">
@@ -634,7 +634,7 @@
   <h3 class="text-2xl text-theme-on-surface">Paste Cookie Contents</h3>
 
   <p class="mt-2 text-sm text-theme-on-surface-muted">
-    Paste the full contents of the file and Pinchflat will create or replace `cookies.txt`.
+    Paste the full contents of the file and Pinchflat-ngx will create or replace `cookies.txt`.
   </p>
 
   <.form for={%{}} as={:cookies} action={~p"/sources/cookies/save"} method="post" class="mt-6 space-y-4">

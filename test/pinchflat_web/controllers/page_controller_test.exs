@@ -15,7 +15,7 @@ defmodule PinchflatWeb.PageControllerTest do
       Settings.set(onboarding: false)
 
       conn = get(conn, ~p"/?onboarding=1")
-      assert html_response(conn, 200) =~ "Welcome to Pinchflat"
+      assert html_response(conn, 200) =~ "Welcome to Pinchflat-ngx"
     end
 
     test "sets the onboarding setting to false if you pass the corrent query param", %{conn: conn} do

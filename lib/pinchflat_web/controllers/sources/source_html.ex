@@ -712,7 +712,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       field(
         "Source URL",
         source_url_label(source.original_url),
-        "The channel or playlist page Pinchflat indexes",
+        "The channel or playlist page Pinchflat-ngx indexes",
         type: :url,
         href: source.original_url
       ),
@@ -1077,7 +1077,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   def download_subdirectory_help do
-    "Relative folder under the media root. Pinchflat applies this before the output template, so keep the template focused on filenames or subfolders inside this directory."
+    "Relative folder under the media root. Pinchflat-ngx applies this before the output template, so keep the template focused on filenames or subfolders inside this directory."
   end
 
   def download_subdirectory_examples do

@@ -22,7 +22,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert servers == @apprise_servers
 
         assert opts == [
-                 title: "[Pinchflat] New media found",
+                 title: "[Pinchflat-ngx] New media found",
                  body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now"
                ]
 
@@ -41,7 +41,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert servers == @apprise_servers
 
         assert opts == [
-                 title: "[Pinchflat] New media found",
+                 title: "[Pinchflat-ngx] New media found",
                  body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now"
                ]
 
@@ -97,7 +97,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert servers == @apprise_servers
 
         assert opts == [
-                 title: "[Pinchflat] New media found",
+                 title: "[Pinchflat-ngx] New media found",
                  body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now"
                ]
 
@@ -115,7 +115,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert servers == @apprise_servers
 
         assert opts == [
-                 title: "[Pinchflat] New media found",
+                 title: "[Pinchflat-ngx] New media found",
                  body:
                    "Found 2 new media item(s) for #{source.custom_name}. Downloading them now\n\n" <>
                      "https://pinchflat.example.com/sources/#{source.id}"

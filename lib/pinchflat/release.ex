@@ -87,13 +87,13 @@ defmodule Pinchflat.Release do
 
         docker run --user 99:100 <rest of the command>
 
-    Or adding `user: '99:100'` to the Pinchflat service of your Docker Compose
+    Or adding `user: '99:100'` to the Pinchflat-ngx service of your Docker Compose
     file. Again, there are many ways to do this depending on your setup and
-    this is just one example. See issue #106 in the Pinchflat Github for more.
+    this is just one example. See issue #106 in the upstream Pinchflat GitHub for more.
 
     No matter the case, this _is_ a permissions error and allowing the container
     to write to the directory is the only way to fix it. It is not recommended
-    to run the container as `root` because files created by Pinchflat may not
+    to run the container as `root` because files created by Pinchflat-ngx may not
     be accessible to other apps that want to modify them.
     """
   end
