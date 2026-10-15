@@ -5,7 +5,7 @@ ARG INSTALL_SHELL_TOOLS=0
 
 ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 
-FROM node:25-bookworm-slim AS node
+FROM node:26-bookworm-slim AS node
 
 FROM ${DEV_IMAGE}
 
@@ -69,7 +69,7 @@ RUN set -eux; \
   node --version; \
   npm --version; \
   rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg && \
-  npm install -g yarn prettier@3.9.8 sqleton@^4.0.0 && \
+  npm install -g yarn prettier@3.9.10 sqleton@^4.0.0 && \
   yarn --version && \
   # Install baseline Elixir packages
   mix local.hex --force && \
