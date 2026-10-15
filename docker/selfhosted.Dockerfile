@@ -7,7 +7,7 @@ ARG DEBIAN_VERSION=bookworm-20260316-slim
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
-FROM node:26-bookworm-slim AS node
+FROM node:25-bookworm-slim AS node
 
 FROM ${BUILDER_IMAGE} AS builder
 
@@ -159,7 +159,7 @@ RUN set -eux; \
     # Apprise
     export PIPX_HOME=/opt/pipx && \
     export PIPX_BIN_DIR=/usr/local/bin && \
-    pipx install apprise && \
+    pipx install apprise==2.0.1 && \
     # yt-dlp
     echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
     export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \
