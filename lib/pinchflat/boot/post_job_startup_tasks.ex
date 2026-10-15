@@ -51,6 +51,7 @@ defmodule Pinchflat.Boot.PostJobStartupTasks do
         Pinchflat.Settings.QueueConcurrency.apply!()
         reschedule_missing_indexing_tasks()
         Pinchflat.LegacyMigration.resume_artwork_repairs!()
+        Pinchflat.CookieHealth.HealthCheckWorker.schedule_next()
       end
     end
 

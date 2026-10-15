@@ -2,6 +2,7 @@ defmodule PinchflatWeb.Settings.SettingController do
   use PinchflatWeb, :controller
 
   alias Pinchflat.Backups
+  alias Pinchflat.CookieHealth.HealthCheckWorker
   alias Pinchflat.Settings
   alias Pinchflat.Reconciliation
   alias Pinchflat.Downloading.SpaceProtection
@@ -28,6 +29,7 @@ defmodule PinchflatWeb.Settings.SettingController do
     case Settings.update_setting(setting, setting_params) do
       {:ok, updated_setting} ->
         maybe_apply_yt_dlp_policy(setting, updated_setting)
+        maybe_reschedule_cookie_health(setting, updated_setting)
         QueueConcurrency.apply!(updated_setting)
         SpaceProtection.sync_settings_state(setting, updated_setting)
         # A settings change can alter predicted paths, so any staged reconcile
@@ -54,6 +56,19 @@ defmodule PinchflatWeb.Settings.SettingController do
     changed? = Enum.any?(@yt_dlp_policy_fields, &(Map.get(old_setting, &1) != Map.get(new_setting, &1)))
 
     if changed?, do: UpdateWorker.kickoff_apply()
+  end
+
+  defp maybe_reschedule_cookie_health(old_setting, new_setting) do
+    cond do
+      !old_setting.cookie_health_monitoring_enabled && new_setting.cookie_health_monitoring_enabled ->
+        HealthCheckWorker.kickoff_manual()
+
+      old_setting.cookie_health_check_interval_hours != new_setting.cookie_health_check_interval_hours ->
+        HealthCheckWorker.schedule_next()
+
+      true ->
+        :ok
+    end
   end
 
   def download_cookies(conn, _params) do
