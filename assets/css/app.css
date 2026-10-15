@@ -110,15 +110,15 @@
   }
 
   .theme-select-menu {
-    @apply rounded-m3-md border-2 border-theme-outline-strong bg-theme-surface-1 text-theme-on-surface shadow-m3-3;
+    @apply overflow-hidden rounded-m3-md border-2 border-theme-outline-strong bg-theme-surface-1 text-theme-on-surface shadow-m3-3;
   }
 
   .theme-select-option {
     @apply border border-transparent text-theme-on-surface;
   }
 
-  .theme-select-option-muted {
-    @apply text-theme-on-surface-muted;
+  .theme-select-option-default {
+    @apply text-theme-on-surface;
   }
 
   .theme-select {
