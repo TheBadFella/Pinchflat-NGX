@@ -72,9 +72,7 @@
 <% db = database_stats() %>
 <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <h3 class="text-lg font-semibold text-theme-on-surface">
-      Database type: {if sqlite_database?(), do: "SQLite", else: "PostgreSQL"}
-    </h3>
+    <h3 class="text-lg font-semibold text-theme-on-surface">Database</h3>
     <div :if={sqlite_database?()} class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
       {live_render(@conn, Pinchflat.Settings.IntegrityCheckLive,
         id: "integrity-check-live",
@@ -277,7 +275,7 @@
       <.link
         href={~p"/diagnostics/reset_retryable_jobs"}
         method="post"
-        data-confirm="This will reset all retryable jobs and clear their error history. They will be retried from scratch. Continue?"
+        data-confirm="Retry all retryable jobs now? Attempt counts and error history will be preserved."
         class="w-full sm:w-auto"
       >
         <.button color="theme-danger-button-solid" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">

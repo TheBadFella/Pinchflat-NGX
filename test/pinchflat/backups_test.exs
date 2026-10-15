@@ -136,6 +136,18 @@ defmodule Pinchflat.BackupsTest do
       assert Backups.backup_filename?(new_dump)
     end
 
+    test "derives modified_at timestamp directly from the filename", %{directory: directory} do
+      filename = "pinchflat-ngx-postgres-20260911-120000-123456-0000000000000003.dump"
+      path = Path.join(directory, filename)
+      File.write!(path, "dump")
+      different_time = {{2020, 1, 1}, {0, 0, 0}}
+      :ok = File.touch(path, different_time)
+
+      [backup] = Backups.list_backups(directory: directory)
+      assert backup.filename == filename
+      assert backup.modified_at == ~U[2026-09-11 12:00:00.123456Z]
+    end
+
     test "removes stale partial files but leaves recent partial files", %{directory: directory} do
       stale = Path.join(directory, "pinchyt-postgres-old.dump.partial")
       recent = Path.join(directory, "pinchyt-postgres-recent.dump.partial")

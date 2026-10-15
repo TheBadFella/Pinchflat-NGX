@@ -47,6 +47,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   def mount(_params, session, socket) do
+    if connected?(socket) do
+      PinchflatWeb.Endpoint.subscribe("job:state")
+      PinchflatWeb.Endpoint.subscribe("job:progress")
+    end
+
     limit = session["results_per_page"]
 
     initial_params =
@@ -54,7 +59,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
         %{
           sort_key: session["initial_sort_key"],
           sort_direction: session["initial_sort_direction"],
-          view_mode: normalize_view_mode(session["initial_view_mode"])
+          view_mode: normalize_view_mode(session["initial_view_mode"]),
+          refresh_pending: false
         },
         get_pagination_attributes(sources_query(), 1, limit)
       )
@@ -92,6 +98,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     {:noreply, assign(socket, :view_mode, normalize_view_mode(view_mode))}
   end
 
+  def handle_info(%{topic: "job:state", event: "change"}, socket) do
+    {:noreply, throttled_set_sources(socket)}
+  end
+
+  def handle_info(%{topic: "job:progress", event: "update"}, socket) do
+    {:noreply, throttled_set_sources(socket)}
+  end
+
+  def handle_info(:throttled_refresh, socket) do
+    {:noreply, socket |> assign(:refresh_pending, false) |> set_sources()}
+  end
+
   def handle_info({:source_enabled_updated, _source_id}, socket) do
     {:noreply, set_sources(socket)}
   end
@@ -127,6 +145,20 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       |> Repo.all()
 
     assign(socket, %{sources: sources})
+  end
+
+  @refresh_throttle_ms 500
+
+  defp throttled_set_sources(socket) do
+    if Map.get(socket.assigns, :refresh_pending, false) do
+      socket
+    else
+      Process.send_after(self(), :throttled_refresh, @refresh_throttle_ms)
+
+      socket
+      |> assign(:refresh_pending, true)
+      |> set_sources()
+    end
   end
 
   defp sources_query do
