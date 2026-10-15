@@ -197,6 +197,7 @@ if config_env() == :prod do
   log_path = System.get_env("LOG_PATH", Path.join([config_path, "logs", "pinchflat.log"]))
   metadata_path = System.get_env("METADATA_PATH", Path.join([config_path, "metadata"]))
   extras_path = System.get_env("EXTRAS_PATH", Path.join([config_path, "extras"]))
+  sqlite_migration_source = System.get_env("SQLITE_MIGRATION_SOURCE")
   postgres_backup_path = System.get_env("POSTGRES_BACKUP_PATH", Path.join([extras_path, "backups"]))
   tmpfile_path = System.get_env("TMPFILE_PATH", Path.join([System.tmp_dir!(), "pinchflat", "data"]))
   # This one can be changed if you want
@@ -217,6 +218,7 @@ if config_env() == :prod do
     metadata_directory: metadata_path,
     extras_directory: extras_path,
     postgres_backup_directory: postgres_backup_path,
+    sqlite_migration_source: if(sqlite_migration_source in [nil, ""], do: nil, else: sqlite_migration_source),
     tmpfile_directory: tmpfile_path,
     dns_cluster_query: System.get_env("DNS_CLUSTER_QUERY"),
     expose_feed_endpoints: expose_feed_endpoints,
@@ -229,6 +231,17 @@ if config_env() == :prod do
 
   {db_pool_size, _} = Integer.parse(System.get_env("DATABASE_POOL_SIZE", "10"))
 
+  # Optional override for how long (ms) a query may hold a connection before it is
+  # cancelled. Unset keeps the adapter defaults (45s for SQLite via config.exs, Ecto's
+  # 15s for PostgreSQL). Accepted range is 15000-300000 (15s-5min); values outside
+  # it are ignored and the defaults apply. Setting this high can tie up connections
+  # longer, delay other queries and make the UI feel stuck while a slow query runs.
+  db_timeout_opts =
+    case System.get_env("DATABASE_TIMEOUT_MS", "") |> String.trim() |> Integer.parse() do
+      {ms, ""} when ms >= 15_000 and ms <= 300_000 -> [timeout: ms]
+      _ -> []
+    end
+
   case database_adapter do
     :sqlite ->
       db_path = System.get_env("DATABASE_PATH", Path.join([config_path, "db", "pinchflat.db"]))
@@ -237,20 +250,22 @@ if config_env() == :prod do
 
       # WAL lets readers run concurrently, so a larger pool mainly buys headroom
       # for the web UI and other jobs while a long operation holds connections.
-      config :pinchflat, Pinchflat.Repo,
-        database: db_path,
-        journal_mode: journal_mode,
-        pool_size: db_pool_size
+      config :pinchflat,
+             Pinchflat.Repo,
+             [database: db_path, journal_mode: journal_mode, pool_size: db_pool_size] ++ db_timeout_opts
 
     :postgres ->
       database_url =
         System.get_env("DATABASE_URL") ||
           raise "DATABASE_URL is required by the PostgreSQL image"
 
-      config :pinchflat, Pinchflat.Repo,
-        url: database_url,
-        pool_size: db_pool_size,
-        socket_options: if(enable_ipv6, do: [:inet6], else: [])
+      config :pinchflat,
+             Pinchflat.Repo,
+             [
+               url: database_url,
+               pool_size: db_pool_size,
+               socket_options: if(enable_ipv6, do: [:inet6], else: [])
+             ] ++ db_timeout_opts
   end
 
   config :pinchflat, Pinchflat.PromEx, disabled: !enable_prometheus

@@ -27,8 +27,10 @@ defmodule PinchflatWeb.SettingControllerTest do
 
   describe "update settings" do
     test "filters credentials in settings request logs", %{conn: conn} do
+      previous_sql_level = Logger.get_module_level(Ecto.Adapters.SQL)
       previous_level = Logger.level()
       Logger.configure(level: :debug)
+      Logger.put_module_level(Ecto.Adapters.SQL, :error)
 
       try do
         log =
@@ -48,6 +50,11 @@ defmodule PinchflatWeb.SettingControllerTest do
         refute log =~ "SECRET_REQUEST187"
       after
         Logger.configure(level: previous_level)
+
+        case previous_sql_level do
+          [{Ecto.Adapters.SQL, level}] -> Logger.put_module_level(Ecto.Adapters.SQL, level)
+          [] -> Logger.delete_module_level(Ecto.Adapters.SQL)
+        end
       end
     end
 
