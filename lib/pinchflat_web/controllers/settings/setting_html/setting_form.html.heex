@@ -228,6 +228,54 @@
 
     <div class="theme-surface-accent mt-5 p-4 md:p-6"><.codec_settings_help /></div>
   </section>
+
+  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('storage')">
+    <h3 class="text-2xl text-theme-on-surface">Storage &amp; Space Protection</h3>
+    <p class="mt-2 text-sm text-theme-on-surface-muted">
+      Prevent downloads from filling the disk. When enabled, downloads pause if free space falls below this threshold. Blocked jobs snooze without failing.
+    </p>
+
+    <%= if f[:download_space_protection_blocked].value do %>
+      <div class="theme-surface-accent mt-4 rounded-m3-md border border-theme-warning/40 p-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h4 class="font-bold theme-status-warning">Downloads Blocked: Low Storage Space</h4>
+            <p class="text-sm text-theme-on-surface-muted mt-1">
+              Protected storage location: <span class="font-medium text-theme-on-surface">{f[:download_space_protection_blocked_location].value || "destination"}</span>.
+              <%= if f[:download_space_protection_free_bytes].value do %>
+                Measured free space: <.readable_filesize byte_size={f[:download_space_protection_free_bytes].value} />.
+              <% end %>
+            </p>
+          </div>
+          <div>
+            <.link href={~p"/settings/resume_downloads"} method="post">
+              <.button
+                color="bg-theme-primary text-theme-on-primary"
+                rounding="rounded-m3-sm"
+                class="px-4 py-2 text-sm min-h-[44px]"
+              >
+                Check storage and resume downloads
+              </.button>
+            </.link>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <.input
+      field={f[:download_space_protection_enabled]}
+      type="toggle"
+      label="Enable Low-Space Protection"
+      help="Check free disk space before each download starts. Disabled by default"
+    />
+
+    <.input
+      field={f[:download_space_protection_threshold_bytes]}
+      type="number"
+      label="Minimum Free Space Threshold (bytes)"
+      help="Minimum available disk space in bytes (e.g. 10737418240 for 10 GiB). Recovery requires this threshold plus 1 GiB"
+    />
+  </section>
 </.simple_form>
 
 <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('cookies')">
@@ -295,7 +343,7 @@
     class="w-full sm:w-auto"
     rounding="rounded-m3-sm"
     form="settings-form"
-    x-show="matchGroup('notifications') || matchGroup('extractor') || matchGroup('backups') || matchGroup('discovery') || matchGroup('ytdlp') || ((advancedMode || query.trim()) && matchGroup('codec'))"
+    x-show="matchGroup('notifications') || matchGroup('extractor') || matchGroup('storage') || matchGroup('backups') || matchGroup('discovery') || matchGroup('ytdlp') || ((advancedMode || query.trim()) && matchGroup('codec'))"
   >
     Save Settings
   </.button>
@@ -304,7 +352,7 @@
 <p
   class="theme-surface-raised px-5 py-8 text-center text-sm text-theme-on-surface-muted sm:px-7.5"
   x-cloak
-  x-show="!matchGroup('notifications') && !matchGroup('extractor') && !matchGroup('discovery') && !matchGroup('ytdlp') && !matchGroup('cookies') && !matchGroup('backups') && !((advancedMode || query.trim()) && matchGroup('codec'))"
+  x-show="!matchGroup('notifications') && !matchGroup('extractor') && !matchGroup('storage') && !matchGroup('discovery') && !matchGroup('ytdlp') && !matchGroup('cookies') && !matchGroup('backups') && !((advancedMode || query.trim()) && matchGroup('codec'))"
 >
   No settings match "<span x-text="query.trim()"></span>".
 </p>

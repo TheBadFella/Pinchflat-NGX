@@ -103,6 +103,7 @@ defmodule PinchflatWeb.Pages.PageController do
   defp render_home_page(conn, params) do
     downloaded_media_items = where(MediaQuery.new(), ^MediaQuery.downloaded())
     active_tab = tab_param(params, ~w(pending failed active-tasks downloaded job-queue system-health), "pending")
+    setting = Settings.record()
 
     conn
     |> render(:home,
@@ -111,7 +112,8 @@ defmodule PinchflatWeb.Pages.PageController do
       media_profile_count: Repo.aggregate(MediaProfile, :count, :id),
       source_count: Repo.aggregate(Source, :count, :id),
       media_item_size: Repo.aggregate(downloaded_media_items, :sum, :media_size_bytes),
-      media_item_count: Repo.aggregate(downloaded_media_items, :count, :id)
+      media_item_count: Repo.aggregate(downloaded_media_items, :count, :id),
+      setting: setting
     )
   end
 

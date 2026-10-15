@@ -10,7 +10,7 @@ defmodule Pinchflat.Pages.SystemHealthLive do
 
   alias Pinchflat.Diagnostics.DatabaseDiagnostics
   alias Pinchflat.Repo
-  alias Pinchflat.Diagnostics.SourceHealth
+  alias Pinchflat.Sources.Source
   alias PinchflatWeb.CustomComponents.TextComponents
 
   @refresh_interval_ms 10_000
@@ -52,14 +52,12 @@ defmodule Pinchflat.Pages.SystemHealthLive do
           <div class="space-y-2">
             <.health_row label="Total" value={@source_stats.total} />
             <.health_row label="Enabled" value={@source_stats.enabled} />
-            <.health_row label="Healthy" value={@source_stats.healthy} />
-            <.health_row label="Overdue" value={@source_stats.overdue} status={status_for_count(@source_stats.overdue)} />
-            <.health_row label="Failed check" value={@source_stats.failed} status={status_for_count(@source_stats.failed)} />
-            <.health_row label="Unknown" value={@source_stats.unknown} />
-            <.health_row label="Paused / held" value={@source_stats.paused} />
-            <.health_row label="Manual" value={@source_stats.manual} />
-            <.health_row label="Active" value={@source_stats.active} />
-            <.health_row label="Scheduled / pending" value={@source_stats.pending} />
+            <.health_row
+              label="Never Indexed"
+              value={@source_stats.never_indexed}
+              status={status_for_count(@source_stats.never_indexed)}
+            />
+            <.health_row label="Stale (>24h)" value={@source_stats.stale} status={status_for_count(@source_stats.stale)} />
           </div>
         </.health_card>
 
@@ -95,72 +93,78 @@ defmodule Pinchflat.Pages.SystemHealthLive do
         </.health_card>
       </div>
 
-      <div :if={@source_attention != []} class="theme-surface-raised p-4">
-        <h3 class="mb-3 text-lg font-semibold text-theme-on-surface">Indexing checks to review</h3>
+      <div :if={@stale_sources != []} class="theme-surface-raised p-4">
+        <h3 class="mb-3 flex items-center text-lg font-semibold text-theme-on-surface">
+          <.icon name="hero-exclamation-triangle" class="theme-status-warning mr-2 h-5 w-5" /> Sources Not Indexed Recently
+        </h3>
 
         <p class="mb-4 text-sm text-theme-on-surface-muted">
-          Fast checks and full scans use their own schedules. Overdue includes half an interval of grace
-          (at least ten minutes). Unknown means no retained success or queue status is available;
-          it does not mean your library is broken. Paused and manual sources are counted separately.
-          Showing up to ten sources needing review.
+          These sources haven't been indexed in over 24 hours. They may be stuck or have configuration issues.
         </p>
 
-        <div class="space-y-4">
-          <article :for={health <- @source_attention} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
-            <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <.link
-                href={~p"/sources/#{health.source.id}"}
-                class="min-h-[44px] min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium text-theme-primary"
-              >
-                {health.source.custom_name}
-              </.link>
+        <div class="space-y-4 md:hidden">
+          <article :for={source <- @stale_sources} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <.subtle_link href={~p"/sources/#{source.id}"}>
+                  <span class="block break-words font-medium text-theme-on-surface">{source.custom_name}</span>
+                </.subtle_link>
+              </div>
 
               <.link
-                :if={health.status in [:overdue, :failed]}
-                href={~p"/sources/#{health.source.id}/force_index"}
+                href={~p"/sources/#{source.id}/force_index"}
                 method="post"
-                class="inline-flex min-h-[44px] shrink-0 items-center text-sm text-theme-primary"
+                class="shrink-0 text-xs text-theme-primary transition hover:text-theme-secondary"
               >
-                Force Full Scan
+                Force Index
               </.link>
             </div>
 
-            <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt class="text-theme-on-surface-muted">Check</dt><dd class="text-theme-on-surface">{health.mode}</dd>
+            <dl class="grid grid-cols-1 gap-3 text-sm">
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Last Indexed</dt>
+                <dd class="text-right text-theme-on-surface">{format_last_indexed(source.last_indexed_at)}</dd>
               </div>
-
-              <div>
-                <dt class="text-theme-on-surface-muted">Status</dt><dd class="text-theme-on-surface">
-                  {health.status |> Atom.to_string() |> String.capitalize()}
-                </dd>
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Index Frequency</dt>
+                <dd class="text-right text-theme-on-surface">{format_frequency(source.index_frequency_minutes)}</dd>
               </div>
-
-              <div>
-                <dt class="text-theme-on-surface-muted">Last successful check</dt><dd class="text-theme-on-surface">
-                  {format_last_indexed(health.last_success_at)}
-                </dd>
-              </div>
-
-              <div>
-                <dt class="text-theme-on-surface-muted">Check interval</dt><dd class="text-theme-on-surface">
-                  {format_frequency(health.interval_minutes)}
-                </dd>
-              </div>
-
-              <div :if={health.source.fast_index}>
-                <dt class="text-theme-on-surface-muted">Last full scan</dt><dd class="text-theme-on-surface">
-                  {format_last_indexed(health.source.last_indexed_at)}
-                </dd>
-              </div>
-
-              <div :if={health.source.fast_index}>
-                <dt class="text-theme-on-surface-muted">Full-scan interval</dt><dd class="text-theme-on-surface">
-                  {format_frequency(health.source.index_frequency_minutes)}
+              <div class="flex items-start justify-between gap-3">
+                <dt class="text-theme-on-surface-muted">Enabled</dt>
+                <dd class="text-right">
+                  <span :if={source.enabled} class="theme-status-success">Yes</span>
+                  <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span>
                 </dd>
               </div>
             </dl>
           </article>
+        </div>
+
+        <div class="hidden md:block max-w-full overflow-visible">
+          <div class="overflow-x-auto overflow-y-hidden">
+            <.table rows={@stale_sources} table_class="text-sm">
+              <:col :let={source} label="Source">
+                <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+              </:col>
+
+              <:col :let={source} label="Last Indexed">{format_last_indexed(source.last_indexed_at)}</:col>
+
+              <:col :let={source} label="Index Frequency">{format_frequency(source.index_frequency_minutes)}</:col>
+
+              <:col :let={source} label="Enabled"><span :if={source.enabled} class="theme-status-success">Yes</span>
+                <span :if={!source.enabled} class="text-theme-on-surface-muted">No</span></:col>
+
+              <:col :let={source} label="">
+                <.link
+                  href={~p"/sources/#{source.id}/force_index"}
+                  method="post"
+                  class="text-xs text-theme-primary transition hover:text-theme-secondary"
+                >
+                  Force Index
+                </.link>
+              </:col>
+            </.table>
+          </div>
         </div>
       </div>
     </div>
@@ -219,34 +223,30 @@ defmodule Pinchflat.Pages.SystemHealthLive do
   end
 
   defp fetch_health_data(socket) do
-    health = SourceHealth.snapshot()
-
     assign(socket,
       db_stats: fetch_db_stats(),
       queue_stats: fetch_queue_stats(),
-      source_stats: health.stats,
-      source_attention: health.attention,
+      source_stats: fetch_source_stats(),
+      stale_sources: fetch_stale_sources(),
       storage_stats: fetch_storage_stats()
     )
   end
 
   defp fetch_storage_stats do
     setting = Settings.record()
-    enabled = Map.get(setting, :download_space_protection_enabled, false)
-    blocked = Map.get(setting, :download_space_protection_blocked, false)
 
     status =
       cond do
-        not enabled -> :disabled
-        blocked -> :blocked
+        not setting.download_space_protection_enabled -> :disabled
+        setting.download_space_protection_blocked -> :blocked
         true -> :healthy
       end
 
     %{
-      enabled: enabled,
-      blocked: blocked,
-      threshold: Map.get(setting, :download_space_protection_threshold_bytes),
-      free_bytes: Map.get(setting, :download_space_protection_free_bytes),
+      enabled: setting.download_space_protection_enabled,
+      blocked: setting.download_space_protection_blocked,
+      threshold: setting.download_space_protection_threshold_bytes,
+      free_bytes: setting.download_space_protection_free_bytes,
       status: status
     }
   end
@@ -298,6 +298,47 @@ defmodule Pinchflat.Pages.SystemHealthLive do
     }
   end
 
+  defp fetch_source_stats do
+    cutoff_24h = DateTime.utc_now() |> DateTime.add(-24, :hour)
+
+    total = Repo.aggregate(Source, :count, :id)
+
+    enabled =
+      from(s in Source, where: s.enabled == true)
+      |> Repo.aggregate(:count, :id)
+
+    never_indexed =
+      from(s in Source, where: is_nil(s.last_indexed_at), where: s.enabled == true)
+      |> Repo.aggregate(:count, :id)
+
+    stale =
+      from(s in Source,
+        where: s.enabled == true,
+        where: not is_nil(s.last_indexed_at),
+        where: s.last_indexed_at < ^cutoff_24h
+      )
+      |> Repo.aggregate(:count, :id)
+
+    %{
+      total: total,
+      enabled: enabled,
+      never_indexed: never_indexed,
+      stale: stale
+    }
+  end
+
+  defp fetch_stale_sources do
+    cutoff_24h = DateTime.utc_now() |> DateTime.add(-24, :hour)
+
+    from(s in Source,
+      where: s.enabled == true,
+      where: is_nil(s.last_indexed_at) or s.last_indexed_at < ^cutoff_24h,
+      order_by: [asc: s.last_indexed_at],
+      limit: 10
+    )
+    |> Repo.all()
+  end
+
   defp status_for_count(0), do: :normal
   defp status_for_count(count) when count > 0, do: :warning
 
@@ -323,14 +364,11 @@ defmodule Pinchflat.Pages.SystemHealthLive do
   defp format_number(num) when is_integer(num), do: Integer.to_string(num)
   defp format_number(_), do: "N/A"
 
-  defp format_last_indexed(nil), do: "No retained success"
+  defp format_last_indexed(nil), do: "Never"
 
   defp format_last_indexed(datetime) do
     TextComponents.datetime_in_zone(%{datetime: datetime, format: "%Y-%m-%d %H:%M"})
   end
-
-  defp format_frequency(nil), do: "Manual"
-  defp format_frequency(0), do: "Manual"
 
   defp format_frequency(minutes) when minutes < 60, do: "#{minutes} min"
   defp format_frequency(minutes) when minutes < 1440, do: "#{div(minutes, 60)} hours"
