@@ -1,63 +1,69 @@
 # Roadmap
 
-GitHub issues are still the place to open requests. This page lists larger work we have **not** scheduled yet.
+Use [GitHub issues](https://github.com/TheBadFella/Pinchflat-NGX/issues) for bugs and smaller requests. This page tracks larger features that are not in the current release train yet.
 
-Published versions and their notes live on [GitHub Releases](https://github.com/TheBadFella/Pinchflat-NGX/releases), not in this repository.
+Shipped versions and release notes: [GitHub Releases](https://github.com/TheBadFella/Pinchflat-NGX/releases).
 
-Each item below is a short title and two lines of context.
+Tracking for the next planning window: [Roadmap 31Oct 2026](https://github.com/TheBadFella/Pinchflat-NGX/milestone/2) milestone.
 
----
+## Upcoming Features
 
-## Planned (deferred)
+### Global Latest Tab ([#99](https://github.com/TheBadFella/Pinchflat-NGX/issues/99))
 
-Larger or dependency-heavy work stays here until we open a dedicated feature PR. Issues stay open where they exist.
+- Top-level view of recently **indexed** media across all sources, sorted newest first.
+- Goal: stop opening every source just to see what is new.
+- Likely reuse of existing history-table UI; default sort on indexed time (`inserted_at`), not download time alone.
+- Targeted for the release after **2026.10.15** (see the issue for discussion on sort and filters).
 
-### Global “Latest” tab ([#99](https://github.com/TheBadFella/Pinchflat-NGX/issues/99))
+### In-App YouTube Browser
 
-One Home (or top-level) view of recently **indexed** media across all sources, newest first, so you do not open each source to see what is new.
-Reuses existing history-table patterns where possible; default sort by indexed time (`inserted_at`).
+- Search and browse YouTube inside Pinchflat-ngx with clear status for items already in your library.
+- Guarded download actions and limits on provider/API use so browsing does not hammer yt-dlp or your network.
+- Touches routes, LiveView, workers, and packaging; one of the larger UI efforts on the list.
 
-### In-app YouTube browser
+### Paste-a-Link Quick Download
 
-Browse and search YouTube inside Pinchflat-ngx with library-aware status, guarded downloads, and bounded provider use.
-Large surface area (routes, LiveView, workers, packaging).
+- Paste a YouTube URL, parse it strictly, preview title/channel/thumbnail, then add or download on confirm.
+- Shares intake rules with the in-app browser work (duplicates, policy, errors).
+- Depends on the browser stack above for a consistent “add from URL” path.
 
-### Paste-a-link quick download
+### Subscription Import From CSV
 
-Add a video from a pasted YouTube URL with strict parsing and preview before intake.
-Depends on the in-app browser stack and shared intake policy.
+- Import subscriptions from a Google Takeout-style CSV.
+- Preview rows, dedupe against existing sources, run import in the background with cancel and retry.
+- Bounded parsing so a bad export cannot wedge the app.
 
-### Subscription import from CSV
+### Share Links and Bookmarklet
 
-Import YouTube subscriptions from a Takeout-style CSV with preview, deduplication, and a durable background importer.
-Bounded parsing and cancel/retry behavior.
+- Scoped share tokens so you can send a URL into your library from another browser tab.
+- Bookmarklet or share URL flow with rate limits and preview before anything is queued.
+- Settings live outside the main settings form (same pattern as API access).
 
-### Share links and bookmarklet
+### Media Server Library Refresh
 
-Authenticated share tokens and a bookmarklet for sending URLs into your library from another browser tab.
-Scoped tokens, rate limits, and preview-only flows.
+- Optional Plex, Jellyfin, or Emby library refresh after downloads finish.
+- Coalesced jobs so ten new episodes do not fire ten separate scans.
+- Server URL and credentials stay in settings; Pinchflat-ngx only nudges the server, it does not replace it.
 
-### Media server library refresh
+### Proxy, Sharing, and Browser Hardening
 
-Optional Plex, Jellyfin, or Emby refresh after downloads complete, with coalesced jobs and safe server configuration.
-Does not replace your media server; only nudges it when new files land.
+- Trusted reverse-proxy options, tighter cookie/session handling, token expiry, clearer errors in browser search.
+- Follows share intake and media-server refresh in the original feature order from the merge backlog.
 
-### Proxy, sharing, and browser hardening
+### Channel Event Notifications (WebSub)
 
-Trusted-proxy options, cookie/session hardening, token expiry, and clearer browser search feedback.
-Follows share intake and media-server refresh in the original merge order.
+- Optional per-channel upload, title, and removal notifications via a bounded WebSub sidecar.
+- Settings to enable channels individually; default off.
+- Initial ship does not depend on live YouTube webhook experiments in production.
 
-### Channel event notifications (WebSub)
+### Expanded SQLite to PostgreSQL Transfer Tables
 
-Optional upload/title/removal notifications per channel via a bounded WebSub sidecar and settings UI.
-Default off; live YouTube webhook trials are not part of the initial ship criteria.
+- **Not** the migration shipped in **[#87](https://github.com/TheBadFella/Pinchflat-NGX/pull/87)** / **2026.10.15**. That release already copies the core library tables and resets PostgreSQL ID sequences for those tables.
+- This item is follow-on work: extra tables, future schema (for example channel-event storage), and harder edge cases beyond the first-cut transfer.
+- Additive only; pairs with WebSub or other features if their tables are added later.
 
-### Expanded SQLite → PostgreSQL transfer tables
+### Dynamic Announcements Banner
 
-Broader table coverage and sequence preservation when moving an existing NGX library from SQLite to PostgreSQL beyond the first-cut transfer.
-Additive to **#87**; pairs with channel-event schema only if that feature is enabled later.
-
-### Dynamic announcements banner
-
-Optional fetched announcement feed, dismissible banner, and `/announcements` page with safe HTTPS fetching and local cache.
-Requires choosing a production feed endpoint before default-on behavior makes sense.
+- Optional fetched announcement feed, dismissible banner, and `/announcements` page.
+- HTTPS fetch with a local cache; no phone-home until a production feed URL is chosen.
+- Default off until maintainers pick a feed endpoint and retention rules.
