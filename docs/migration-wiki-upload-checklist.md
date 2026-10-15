@@ -1,13 +1,15 @@
 # Migration wiki upload checklist
 
-Published October 14, 2026 at wiki commit `e7517c981e2d2a5ca2b3cdac236f968e4581c73d`. Post-merge hygiene (October 15, 2026): removed the stale PR #86 “upcoming update” callout from the live wiki and local `docs/legacy-pinchflat-migration.md` after #86 merged to `master`. Migration summary posted on issue #82 (2026-10-14). Local draft retained in `docs/migration-issue-comment-draft.md` for edits only.
+**Policy (October 15, 2026):** The [Pinchflat-ngx wiki](https://github.com/TheBadFella/Pinchflat-NGX/wiki) is the single source of truth for user documentation. Edit wiki pages directly; repo copies under `docs/` are redirect stubs only (see [docs/README.md](README.md)).
+
+Published October 14, 2026 at wiki commit `e7517c981e2d2a5ca2b3cdac236f968e4581c73d`. Post-merge hygiene (October 15, 2026): removed the stale PR #86 “upcoming update” callout from the live wiki after #86 merged to `master`. Migration summary posted on issue #82 (2026-10-14). Local draft retained in `docs/migration-issue-comment-draft.md` for edits only.
 
 ## Pages and links
 
-| Local source | Wiki title | Wiki slug |
-| --- | --- | --- |
-| `docs/legacy-pinchflat-migration.md` | Migrating from Pinchflat | `Migrating-from-Pinchflat` |
-| `docs/backing-up-config-before-migration.md` | Backing up config before migration | `Backing-up-config-before-migration` |
+| Local source                                 | Wiki title                         | Wiki slug                            |
+| -------------------------------------------- | ---------------------------------- | ------------------------------------ |
+| Wiki: [Migrating-from-Pinchflat](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Migrating-from-Pinchflat) | Migrating from Pinchflat | `Migrating-from-Pinchflat` |
+| Wiki: [Backing-up-config-before-migration](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Backing-up-config-before-migration) | Backing up config before migration | `Backing-up-config-before-migration` |
 
 - [ ] Review `docs/migration-wiki-preview.html` locally, including images and both pages. The Markdown files remain the editable source.
 - [x] Confirm the release being documented includes the migration welcome/review work from PR #86 (merged 2026-10-14).

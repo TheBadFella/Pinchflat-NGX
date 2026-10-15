@@ -185,7 +185,7 @@ Save this as `compose.yaml`, replace the timezone if needed, and run `docker com
 <http://localhost:8945> when the container is healthy.
 
 > [!TIP]
-> Migrating an existing library from upstream Pinchflat? See [Migrating from Pinchflat](docs/legacy-pinchflat-migration.md)
+> Migrating an existing library from upstream Pinchflat? See [Migrating from Pinchflat](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Migrating-from-Pinchflat) on the wiki.
 > for pre-migration backups, drop-in Compose configuration, and the migration review walkthrough.
 
 ### PostgreSQL image
@@ -303,12 +303,11 @@ atomic rename after copying in that case. Staging paths must be absolute, writab
 | Start here                                                                                       | Run it safely                                                                                      | Understand the fork                                                                                |
 | :----------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
 | [Installation](https://github.com/TheBadFella/pinchflat-ngx/wiki/Installation)                   | [Backups and restore](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore)       | [Pinchflat-ngx features](https://github.com/TheBadFella/pinchflat-ngx/wiki/Pinchflat-ngx-Features) |
-| [Migrating from Pinchflat](docs/legacy-pinchflat-migration.md)                                   | [Upgrading and rollback](https://github.com/TheBadFella/pinchflat-ngx/wiki/Upgrading-and-Rollback) | [Upstream Pinchflat wiki](https://github.com/kieraneglin/pinchflat/wiki)                           |
-| [Environment variables](https://github.com/TheBadFella/pinchflat-ngx/wiki/Environment-Variables) | [Diagnostics](https://github.com/TheBadFella/pinchflat-ngx/wiki/Diagnostics)                       | API documentation at `/api/docs` on your instance                                                  |
-| [OIDC single sign-on](https://github.com/TheBadFella/pinchflat-ngx/wiki/OIDC-Single-Sign-On)     | [Backing up config before migration](docs/backing-up-config-before-migration.md)                   | [SQLite to PostgreSQL migration](docs/sqlite-postgres-migration.md)                                |
+| [Migrating from Pinchflat](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Migrating-from-Pinchflat) | [Upgrading and rollback](https://github.com/TheBadFella/pinchflat-ngx/wiki/Upgrading-and-Rollback) | [Upstream Pinchflat wiki](https://github.com/kieraneglin/pinchflat/wiki)                           |
+| [Environment variables](https://github.com/TheBadFella/pinchflat-ngx/wiki/Environment-Variables)     | [Diagnostics](https://github.com/TheBadFella/pinchflat-ngx/wiki/Diagnostics)                       | API documentation at `/api/docs` on your instance                                                  |
+| [OIDC single sign-on](https://github.com/TheBadFella/pinchflat-ngx/wiki/OIDC-Single-Sign-On)           | [Backing up config before migration](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Backing-up-config-before-migration) | [SQLite to PostgreSQL migration](https://github.com/TheBadFella/Pinchflat-NGX/wiki/SQLite-to-PostgreSQL-migration) |
 
-The Pinchflat-ngx wiki documents behavior added or changed by this fork. Shared concepts such as naming templates, media
-profiles, podcast feeds, SponsorBlock, retention, and custom scripts remain documented by upstream.
+The [Pinchflat-ngx wiki](https://github.com/TheBadFella/Pinchflat-NGX/wiki) is the single source of truth for operator documentation. Shared concepts such as naming templates, media profiles, podcast feeds, SponsorBlock, retention, and custom scripts remain documented by upstream.
 
 ---
 
@@ -317,9 +316,9 @@ profiles, podcast feeds, SponsorBlock, retention, and custom scripts remain docu
 - [Report a bug](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=bug_report.yml)
 - [Request a feature](https://github.com/TheBadFella/pinchflat-ngx/issues/new?template=enhancement_request.yml)
 - [Browse releases](https://github.com/TheBadFella/pinchflat-ngx/releases)
-- [Roadmap](docs/roadmap.md) for tracked enhancements not yet scheduled
+- [Roadmap](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Roadmap) for tracked enhancements not yet scheduled
 - Read [AGENTS.md](AGENTS.md) for development commands and repository conventions
 
 Pinchflat-ngx is distributed under the terms in [LICENSE](LICENSE).
 
-For the optional SQLite transfer flow, see [SQLite to PostgreSQL migration](docs/sqlite-postgres-migration.md).
+For the optional SQLite transfer flow, see [SQLite to PostgreSQL migration](https://github.com/TheBadFella/Pinchflat-NGX/wiki/SQLite-to-PostgreSQL-migration) on the wiki.

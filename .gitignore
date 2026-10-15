@@ -62,3 +62,6 @@ build.log
 # not committed. Loaded at runtime via config/runtime.exs.
 /priv/repo/extensions/sqlean-linux-x86/
 /priv/repo/extensions/sqlean-linux-arm/
+
+# Local clone of the GitHub wiki (documentation source of truth is the wiki remote).
+/.wiki-tmp/
