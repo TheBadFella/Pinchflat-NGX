@@ -34,7 +34,15 @@ defmodule Pinchflat.Settings.Setting do
     :channel_discovery_enabled,
     :channel_discovery_mentions_enabled,
     :channel_discovery_featured_enabled,
-    :postgres_backup_retention_count
+    :postgres_backup_retention_count,
+    :download_space_protection_enabled,
+    :download_space_protection_threshold_bytes,
+    :download_space_protection_blocked,
+    :download_space_protection_blocked_reason,
+    :download_space_protection_blocked_location,
+    :download_space_protection_free_bytes,
+    :download_space_protection_blocked_at,
+    :download_space_protection_alerted_at
   ]
 
   @time_formats ~w(24h 12h)
@@ -85,6 +93,15 @@ defmodule Pinchflat.Settings.Setting do
     field :channel_discovery_featured_enabled, :boolean, default: false
     field :postgres_backup_retention_count, :integer, default: 7
 
+    field :download_space_protection_enabled, :boolean, default: false
+    field :download_space_protection_threshold_bytes, :integer, default: 10_737_418_240
+    field :download_space_protection_blocked, :boolean, default: false
+    field :download_space_protection_blocked_reason, :string
+    field :download_space_protection_blocked_location, :string
+    field :download_space_protection_free_bytes, :integer
+    field :download_space_protection_blocked_at, :utc_datetime
+    field :download_space_protection_alerted_at, :utc_datetime
+
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
   end
@@ -106,6 +123,7 @@ defmodule Pinchflat.Settings.Setting do
       less_than_or_equal_to: 20
     )
     |> validate_number(:postgres_backup_retention_count, greater_than_or_equal_to: 1, less_than_or_equal_to: 100)
+    |> validate_number(:download_space_protection_threshold_bytes, greater_than_or_equal_to: 1)
   end
 
   @doc """

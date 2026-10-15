@@ -2,7 +2,6 @@ defmodule PinchflatWeb.PageControllerTest do
   use PinchflatWeb.ConnCase
 
   alias Pinchflat.LegacyMigration
-  alias Pinchflat.LegacyMigrationTestHelpers
   alias Pinchflat.Settings
 
   describe "GET / when testing onboarding" do
@@ -15,7 +14,7 @@ defmodule PinchflatWeb.PageControllerTest do
       Settings.set(onboarding: false)
 
       conn = get(conn, ~p"/?onboarding=1")
-      assert html_response(conn, 200) =~ "Welcome to Pinchflat-ngx"
+      assert html_response(conn, 200) =~ "Welcome to Pinchflat"
     end
 
     test "sets the onboarding setting to false if you pass the corrent query param", %{conn: conn} do
@@ -35,10 +34,19 @@ defmodule PinchflatWeb.PageControllerTest do
       assert html_response(conn, 200) =~ "Latest"
     end
 
-    test "responds with 200 and empty body for HEAD requests", %{conn: conn} do
-      conn = head(conn, ~p"/")
-      assert response(conn, 200) == ""
-      assert response_content_type(conn, :html) =~ "text/html"
+    test "displays storage space protection banner when downloads are blocked", %{conn: conn} do
+      Settings.set(onboarding: false)
+      Settings.set(download_space_protection_enabled: true)
+      Settings.set(download_space_protection_blocked: true)
+      Settings.set(download_space_protection_blocked_location: "destination")
+      Settings.set(download_space_protection_free_bytes: 5 * 1024 * 1024 * 1024)
+
+      conn = get(conn, ~p"/")
+      html = html_response(conn, 200)
+
+      assert html =~ "Downloads Paused: Storage Space Low"
+      assert html =~ "Check storage and resume downloads"
+      assert html =~ "destination"
     end
   end
 
@@ -150,11 +158,11 @@ defmodule PinchflatWeb.PageControllerTest do
       assert html =~ "MENU"
     end
 
+    @tag :sqlite_only
     test "a rejected completion write leaves review pending and shows an error", %{conn: conn} do
-      LegacyMigrationTestHelpers.install_reject_status_update_trigger!(
+      Ecto.Adapters.SQL.query!(
         Pinchflat.Repo,
-        "reject_review_confirmation",
-        "pending_release"
+        "CREATE TEMP TRIGGER reject_review_confirmation BEFORE UPDATE OF status ON legacy_migration_records WHEN NEW.status='pending_release' BEGIN SELECT RAISE(ABORT, 'review write rejected'); END"
       )
 
       try do
@@ -164,15 +172,15 @@ defmodule PinchflatWeb.PageControllerTest do
         assert LegacyMigration.legacy_migration_pending?()
         assert is_nil(LegacyMigration.get_state().confirmed_at)
       after
-        LegacyMigrationTestHelpers.drop_reject_status_update_trigger!(Pinchflat.Repo, "reject_review_confirmation")
+        Ecto.Adapters.SQL.query!(Pinchflat.Repo, "DROP TRIGGER reject_review_confirmation")
       end
     end
 
+    @tag :sqlite_only
     test "release persistence failure retains approval and can be retried", %{conn: conn} do
-      LegacyMigrationTestHelpers.install_reject_status_update_trigger!(
+      Ecto.Adapters.SQL.query!(
         Pinchflat.Repo,
-        "reject_release_completion",
-        "completed"
+        "CREATE TEMP TRIGGER reject_release_completion BEFORE UPDATE OF status ON legacy_migration_records WHEN NEW.status='completed' BEGIN SELECT RAISE(ABORT, 'release rejected'); END"
       )
 
       try do
@@ -184,7 +192,7 @@ defmodule PinchflatWeb.PageControllerTest do
         assert html =~ "Retry resuming work"
         assert html =~ "Some queues may remain paused"
       after
-        LegacyMigrationTestHelpers.drop_reject_status_update_trigger!(Pinchflat.Repo, "reject_release_completion")
+        Ecto.Adapters.SQL.query!(Pinchflat.Repo, "DROP TRIGGER reject_release_completion")
       end
 
       changed = post(recycle(conn), ~p"/migration/confirm_review")

@@ -52,7 +52,8 @@ window.settingsPage = () => ({
       'yt-dlp ytdlp youtube-dl update nightly stable pinned version base config force-ipv4 retries fragment-retries socket-timeout ipv4',
     codec: 'codec video audio avc m4a remux preference mp4',
     cookies:
-      'cookies cookie netscape cookies.txt members-only age-restricted default cookie behavior'
+      'cookies cookie netscape cookies.txt members-only age-restricted default cookie behavior',
+    storage: 'storage disk space protection low space free threshold resume paused'
   },
   init() {
     this.applyHash()

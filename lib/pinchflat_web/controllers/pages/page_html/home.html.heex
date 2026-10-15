@@ -1,3 +1,37 @@
+<%= if assigns[:setting] && @setting.download_space_protection_blocked do %>
+  <div class="theme-surface-raised mb-4 rounded-m3-md border border-theme-warning/40 p-5">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-start gap-3">
+        <.icon name="hero-exclamation-triangle" class="theme-status-warning mt-0.5 h-6 w-6 shrink-0" />
+        <div>
+          <h3 class="text-lg font-bold text-theme-on-surface">Downloads Paused: Storage Space Low</h3>
+          <p class="text-sm text-theme-on-surface-muted mt-1">
+            New downloads are temporarily blocked because the
+            <span class="font-medium text-theme-on-surface">{@setting.download_space_protection_blocked_location ||
+              "destination"}</span>
+            storage is low on space.
+            <%= if @setting.download_space_protection_free_bytes do %>
+              Available: <.readable_filesize byte_size={@setting.download_space_protection_free_bytes} />
+              (minimum required: <.readable_filesize byte_size={@setting.download_space_protection_threshold_bytes} />).
+            <% end %>
+          </p>
+        </div>
+      </div>
+      <div>
+        <.link href={~p"/settings/resume_downloads?#{[redirect_to: ~p"/"]}"} method="post">
+          <.button
+            color="bg-theme-primary text-theme-on-primary"
+            rounding="rounded-m3-sm"
+            class="px-4 py-2 text-sm min-h-[44px]"
+          >
+            Check storage and resume downloads
+          </.button>
+        </.link>
+      </div>
+    </div>
+  </div>
+<% end %>
+
 <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
   <div class="theme-surface-raised flex flex-col justify-center px-7.5 py-6">
     <a href={~p"/media_profiles"} class="flex flex-col items-center py-2">

@@ -84,6 +84,7 @@ defmodule PinchflatWeb.Router do
     resources "/search", Searches.SearchController, only: [:show], singleton: true
 
     resources "/settings", Settings.SettingController, only: [:show, :update], singleton: true
+    post "/settings/resume_downloads", Settings.SettingController, :resume_downloads
     post "/settings/backups", Settings.BackupController, :create
     get "/settings/backups/:filename", Settings.BackupController, :download
     get "/settings/cookies", Settings.SettingController, :download_cookies

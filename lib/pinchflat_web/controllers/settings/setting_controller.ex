@@ -4,6 +4,7 @@ defmodule PinchflatWeb.Settings.SettingController do
   alias Pinchflat.Backups
   alias Pinchflat.Settings
   alias Pinchflat.Reconciliation
+  alias Pinchflat.Downloading.SpaceProtection
   alias Pinchflat.Settings.CookieFile
   alias Pinchflat.Settings.QueueConcurrency
   alias Pinchflat.YtDlp.UpdateWorker
@@ -28,6 +29,7 @@ defmodule PinchflatWeb.Settings.SettingController do
       {:ok, updated_setting} ->
         maybe_apply_yt_dlp_policy(setting, updated_setting)
         QueueConcurrency.apply!(updated_setting)
+        SpaceProtection.sync_settings_state(setting, updated_setting)
         # A settings change can alter predicted paths, so any staged reconcile
         # plan may no longer be accurate — mark it stale so it must be rebuilt
         Reconciliation.mark_ready_plans_stale()
@@ -73,6 +75,53 @@ defmodule PinchflatWeb.Settings.SettingController do
       conn
       |> put_flash(:error, "Log file couldn't be found")
       |> redirect(to: ~p"/diagnostics")
+    end
+  end
+
+  def resume_downloads(conn, params) do
+    redirect_target = Map.get(params, "redirect_to", ~p"/settings")
+
+    case SpaceProtection.manual_resume() do
+      {:ok, :resumed} ->
+        conn
+        |> put_flash(:info, "Storage check passed. Download protection block lifted.")
+        |> redirect(to: redirect_target)
+
+      {:ok, :not_blocked} ->
+        conn
+        |> put_flash(:info, "Downloads are not blocked by storage protection.")
+        |> redirect(to: redirect_target)
+
+      {:error, :below_recovery_threshold, free_bytes, recovery_target, location} ->
+        free_gib = :erlang.float_to_binary(free_bytes / (1024 * 1024 * 1024), decimals: 2)
+        target_gib = :erlang.float_to_binary(recovery_target / (1024 * 1024 * 1024), decimals: 2)
+
+        conn
+        |> put_flash(
+          :error,
+          "Storage check failed: #{location} storage free space (#{free_gib} GiB) is still below " <>
+            "the recovery threshold of #{target_gib} GiB (configured threshold + 1 GiB). " <>
+            "Free more disk space before resuming."
+        )
+        |> redirect(to: redirect_target)
+
+      {:error, :missing_storage, location} ->
+        conn
+        |> put_flash(:error, "Storage check failed: #{location} storage path is missing or inaccessible.")
+        |> redirect(to: redirect_target)
+
+      {:error, :unknown_capacity, location} ->
+        conn
+        |> put_flash(
+          :error,
+          "Storage check failed: unable to determine available disk space for #{location} storage."
+        )
+        |> redirect(to: redirect_target)
+
+      {:error, reason, location} ->
+        conn
+        |> put_flash(:error, "Storage check failed for #{location}: #{inspect(reason)}.")
+        |> redirect(to: redirect_target)
     end
   end
 end
