@@ -21,7 +21,7 @@ defmodule PinchflatWeb.Settings.SettingHTML do
   end
 
   def external_base_url_help do
-    "Public Pinchflat URL used to build clickable links in notifications. Include the scheme, for example https://pinchflat.example.com"
+    "Public Pinchflat-ngx URL used to build clickable links in notifications. Include the scheme, for example https://pinchflat.example.com"
   end
 
   def youtube_api_help do

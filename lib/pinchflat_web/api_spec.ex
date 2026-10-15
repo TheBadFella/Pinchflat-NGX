@@ -1,6 +1,6 @@
 defmodule PinchflatWeb.ApiSpec do
   @moduledoc """
-  OpenAPI 3.0 specification for the Pinchflat API.
+  OpenAPI 3.0 specification for the Pinchflat-ngx API.
   Collects operations from controller @operation decorators.
   """
 

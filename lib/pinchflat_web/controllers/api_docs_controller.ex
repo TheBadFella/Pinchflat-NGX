@@ -14,7 +14,7 @@ defmodule PinchflatWeb.ApiDocsController do
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Pinchflat API Documentation</title>
+        <title>Pinchflat-ngx API Documentation</title>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>

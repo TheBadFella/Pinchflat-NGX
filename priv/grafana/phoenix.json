@@ -1972,7 +1972,7 @@
     "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
   },
   "timezone": "",
-  "title": "Pinchflat - PromEx Phoenix Dashboard",
+  "title": "Pinchflat-ngx - PromEx Phoenix Dashboard",
   "uid": "970297EC2ACFCF6777A4D3444B63C036",
   "version": 1
 }

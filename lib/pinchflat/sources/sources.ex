@@ -389,7 +389,7 @@ defmodule Pinchflat.Sources do
          "The download queue is paused. This happens while a file reconcile or database compaction reserves a quiet window, and lifts on its own when that finishes."},
       not directory_writable? &&
         {:storage_directory_unwritable,
-         "Pinchflat can't write to #{storage_directory(source)}, so no download can be saved. Check the volume's permissions."}
+         "Pinchflat-ngx can't write to #{storage_directory(source)}, so no download can be saved. Check the volume's permissions."}
     ]
     |> Enum.filter(&is_tuple/1)
     |> Enum.map(fn {code, message} -> %{code: code, message: message} end)
