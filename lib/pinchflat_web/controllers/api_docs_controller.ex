@@ -7,6 +7,9 @@ defmodule PinchflatWeb.ApiDocsController do
 
   # sobelow_skip ["XSS.SendResp"]
   def index(conn, _params) do
+    base_route_path = Application.get_env(:pinchflat, :base_route_path, "/")
+    spec_url = Path.join(base_route_path, "/api/spec")
+
     html = """
     <!DOCTYPE html>
     <html>
@@ -19,10 +22,15 @@ defmodule PinchflatWeb.ApiDocsController do
         <script
           id="api-reference"
           type="application/json"
-          data-url="/api/spec"
+          data-url="#{spec_url}"
+          data-configuration='{"proxyUrl":""}'
           data-theme="default"
         ></script>
-        <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+        <script
+          src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.73.0/dist/browser/standalone.js"
+          integrity="sha384-OKyMdsDX84ypSZEhVun8YElXk5c2GQaH3EXPOc6ItmVcLDUAvKHYwvDLvAgsqVtB"
+          crossorigin="anonymous"
+        ></script>
       </body>
     </html>
     """

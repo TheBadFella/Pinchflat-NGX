@@ -18,7 +18,7 @@ defmodule PinchflatWeb.ApiSpec do
       },
       servers: [
         %Server{
-          url: "/",
+          url: Application.get_env(:pinchflat, :base_route_path, "/"),
           description: "Current server"
         }
       ],

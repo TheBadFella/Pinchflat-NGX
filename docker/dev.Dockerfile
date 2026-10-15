@@ -69,7 +69,7 @@ RUN set -eux; \
   node --version; \
   npm --version; \
   rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg && \
-  npm install -g yarn prettier@3.9.4 sqleton@^4.0.0 && \
+  npm install -g yarn prettier@3.9.10 sqleton@^4.0.0 && \
   yarn --version && \
   # Install baseline Elixir packages
   mix local.hex --force && \
@@ -99,7 +99,7 @@ RUN set -eux; \
   # Install Apprise
   export PIPX_HOME=/opt/pipx && \
   export PIPX_BIN_DIR=/usr/local/bin && \
-  pipx install apprise && \
+  pipx install apprise==2.0.1 && \
   # Set up optional shell tools
   if [ "${INSTALL_SHELL_TOOLS:-0}" = "1" ]; then \
     chsh -s $(which zsh) && \

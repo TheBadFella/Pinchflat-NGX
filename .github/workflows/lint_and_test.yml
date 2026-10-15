@@ -5,7 +5,7 @@ on:
 
 # Cancel in-progress runs for the same branch/PR
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -42,12 +42,13 @@ jobs:
           context: .
           file: ./docker/dev.Dockerfile
           load: true
+          tags: ${{ matrix.database == 'postgres' && 'pinchyt-postgres-phx:latest' || 'pinchyt-phx:latest' }}
           build-args: DATABASE_ADAPTER=${{ matrix.database }}
           cache-from: type=gha,scope=test-${{ matrix.database }}
           cache-to: type=gha,scope=test-${{ matrix.database }},mode=max
 
       - name: Run Docker image
-        run: docker compose up --detach
+        run: docker compose up --detach --no-build
 
       # NOTE: All exec commands use the -T flag to compensate for
       # a bug in the GitHub Actions runner where its stdin/stderr
@@ -93,10 +94,15 @@ jobs:
           context: .
           file: ./docker/dev.Dockerfile
           load: true
+          tags: pinchyt-postgres-migrations-phx:latest
           build-args: DATABASE_ADAPTER=postgres
+          cache-from: |
+            type=gha,scope=test-schema-postgres
+            type=gha,scope=test-postgres
+          cache-to: type=gha,scope=test-schema-postgres,mode=max
 
       - name: Run Docker image
-        run: docker compose up --detach
+        run: docker compose up --detach --no-build
 
       - name: Install Elixir dependencies
         run: docker compose exec -T phx mix deps.get
@@ -106,6 +112,8 @@ jobs:
           docker compose exec -T phx mix test --include migration_schema
           test/pinchflat/database/channel_discovery_migration_postgres_test.exs
           test/pinchflat/database/upload_date_index_migration_postgres_test.exs
+          test/pinchflat/database/library_text_migration_postgres_test.exs
+          test/pinchflat/sources/directory_move_test.exs
 
       - name: Cleanup
         if: always()

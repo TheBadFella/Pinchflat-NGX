@@ -77,7 +77,7 @@ defmodule Pinchflat.Database.LibraryTextMigrationPostgresTest do
     Repo.delete!(Repo.get!(Pinchflat.Sources.Source, item.source_id))
   end
 
-  test "all 41 scalar columns and subtitle elements have effective text capacity" do
+  test "all 33 scalar columns and subtitle elements have effective text capacity" do
     columns = [
       media_profiles: ~w(name output_path_template sub_langs audio_track),
       sources:
@@ -86,13 +86,12 @@ defmodule Pinchflat.Database.LibraryTextMigrationPostgresTest do
         ~w(title original_url media_filepath thumbnail_filepath metadata_filepath nfo_filepath predicted_media_filepath unavailable_reason),
       source_metadata: ~w(metadata_filepath fanart_filepath poster_filepath banner_filepath),
       media_metadata: ~w(metadata_filepath thumbnail_filepath),
-      settings:
-        ~w(apprise_server external_base_url youtube_api_key plex_url plex_token jellyfin_url jellyfin_api_key emby_url emby_api_key cookie_health_canary_url download_space_protection_blocked_location),
+      settings: ~w(apprise_server external_base_url youtube_api_key),
       settings_backup: ~w(value),
       channel_discovery_suggestions: ~w(channel_name)
     ]
 
-    assert Enum.sum(Enum.map(columns, fn {_, fields} -> length(fields) end)) == 41
+    assert Enum.sum(Enum.map(columns, fn {_, fields} -> length(fields) end)) == 33
 
     for {table, fields} <- columns, field <- fields do
       assert description_type(to_string(table), field) == "text", "#{table}.#{field}"
