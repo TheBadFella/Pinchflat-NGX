@@ -1,6 +1,9 @@
 defmodule Pinchflat.Settings.CookieFileLive do
   use PinchflatWeb, :live_view
 
+  alias Pinchflat.CookieHealth
+  alias Pinchflat.CookieHealth.HealthCheckWorker
+  alias Pinchflat.Settings
   alias Pinchflat.Settings.CookieFile
 
   def render(assigns) do
@@ -77,18 +80,130 @@ defmodule Pinchflat.Settings.CookieFileLive do
       </form>
 
       <.error :for={err <- upload_errors(@uploads.cookies)}>{error_to_string(err)}</.error>
+
+      <!-- Cookie Health & Truthful Monitoring Card -->
+      <div class="mt-6 rounded-m3-md border border-theme-outline/60 bg-theme-surface-2 p-5 shadow-m3-1">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/40 pb-4">
+          <div class="flex items-center gap-3">
+            <h4 class="text-base font-medium text-theme-on-surface">Cookie Health Status</h4>
+            <span class={["rounded-full px-3 py-0.5 text-xs font-medium", status_badge_class(@health_status)]}>
+              {status_label(@health_status)}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            phx-click="test_cookie_health"
+            class="theme-outline-button flex items-center gap-2 px-4 py-2 text-xs font-medium"
+            disabled={!@present or @checking}
+          >
+            <.icon
+              name={if @checking, do: "hero-arrow-path", else: "hero-play"}
+              class={if(@checking, do: "h-4 w-4 animate-spin", else: "h-4 w-4")}
+            />
+            {if @checking, do: "Testing...", else: "Test Now"}
+          </button>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+          <div>
+            <span class="text-xs font-medium text-theme-on-surface-muted">Last Checked</span>
+            <p class="text-theme-on-surface">{format_timestamp(@last_checked_at)}</p>
+          </div>
+          <div>
+            <span class="text-xs font-medium text-theme-on-surface-muted">Last Confirmed Authenticated</span>
+            <p class="text-theme-on-surface">{format_timestamp(@last_authenticated_at)}</p>
+          </div>
+        </div>
+
+        <div :if={@last_error} class="theme-status-card theme-status-card-error mt-4 text-xs">
+          <span class="font-medium">Error:</span> {@last_error}
+        </div>
+
+        <div :if={@health_details && !@last_error} class="mt-3 text-xs text-theme-on-surface-muted">
+          {@health_details}
+        </div>
+
+        <!-- Inline Monitoring Settings Form -->
+        <form phx-submit="save_monitoring_config" class="mt-5 border-t border-theme-outline/40 pt-4">
+          <div class="flex flex-col gap-4">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                name="cookie_health_monitoring_enabled"
+                value="true"
+                checked={@monitoring_enabled}
+                class="rounded border-theme-outline bg-theme-surface text-theme-primary focus:ring-theme-primary"
+              />
+              <span class="text-sm font-medium text-theme-on-surface">Enable Automatic Periodic Health Monitoring</span>
+            </label>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label class="block text-xs font-medium text-theme-on-surface-muted mb-1">Check Interval (Hours)</label>
+                <input
+                  type="number"
+                  name="cookie_health_check_interval_hours"
+                  min="1"
+                  max="168"
+                  value={@check_interval_hours}
+                  class="w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none"
+                />
+              </div>
+
+              <div class="sm:col-span-2">
+                <label class="block text-xs font-medium text-theme-on-surface-muted mb-1">
+                  Canary URL (Members-only / Auth-gated video)
+                </label>
+                <input
+                  type="text"
+                  name="cookie_health_canary_url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={@canary_url}
+                  class="w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+
+            <p class="text-xs text-theme-on-surface-muted">
+              Note: To verify YouTube authentication truthfully, configure a canary video that requires account access
+              (e.g. members-only, private, or age-restricted). Public videos can be extracted without login and will
+              always be reported as unverified.
+            </p>
+
+            <div class="flex items-center gap-3">
+              <button
+                type="submit"
+                class="theme-primary-button rounded-m3-sm px-4 py-2 text-xs font-medium"
+              >
+                Save Monitoring Settings
+              </button>
+              <span :if={@config_saved} class="text-xs font-medium text-theme-success">Saved!</span>
+              <span :if={@config_error} class="text-xs font-medium text-theme-error">{@config_error}</span>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
     """
   end
 
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      CookieHealth.subscribe()
+    end
+
     socket =
       socket
       |> assign(%{
         present: CookieFile.present?(),
         validate_icon: "hero-check-badge",
-        validate_tooltip: "Validate cookies file"
+        validate_tooltip: "Validate cookies file",
+        checking: false,
+        config_saved: false,
+        config_error: nil
       })
+      |> assign_from_setting(Settings.record())
       |> allow_upload(:cookies, accept: ~w(.txt), max_entries: 1, max_file_size: 5_000_000)
 
     {:ok, socket}
@@ -103,13 +218,27 @@ defmodule Pinchflat.Settings.CookieFileLive do
       {:ok, CookieFile.save_from_path(path)}
     end)
 
-    {:noreply, assign(socket, present: CookieFile.present?())}
+    CookieHealth.perform_check_and_update()
+
+    {:noreply,
+     socket
+     |> assign(present: CookieFile.present?())
+     |> assign_from_setting(Settings.record())}
   end
 
   def handle_event("clear_cookies", _params, socket) do
     CookieFile.clear()
 
-    {:noreply, assign(socket, present: false)}
+    Settings.update_setting(Settings.record(), %{
+      cookie_health_status: "not_configured",
+      cookie_health_last_error: nil,
+      cookie_health_cookie_digest: nil
+    })
+
+    {:noreply,
+     socket
+     |> assign(present: false)
+     |> assign_from_setting(Settings.record())}
   end
 
   def handle_event("validate_cookies", _params, socket) do
@@ -136,9 +265,130 @@ defmodule Pinchflat.Settings.CookieFileLive do
     {:noreply, assign(socket, validate_icon: icon, validate_tooltip: tooltip)}
   end
 
+  def handle_event("test_cookie_health", _params, socket) do
+    socket = assign(socket, checking: true)
+
+    HealthCheckWorker.kickoff_manual()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("save_monitoring_config", params, socket) do
+    enabled = params["cookie_health_monitoring_enabled"] == "true"
+
+    interval =
+      case Integer.parse(params["cookie_health_check_interval_hours"] || "6") do
+        {int, _} -> int
+        _ -> 6
+      end
+
+    canary = params["cookie_health_canary_url"]
+
+    attrs = %{
+      cookie_health_monitoring_enabled: enabled,
+      cookie_health_check_interval_hours: interval,
+      cookie_health_canary_url: canary
+    }
+
+    setting = Settings.record()
+
+    case Settings.update_setting(setting, attrs) do
+      {:ok, updated} ->
+        if !setting.cookie_health_monitoring_enabled && updated.cookie_health_monitoring_enabled do
+          HealthCheckWorker.kickoff_manual()
+        end
+
+        Process.send_after(self(), :reset_config_saved, 3_000)
+        {:noreply, socket |> assign_from_setting(updated) |> assign(config_saved: true, config_error: nil)}
+
+      {:error, changeset} ->
+        error_msg =
+          Enum.map_join(changeset.errors, ", ", fn {field, {msg, _}} -> "#{field} #{msg}" end)
+
+        {:noreply, assign(socket, config_saved: false, config_error: error_msg)}
+    end
+  end
+
   def handle_info(:reset_validate_icon, socket) do
     {:noreply, assign(socket, validate_icon: "hero-check-badge", validate_tooltip: "Validate cookies file")}
   end
+
+  def handle_info(:reset_config_saved, socket) do
+    {:noreply, assign(socket, config_saved: false)}
+  end
+
+  def handle_info({:cookie_health_updated, updated_setting, result}, socket) do
+    {:noreply,
+     socket
+     |> assign_from_setting(updated_setting)
+     |> assign(
+       checking: false,
+       health_details: result[:details] || details_for_status(updated_setting.cookie_health_status)
+     )}
+  end
+
+  defp assign_from_setting(socket, setting) do
+    assign(socket, %{
+      health_status: setting.cookie_health_status || "not_configured",
+      last_checked_at: setting.cookie_health_last_checked_at,
+      last_authenticated_at: setting.cookie_health_last_authenticated_at,
+      last_error: setting.cookie_health_last_error,
+      monitoring_enabled: setting.cookie_health_monitoring_enabled || false,
+      check_interval_hours: setting.cookie_health_check_interval_hours || 6,
+      canary_url: setting.cookie_health_canary_url || "",
+      health_details: details_for_status(setting.cookie_health_status || "not_configured")
+    })
+  end
+
+  defp status_label("authenticated"), do: "Authenticated"
+  defp status_label("auth_unverified"), do: "Unverified Auth"
+  defp status_label("expired"), do: "Expired"
+  defp status_label("malformed"), do: "Malformed"
+  defp status_label("authentication_rejected"), do: "Auth Rejected"
+  defp status_label("canary_unavailable"), do: "Canary Unavailable"
+  defp status_label("network_error"), do: "Network Error"
+  defp status_label("not_configured"), do: "Not Configured"
+  defp status_label(_), do: "Unknown"
+
+  defp status_badge_class("authenticated"), do: "theme-badge-success"
+  defp status_badge_class("auth_unverified"), do: "theme-badge-info"
+  defp status_badge_class("expired"), do: "theme-badge-warning"
+  defp status_badge_class("malformed"), do: "theme-badge-error"
+  defp status_badge_class("authentication_rejected"), do: "theme-badge-error"
+  defp status_badge_class("canary_unavailable"), do: "theme-badge-warning"
+  defp status_badge_class("network_error"), do: "theme-badge-warning"
+  defp status_badge_class(_), do: "bg-theme-surface-4 text-theme-on-surface-muted"
+
+  defp details_for_status("authenticated"),
+    do: "Authentication confirmed against auth-gated canary."
+
+  defp details_for_status("auth_unverified"),
+    do: "Cookies are valid offline, but no auth-gated canary verified authentication."
+
+  defp details_for_status("expired"),
+    do: "Cookies are past expiration date. Please export and upload fresh cookies."
+
+  defp details_for_status("malformed"),
+    do: "File is not in valid Netscape format. Please re-export cookies."
+
+  defp details_for_status("authentication_rejected"),
+    do: "YouTube rejected authentication. Sign-in or new cookies required."
+
+  defp details_for_status("canary_unavailable"),
+    do: "Canary video is unavailable, deleted, or removed."
+
+  defp details_for_status("network_error"),
+    do: "Network error or rate limit during health check."
+
+  defp details_for_status("not_configured"),
+    do: "No cookies file uploaded."
+
+  defp details_for_status(_),
+    do: nil
+
+  defp format_timestamp(nil), do: "Never"
+  defp format_timestamp(%DateTime{} = dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
+  defp format_timestamp(%NaiveDateTime{} = ndt), do: Calendar.strftime(ndt, "%Y-%m-%d %H:%M:%S UTC")
 
   defp upload_label([]), do: "Choose cookies.txt"
   defp upload_label([entry | _]), do: entry.client_name

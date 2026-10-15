@@ -6,6 +6,7 @@ defmodule Pinchflat.Settings.Setting do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Pinchflat.Sources.Source
   alias Pinchflat.YtDlp.UpdateManager
 
   @allowed_fields [
@@ -42,7 +43,16 @@ defmodule Pinchflat.Settings.Setting do
     :download_space_protection_blocked_location,
     :download_space_protection_free_bytes,
     :download_space_protection_blocked_at,
-    :download_space_protection_alerted_at
+    :download_space_protection_alerted_at,
+    :cookie_health_monitoring_enabled,
+    :cookie_health_check_interval_hours,
+    :cookie_health_canary_url,
+    :cookie_health_status,
+    :cookie_health_last_checked_at,
+    :cookie_health_last_authenticated_at,
+    :cookie_health_last_error,
+    :cookie_health_cookie_digest,
+    :cookie_health_alert_sent_for_digest
   ]
 
   @time_formats ~w(24h 12h)
@@ -102,6 +112,16 @@ defmodule Pinchflat.Settings.Setting do
     field :download_space_protection_blocked_at, :utc_datetime
     field :download_space_protection_alerted_at, :utc_datetime
 
+    field :cookie_health_monitoring_enabled, :boolean, default: false
+    field :cookie_health_check_interval_hours, :integer, default: 6
+    field :cookie_health_canary_url, :string
+    field :cookie_health_status, :string, default: "not_configured"
+    field :cookie_health_last_checked_at, :utc_datetime
+    field :cookie_health_last_authenticated_at, :utc_datetime
+    field :cookie_health_last_error, :string
+    field :cookie_health_cookie_digest, :string
+    field :cookie_health_alert_sent_for_digest, :string
+
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
   end
@@ -124,6 +144,8 @@ defmodule Pinchflat.Settings.Setting do
     )
     |> validate_number(:postgres_backup_retention_count, greater_than_or_equal_to: 1, less_than_or_equal_to: 100)
     |> validate_number(:download_space_protection_threshold_bytes, greater_than_or_equal_to: 1)
+    |> validate_number(:cookie_health_check_interval_hours, greater_than_or_equal_to: 1, less_than_or_equal_to: 168)
+    |> validate_canary_url()
   end
 
   @doc """
@@ -141,6 +163,29 @@ defmodule Pinchflat.Settings.Setting do
       validate_required(changeset, [:yt_dlp_pinned_version])
     else
       changeset
+    end
+  end
+
+  defp validate_canary_url(changeset) do
+    case get_change(changeset, :cookie_health_canary_url) do
+      nil ->
+        changeset
+
+      "" ->
+        put_change(changeset, :cookie_health_canary_url, nil)
+
+      url when is_binary(url) ->
+        trimmed = String.trim(url)
+
+        if Source.youtube_video_url?(trimmed) do
+          put_change(changeset, :cookie_health_canary_url, trimmed)
+        else
+          add_error(
+            changeset,
+            :cookie_health_canary_url,
+            "must be a valid YouTube video or shorts URL"
+          )
+        end
     end
   end
 end
