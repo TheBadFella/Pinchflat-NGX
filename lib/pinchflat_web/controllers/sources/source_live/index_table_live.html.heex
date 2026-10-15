@@ -69,7 +69,7 @@
 
               <div class="min-w-0 flex-1">
                 <.subtle_link href={~p"/sources/#{source.id}"}>
-                  <span class="block break-words font-medium text-theme-on-surface">{source.custom_name}</span>
+                  <span class="block text-pretty break-words font-medium text-theme-on-surface">{source.custom_name}</span>
                 </.subtle_link>
                 <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
                   <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
@@ -220,7 +220,7 @@
                       <span class="sr-only">{source_download_mode_label(source)}</span>
                     </span>
 
-                    <div class="min-w-0 flex-1 leading-6 break-words whitespace-normal">
+                    <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
                       <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
                     </div>
                   </div>
@@ -382,10 +382,10 @@
               class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-theme-primary-container/30 p-4 text-center text-theme-on-primary-container"
               data-artwork-fallback
             >
-              <span class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-theme-primary/20 text-xl font-bold">
+              <span class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-theme-primary/20 text-xl font-bold shadow-xs">
                 {source_initials(source)}
               </span>
-              <span class="text-sm font-medium">Artwork unavailable</span>
+              <span class="text-pretty text-sm font-medium drop-shadow-xs">Artwork unavailable</span>
             </div>
             <img
               src={source_poster_url(source)}
@@ -399,7 +399,9 @@
           <div class="flex flex-1 flex-col gap-4 p-4">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <h3 class="break-words text-base font-semibold text-theme-on-surface">{source.custom_name}</h3>
+                <h3 class="text-pretty break-words text-base font-semibold text-theme-on-surface">
+                  {source.custom_name}
+                </h3>
                 <p class="mt-1 truncate text-sm text-theme-on-surface-muted">{source.media_profile.name}</p>
               </div>
               <div class="pointer-events-auto shrink-0">
