@@ -1,5 +1,6 @@
 defmodule Pinchflat.LegacyMigrationProvenanceTest do
-  use Pinchflat.DataCase
+  use Pinchflat.DataCase, async: false
+
   alias Pinchflat.LegacyMigration
 
   defmodule FixtureRepo do
@@ -9,17 +10,20 @@ defmodule Pinchflat.LegacyMigrationProvenanceTest do
   alias __MODULE__.FixtureRepo, as: Repo
 
   setup do
-    path = Path.join(System.tmp_dir!(), "provenance-#{System.unique_integer([:positive])}")
-    File.mkdir_p!(path)
-    start_supervised!({Repo, database: Path.join(path, "fixture.db"), pool: Ecto.Adapters.SQL.Sandbox})
-    Ecto.Adapters.SQL.Sandbox.checkout(Repo)
-    state_file = Path.join(path, "state.json")
-    Application.put_env(:pinchflat, :legacy_migration_state_path, state_file)
+    uniq = System.unique_integer([:positive])
+    dir = Path.join(System.tmp_dir!(), "provenance-#{uniq}")
+    File.mkdir_p!(dir)
+    state_file = Path.join(System.tmp_dir!(), "provenance-state-#{uniq}.json")
 
     on_exit(fn ->
       Application.delete_env(:pinchflat, :legacy_migration_state_path)
-      File.rm_rf!(path)
+      File.rm(state_file)
+      File.rm_rf(dir)
     end)
+
+    start_supervised!({Repo, database: Path.join(dir, "fixture.db"), pool: Ecto.Adapters.SQL.Sandbox})
+    Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+    Application.put_env(:pinchflat, :legacy_migration_state_path, state_file)
 
     %{state_file: state_file}
   end
