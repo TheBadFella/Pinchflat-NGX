@@ -120,7 +120,10 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     ]
 
     all_command_opts = default_opts ++ command_opts
-    output_template = "%(.{channel,channel_id,playlist_id,playlist_title,filename})j"
+
+    output_template =
+      "%(.{channel,channel_id,playlist_id,playlist_title,playlist_channel,playlist_channel_id,filename})j"
+
     action = :get_source_details
 
     with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
@@ -189,6 +192,12 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   end
 
   defp format_source_details(response) do
+    # Collection ownership is available even when the first video's channel metadata is missing.
+    response =
+      response
+      |> Map.put("channel_id", response["playlist_channel_id"] || response["channel_id"])
+      |> Map.put("channel", response["playlist_channel"] || response["channel"])
+
     # NOTE: I should probably make this a struct some day
     %{
       source_type: :collection,

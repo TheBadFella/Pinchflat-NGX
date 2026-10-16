@@ -283,6 +283,31 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "create source" do
+    test "saves an explicit channel when the first video has no channel metadata", %{
+      conn: conn,
+      create_attrs: create_attrs
+    } do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        Phoenix.json_library().encode(%{
+          playlist_channel: "Channel owner",
+          playlist_channel_id: "UCowner",
+          playlist_id: "UCowner",
+          playlist_title: "Channel owner - Videos"
+        })
+      end)
+
+      attrs =
+        Map.merge(create_attrs, %{source_type: "channel", original_url: "https://www.youtube.com/@noiraeris/videos"})
+
+      conn = post(conn, ~p"/sources", source: attrs)
+
+      assert %{id: id} = redirected_params(conn)
+      source = Pinchflat.Sources.get_source!(id)
+      assert source.collection_type == :channel
+      assert source.collection_id == "UCowner"
+      assert source.collection_name == "Channel owner"
+    end
+
     test "redirects to show when data is valid", %{conn: conn, create_attrs: create_attrs} do
       expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
       conn = post(conn, ~p"/sources", source: create_attrs)
