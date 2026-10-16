@@ -1,63 +1,56 @@
 <aside
-  x-bind:class="`${sidebarVisible ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-65'}`"
+  x-bind:class="sidebarVisible ? 'translate-x-0' : '-translate-x-full'"
   class={[
-    "-translate-x-full absolute left-0 top-0 z-9999 flex h-screen w-65 flex-col transition-[width,transform]",
+    "-translate-x-full absolute left-0 top-0 z-9999 flex h-screen theme-sidebar flex-col transition-[width,transform]",
     "border-r border-theme-outline/70 bg-theme-surface duration-300 ease-linear shadow-m3-2 sm:shadow-none lg:static lg:translate-x-0"
   ]}
-  x-bind:style="sidebarCollapsed ? 'overflow: visible;' : 'overflow-y: auto;'"
   @click.outside="sidebarVisible = false"
 >
   <% current_path = Phoenix.Controller.current_path(@conn) %>
   <section class="sticky top-0 z-10 bg-theme-surface">
-    <div
-      class="flex w-full items-center justify-between gap-2 px-4 py-3"
-      x-bind:class="sidebarCollapsed ? 'lg:flex-col lg:items-center lg:justify-start lg:gap-2 lg:px-0 lg:pt-4 lg:pb-2' : 'lg:px-6 lg:py-4'"
-    >
+    <div class="theme-sidebar-brand-row flex w-full">
       <a
         href={~p"/"}
-        class="flex items-center justify-center shrink-0"
-        x-bind:class="sidebarCollapsed ? 'mx-auto lg:h-12 lg:w-12 lg:rounded-xl' : ''"
+        class="theme-sidebar-brand-link flex items-center justify-center shrink-0"
       >
         <img
-          x-bind:src="sidebarCollapsed ? document.body.dataset.sidebarIcon : document.body.dataset.sidebarLogo"
+          src={~p"/images/logo-2024-03-20.png"}
           alt="Pinchflat-ngx"
-          class="object-contain"
-          x-bind:class="sidebarCollapsed ? 'h-9 w-9' : 'h-10 w-auto'"
+          class="theme-sidebar-logo h-10 w-auto object-contain"
+        />
+        <img
+          src={~p"/images/icon-2024-03-20.png"}
+          alt="Pinchflat-ngx"
+          class="theme-sidebar-icon h-9 w-9 object-contain"
         />
       </a>
+
       <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
         <.icon name="hero-arrow-left" class="fill-current" />
       </button>
+
       <button
         type="button"
-        class="theme-outline-button hidden h-8 w-8 shrink-0 items-center justify-center rounded-m3-xs p-0 text-theme-on-surface lg:flex"
-        x-bind:class="sidebarCollapsed ? 'mx-auto mt-2' : ''"
+        class="theme-sidebar-collapse theme-outline-button hidden h-8 w-8 shrink-0 items-center justify-center rounded-m3-xs p-0 text-theme-on-surface lg:flex"
         x-on:click="sidebarCollapsed = !sidebarCollapsed; window.setSidebarCollapsed(sidebarCollapsed)"
         x-bind:title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       >
         <.icon
           name="hero-chevron-double-left"
-          class="h-4 w-4 fill-current transition-transform"
-          x-bind:class="sidebarCollapsed ? 'rotate-180' : ''"
+          class="theme-sidebar-collapse-icon h-4 w-4 fill-current transition-transform"
         />
       </button>
     </div>
   </section>
 
   <div class="no-scrollbar flex flex-1 flex-col overflow-y-auto duration-300 ease-linear">
-    <nav class="mt-2 px-3 py-3 lg:mt-3 lg:px-6 lg:py-4" x-bind:class="sidebarCollapsed ? 'lg:mt-5 lg:px-2' : ''">
-      <h3
-        class="mb-3 ml-3 text-xs font-medium tracking-[0.18em] text-theme-on-surface-muted lg:mb-4 lg:ml-4 lg:text-sm"
-        x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''"
-      >
+    <nav class="theme-sidebar-navigation">
+      <h3 class="theme-sidebar-desktop-label mb-3 ml-3 text-xs font-medium tracking-[0.18em] text-theme-on-surface-muted lg:mb-4 lg:ml-4 lg:text-sm">
         <span>MENU</span>
       </h3>
 
       <div class="flex flex-col justify-between">
-        <ul
-          class="mb-4 flex flex-col gap-1 lg:mb-6 lg:gap-1.5"
-          x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''"
-        >
+        <ul class="theme-sidebar-list mb-4 flex flex-col lg:mb-6">
           <.sidebar_item icon="hero-home" text="Home" href={~p"/"} current_path={current_path} />
           <.sidebar_item icon="hero-tv" text="Sources" href={~p"/sources"} current_path={current_path} />
           <.sidebar_item
@@ -86,14 +79,8 @@
       </div>
     </nav>
 
-    <nav
-      class="mt-auto px-3 py-3 lg:px-6 lg:py-4"
-      x-bind:class="sidebarCollapsed ? 'overflow-visible lg:px-3' : ''"
-    >
-      <ul
-        class="mb-4 flex flex-col gap-1 lg:mb-6 lg:gap-1.5"
-        x-bind:class="sidebarCollapsed ? 'lg:items-center lg:gap-3' : ''"
-      >
+    <nav class="theme-sidebar-footer mt-auto">
+      <ul class="theme-sidebar-list mb-4 flex flex-col lg:mb-6">
         <.sidebar_item
           icon="hero-book-open"
           text="Docs"
@@ -114,8 +101,7 @@
           href="https://ko-fi.com/badfella"
           icon_class="scale-110"
         />
-
-        <li class="pt-2" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
+        <li class="theme-sidebar-desktop-label pt-2">
           {live_render(@conn, Pinchflat.AppVersionLive, id: "app-version-live")}
         </li>
       </ul>

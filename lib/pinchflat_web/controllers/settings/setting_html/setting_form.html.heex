@@ -106,15 +106,15 @@
           @click={"is12h = !is12h; dispatchFor('#{f[:time_format].id}', 'change')"}
         >
           <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
-          <div class="relative h-8 w-14">
+          <div class="theme-switch-target">
             <div
               x-bind:class="is12h ? 'border-theme-primary/70 bg-theme-primary-container' : 'border-theme-outline bg-theme-surface-5'"
-              class="block h-8 w-14 rounded-full border shadow-inner transition"
+              class="theme-switch-track"
             >
             </div>
             <div
               x-bind:class="is12h ? 'translate-x-6 bg-theme-primary' : 'translate-x-0 bg-theme-on-surface-muted'"
-              class="absolute top-1 left-1 h-6 w-6 rounded-full transition"
+              class="theme-switch-thumb"
             >
             </div>
           </div>

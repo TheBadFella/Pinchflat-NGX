@@ -399,7 +399,7 @@ defmodule PinchflatWeb.CoreComponents do
       </.label>
 
       <div class="flex flex-col">
-        <label for={@id} class="relative inline-flex min-h-[44px] w-fit cursor-pointer items-center">
+        <label for={@id} class="theme-switch-target cursor-pointer">
           <input
             type="hidden"
             name={@name}
@@ -417,11 +417,11 @@ defmodule PinchflatWeb.CoreComponents do
             aria-label={@aria_label}
             {@rest}
           />
-          <div class="block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface">
+          <div class="theme-switch-track peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface">
           </div>
 
           <div class={[
-            "absolute left-1 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
+            "theme-switch-thumb peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
             @inputclass
           ]}>
           </div>

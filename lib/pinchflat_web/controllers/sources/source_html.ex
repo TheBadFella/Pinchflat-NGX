@@ -434,7 +434,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   @doc """
   A client-side-only switch bound to an Alpine boolean, styled to match the
-  form toggle in `CoreComponents.input/1` at a smaller scale. Unlike that one
+  form toggle in `CoreComponents.input/1`. Unlike that one
   this has no form field behind it — the real checkbox is visually hidden and
   drives the Alpine state, which keeps the label clickable and the control
   reachable by keyboard.
@@ -446,14 +446,14 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ~H"""
     <label class="group flex min-h-11 cursor-pointer select-none items-center gap-2.5 text-sm text-theme-on-surface-muted hover:text-theme-on-surface">
       <input type="checkbox" x-model={@model} class="peer sr-only" />
-      <span class="relative inline-block h-5 w-9 shrink-0 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary">
+      <span class="theme-switch-target shrink-0 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary">
         <span
-          class="block h-full w-full rounded-full bg-theme-surface-4 transition"
-          x-bind:class={"#{@model} && 'bg-theme-primary!'"}
+          class="theme-switch-track"
+          x-bind:class={"#{@model} && 'border-theme-primary/70! bg-theme-primary-container!'"}
         ></span>
         <span
-          class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-theme-on-surface shadow transition"
-          x-bind:class={"#{@model} && 'translate-x-4'"}
+          class="theme-switch-thumb"
+          x-bind:class={"#{@model} && 'translate-x-6 bg-theme-primary!'"}
         ></span>
       </span>
       {@label}
