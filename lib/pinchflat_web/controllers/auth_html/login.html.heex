@@ -6,10 +6,11 @@
     <p class="font-medium">Authentication failed. Please try again.</p>
   </div>
 
-  <.link
+  <.button
     href={~p"/auth/oidc/request?redirect_to=#{@redirect_to}"}
-    class="theme-primary-button inline-flex w-full items-center justify-center rounded-m3-sm px-8 py-4 font-medium shadow-m3-1 transition hover:brightness-110"
+    variant="primary"
+    class="w-full"
   >
     Sign in with {@provider_name}
-  </.link>
+  </.button>
 </div>

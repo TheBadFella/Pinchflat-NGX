@@ -23,8 +23,8 @@
         help="You can further customize the settings after selecting a preset. This is just a starting point."
       >
         <.button
-          class="h-13 w-2/5 lg:w-1/5 ml-2 md:ml-4"
-          rounding="rounded-m3-sm"
+          class="w-2/5 lg:w-1/5 ml-2 md:ml-4"
+          variant="secondary"
           type="button"
           x-on:click="selectedPreset = selection; selection = null"
           x-bind:disabled="!selection"
@@ -42,7 +42,7 @@
         <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
           <button
             type="button"
-            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            class="theme-filter-button rounded-full"
             x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
             x-on:click="advancedMode = false"
             x-bind:aria-pressed="!advancedMode"
@@ -52,7 +52,7 @@
 
           <button
             type="button"
-            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            class="theme-filter-button rounded-full"
             x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
             x-on:click="advancedMode = true"
             x-bind:aria-pressed="advancedMode"
@@ -320,7 +320,7 @@
       type="checkbox_group"
       label="Mark These Segments as Chapters"
       help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal above. Leave everything unchecked to disable SponsorBlock"
-    /> <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Media profile</.button>
+    /> <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" variant="primary">Save Media profile</.button>
   </section>
 
   <div class="theme-surface-accent mb-5 p-4 md:p-6"><.output_template_help /></div>

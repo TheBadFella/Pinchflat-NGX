@@ -129,8 +129,7 @@ defmodule PinchflatWeb.DiscoveryLive do
           <.button
             id="discovery-refresh"
             type="button"
-            color="theme-outline-button"
-            rounding="rounded-m3-sm"
+            variant="secondary"
             phx-click="refresh"
             data-action="refresh"
           >
@@ -139,7 +138,7 @@ defmodule PinchflatWeb.DiscoveryLive do
           <.button
             id="discovery-scan"
             type="button"
-            rounding="rounded-m3-sm"
+            variant="primary"
             disabled={@scan_busy}
             phx-click="scan"
             data-action="scan"
@@ -301,28 +300,28 @@ defmodule PinchflatWeb.DiscoveryLive do
             </dl>
 
             <div class="mt-auto flex flex-wrap gap-2 border-t border-theme-outline/60 pt-4">
-              <button
+              <.button
                 id={"accept-suggestion-#{suggestion_external_id(suggestion)}"}
                 type="button"
-                class="theme-primary-button inline-flex items-center rounded-m3-sm px-8 py-4 text-sm font-medium"
+                variant="primary"
                 phx-click="accept"
                 phx-value-external_channel_id={suggestion_external_id(suggestion)}
                 data-action="accept"
                 aria-label={"Accept #{suggestion_name(suggestion)}"}
               >
                 Accept
-              </button>
-              <button
+              </.button>
+              <.button
                 id={"dismiss-suggestion-#{suggestion_external_id(suggestion)}"}
                 type="button"
-                class="theme-outline-button inline-flex items-center px-8 py-4 text-sm font-medium"
+                variant="secondary"
                 phx-click="dismiss"
                 phx-value-external_channel_id={suggestion_external_id(suggestion)}
                 data-action="dismiss"
                 aria-label={"Dismiss #{suggestion_name(suggestion)}"}
               >
                 Dismiss
-              </button>
+              </.button>
             </div>
           </article>
         </div>
@@ -368,17 +367,17 @@ defmodule PinchflatWeb.DiscoveryLive do
               <p class="break-words font-medium text-theme-on-surface">{suggestion_name(suggestion)}</p>
               <p class="break-all text-sm text-theme-on-surface-muted">{suggestion.canonical_url}</p>
             </div>
-            <button
+            <.button
               id={"restore-suggestion-#{suggestion_external_id(suggestion)}"}
               type="button"
-              class="theme-outline-button inline-flex items-center px-8 py-4 text-sm font-medium"
+              variant="secondary"
               phx-click="restore"
               phx-value-external_channel_id={suggestion_external_id(suggestion)}
               data-action="restore"
               aria-label={"Restore #{suggestion_name(suggestion)}"}
             >
               Restore
-            </button>
+            </.button>
           </li>
         </ul>
       </section>

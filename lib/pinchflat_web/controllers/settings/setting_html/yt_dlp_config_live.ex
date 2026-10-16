@@ -11,7 +11,7 @@ defmodule Pinchflat.Settings.YtDlpConfigLive do
   def render(assigns) do
     ~H"""
     <div>
-      <.label>
+      <.label for="base-yt-dlp-config">
         Base yt-dlp Config
         <span :if={@present} class="theme-badge-success ml-2 rounded-full px-3 py-1 text-xs font-medium">
           In use
@@ -35,6 +35,7 @@ defmodule Pinchflat.Settings.YtDlpConfigLive do
       <div id="yt-dlp-config-form" class="mt-3 space-y-3">
         <div class="theme-field-shell">
           <textarea
+            id="base-yt-dlp-config"
             name="contents"
             rows="8"
             phx-change="draft"
@@ -47,19 +48,19 @@ defmodule Pinchflat.Settings.YtDlpConfigLive do
         <p :if={@saved} class="text-sm theme-status-success">Config saved. New downloads will pick it up immediately.</p>
 
         <div class="flex flex-wrap items-center gap-3">
-          <.button type="button" rounding="rounded-m3-sm" class="!px-5 !py-3" phx-click="save">
+          <.button type="button" variant="primary" phx-click="save">
             Save Config
           </.button>
 
-          <button
+          <.button
             :if={@present}
             type="button"
             phx-click="clear"
             data-confirm="Clear the base yt-dlp config?"
-            class="theme-danger-button flex items-center gap-2 rounded-m3-sm border px-5 py-3 text-sm"
+            variant="danger"
           >
             <.icon name="hero-trash" class="h-5 w-5" /> Clear
-          </button>
+          </.button>
         </div>
       </div>
     </div>

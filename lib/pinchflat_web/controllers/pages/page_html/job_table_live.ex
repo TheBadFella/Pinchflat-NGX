@@ -34,7 +34,7 @@ defmodule Pinchflat.Pages.JobTableLive do
               phx-click="cancel_task"
               phx-value-task-id={task.id}
               data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
-              class="theme-danger-button shrink-0 rounded-md border px-3 py-1 text-xs font-medium"
+              class="theme-button theme-button-compact theme-danger-button shrink-0"
             >
               {task_action_label(task)}
             </button>
@@ -101,7 +101,7 @@ defmodule Pinchflat.Pages.JobTableLive do
                 phx-click="cancel_task"
                 phx-value-task-id={task.id}
                 data-confirm={"Are you sure you want to #{task_action_label(task)} this task?"}
-                class="theme-danger-button rounded-md border px-3 py-1 text-xs font-medium"
+                class="theme-button theme-button-compact theme-danger-button font-medium"
               >
                 {task_action_label(task)}
               </button>

@@ -118,7 +118,7 @@ defmodule PinchflatWeb.CoreComponents do
                 <button
                   phx-click={JS.exec("data-cancel", to: "##{@id}")}
                   type="button"
-                  class="-m-3 flex-none p-3 opacity-60 hover:opacity-80"
+                  class="-m-3 flex min-h-11 min-w-11 items-center justify-center p-3 opacity-60 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg"
                   aria-label={gettext("close")}
                 >
                   <.icon name="hero-x-mark-solid" class="h-5 w-5 text-theme-on-surface" />
@@ -175,9 +175,10 @@ defmodule PinchflatWeb.CoreComponents do
         <button
           type="button"
           aria-label={gettext("close")}
+          class="inline-flex min-h-11 min-w-11 items-center justify-center p-2 opacity-70 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg"
           phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
         >
-          <.icon name="hero-x-mark-solid" class="h-7 w-7 opacity-70 hover:opacity-100" />
+          <.icon name="hero-x-mark-solid" class="h-6 w-6" />
         </button>
       </div>
     </div>
@@ -329,7 +330,7 @@ defmodule PinchflatWeb.CoreComponents do
 
     ~H"""
     <div>
-      <label class="flex items-center gap-4 text-sm leading-6">
+      <label class="flex min-h-11 items-center gap-4 text-sm leading-6">
         <input
           type="hidden"
           name={@name}
@@ -363,7 +364,7 @@ defmodule PinchflatWeb.CoreComponents do
       <%!-- Ensures the field is submitted (as an empty list) even when no boxes are checked --%>
       <input type="hidden" name={"#{@name}[]"} value="" />
       <section class="grid grid-cols-1 gap-2 md:grid-cols-2 max-w-prose mb-4 ml-1">
-        <div :for={{option_name, option_value} <- @options} class="flex items-center">
+        <div :for={{option_name, option_value} <- @options} class="flex min-h-11 items-center">
           <input
             type="checkbox"
             id={"#{@id}-#{option_value}"}
@@ -420,7 +421,7 @@ defmodule PinchflatWeb.CoreComponents do
           </div>
 
           <div class={[
-            "absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
+            "absolute left-1 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition peer-checked:translate-x-6 peer-checked:bg-theme-primary peer-disabled:opacity-80",
             @inputclass
           ]}>
           </div>
@@ -452,6 +453,8 @@ defmodule PinchflatWeb.CoreComponents do
   end
 
   def input(%{type: "textarea"} = assigns) do
+    assigns = assign(assigns, :id, assigns.id || assigns.name)
+
     ~H"""
     <div>
       <.label for={@id}>
@@ -479,6 +482,8 @@ defmodule PinchflatWeb.CoreComponents do
 
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
+    assigns = assign(assigns, :id, assigns.id || assigns.name)
+
     ~H"""
     <div>
       <.label for={@id}>
@@ -603,6 +608,7 @@ defmodule PinchflatWeb.CoreComponents do
           x-init="init()"
           x-effect={"if (#{@rest_x_bind_disabled || "false"} || #{!!@rest_disabled}) open = false"}
           x-on:click.outside="open = false"
+          x-on:keydown.escape.prevent.stop="open = false; $refs.trigger.focus()"
           x-on:resize.window="if (open) positionMenu()"
           x-on:scroll.window.capture="if (open) positionMenu()"
           x-bind:class="open ? 'theme-field-shell-active z-[90]' : 'z-10'"
@@ -712,7 +718,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class="mt-5 mb-2 inline-block text-md font-medium text-theme-on-surface">
+    <label for={@for} class="mt-5 mb-2 inline-block text-sm font-medium text-theme-on-surface">
       {render_slot(@inner_block)}
     </label>
     """

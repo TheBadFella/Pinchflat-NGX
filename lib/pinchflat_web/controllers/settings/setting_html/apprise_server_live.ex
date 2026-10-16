@@ -20,8 +20,8 @@ defmodule Pinchflat.Settings.AppriseServerLive do
       <:input_append>
         <div class="ml-3 mt-2 shrink-0 sm:mt-0">
           <.icon_button
+            size="large"
             icon_name={@icon_name}
-            class="h-12 w-12"
             phx-click="send_apprise_test"
             tooltip={@tooltip}
             aria-label={@tooltip}

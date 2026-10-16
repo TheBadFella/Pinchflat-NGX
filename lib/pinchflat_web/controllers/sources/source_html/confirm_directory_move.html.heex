@@ -1,6 +1,6 @@
 <div class="mb-6 flex flex-row items-center gap-3">
-  <.link href={~p"/sources/#{@source}/edit"}>
-    <.icon name="hero-arrow-left" class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface" />
+  <.link href={~p"/sources/#{@source}/edit"} aria-label="Back" class="theme-icon-button theme-outline-button">
+    <.icon name="hero-arrow-left" class="h-5 w-5" />
   </.link>
   <h2 class="ml-4 break-words text-title-md2 font-bold text-theme-on-surface">Confirm Source Folder Move</h2>
 </div>
@@ -9,7 +9,9 @@
   <div class="max-w-5xl space-y-6">
     <div>
       <p class="text-sm font-medium uppercase tracking-wide text-theme-on-surface-muted">{@source.custom_name}</p>
-      <h3 class="mt-2 text-2xl font-bold text-theme-on-surface">Pinchflat-ngx will move this source's existing files</h3>
+      <h3 class="mt-2 text-2xl font-bold text-theme-on-surface">
+        Pinchflat-ngx will move this source's existing files
+      </h3>
       <p class="mt-3 max-w-3xl text-sm leading-6 text-theme-on-surface-muted">
         Review the destination before saving. If a conflict is listed, fix it on disk first, then go back and save again.
       </p>

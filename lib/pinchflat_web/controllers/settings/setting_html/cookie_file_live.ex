@@ -32,51 +32,42 @@ defmodule Pinchflat.Settings.CookieFileLive do
       >
         <label
           phx-drop-target={@uploads.cookies.ref}
-          class={[
-            "theme-outline-button flex cursor-pointer items-center gap-2 px-5 py-3 text-sm",
-            "hover:border-theme-outline-strong hover:bg-theme-surface-2"
-          ]}
+          class="theme-button theme-button-secondary cursor-pointer gap-2 focus-within:ring-2 focus-within:ring-theme-primary/70"
         >
           <.icon name="hero-arrow-up-tray" class="h-5 w-5" />
           <span>{upload_label(@uploads.cookies.entries)}</span>
-          <.live_file_input upload={@uploads.cookies} class="hidden" />
+          <.live_file_input upload={@uploads.cookies} class="sr-only" />
         </label>
 
-        <.button :if={@uploads.cookies.entries != []} type="submit" rounding="rounded-lg" class="!px-5 !py-3">
+        <.button :if={@uploads.cookies.entries != []} type="submit" variant="primary">
           Save File
         </.button>
 
-        <.link
+        <.button
           :if={@present}
           href={~p"/settings/cookies"}
-          class={[
-            "theme-outline-button flex items-center gap-2 px-5 py-3 text-sm",
-            "hover:border-theme-outline-strong hover:bg-theme-surface-2"
-          ]}
+          variant="secondary"
         >
           <.icon name="hero-arrow-down-tray" class="h-5 w-5" /> Download
-        </.link>
+        </.button>
 
         <.icon_button
           :if={@present}
           icon_name={@validate_icon}
-          class="h-12 w-12"
           phx-click="validate_cookies"
           tooltip={@validate_tooltip}
           type="button"
         />
 
-        <button
+        <.button
           :if={@present}
           type="button"
           phx-click="clear_cookies"
           data-confirm="Clear the cookies file?"
-          class={[
-            "theme-danger-button flex items-center gap-2 rounded-m3-sm border px-5 py-3 text-sm"
-          ]}
+          variant="danger"
         >
           <.icon name="hero-trash" class="h-5 w-5" /> Clear
-        </button>
+        </.button>
       </form>
 
       <.error :for={err <- upload_errors(@uploads.cookies)}>{error_to_string(err)}</.error>
@@ -85,16 +76,17 @@ defmodule Pinchflat.Settings.CookieFileLive do
       <div class="mt-6 rounded-m3-md border border-theme-outline/60 bg-theme-surface-2 p-5 shadow-m3-1">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/40 pb-4">
           <div class="flex items-center gap-3">
-            <h4 class="text-base font-medium text-theme-on-surface">Cookie Health Status</h4>
+            <h4 class="text-base font-semibold text-theme-on-surface">Cookie Health Status</h4>
             <span class={["rounded-full px-3 py-0.5 text-xs font-medium", status_badge_class(@health_status)]}>
               {status_label(@health_status)}
             </span>
           </div>
 
-          <button
+          <.button
             type="button"
             phx-click="test_cookie_health"
-            class="theme-outline-button flex items-center gap-2 px-4 py-2 text-xs font-medium"
+            variant="secondary"
+            size="compact"
             disabled={!@present or @checking}
           >
             <.icon
@@ -102,7 +94,7 @@ defmodule Pinchflat.Settings.CookieFileLive do
               class={if(@checking, do: "h-4 w-4 animate-spin", else: "h-4 w-4")}
             />
             {if @checking, do: "Testing...", else: "Test Now"}
-          </button>
+          </.button>
         </div>
 
         <div class="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
@@ -127,7 +119,7 @@ defmodule Pinchflat.Settings.CookieFileLive do
         <!-- Inline Monitoring Settings Form -->
         <form phx-submit="save_monitoring_config" class="mt-5 border-t border-theme-outline/40 pt-4">
           <div class="flex flex-col gap-4">
-            <label class="flex items-center gap-3 cursor-pointer">
+            <label class="flex min-h-11 items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 name="cookie_health_monitoring_enabled"
@@ -140,46 +132,55 @@ defmodule Pinchflat.Settings.CookieFileLive do
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <label class="block text-xs font-medium text-theme-on-surface-muted mb-1">Check Interval (Hours)</label>
-                <input
-                  type="number"
-                  name="cookie_health_check_interval_hours"
-                  min="1"
-                  max="168"
-                  value={@check_interval_hours}
-                  class="w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none"
-                />
+                <label for="cookie-health-interval" class="mb-2 block text-sm font-medium text-theme-on-surface">Check Interval (Hours)</label>
+                <div class="theme-field-shell">
+                  <input
+                    type="number"
+                    id="cookie-health-interval"
+                    name="cookie_health_check_interval_hours"
+                    min="1"
+                    max="168"
+                    value={@check_interval_hours}
+                    class="theme-input w-full rounded-m3-sm px-4 py-2.5 text-sm font-normal outline-none transition"
+                  />
+                </div>
               </div>
 
               <div class="sm:col-span-2">
-                <label class="block text-xs font-medium text-theme-on-surface-muted mb-1">
+                <label for="cookie-health-canary" class="mb-2 block text-sm font-medium text-theme-on-surface">
                   Canary URL (Members-only / Auth-gated video)
                 </label>
-                <input
-                  type="text"
-                  name="cookie_health_canary_url"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  value={@canary_url}
-                  class="w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-sm text-theme-on-surface focus:border-theme-primary focus:outline-none font-mono"
-                />
+                <div class="theme-field-shell">
+                  <input
+                    type="text"
+                    id="cookie-health-canary"
+                    name="cookie_health_canary_url"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value={@canary_url}
+                    class="theme-input w-full rounded-m3-sm px-4 py-2.5 font-mono text-sm font-normal outline-none transition"
+                  />
+                </div>
               </div>
             </div>
 
-            <p class="text-xs text-theme-on-surface-muted">
+            <p class="text-sm leading-5 text-theme-on-surface-muted">
               Note: To verify YouTube authentication truthfully, configure a canary video that requires account access
               (e.g. members-only, private, or age-restricted). Public videos can be extracted without login and will
               always be reported as unverified.
             </p>
 
-            <div class="flex items-center gap-3">
-              <button
+            <div class="flex flex-wrap items-center gap-3">
+              <.button
                 type="submit"
-                class="theme-primary-button rounded-m3-sm px-4 py-2 text-xs font-medium"
+                variant="primary"
+                class="w-full whitespace-normal sm:w-auto"
               >
                 Save Monitoring Settings
-              </button>
-              <span :if={@config_saved} class="text-xs font-medium text-theme-success">Saved!</span>
-              <span :if={@config_error} class="text-xs font-medium text-theme-error">{@config_error}</span>
+              </.button>
+              <span :if={@config_saved} class="text-sm font-medium text-theme-success">Saved!</span>
+              <span :if={@config_error} role="alert" class="min-w-0 w-full break-words text-sm font-medium text-theme-error">
+                {@config_error}
+              </span>
             </div>
           </div>
         </form>

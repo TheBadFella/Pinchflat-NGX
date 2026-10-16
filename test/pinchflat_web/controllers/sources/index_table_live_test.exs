@@ -120,7 +120,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       session = Map.merge(create_session(), %{"results_per_page" => 1})
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
 
-      click_element(view, "span.pagination-next")
+      click_element(view, "button.pagination-next")
       assert render_element(view, "#source-table") =~ source_b.custom_name
       refute render_element(view, "#source-table") =~ source_a.custom_name
 
@@ -289,7 +289,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert render_element(view, "tbody") =~ source1.custom_name
       refute render_element(view, "tbody") =~ source2.custom_name
 
-      click_element(view, "span.pagination-next")
+      click_element(view, "button.pagination-next")
 
       refute render_element(view, "tbody") =~ source1.custom_name
       assert render_element(view, "tbody") =~ source2.custom_name

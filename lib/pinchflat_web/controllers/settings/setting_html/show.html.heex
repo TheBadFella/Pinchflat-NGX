@@ -19,19 +19,21 @@
         </div>
       </div>
 
-      <span
-        class="cursor-pointer whitespace-nowrap text-sm text-theme-on-surface-muted transition hover:text-theme-on-surface hover:underline sm:text-right"
+      <button
+        type="button"
+        class="theme-filter-button rounded-m3-sm whitespace-nowrap text-theme-on-surface-muted hover:text-theme-on-surface hover:underline sm:text-right"
+        x-bind:aria-pressed="advancedMode"
         x-on:click="advancedMode = !advancedMode"
       >
         Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
-      </span>
+      </button>
     </div>
   </div>
 
-  <div class="flex flex-wrap gap-2 px-1" role="tablist" aria-label="Settings groups">
+  <div class="flex flex-wrap gap-2 px-1" role="group" aria-label="Settings groups">
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('')"
       x-bind:class="!selectedGroup ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
       x-bind:aria-pressed="!selectedGroup"
@@ -40,7 +42,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('notifications')"
       x-bind:class="selectedGroup === 'notifications' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
       x-bind:aria-pressed="selectedGroup === 'notifications'"
@@ -49,7 +51,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('extractor')"
       x-bind:class="selectedGroup === 'extractor' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
       x-bind:aria-pressed="selectedGroup === 'extractor'"
@@ -58,7 +60,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('discovery')"
       x-bind:class="selectedGroup === 'discovery' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
       x-bind:aria-pressed="selectedGroup === 'discovery'"
@@ -67,7 +69,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('backups')"
       data-settings-group="backups"
       x-bind:class="selectedGroup === 'backups' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
@@ -77,7 +79,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('ytdlp')"
       x-bind:class="selectedGroup === 'ytdlp' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
       x-bind:aria-pressed="selectedGroup === 'ytdlp'"
@@ -86,7 +88,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('cookies')"
       x-bind:class="selectedGroup === 'cookies' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
       x-bind:aria-pressed="selectedGroup === 'cookies'"
@@ -95,7 +97,7 @@
     </button>
     <button
       type="button"
-      class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
+      class="theme-filter-button rounded-full border"
       x-show="advancedMode || query.trim()"
       x-on:click="selectGroup('codec')"
       x-bind:class="selectedGroup === 'codec' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"

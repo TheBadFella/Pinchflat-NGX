@@ -40,7 +40,7 @@
     }
     """
   }>
-    <section class="flex justify-between items-center mt-4">
+    <section class="flex flex-wrap justify-between items-center gap-4 mt-4">
       <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
       <div class="flex items-center gap-3">
@@ -48,7 +48,7 @@
         <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
           <button
             type="button"
-            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            class="theme-filter-button rounded-full"
             x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
             x-on:click="advancedMode = false"
             x-bind:aria-pressed="!advancedMode"
@@ -57,7 +57,7 @@
           </button>
           <button
             type="button"
-            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            class="theme-filter-button rounded-full"
             x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
             x-on:click="advancedMode = true"
             x-bind:aria-pressed="advancedMode"
@@ -77,7 +77,7 @@
         help="Choose Automatic to keep Pinchflat-ngx's existing URL detection, or select the type you expect before inspection."
         x-model="sourceType"
       />
-      <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-md font-medium text-theme-on-surface">
+      <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-sm font-medium text-theme-on-surface">
         <span x-text="sourceTypeLabel"></span>
       </label>
       <.input
@@ -263,7 +263,7 @@
               <div class="flex items-center gap-1">
                 <button
                   type="button"
-                  class="theme-outline-button rounded-m3-xs px-2 py-1 text-xs"
+                  class="theme-icon-button theme-outline-button text-xs"
                   x-bind:disabled="idx === 0"
                   @click="
                     const temp = fallbacks[idx - 1];
@@ -278,7 +278,7 @@
                 </button>
                 <button
                   type="button"
-                  class="theme-outline-button rounded-m3-xs px-2 py-1 text-xs"
+                  class="theme-icon-button theme-outline-button text-xs"
                   x-bind:disabled="idx === fallbacks.length - 1"
                   @click="
                     const temp = fallbacks[idx + 1];
@@ -293,7 +293,7 @@
                 </button>
                 <button
                   type="button"
-                  class="theme-outline-button rounded-m3-xs px-2 py-1 text-xs text-theme-error hover:border-theme-error"
+                  class="theme-icon-button theme-outline-button text-xs text-theme-error hover:border-theme-error"
                   @click="
                     fallbacks.splice(idx, 1);
                     fallbacks = [...fallbacks];
@@ -312,7 +312,7 @@
           No fallback clients configured. Only the primary client (or yt-dlp default) will be used.
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <select
             x-model="candidateFallback"
             x-bind:disabled="!playerClient || (playerClient ? 1 : 0) + fallbacks.length >= 4"
@@ -332,7 +332,7 @@
           </select>
           <button
             type="button"
-            class="theme-outline-button inline-flex min-h-[32px] items-center rounded-m3-xs px-3 py-1 text-xs font-semibold"
+            class="theme-button theme-outline-button"
             x-bind:disabled="!candidateFallback || (playerClient ? 1 : 0) + fallbacks.length >= 4"
             @click="
               if (candidateFallback && !fallbacks.includes(candidateFallback) && candidateFallback !== playerClient) {
@@ -734,10 +734,10 @@
       label="Cookie file"
       help="Choose the file to store as the shared cookies.txt file."
     />
-    <div class="flex justify-end gap-2">
+    <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
-        class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+        class="theme-button theme-outline-button"
         phx-click={hide_modal("cookie-upload-modal")}
       >
         Cancel
@@ -763,10 +763,10 @@
       value={@cookie_file_contents}
       inputclass="min-h-[18rem] font-mono"
     />
-    <div class="flex justify-end gap-2">
+    <div class="flex flex-wrap justify-end gap-2">
       <button
         type="button"
-        class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+        class="theme-button theme-outline-button"
         phx-click={hide_modal("cookie-paste-modal")}
       >
         Cancel
@@ -794,7 +794,7 @@
   <div class="mt-6 flex justify-end">
     <button
       type="button"
-      class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+      class="theme-button theme-outline-button"
       phx-click={hide_modal("cookie-inspect-modal")}
     >
       Close

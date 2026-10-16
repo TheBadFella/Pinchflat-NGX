@@ -6,9 +6,9 @@ Published October 14, 2026 at wiki commit `e7517c981e2d2a5ca2b3cdac236f968e4581c
 
 ## Pages and links
 
-| Local source                                 | Wiki title                         | Wiki slug                            |
-| -------------------------------------------- | ---------------------------------- | ------------------------------------ |
-| Wiki: [Migrating-from-Pinchflat](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Migrating-from-Pinchflat) | Migrating from Pinchflat | `Migrating-from-Pinchflat` |
+| Local source                                                                                                                     | Wiki title                         | Wiki slug                            |
+| -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------ |
+| Wiki: [Migrating-from-Pinchflat](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Migrating-from-Pinchflat)                     | Migrating from Pinchflat           | `Migrating-from-Pinchflat`           |
 | Wiki: [Backing-up-config-before-migration](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Backing-up-config-before-migration) | Backing up config before migration | `Backing-up-config-before-migration` |
 
 - [ ] Review `docs/migration-wiki-preview.html` locally, including images and both pages. The Markdown files remain the editable source.

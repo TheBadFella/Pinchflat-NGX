@@ -1,10 +1,7 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex items-center min-w-0">
-    <.link href={~p"/media_profiles"} class="shrink-0">
-      <.icon
-        name="hero-arrow-left"
-        class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
-      />
+    <.link href={~p"/media_profiles"} aria-label="Back" class="theme-icon-button theme-outline-button shrink-0">
+      <.icon name="hero-arrow-left" class="h-5 w-5" />
     </.link>
 
     <h2 class="ml-2 min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
@@ -13,11 +10,9 @@
   </div>
 
   <nav class="shrink-0">
-    <.link href={~p"/media_profiles/#{@media_profile}/edit"}>
-      <.button rounding="rounded-m3-sm">
-        <.icon name="hero-pencil-square" class="mr-2" />Edit <span class="hidden sm:inline pl-1">Media Profile</span>
-      </.button>
-    </.link>
+    <.button href={~p"/media_profiles/#{@media_profile}/edit"} variant="primary">
+      <.icon name="hero-pencil-square" class="mr-2" />Edit <span class="hidden sm:inline pl-1">Media Profile</span>
+    </.button>
   </nav>
 </div>
 
@@ -46,7 +41,12 @@
                   </span>
                 </.subtle_link>
               </div>
-              <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1 shrink-0" />
+              <.icon_link
+                href={~p"/sources/#{source.id}/edit"}
+                icon="hero-pencil-square"
+                aria-label="Edit"
+                class="mx-1 shrink-0"
+              />
             </div>
 
             <dl class="grid grid-cols-1 gap-3 text-sm">
@@ -82,7 +82,12 @@
             </:col>
 
             <:col :let={source} label="" class="flex justify-end">
-              <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+              <.icon_link
+                href={~p"/sources/#{source.id}/edit"}
+                icon="hero-pencil-square"
+                aria-label="Edit"
+                class="mr-4"
+              />
             </:col>
           </.table>
         </div>

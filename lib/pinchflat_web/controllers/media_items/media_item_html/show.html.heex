@@ -1,10 +1,11 @@
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <div class="flex gap-3 items-center min-w-0">
-    <.link href={~p"/sources/#{@media_item.source_id}"} class="shrink-0">
-      <.icon
-        name="hero-arrow-left"
-        class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface"
-      />
+    <.link
+      href={~p"/sources/#{@media_item.source_id}"}
+      aria-label="Back"
+      class="theme-icon-button theme-outline-button shrink-0"
+    >
+      <.icon name="hero-arrow-left" class="h-5 w-5" />
     </.link>
 
     <h2 class="ml-4 min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
@@ -13,9 +14,9 @@
   </div>
 
   <nav class="shrink-0">
-    <.link href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit"}>
-      <.button rounding="rounded-m3-sm"><.icon name="hero-pencil-square" class="mr-2" /> Edit</.button>
-    </.link>
+    <.button href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit"} variant="primary">
+      <.icon name="hero-pencil-square" class="mr-2" /> Edit
+    </.button>
   </nav>
 </div>
 
@@ -36,7 +37,7 @@
 
           <section :if={@media_item.unavailable_at} class="mt-6">
             <div class="flex items-center gap-1 mb-2">
-              <.icon name="hero-no-symbol" class="text-amber-400" />
+              <.icon name="hero-no-symbol" class="theme-status-warning" />
               <h3 class="font-bold text-xl">Unavailable</h3>
             </div>
 

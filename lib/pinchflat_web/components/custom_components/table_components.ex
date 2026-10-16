@@ -47,7 +47,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                 <button
                   :if={col[:sort_key]}
                   type="button"
-                  class="inline-flex items-center gap-1 text-left"
+                  class="theme-filter-button -my-2 rounded-m3-xs text-left"
                   phx-click="sort_update"
                   phx-value-sort_key={col[:sort_key]}
                   aria-label={sort_button_label(col[:label], @sort_key, @sort_direction, col[:sort_key])}
@@ -114,42 +114,50 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
 
   def live_pagination_controls(assigns) do
     ~H"""
-    <nav>
+    <nav aria-label="Pagination">
       <ul class="flex flex-wrap items-center">
         <li>
-          <span
+          <button
+            type="button"
+            disabled={@page_number <= 1}
+            aria-label="Previous page"
+            aria-disabled={to_string(@page_number <= 1)}
             class={[
-              "pagination-prev h-8 w-8 items-center justify-center rounded-m3-xs",
-              @page_number != 1 &&
-                "cursor-pointer bg-theme-surface text-theme-on-surface transition hover:bg-theme-primary hover:text-theme-on-primary",
-              @page_number <= 1 && "cursor-not-allowed opacity-50"
+              "pagination-prev theme-touch-target inline-flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-m3-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11",
+              @page_number > 1 &&
+                "cursor-pointer bg-theme-surface text-theme-on-surface hover:bg-theme-primary hover:text-theme-on-primary",
+              @page_number <= 1 && "cursor-not-allowed opacity-50 bg-theme-surface text-theme-on-surface-muted"
             ]}
-            phx-click={@page_number != 1 && "page_change"}
+            phx-click={@page_number > 1 && "page_change"}
             phx-value-direction="dec"
           >
-            <.icon name="hero-chevron-left" />
-          </span>
+            <.icon name="hero-chevron-left" class="h-4 w-4" />
+          </button>
         </li>
 
         <li>
-          <span class="mx-2">
+          <span class="mx-2 text-sm font-medium">
             Page <.localized_number number={@page_number} /> of <.localized_number number={@total_pages} />
           </span>
         </li>
 
         <li>
-          <span
+          <button
+            type="button"
+            disabled={@page_number >= @total_pages}
+            aria-label="Next page"
+            aria-disabled={to_string(@page_number >= @total_pages)}
             class={[
-              "pagination-next flex h-8 w-8 items-center justify-center rounded-m3-xs",
-              @page_number != @total_pages &&
-                "cursor-pointer bg-theme-surface text-theme-on-surface transition hover:bg-theme-primary hover:text-theme-on-primary",
-              @page_number >= @total_pages && "cursor-not-allowed opacity-50"
+              "pagination-next theme-touch-target inline-flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-m3-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11",
+              @page_number < @total_pages &&
+                "cursor-pointer bg-theme-surface text-theme-on-surface hover:bg-theme-primary hover:text-theme-on-primary",
+              @page_number >= @total_pages && "cursor-not-allowed opacity-50 bg-theme-surface text-theme-on-surface-muted"
             ]}
-            phx-click={@page_number != @total_pages && "page_change"}
+            phx-click={@page_number < @total_pages && "page_change"}
             phx-value-direction="inc"
           >
-            <.icon name="hero-chevron-right" />
-          </span>
+            <.icon name="hero-chevron-right" class="h-4 w-4" />
+          </button>
         </li>
       </ul>
     </nav>

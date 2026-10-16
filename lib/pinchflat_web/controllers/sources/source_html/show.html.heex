@@ -1,10 +1,7 @@
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div class="flex w-full min-w-0 flex-1 items-center gap-3">
-    <.link href={~p"/sources"} class="shrink-0">
-      <.icon
-        name="hero-arrow-left"
-        class="h-8 w-8 text-theme-on-surface-muted transition hover:text-theme-on-surface sm:h-10 sm:w-10"
-      />
+    <.link href={~p"/sources"} aria-label="Back" class="theme-icon-button theme-outline-button shrink-0">
+      <.icon name="hero-arrow-left" class="h-5 w-5" />
     </.link>
 
     <h2 class="ml-2 min-w-0 [overflow-wrap:anywhere] text-lg font-bold text-theme-on-surface sm:ml-4 sm:text-title-md2">
@@ -13,18 +10,19 @@
   </div>
 
   <nav class="flex shrink-0 flex-wrap items-center gap-2">
-    <.link
+    <.button
       href={~p"/sources/#{@source}/import_downloads"}
-      class="theme-outline-button mr-2 inline-flex px-4 py-2 text-sm"
+      variant="secondary"
     >
       Import Downloads
-    </.link>
+    </.button>
 
-    <.link href={~p"/sources/#{@source}/edit"}>
-      <.button rounding="rounded-m3-sm">
-        <.icon name="hero-pencil-square" class="mr-2" /> Edit <span class="hidden sm:inline pl-1">Source</span>
-      </.button>
-    </.link>
+    <.button
+      href={~p"/sources/#{@source}/edit"}
+      variant="primary"
+    >
+      <.icon name="hero-pencil-square" class="mr-2" /> Edit <span class="hidden sm:inline pl-1">Source</span>
+    </.button>
   </nav>
 </div>
 
@@ -55,7 +53,7 @@
         >
           <input type="hidden" name="return_to" value={~p"/sources/#{@source}"} />
           <.button
-            rounding="rounded-m3-sm"
+            variant="primary"
             data-confirm="Restore automatic downloads for this playlist and allow all indexed items to download?"
           >
             Restore Automatic Downloads
@@ -68,7 +66,7 @@
     <div x-data="{ showUnset: false }">
       <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
         <:tab_append>
-          <div class="flex items-center gap-4">
+          <div class="flex flex-wrap items-center gap-4">
             <.switch :if={@active_tab == "source"} model="showUnset" label="Show unset fields" />
             <.actions_dropdown source={@source} conn={@conn} />
           </div>
@@ -113,21 +111,23 @@
               </div>
 
               <div class="flex gap-2">
-                <button
+                <.button
                   type="button"
-                  class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+                  variant="secondary"
+                  size="compact"
                   x-on:click="toggleAll(true)"
                 >
                   Select All
-                </button>
+                </.button>
 
-                <button
+                <.button
                   type="button"
-                  class="theme-outline-button inline-flex px-4 py-2 text-sm font-medium"
+                  variant="secondary"
+                  size="compact"
                   x-on:click="toggleAll(false)"
                 >
                   Clear All
-                </button>
+                </.button>
               </div>
             </div>
 
@@ -198,23 +198,23 @@
               </div>
 
               <div class="mt-5 flex flex-wrap gap-3">
-                <button
+                <.button
                   type="submit"
                   name="selection_action"
                   value="save"
-                  class="theme-outline-button inline-flex px-5 py-3 text-sm font-medium"
+                  variant="secondary"
                 >
                   Save Selection
-                </button>
+                </.button>
 
-                <button
+                <.button
                   type="submit"
                   name="selection_action"
                   value="download"
-                  class="inline-flex w-auto items-center justify-center rounded-m3-sm bg-theme-primary px-5 py-3 text-sm font-medium text-theme-on-primary"
+                  variant="primary"
                 >
                   Download Selected
-                </button>
+                </.button>
               </div>
             </.form>
           </div>

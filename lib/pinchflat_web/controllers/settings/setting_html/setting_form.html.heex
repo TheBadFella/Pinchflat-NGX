@@ -102,7 +102,7 @@
           role="switch"
           aria-label="Use 12-hour time"
           x-bind:aria-checked="is12h ? 'true' : 'false'"
-          class="inline-flex w-fit items-center gap-3 cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary focus-visible:ring-offset-2 focus-visible:ring-offset-theme-surface"
+          class="inline-flex min-h-11 w-fit items-center gap-3 text-sm cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary focus-visible:ring-offset-2 focus-visible:ring-offset-theme-surface"
           @click={"is12h = !is12h; dispatchFor('#{f[:time_format].id}', 'change')"}
         >
           <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
@@ -248,15 +248,13 @@
             </p>
           </div>
           <div>
-            <.link href={~p"/settings/resume_downloads"} method="post">
-              <.button
-                color="bg-theme-primary text-theme-on-primary"
-                rounding="rounded-m3-sm"
-                class="px-4 py-2 text-sm min-h-[44px]"
-              >
-                Check storage and resume downloads
-              </.button>
-            </.link>
+            <.button
+              href={~p"/settings/resume_downloads"}
+              method="post"
+              variant="primary"
+            >
+              Check storage and resume downloads
+            </.button>
           </div>
         </div>
       </div>
@@ -291,11 +289,14 @@
       <p class="text-sm text-theme-on-surface-muted">
         Dumps are stored in Pinchflat-ngx's persistent configuration volume and are available only through this authenticated UI.
       </p>
-      <.link href={~p"/settings/backups"} method="post" class="w-full shrink-0 sm:w-auto">
-        <.button color="theme-primary-button" rounding="rounded-m3-sm" class="w-full text-sm sm:w-auto">
-          <.icon name="hero-circle-stack" class="mr-1 h-4 w-4" /> Create and Download Backup
-        </.button>
-      </.link>
+      <.button
+        href={~p"/settings/backups"}
+        method="post"
+        variant="primary"
+        class="w-full shrink-0 sm:w-auto"
+      >
+        <.icon name="hero-circle-stack" class="mr-1 h-4 w-4" /> Create and Download Backup
+      </.button>
     </div>
 
     <%= if @backup_status.backups == [] do %>
@@ -340,8 +341,8 @@
 
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   <.button
+    variant="primary"
     class="w-full sm:w-auto"
-    rounding="rounded-m3-sm"
     form="settings-form"
     x-show="matchGroup('notifications') || matchGroup('extractor') || matchGroup('storage') || matchGroup('backups') || matchGroup('discovery') || matchGroup('ytdlp') || ((advancedMode || query.trim()) && matchGroup('codec'))"
   >

@@ -18,15 +18,13 @@
         </div>
       </div>
       <div>
-        <.link href={~p"/settings/resume_downloads?#{[redirect_to: ~p"/"]}"} method="post">
-          <.button
-            color="bg-theme-primary text-theme-on-primary"
-            rounding="rounded-m3-sm"
-            class="px-4 py-2 text-sm min-h-[44px]"
-          >
-            Check storage and resume downloads
-          </.button>
-        </.link>
+        <.button
+          href={~p"/settings/resume_downloads?#{[redirect_to: ~p"/"]}"}
+          method="post"
+          variant="primary"
+        >
+          Check storage and resume downloads
+        </.button>
       </div>
     </div>
   </div>

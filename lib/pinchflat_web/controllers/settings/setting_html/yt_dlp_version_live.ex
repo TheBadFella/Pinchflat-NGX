@@ -42,7 +42,6 @@ defmodule Pinchflat.Settings.YtDlpVersionLive do
         <:input_append>
           <.icon_button
             icon_name={@icon_name}
-            class="h-12 w-12 disabled:opacity-50 disabled:cursor-not-allowed"
             phx-click="check_version"
             tooltip={@tooltip}
             disabled={blank?(@pinned_version)}
