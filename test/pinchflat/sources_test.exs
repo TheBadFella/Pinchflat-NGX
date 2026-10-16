@@ -316,6 +316,32 @@ defmodule Pinchflat.SourcesTest do
       assert source.index_frequency_minutes == 0
     end
 
+    for source_type <- [:automatic, :channel],
+        url <- [
+          "https://www.youtube.com/@noiraeris/videos",
+          "https://www.youtube.com/channel/UC45YSEzxig0MHVOn1bR13ww"
+        ] do
+      test "creates a channel from collection metadata with #{source_type} selected for #{url}" do
+        expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+          Phoenix.json_library().encode(%{
+            playlist_channel: "Channel owner",
+            playlist_channel_id: "UCowner",
+            playlist_id: "UCowner",
+            playlist_title: "Channel owner - Videos"
+          })
+        end)
+
+        attrs = %{
+          media_profile_id: media_profile_fixture().id,
+          original_url: unquote(url),
+          source_type: unquote(source_type)
+        }
+
+        assert {:ok, %Source{collection_type: :channel, collection_id: "UCowner", collection_name: "Channel owner"}} =
+                 Sources.create_source(attrs, run_post_commit_tasks: false)
+      end
+    end
+
     test "creates a source when the explicit channel type matches inspected metadata" do
       expect(YtDlpRunnerMock, :run, &channel_mock/5)
 

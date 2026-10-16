@@ -111,6 +111,56 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
   end
 
   describe "get_source_details/1" do
+    test "identifies a channel when only the collection has channel metadata" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl_opts ->
+        Phoenix.json_library().encode(%{
+          playlist_channel: "Channel owner",
+          playlist_channel_id: "UCowner",
+          playlist_id: "UCowner",
+          playlist_title: "Channel owner - Videos",
+          filename: "/tmp/test/media/video.mp4"
+        })
+      end)
+
+      assert {:ok,
+              %{
+                detected_type: :channel,
+                channel_id: "UCowner",
+                channel_name: "Channel owner",
+                filepath: "/tmp/test/media/video.mp4"
+              }} = MediaCollection.get_source_details(@channel_url)
+    end
+
+    test "prefers the collection owner over the first video's channel" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl_opts ->
+        Phoenix.json_library().encode(%{
+          channel: "Video uploader",
+          channel_id: "UCvideo",
+          playlist_channel: "Channel owner",
+          playlist_channel_id: "UCowner",
+          playlist_id: "UCowner",
+          playlist_title: "Channel owner - Videos"
+        })
+      end)
+
+      assert {:ok, %{detected_type: :channel, channel_id: "UCowner", channel_name: "Channel owner"}} =
+               MediaCollection.get_source_details(@channel_url)
+    end
+
+    test "keeps a genuine playlist distinct from its owner without video channel metadata" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl_opts ->
+        Phoenix.json_library().encode(%{
+          playlist_channel: "Playlist owner",
+          playlist_channel_id: "UCowner",
+          playlist_id: "PLcollection",
+          playlist_title: "A playlist"
+        })
+      end)
+
+      assert {:ok, %{detected_type: :playlist, channel_id: "UCowner", playlist_id: "PLcollection"}} =
+               MediaCollection.get_source_details("https://www.youtube.com/playlist?list=PLcollection")
+    end
+
     test "returns a map with data on success" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl_opts ->
         Phoenix.json_library().encode(%{
@@ -134,7 +184,9 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
     test "passes the expected args to the runner" do
       expect(YtDlpRunnerMock, :run, fn @channel_url, :get_source_details, opts, ot, _addl_opts ->
         assert opts == [:simulate, :skip_download, :ignore_no_formats_error, playlist_end: 1]
-        assert ot == "%(.{channel,channel_id,playlist_id,playlist_title,filename})j"
+
+        assert ot ==
+                 "%(.{channel,channel_id,playlist_id,playlist_title,playlist_channel,playlist_channel_id,filename})j"
 
         {:ok, "{}"}
       end)
