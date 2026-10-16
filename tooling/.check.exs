@@ -20,6 +20,7 @@
     {:sobelow, "mix sobelow --config"},
     {:prettier_formatting, "yarn run lint:check", fix: "yarn run lint:fix"},
     {:npm_test, false},
+    {:sidebar_ui, "node --test test/assets/sidebar_test.mjs"},
     {:gettext, false},
     {:ex_unit, env: %{"MIX_ENV" => "test", "EX_CHECK" => "1"}}
 

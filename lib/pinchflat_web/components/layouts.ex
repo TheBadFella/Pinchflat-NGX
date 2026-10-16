@@ -72,27 +72,28 @@ defmodule PinchflatWeb.Layouts do
       <span
         class={[
           "font-medium cursor-pointer",
-          "group relative flex min-h-10 items-center justify-between rounded-m3-sm border px-3 py-2 duration-300 ease-in-out lg:min-h-11 lg:px-4",
-          "duration-300 ease-in-out lg:px-4",
+          "theme-sidebar-item theme-sidebar-submenu-trigger group relative flex min-h-10 items-center rounded-m3-sm border duration-300 ease-in-out lg:min-h-11",
+          "duration-300 ease-in-out",
           if(
             @initially_selected,
             do: "theme-sidebar-active",
             else: "border-transparent hover:bg-theme-surface-3"
           )
         ]}
-        x-bind:class={"(sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : '') + ' ' + (isSidebarSubmenuActive(#{@submenu_hrefs}) ? 'theme-sidebar-active' : 'border-transparent hover:bg-theme-surface-3')"}
+        x-bind:class={"(isSidebarSubmenuActive(#{@submenu_hrefs}) ? 'theme-sidebar-active' : 'border-transparent hover:bg-theme-surface-3')"}
         x-on:click="if (sidebarCollapsed) { sidebarCollapsed = false; window.setSidebarCollapsed(false) } else { selected = !selected }"
       >
-        <span class="flex items-center gap-2.5" x-bind:class="sidebarCollapsed ? 'lg:justify-center' : ''">
+        <span class="theme-sidebar-submenu-label flex items-center gap-2.5">
           <.icon
             name={@icon}
-            class="h-5 w-5 shrink-0"
-            x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
-          /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">{@text}</span>
+            class="theme-sidebar-item-icon shrink-0"
+          /> <span class="theme-sidebar-desktop-label">{@text}</span>
         </span>
-        <span class="text-theme-on-surface-muted" x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">
+
+        <span class="theme-sidebar-desktop-label text-theme-on-surface-muted">
           <.icon name="hero-chevron-down" x-bind:class="{ 'rotate-180': selected }" />
         </span>
+
         <span
           x-cloak
           x-show="sidebarCollapsed"
@@ -102,10 +103,11 @@ defmodule PinchflatWeb.Layouts do
           {@text}
         </span>
       </span>
+
       <ul
-        x-cloak
         x-show="selected && !sidebarCollapsed"
-        class="mt-2 ml-5 flex flex-col gap-1 border-l border-theme-outline/60 pl-4"
+        style={if !@initially_selected, do: "display: none"}
+        class="theme-sidebar-submenu mt-2 ml-5 flex flex-col gap-1 border-l border-theme-outline/60 pl-4"
       >
         <li :for={menu <- @submenu} class="text-theme-on-surface-muted">
           <.sidebar_link
@@ -151,7 +153,7 @@ defmodule PinchflatWeb.Layouts do
       aria-current={if @active?, do: "page", else: nil}
       class={[
         "font-medium",
-        "group relative flex min-h-10 items-center gap-2 rounded-m3-sm border px-3 py-2 duration-300 ease-in-out lg:min-h-11 lg:gap-2.5 lg:px-4",
+        "theme-sidebar-item group relative flex min-h-10 items-center gap-2 rounded-m3-sm border duration-300 ease-in-out lg:min-h-11 lg:gap-2.5",
         "duration-300 ease-in-out",
         if(
           @active?,
@@ -161,14 +163,13 @@ defmodule PinchflatWeb.Layouts do
         @class
       ]}
       x-bind:aria-current={"isSidebarPathActive(#{@href_json}) ? 'page' : null"}
-      x-bind:class={"(sidebarCollapsed ? 'lg:mx-auto lg:h-12 lg:w-12 lg:justify-center lg:rounded-xl lg:px-0' : '') + ' ' + (isSidebarPathActive(#{@href_json}) ? 'theme-sidebar-active' : 'border-transparent hover:bg-theme-surface-3')"}
+      x-bind:class={"(isSidebarPathActive(#{@href_json}) ? 'theme-sidebar-active' : 'border-transparent hover:bg-theme-surface-3')"}
     >
       <.icon
         :if={@icon}
         name={@icon}
-        class={"h-5 w-5 shrink-0 #{@icon_class}"}
-        x-bind:class="sidebarCollapsed ? 'lg:h-[1.625rem] lg:w-[1.625rem]' : ''"
-      /> <span x-bind:class="sidebarCollapsed ? 'lg:hidden' : ''">{@text}</span>
+        class={"theme-sidebar-item-icon shrink-0 #{@icon_class}"}
+      /> <span class="theme-sidebar-desktop-label">{@text}</span>
       <span
         x-cloak
         x-show="sidebarCollapsed"

@@ -48,6 +48,118 @@
 }
 
 @layer components {
+  .theme-switch-target {
+    @apply relative inline-flex min-h-11 w-14 items-center;
+  }
+
+  .theme-switch-track {
+    @apply block h-8 w-14 rounded-full border border-theme-outline bg-theme-surface-5 shadow-inner transition;
+  }
+
+  .theme-switch-thumb {
+    @apply absolute left-1 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full bg-theme-on-surface-muted shadow-m3-1 transition;
+  }
+
+  /* The head script restores this state before deferred Alpine initialization. */
+  .theme-sidebar {
+    @apply w-65 overflow-y-auto;
+  }
+
+  .theme-sidebar-brand-row {
+    @apply items-center justify-between gap-2 px-4 py-3 lg:px-6 lg:py-4;
+  }
+
+  .theme-sidebar-icon,
+  .theme-sidebar-header-brand {
+    display: none;
+  }
+
+  .theme-sidebar-navigation {
+    @apply mt-2 px-3 py-3 lg:mt-3 lg:px-6 lg:py-4;
+  }
+
+  .theme-sidebar-list {
+    @apply gap-1 lg:gap-1.5;
+  }
+
+  .theme-sidebar-footer {
+    @apply px-3 py-3 lg:px-6 lg:py-4;
+  }
+
+  .theme-sidebar-item {
+    @apply px-3 py-2 lg:px-4;
+  }
+
+  .theme-sidebar-item-icon {
+    @apply h-5 w-5;
+  }
+
+  .theme-sidebar-submenu-trigger {
+    @apply justify-between;
+  }
+
+  @media (width >= 64rem) {
+    :root[data-sidebar-collapsed='true'] {
+      .theme-sidebar {
+        @apply w-20 overflow-visible;
+      }
+
+      .theme-sidebar-brand-row {
+        @apply flex-col items-center justify-start gap-2 px-0 pt-4 pb-2;
+      }
+
+      .theme-sidebar-brand-link {
+        @apply mx-auto h-12 w-12 rounded-xl;
+      }
+
+      .theme-sidebar-logo,
+      .theme-sidebar-desktop-label,
+      .theme-sidebar-submenu {
+        display: none;
+      }
+
+      .theme-sidebar-icon {
+        display: block;
+      }
+
+      .theme-sidebar-header-brand {
+        display: flex;
+      }
+
+      .theme-sidebar-collapse {
+        @apply mx-auto mt-2;
+      }
+
+      .theme-sidebar-collapse-icon {
+        @apply rotate-180;
+      }
+
+      .theme-sidebar-navigation {
+        @apply mt-5 px-2;
+      }
+
+      .theme-sidebar-list {
+        @apply items-center gap-3;
+      }
+
+      .theme-sidebar-footer {
+        @apply overflow-visible px-3;
+      }
+
+      .theme-sidebar-item {
+        @apply mx-auto h-12 w-12 justify-center rounded-xl px-0;
+      }
+
+      .theme-sidebar-submenu-label {
+        @apply justify-center;
+      }
+
+      .theme-sidebar-item-icon {
+        @apply h-[1.625rem] w-[1.625rem];
+      }
+    }
+  }
+
   .theme-app-shell {
     @apply bg-theme-bg text-theme-on-surface;
   }

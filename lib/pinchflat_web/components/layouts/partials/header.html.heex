@@ -14,11 +14,7 @@
       </button>
     </div>
 
-    <div
-      x-cloak
-      x-show="sidebarCollapsed"
-      class="hidden lg:flex items-center pl-2 select-none"
-    >
+    <div class="theme-sidebar-header-brand items-center pl-2 select-none">
       <span class="text-xl font-bold tracking-tight text-theme-on-surface flex items-center">
         <span>Pinchflat</span><span class="text-theme-primary font-semibold">-ngx</span>
       </span>
@@ -30,6 +26,7 @@
           <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
             <.icon name="hero-magnifying-glass" />
           </span>
+
           <form action={~p"/search"}>
             <input
               type="text"

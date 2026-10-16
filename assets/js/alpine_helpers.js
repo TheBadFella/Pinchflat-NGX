@@ -29,11 +29,16 @@ window.copyWithCallbacks = async (text, onCopy, onAfterDelay, delay = 4000) => {
 }
 
 window.getSidebarCollapsed = () => {
-  return localStorage.getItem('sidebarCollapsed') === 'true'
+  return document.documentElement.dataset.sidebarCollapsed === 'true'
 }
 
 window.setSidebarCollapsed = (collapsed) => {
-  localStorage.setItem('sidebarCollapsed', collapsed ? 'true' : 'false')
+  document.documentElement.dataset.sidebarCollapsed = collapsed ? 'true' : 'false'
+  try {
+    localStorage.setItem('sidebarCollapsed', collapsed ? 'true' : 'false')
+  } catch (_) {
+    // Keep navigation usable when browser storage is unavailable.
+  }
 }
 
 window.settingsPage = () => ({
