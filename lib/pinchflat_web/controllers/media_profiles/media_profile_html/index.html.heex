@@ -2,11 +2,9 @@
   <h2 class="text-title-md2 font-bold text-theme-on-surface">Media Profiles</h2>
 
   <nav>
-    <.link href={~p"/media_profiles/new"}>
-      <.button rounding="rounded-m3-sm">
-        <span class="font-bold text-xl mx-2">+</span> New <span class="hidden sm:inline pl-1">Media Profile</span>
-      </.button>
-    </.link>
+    <.button href={~p"/media_profiles/new"} variant="primary">
+      <span class="font-bold text-xl mr-2">+</span> New <span class="hidden sm:inline pl-1">Media Profile</span>
+    </.button>
   </nav>
 </div>
 
@@ -20,7 +18,12 @@
           </.subtle_link>
         </div>
 
-        <.icon_link href={~p"/media_profiles/#{media_profile.id}/edit"} icon="hero-pencil-square" class="mx-1 shrink-0" />
+        <.icon_link
+          href={~p"/media_profiles/#{media_profile.id}/edit"}
+          icon="hero-pencil-square"
+          aria-label="Edit"
+          class="mx-1 shrink-0"
+        />
       </div>
 
       <dl class="grid grid-cols-1 gap-3 text-sm">
@@ -58,7 +61,12 @@
             </:col>
 
             <:col :let={media_profile} label="" class="flex justify-end">
-              <.icon_link href={~p"/media_profiles/#{media_profile.id}/edit"} icon="hero-pencil-square" class="mr-4" />
+              <.icon_link
+                href={~p"/media_profiles/#{media_profile.id}/edit"}
+                icon="hero-pencil-square"
+                aria-label="Edit"
+                class="mr-4"
+              />
             </:col>
           </.table>
         </div>

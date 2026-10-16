@@ -56,7 +56,7 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
       </:col>
 
       <:col :let={source} label="" class="flex place-content-evenly">
-        <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+        <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" aria-label="Edit" class="mx-1" />
       </:col>
     </.table>
     """

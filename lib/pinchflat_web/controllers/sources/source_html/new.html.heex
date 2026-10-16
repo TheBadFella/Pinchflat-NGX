@@ -1,6 +1,11 @@
 <div class="mb-6 flex gap-3 flex-row items-center">
-  <.link :if={!Settings.get!(:onboarding)} href={~p"/sources"}>
-    <.icon name="hero-arrow-left" class="h-10 w-10 text-theme-on-surface-muted transition hover:text-theme-on-surface" />
+  <.link
+    :if={!Settings.get!(:onboarding)}
+    href={~p"/sources"}
+    aria-label="Back"
+    class="theme-icon-button theme-outline-button"
+  >
+    <.icon name="hero-arrow-left" class="h-5 w-5" />
   </.link>
   <h2 class="ml-4 text-title-md2 font-bold text-theme-on-surface">New Source</h2>
 </div>

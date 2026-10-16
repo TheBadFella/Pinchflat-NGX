@@ -22,24 +22,26 @@ defmodule Pinchflat.Settings.YoutubeApiKeyLive do
       >
         <:input_append>
           <.icon_button
+            size="large"
             x-cloak
             x-show="!revealed"
             x-on:click="revealed = true"
             icon_name="hero-eye"
-            class="h-12 w-12 mr-2"
+            class="mr-2"
             tooltip="Reveal"
             type="button"
           />
           <.icon_button
+            size="large"
             x-cloak
             x-show="revealed"
             x-on:click="revealed = false"
             icon_name="hero-eye-slash"
-            class="h-12 w-12 mr-2"
+            class="mr-2"
             tooltip="Hide"
             type="button"
           />
-          <.icon_button icon_name={@icon_name} class="h-12 w-12" phx-click="test_youtube_api_key" tooltip={@tooltip} />
+          <.icon_button size="large" icon_name={@icon_name} phx-click="test_youtube_api_key" tooltip={@tooltip} />
         </:input_append>
       </.input>
     </div>

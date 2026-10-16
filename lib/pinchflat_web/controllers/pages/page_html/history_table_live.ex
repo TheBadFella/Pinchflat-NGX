@@ -24,7 +24,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   def render(%{records: []} = assigns) do
     ~H"""
     <div class="mb-4 flex items-center">
-      <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" />
+      <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
       <p class="ml-2">Nothing Here!</p>
     </div>
     """
@@ -40,6 +40,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
             Showing <.localized_number number={length(@records)} /> of <.localized_number number={@total_record_count} />
           </span>
         </span>
+
         <.button
           :if={@media_state == "failed"}
           type="button"
@@ -50,6 +51,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         >
           <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
         </.button>
+
         <form :if={@media_state == "failed"} id="history-error-type-filter" phx-change="filter_error_type">
           <label class="sr-only" for="history-error-type">Failure type</label>
           <select
@@ -58,11 +60,14 @@ defmodule Pinchflat.Pages.HistoryTableLive do
             class="theme-input rounded-m3-sm text-sm"
           >
             <option value="all" selected={@error_type_filter == "all"}>All failures</option>
+
             <option value="transient" selected={@error_type_filter == "transient"}>Transient failures</option>
+
             <option value="permanent" selected={@error_type_filter == "permanent"}>Permanent failures</option>
           </select>
         </form>
       </span>
+
       <div class="space-y-4 md:hidden">
         <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
           <div class="flex items-center justify-between gap-3">
@@ -72,8 +77,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                   :if={media_item.last_error}
                   name="hero-exclamation-circle-solid"
                   class="theme-status-error mt-0.5 shrink-0"
-                />
-                <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                 <div class="min-w-0">
                   <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
                     <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
@@ -82,6 +86,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                   </.subtle_link>
                 </div>
               </div>
+
               <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
                 <span class="text-sm text-theme-on-surface-muted">{media_item.source.custom_name}</span>
               </.subtle_link>
@@ -142,20 +147,27 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           <dl class="grid grid-cols-1 gap-3 text-sm">
             <div class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Upload Date</dt>
+
               <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
             </div>
+
             <div class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Size / Progress</dt>
+
               <dd class="max-w-[65%] text-right text-theme-on-surface">
                 <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
               </dd>
             </div>
+
             <div class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Indexed At</dt>
+
               <dd class="text-right text-theme-on-surface">{format_datetime(media_item.inserted_at)}</dd>
             </div>
+
             <div class="flex items-start justify-between gap-3">
               <dt class="text-theme-on-surface-muted">Downloaded At</dt>
+
               <dd class="text-right text-theme-on-surface">{format_datetime(media_item.media_downloaded_at)}</dd>
             </div>
           </dl>
@@ -173,8 +185,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                       :if={media_item.last_error}
                       name="hero-exclamation-circle-solid"
                       class="theme-status-error shrink-0"
-                    />
-                    <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                    /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                     <.icon_button
                       :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
                       icon_name="hero-arrow-down-tray"
@@ -680,8 +691,10 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     <div :if={is_nil(@task)} class="text-theme-on-surface">
       {size_or_progress_label(@media_item, nil)}
     </div>
+
     <div :if={!is_nil(@task)} class="min-w-40 space-y-2">
       <div class="text-right text-theme-on-surface">{size_or_progress_label(@media_item, @task)}</div>
+
       <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
         <div
           class="h-full rounded-full bg-theme-primary transition-all duration-300"

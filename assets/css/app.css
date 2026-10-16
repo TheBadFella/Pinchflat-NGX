@@ -65,7 +65,7 @@
   }
 
   .theme-input {
-    @apply rounded-m3-sm border-0 bg-theme-surface-2 text-theme-on-surface placeholder:text-theme-on-surface-muted;
+    @apply min-h-11 rounded-m3-sm border-0 bg-theme-surface-2 text-sm leading-5 text-theme-on-surface placeholder:text-theme-on-surface-muted;
   }
 
   .theme-input:focus,
@@ -131,7 +131,46 @@
     color: rgb(var(--theme-on-surface));
   }
 
-  .theme-outline-button {
+  .theme-button {
+    @apply inline-flex min-h-11 items-center justify-center rounded-m3-sm px-4 py-2 text-center text-sm font-medium leading-5 whitespace-nowrap shadow-m3-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .theme-filter-button {
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg;
+  }
+
+  .theme-dropdown-option > a,
+  .theme-dropdown-option > button {
+    @apply flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm font-medium text-theme-on-surface-muted transition hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-theme-primary;
+  }
+
+  .theme-button-compact {
+    @apply inline-flex min-h-9 items-center justify-center rounded-m3-xs px-3 py-1.5 text-center text-xs font-medium leading-4 whitespace-nowrap shadow-m3-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-11 max-sm:px-4 max-sm:py-2 max-sm:text-sm;
+  }
+
+  .theme-button-large {
+    @apply inline-flex min-h-12 items-center justify-center rounded-m3-sm px-6 py-3 text-center text-base font-medium leading-6 whitespace-nowrap shadow-m3-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .theme-icon-button {
+    @apply inline-flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-m3-sm border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50 max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11;
+  }
+
+  .theme-icon-button-compact {
+    @apply inline-flex h-8 w-8 min-h-8 min-w-8 items-center justify-center rounded-m3-xs border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50 max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11;
+  }
+
+  @media (any-pointer: coarse) {
+    .theme-button-compact,
+    .theme-icon-button,
+    .theme-icon-button-compact,
+    .theme-touch-target {
+      @apply min-h-11! min-w-11!;
+    }
+  }
+
+  .theme-outline-button,
+  .theme-button-secondary {
     @apply rounded-m3-sm border border-theme-outline bg-theme-surface text-theme-on-surface transition hover:border-theme-outline-strong hover:bg-theme-surface-2;
   }
 

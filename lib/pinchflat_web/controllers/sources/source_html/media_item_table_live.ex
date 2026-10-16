@@ -18,7 +18,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def render(%{total_record_count: 0} = assigns) do
     ~H"""
     <div class="mb-4 flex items-center">
-      <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" />
+      <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
       <p class="ml-2">Nothing Here!</p>
     </div>
     """
@@ -179,7 +179,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                       tooltip="Stop Download"
                       tooltip_position="bottom-left"
                     />
-                    <.icon_link href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"} icon="hero-pencil-square" />
+                    <.icon_link
+                      href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"}
+                      icon="hero-pencil-square"
+                      aria-label="Edit"
+                    />
                   </div>
                 </div>
 
@@ -317,6 +321,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                     <.icon_link
                       href={~p"/sources/#{@source.id}/media/#{media_item.id}/edit"}
                       icon="hero-pencil-square"
+                      aria-label="Edit"
                       class="mr-4"
                     />
                   </div>
@@ -969,7 +974,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   # set, so `culled_at` must be checked before `prevent_download`.
   defp media_status(%{unavailable_at: at, unavailable_reason: reason}) when not is_nil(at) do
     tooltip = if reason, do: "Skipped: #{reason}", else: "Skipped: members-only, private, or removed"
-    %{label: "Unavailable", icon: "hero-no-symbol", class: "text-amber-400", tooltip: tooltip}
+    %{label: "Unavailable", icon: "hero-no-symbol", class: "theme-status-warning", tooltip: tooltip}
   end
 
   defp media_status(%{culled_at: at, prevent_download: prevent_download}) when not is_nil(at) do

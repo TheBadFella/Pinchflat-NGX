@@ -1,6 +1,10 @@
 <div class="mb-6 flex items-center gap-3">
-  <.link href={~p"/sources/#{@source}"} aria-label="Back to source">
-    <.icon name="hero-arrow-left" class="h-10 w-10 text-theme-on-surface-muted" />
+  <.link
+    href={~p"/sources/#{@source}"}
+    aria-label="Back to source"
+    class="theme-icon-button theme-outline-button"
+  >
+    <.icon name="hero-arrow-left" class="h-5 w-5" />
   </.link>
   <h2 class="text-title-md2 font-bold text-theme-on-surface">Import Existing Downloads</h2>
 </div>

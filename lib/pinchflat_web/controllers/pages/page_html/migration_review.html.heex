@@ -285,7 +285,7 @@
 
     <div class="flex flex-wrap items-center gap-3">
       <.form :let={_f} for={%{}} as={:rescan} action={~p"/migration/rescan"} method="post">
-        <.button type="submit" class="theme-outline-button" disabled={@summary.status == :running}>
+        <.button type="submit" variant="outline" disabled={@summary.status == :running}>
           <.icon name="hero-arrow-path" class="mr-1.5 h-4 w-4" /> Re-scan Disk
         </.button>
       </.form>
@@ -293,7 +293,7 @@
       <.form :let={_f} for={%{}} as={:confirm} action={~p"/migration/confirm_review"} method="post">
         <.button
           type="submit"
-          class="theme-primary-button"
+          variant="primary"
           disabled={@state.status == "blocked" || (!@summary.complete && @state.status != "pending_release")}
         >
           {if @state.status == "pending_release", do: "Retry resuming work", else: "Looks good, continue"}

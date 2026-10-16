@@ -220,7 +220,11 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
 
-      view |> element("span.pagination-next") |> render_click()
+      assert has_element?(view, "button.pagination-prev[type=button][disabled]")
+      assert has_element?(view, "button.pagination-next[type=button]:not([disabled])")
+      view |> element("button.pagination-next") |> render_click()
+      assert has_element?(view, "button.pagination-prev[type=button]:not([disabled])")
+      assert has_element?(view, "button.pagination-next[type=button][disabled]")
       assert pagination_text(view) == "Page 2 of 2"
 
       socket = %{assigns: %{sort_key: nil, sort_direction: :desc}}

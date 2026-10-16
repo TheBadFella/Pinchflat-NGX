@@ -17,11 +17,9 @@
         <p class="text-md text-theme-on-surface-muted">Don't worry, you can create more Media Profiles later!</p>
 
         <div class="mt-8">
-          <.link href={~p"/media_profiles/new"}>
-            <.button rounding="rounded-m3-sm" disabled={@media_profiles_exist}>
-              <span class="font-bold mx-2">+</span> New Media Profile
-            </.button>
-          </.link>
+          <.button href={~p"/media_profiles/new"} variant="primary" disabled={@media_profiles_exist}>
+            <span class="font-bold mx-2">+</span> New Media Profile
+          </.button>
         </div>
       </section>
 
@@ -35,11 +33,9 @@
         </p>
 
         <div class="mt-8">
-          <.link href={~p"/sources/new"}>
-            <.button rounding="rounded-m3-sm" disabled={not @media_profiles_exist}>
-              <span class="font-bold mx-2">+</span> New Source
-            </.button>
-          </.link>
+          <.button href={~p"/sources/new"} variant="primary" disabled={not @media_profiles_exist}>
+            <span class="font-bold mx-2">+</span> New Source
+          </.button>
         </div>
       </section>
 
@@ -57,11 +53,9 @@
         </p>
 
         <div class="mt-8">
-          <.link href={~p"/?onboarding=0"}>
-            <.button rounding="rounded-m3-sm" disabled={not @sources_exist}>
-              Let's Go <span class="font-bold mx-2">-></span>
-            </.button>
-          </.link>
+          <.button href={~p"/?onboarding=0"} variant="primary" disabled={not @sources_exist}>
+            Let's Go <span class="font-bold mx-2">-></span>
+          </.button>
         </div>
       </section>
     </div>

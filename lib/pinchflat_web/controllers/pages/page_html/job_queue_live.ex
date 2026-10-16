@@ -128,7 +128,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
               :if={@show_cancel}
               phx-click="cancel_job"
               phx-value-job-id={row.job.id}
-              class="theme-danger-text-button shrink-0 text-xs"
+              class="theme-button theme-button-compact theme-danger-button shrink-0"
               data-confirm="Are you sure you want to cancel this job?"
             >
               Cancel
@@ -157,7 +157,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
                 <button
                   type="button"
                   phx-click={show_modal(error_modal_id(row, :mobile))}
-                  class="inline-flex items-center rounded-full border border-theme-outline bg-theme-surface px-4 py-2 text-xs font-medium text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-surface-2 hover:text-theme-primary"
+                  class="theme-button theme-button-compact theme-outline-button"
                 >
                   Error Details
                 </button>
@@ -198,7 +198,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
                 <button
                   type="button"
                   phx-click={show_modal(error_modal_id(row, :desktop))}
-                  class="inline-flex items-center rounded-full border border-theme-outline bg-theme-surface px-4 py-2 text-xs font-medium text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-surface-2 hover:text-theme-primary"
+                  class="theme-button theme-button-compact theme-outline-button"
                 >
                   Error Details
                 </button>
@@ -208,7 +208,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
                 <button
                   phx-click="cancel_job"
                   phx-value-job-id={row.job.id}
-                  class="theme-danger-text-button text-xs"
+                  class="theme-button theme-button-compact theme-danger-button"
                   data-confirm="Are you sure you want to cancel this job?"
                 >
                   Cancel
@@ -259,7 +259,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
           <button
             type="button"
             phx-click={hide_modal(@modal_id)}
-            class="inline-flex items-center rounded-m3-sm bg-theme-primary px-5 py-3 text-sm font-medium text-theme-on-primary transition hover:bg-theme-primary/90"
+            class="theme-button theme-primary-button"
           >
             Close
           </button>

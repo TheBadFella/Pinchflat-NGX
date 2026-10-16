@@ -444,7 +444,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   def switch(assigns) do
     ~H"""
-    <label class="group flex cursor-pointer select-none items-center gap-2.5 text-sm text-theme-on-surface-muted hover:text-theme-on-surface">
+    <label class="group flex min-h-11 cursor-pointer select-none items-center gap-2.5 text-sm text-theme-on-surface-muted hover:text-theme-on-surface">
       <input type="checkbox" x-model={@model} class="peer sr-only" />
       <span class="relative inline-block h-5 w-9 shrink-0 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary">
         <span
@@ -483,7 +483,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         x-on:click={"#{@model} = #{value}"}
         x-bind:class={"#{@model} === #{value} ? 'bg-theme-surface-4 text-theme-on-surface' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"}
         x-bind:aria-pressed={"#{@model} === #{value}"}
-        class="rounded-sm px-2.5 py-1 text-xs font-medium transition"
+        class="theme-filter-button rounded-m3-xs"
       >
         {label}
       </button>

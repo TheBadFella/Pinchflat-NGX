@@ -23,7 +23,7 @@ defmodule Pinchflat.Settings.DefaultCookieBehaviourLive do
       />
 
       <div class="mt-4 flex items-center gap-3">
-        <.button type="submit" rounding="rounded-m3-sm" class="px-6! py-3!">
+        <.button type="submit" variant="primary">
           Save
         </.button>
         <span :if={@saved} class="text-sm font-medium text-theme-success">Saved</span>

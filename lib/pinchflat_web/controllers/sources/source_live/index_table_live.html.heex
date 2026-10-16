@@ -13,7 +13,7 @@
       <button
         type="button"
         class={[
-          "inline-flex items-center gap-2 rounded-m3-xs px-3 py-2 text-sm font-medium transition",
+          "theme-filter-button rounded-m3-xs",
           if(@view_mode == :table,
             do: "bg-theme-primary text-theme-on-primary",
             else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
@@ -29,7 +29,7 @@
       <button
         type="button"
         class={[
-          "inline-flex items-center gap-2 rounded-m3-xs px-3 py-2 text-sm font-medium transition",
+          "theme-filter-button rounded-m3-xs",
           if(@view_mode == :grid,
             do: "bg-theme-primary text-theme-on-primary",
             else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
@@ -145,7 +145,7 @@
               />
             </.form>
 
-            <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+            <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" aria-label="Edit" class="mx-1" />
             <.icon_link
               href={~p"/sources/#{source.id}"}
               icon="hero-trash"
@@ -330,7 +330,12 @@
 
             <:col :let={source} label="" class="align-middle">
               <div class="flex h-full items-center justify-center">
-                <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" class="mx-1" />
+                <.icon_link
+                  href={~p"/sources/#{source.id}/edit"}
+                  icon="hero-pencil-square"
+                  aria-label="Edit"
+                  class="mx-1"
+                />
                 <.icon_link
                   href={~p"/sources/#{source.id}"}
                   icon="hero-trash"

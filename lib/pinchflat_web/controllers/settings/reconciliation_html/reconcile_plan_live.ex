@@ -17,6 +17,7 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
     ~H"""
     <div class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
       <h3 class="text-lg font-semibold text-theme-on-surface mb-2">Latest Run</h3>
+
       <p class="text-theme-on-surface-muted text-sm">
         No reconcile runs yet — scan and build a plan above to see what would change.
       </p>
@@ -32,18 +33,18 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
           Latest Run — {scope_name(@plan)}
           <span class="text-theme-on-surface-muted text-sm">({humanize_mode(@plan.mode)})</span>
         </h3>
+
         <div class="flex items-center gap-3">
-          <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload" tooltip="Refresh" />
-          <.link
+          <.icon_button icon_name="hero-arrow-path" phx-click="reload" tooltip="Refresh" />
+          <.button
             :if={@plan.status == :ready && applyable_count(@plan) > 0}
             href={~p"/reconciliation/apply/#{@plan.id}"}
             method="post"
             data-confirm={apply_confirmation(@plan)}
+            variant="primary"
           >
-            <.button color="theme-primary-button" rounding="rounded-m3-sm">
-              <.icon name="hero-play" class="h-4 w-4 mr-1" /> Apply This Plan
-            </.button>
-          </.link>
+            <.icon name="hero-play" class="h-4 w-4 mr-1" /> Apply This Plan
+          </.button>
         </div>
       </div>
 
@@ -59,6 +60,7 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
             {@progress.processed} of {@progress.total} finished ({@progress.percent}%)
           </span>
         </div>
+
         <div class="w-full bg-theme-surface-4 rounded-full h-2.5">
           <div class="bg-theme-primary h-2.5 rounded-full transition-all" style={"width: #{@progress.percent}%"}></div>
         </div>
@@ -67,32 +69,45 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
       <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
         <div class="theme-surface-accent p-4">
           <p class="text-sm text-theme-on-surface-muted">Moves</p>
+
           <p class="text-2xl font-bold text-theme-on-surface">{@plan.move_count}</p>
         </div>
+
         <div class="theme-surface-accent p-4">
           <p class="text-sm text-theme-on-surface-muted">Backfills</p>
+
           <p class="text-2xl font-bold text-theme-on-surface">{@plan.backfill_count}</p>
         </div>
+
         <div class="theme-surface-accent p-4">
           <p class="text-sm text-theme-on-surface-muted">Deletions</p>
+
           <p class={"text-2xl font-bold #{if @plan.delete_count > 0, do: "theme-status-error", else: "text-theme-on-surface"}"}>
             {@plan.delete_count}
           </p>
+
           <p :if={@plan.delete_count > 0} class="text-xs theme-status-error mt-1">Files will be permanently deleted</p>
         </div>
+
         <div class="theme-surface-accent p-4">
           <p class="text-sm text-theme-on-surface-muted">Re-downloads</p>
+
           <p class={"text-2xl font-bold #{if @plan.redownload_count > 0, do: "theme-status-warning", else: "text-theme-on-surface"}"}>
             {@plan.redownload_count}
           </p>
+
           <p :if={@plan.redownload_count > 0} class="text-xs theme-status-warning mt-1">Uses bandwidth</p>
         </div>
+
         <div class="theme-surface-accent p-4">
           <p class="text-sm text-theme-on-surface-muted">Skipped</p>
+
           <p class="text-2xl font-bold text-theme-on-surface">{@plan.skip_count}</p>
         </div>
+
         <div class="theme-surface-accent p-4">
           <p class="text-sm text-theme-on-surface-muted">Collisions</p>
+
           <p class={"text-2xl font-bold #{if @plan.collision_count > 0, do: "theme-status-warning", else: "text-theme-on-surface"}"}>
             {@plan.collision_count}
           </p>
@@ -105,7 +120,7 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
           phx-click="filter"
           phx-value-filter={filter}
           class={[
-            "px-3 py-1 rounded-full text-sm border",
+            "theme-touch-target inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 max-sm:min-h-11 max-sm:min-w-11",
             if(@filter == filter,
               do: "bg-theme-primary text-theme-on-primary border-theme-primary",
               else: "text-theme-on-surface-muted border-theme-outline hover:border-theme-primary"
@@ -123,14 +138,19 @@ defmodule Pinchflat.Settings.ReconcilePlanLive do
           <:col :let={item} label="Action">
             <span class={action_class(item.action)}>{item.action}</span>
           </:col>
+
           <:col :let={item} label="File">{item.attribute}</:col>
+
           <:col :let={item} label="From" class="max-w-lg">
             <span class="break-all text-xs">{item.from_path}</span>
           </:col>
+
           <:col :let={item} label="To" class="max-w-lg">
             <span class="break-all text-xs">{item.to_path}</span>
           </:col>
+
           <:col :let={item} label="Status">{item.status}</:col>
+
           <:col :let={item} label="Detail" class="max-w-xs">
             <span class="text-xs text-theme-on-surface-muted">{item.detail}</span>
           </:col>

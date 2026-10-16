@@ -14,7 +14,7 @@
   </:option>
 
   <:option>
-    <span x-data="{ copied: false }" x-on:click={~s"
+    <button type="button" x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
           String.raw`#{Jason.Formatter.pretty_print(Phoenix.json_library().encode!(@source))}`,
           () => copied = true,
@@ -23,7 +23,7 @@
       "}>
       Copy JSON
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
-    </span>
+    </button>
   </:option>
 
   <:option><.link href={~p"/sources/new?template_id=#{@source}"} method="get">Use as Template</.link></:option>

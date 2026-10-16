@@ -30,7 +30,7 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
 
     ~H"""
     <div class="w-full">
-      <header class="flex items-end justify-between gap-4 border-b border-theme-outline/70">
+      <header class="flex flex-col items-stretch justify-between gap-4 border-b border-theme-outline/70 xl:flex-row xl:items-end">
         <div class="no-scrollbar flex min-w-0 flex-1 flex-nowrap gap-5 overflow-x-auto sm:gap-8">
           <.link
             :for={tab <- @tab}
@@ -48,7 +48,7 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
           </.link>
         </div>
 
-        <div :if={@tab_append != []} class="flex shrink-0 items-center justify-end gap-3 pb-3">
+        <div :if={@tab_append != []} class="flex min-w-0 flex-wrap items-center justify-end gap-3 pb-3">
           {render_slot(@tab_append)}
         </div>
       </header>

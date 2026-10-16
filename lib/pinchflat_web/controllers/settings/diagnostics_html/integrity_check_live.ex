@@ -25,8 +25,7 @@ defmodule Pinchflat.Settings.IntegrityCheckLive do
     ~H"""
     <div class="flex w-full sm:inline-flex sm:w-auto">
       <.button
-        color="theme-primary-button"
-        rounding="rounded-m3-sm"
+        variant="primary"
         class="w-full text-sm sm:w-auto"
         type="button"
         phx-click={show_modal(@modal_id)}
@@ -43,9 +42,7 @@ defmodule Pinchflat.Settings.IntegrityCheckLive do
 
         <div class="flex flex-wrap gap-3 mb-3">
           <.button
-            color="theme-primary-button"
-            rounding="rounded-m3-sm"
-            class="text-sm"
+            variant="primary"
             type="button"
             disabled={@status == :running}
             phx-click="check"
@@ -54,9 +51,7 @@ defmodule Pinchflat.Settings.IntegrityCheckLive do
             Quick Check
           </.button>
           <.button
-            color="theme-primary-button"
-            rounding="rounded-m3-sm"
-            class="text-sm"
+            variant="secondary"
             type="button"
             disabled={@status == :running}
             phx-click="check"

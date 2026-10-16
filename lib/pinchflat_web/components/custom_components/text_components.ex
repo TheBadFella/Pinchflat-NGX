@@ -66,10 +66,13 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     <.link
       href={@href}
       method={@method}
-      class={["text-theme-on-surface-muted transition hover:text-theme-secondary", @class]}
+      class={[
+        "theme-touch-target inline-flex items-center justify-center min-h-9 min-w-9 p-1 rounded-m3-xs text-theme-on-surface-muted transition hover:text-theme-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg max-sm:min-h-11 max-sm:min-w-11",
+        @class
+      ]}
       {@rest}
     >
-      <CoreComponents.icon name={@icon} />
+      <CoreComponents.icon name={@icon} class="h-4 w-4" />
     </.link>
     """
   end
