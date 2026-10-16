@@ -1,5 +1,5 @@
-<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div class="flex w-full min-w-0 flex-1 items-center gap-3">
+<div class="mb-6 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+  <div class="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
     <.link href={~p"/sources"} aria-label="Back" class="theme-icon-button theme-outline-button shrink-0">
       <.icon name="hero-arrow-left" class="h-5 w-5" />
     </.link>
@@ -9,7 +9,7 @@
     </h2>
   </div>
 
-  <nav class="flex shrink-0 flex-wrap items-center gap-2">
+  <nav class="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
     <.button
       href={~p"/sources/#{@source}/import_downloads"}
       variant="secondary"
