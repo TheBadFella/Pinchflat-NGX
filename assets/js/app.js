@@ -23,8 +23,11 @@ import { LiveSocket } from 'phoenix_live_view'
 import topbar from '../vendor/topbar'
 import Alpine from 'alpinejs'
 import './alpine_helpers'
+import { datePicker } from './date_picker.mjs'
+import { responsiveDialog } from './responsive_dialog.mjs'
 
 window.Alpine = Alpine
+window.pinchflatDatePicker = datePicker
 Alpine.start()
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute('content')
@@ -38,6 +41,7 @@ let liveSocket = new LiveSocket(document.body.dataset.socketPath, Socket, {
     }
   },
   hooks: {
+    ResponsiveDialog: responsiveDialog,
     'supress-enter-submission': {
       mounted() {
         this.el.addEventListener('keypress', (event) => {

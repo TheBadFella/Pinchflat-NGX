@@ -13,8 +13,9 @@ defmodule PinchflatWeb.PageControllerTest do
     test "displays the onboarding page when onboarding is forced", %{conn: conn} do
       Settings.set(onboarding: false)
 
-      conn = get(conn, ~p"/?onboarding=1")
+      conn = get(conn, ~p"/?onboarding=1&tab=latest")
       assert html_response(conn, 200) =~ "Welcome to Pinchflat"
+      refute html_response(conn, 200) =~ ~s(href="/?tab=latest")
     end
 
     test "sets the onboarding setting to false if you pass the corrent query param", %{conn: conn} do
@@ -32,6 +33,30 @@ defmodule PinchflatWeb.PageControllerTest do
       assert html_response(conn, 200) =~ "MENU"
       assert html_response(conn, 200) =~ "Failed"
       assert html_response(conn, 200) =~ "Latest"
+      assert html_response(conn, 200) =~ ~s(href="/?tab=latest")
+    end
+
+    test "deep-links to Latest without changing the default tab", %{conn: conn} do
+      Settings.set(onboarding: false)
+
+      default_conn = get(conn, ~p"/")
+      assert default_conn.assigns.active_tab == "pending"
+
+      latest_conn = get(recycle(default_conn), ~p"/?tab=latest")
+      assert latest_conn.assigns.active_tab == "latest"
+      assert html_response(latest_conn, 200) =~ "No media indexed in this time frame."
+    end
+
+    test "restores the custom indexed range from the URL", %{conn: conn} do
+      Settings.set(onboarding: false)
+      item = Pinchflat.MediaFixtures.media_item_fixture(title: "Indexed in March")
+      item |> Ecto.Changeset.change(inserted_at: ~U[2024-03-02 12:00:00Z]) |> Pinchflat.Repo.update!()
+
+      conn = get(conn, ~p"/?tab=latest&range=custom&from=2024-03-01&to=2024-03-03")
+      html = html_response(conn, 200)
+      assert html =~ item.title
+      assert html =~ ~s(value="2024-03-01")
+      assert html =~ ~s(value="2024-03-03")
     end
 
     test "displays storage space protection banner when downloads are blocked", %{conn: conn} do
@@ -86,7 +111,7 @@ defmodule PinchflatWeb.PageControllerTest do
     test "renders migration review page when review is pending", %{conn: conn} do
       assert LegacyMigration.legacy_migration_pending?()
 
-      conn = get(conn, ~p"/")
+      conn = get(conn, ~p"/?tab=latest")
       html = html_response(conn, 200)
 
       assert html =~ "Welcome to Pinchflat-NGX"
@@ -96,6 +121,7 @@ defmodule PinchflatWeb.PageControllerTest do
       assert html =~ "Verified on Disk"
       assert html =~ "Looks good, continue"
       assert html =~ "Re-scan Disk"
+      refute html =~ ~s(href="/?tab=latest")
     end
 
     test "redirects other browser routes to root while review is pending", %{conn: conn} do

@@ -102,12 +102,13 @@ defmodule PinchflatWeb.Pages.PageController do
 
   defp render_home_page(conn, params) do
     downloaded_media_items = where(MediaQuery.new(), ^MediaQuery.downloaded())
-    active_tab = tab_param(params, ~w(pending failed active-tasks downloaded job-queue system-health), "pending")
+    active_tab = tab_param(params, ~w(latest pending failed active-tasks downloaded job-queue system-health), "pending")
     setting = Settings.record()
 
     conn
     |> render(:home,
       active_tab: active_tab,
+      latest_range: Map.take(params, ~w(range from to)),
       tab_href: fn tab -> ~p"/?#{[tab: tab]}" end,
       media_profile_count: Repo.aggregate(MediaProfile, :count, :id),
       source_count: Repo.aggregate(Source, :count, :id),

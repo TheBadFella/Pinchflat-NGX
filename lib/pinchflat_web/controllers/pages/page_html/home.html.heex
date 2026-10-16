@@ -69,6 +69,14 @@
 <div class="theme-surface-raised mt-4 p-5">
   <span class="mb-4 block text-2xl font-medium text-theme-on-surface">Media History</span>
   <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
+    <:tab title="Latest" id="latest">
+      {live_render(
+        @conn,
+        Pinchflat.Pages.HistoryTableLive,
+        session: %{"media_state" => "latest", "latest_range" => @latest_range}
+      )}
+    </:tab>
+
     <:tab title="Pending" id="pending">
       {live_render(
         @conn,
