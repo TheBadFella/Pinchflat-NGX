@@ -3,6 +3,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   use Pinchflat.Media.MediaQuery
   import Ecto.Query, warn: false
   import PinchflatWeb.Helpers.SortingHelpers
+  import PinchflatWeb.CustomComponents.DatePicker, only: [date_picker: 1]
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
@@ -23,9 +24,17 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
   def render(%{records: []} = assigns) do
     ~H"""
+    <.latest_controls
+      :if={@media_state == "latest"}
+      grouping={@grouping}
+      view_mode={@view_mode}
+      sort_key={@sort_key}
+      sort_direction={@sort_direction}
+      time_range={@time_range}
+    />
     <div class="mb-4 flex items-center">
       <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
-      <p class="ml-2">Nothing Here!</p>
+      <p class="ml-2">{if @media_state == "latest", do: "No media indexed in this time frame.", else: "Nothing Here!"}</p>
     </div>
     """
   end
@@ -33,6 +42,14 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   def render(assigns) do
     ~H"""
     <div>
+      <.latest_controls
+        :if={@media_state == "latest"}
+        grouping={@grouping}
+        view_mode={@view_mode}
+        sort_key={@sort_key}
+        sort_direction={@sort_direction}
+        time_range={@time_range}
+      />
       <span class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
@@ -68,61 +85,233 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         </form>
       </span>
 
-      <div class="space-y-4 md:hidden">
-        <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0 flex-1 space-y-2">
-              <div class="flex items-start gap-2">
-                <.icon
-                  :if={media_item.last_error}
-                  name="hero-exclamation-circle-solid"
-                  class="theme-status-error mt-0.5 shrink-0"
-                /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                <div class="min-w-0">
-                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                    <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
-                      {media_item.title}
-                    </span>
-                  </.subtle_link>
-                </div>
-              </div>
+      <div class="space-y-6">
+        <section :for={group <- record_groups(@records, @grouping)} data-source-id={group.source && group.source.id}>
+          <h3 :if={group.source} class="mb-3 text-lg font-medium text-theme-on-surface">
+            <.subtle_link href={~p"/sources/#{group.source.id}"}>{group.source.custom_name}</.subtle_link>
+          </h3>
 
-              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
-                <span class="text-sm text-theme-on-surface-muted">{media_item.source.custom_name}</span>
-              </.subtle_link>
+          <.history_records
+            records={group.records}
+            media_state={@media_state}
+            view_mode={@view_mode}
+            sort_key={@sort_key}
+            sort_direction={@sort_direction}
+            tasks_by_media_item_id={@tasks_by_media_item_id}
+          />
+        </section>
+      </div>
+
+      <section class="flex justify-center mt-5">
+        <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
+      </section>
+    </div>
+    """
+  end
+
+  attr :records, :list, required: true
+  attr :media_state, :string, required: true
+  attr :view_mode, :string, required: true
+  attr :sort_key, :any, required: true
+  attr :sort_direction, :atom, required: true
+  attr :tasks_by_media_item_id, :map, required: true
+
+  defp history_records(assigns) do
+    ~H"""
+    <div class={
+      if @view_mode == "grid", do: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3", else: "space-y-4 md:hidden"
+    }>
+      <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0 flex-1 space-y-2">
+            <div class="flex items-start gap-2">
+              <.icon
+                :if={media_item.last_error}
+                name="hero-exclamation-circle-solid"
+                class="theme-status-error mt-0.5 shrink-0"
+              /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+              <div class="min-w-0">
+                <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                  <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
+                    {media_item.title}
+                  </span>
+                </.subtle_link>
+              </div>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2">
-              <.icon_button
-                :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
-                icon_name="hero-arrow-down-tray"
-                class="h-10 w-10"
-                phx-click="force_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Are you sure you want to force a download of this media?"
-                tooltip="Force Download"
-                tooltip_position="bottom-left"
-              />
-              <.icon_button
-                :if={@media_state == "failed" and media_item.error_type != :permanent}
-                icon_name="hero-arrow-path"
-                class="h-10 w-10"
-                phx-click="retry_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Retry this download now?"
-                tooltip="Retry Now"
-                tooltip_position="bottom-left"
-              />
-              <.icon_button
-                :if={@media_state == "failed" and media_item.error_type == :permanent}
-                icon_name="hero-arrow-path"
-                class="h-10 w-10"
-                phx-click="force_download"
-                phx-value-media-id={media_item.id}
-                data-confirm="Force a retry of this permanent failure?"
-                tooltip="Force Retry"
-                tooltip_position="bottom-left"
-              />
+            <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
+              <span class="text-sm text-theme-on-surface-muted">{media_item.source.custom_name}</span>
+            </.subtle_link>
+
+            <.media_status
+              :if={@media_state == "latest"}
+              media_item={media_item}
+              task={Map.get(@tasks_by_media_item_id, media_item.id)}
+            />
+          </div>
+
+          <div class="flex shrink-0 items-center gap-2">
+            <.icon_button
+              :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
+              icon_name="hero-arrow-down-tray"
+              class="h-10 w-10"
+              phx-click="force_download"
+              phx-value-media-id={media_item.id}
+              data-confirm="Are you sure you want to force a download of this media?"
+              tooltip="Force Download"
+              tooltip_position="bottom-left"
+            />
+            <.icon_button
+              :if={@media_state == "failed" and media_item.error_type != :permanent}
+              icon_name="hero-arrow-path"
+              class="h-10 w-10"
+              phx-click="retry_download"
+              phx-value-media-id={media_item.id}
+              data-confirm="Retry this download now?"
+              tooltip="Retry Now"
+              tooltip_position="bottom-left"
+            />
+            <.icon_button
+              :if={@media_state == "failed" and media_item.error_type == :permanent}
+              icon_name="hero-arrow-path"
+              class="h-10 w-10"
+              phx-click="force_download"
+              phx-value-media-id={media_item.id}
+              data-confirm="Force a retry of this permanent failure?"
+              tooltip="Force Retry"
+              tooltip_position="bottom-left"
+            />
+            <.icon_button
+              :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
+              icon_name="hero-stop-solid"
+              variant="danger"
+              class="h-10 w-10"
+              phx-click="stop_download"
+              phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
+              data-confirm="Are you sure you want to stop this download?"
+              tooltip="Stop Download"
+              tooltip_position="bottom-left"
+            />
+          </div>
+        </div>
+
+        <div
+          :if={media_item.last_error}
+          class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
+        >
+          {media_item.last_error}
+        </div>
+
+        <dl class="grid grid-cols-1 gap-3 text-sm">
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Upload Date</dt>
+
+            <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
+          </div>
+
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Size / Progress</dt>
+
+            <dd class="max-w-[65%] text-right text-theme-on-surface">
+              <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+            </dd>
+          </div>
+
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Indexed At</dt>
+
+            <dd class="text-right text-theme-on-surface">{format_datetime(media_item.inserted_at)}</dd>
+          </div>
+
+          <div class="flex items-start justify-between gap-3">
+            <dt class="text-theme-on-surface-muted">Downloaded At</dt>
+
+            <dd class="text-right text-theme-on-surface">{format_datetime(media_item.media_downloaded_at)}</dd>
+          </div>
+        </dl>
+      </article>
+    </div>
+
+    <div :if={@view_mode == "list"} class="hidden md:block">
+      <div class="max-w-full overflow-visible">
+        <div class="overflow-x-auto overflow-y-hidden">
+          <.table rows={@records} sort_key={@sort_key} sort_direction={@sort_direction}>
+            <:col :let={media_item} label="Title" class="max-w-sm">
+              <section class="space-y-2">
+                <div class="flex items-start space-x-1 gap-2">
+                  <.icon
+                    :if={media_item.last_error}
+                    name="hero-exclamation-circle-solid"
+                    class="theme-status-error shrink-0"
+                  /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                  <.icon_button
+                    :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
+                    icon_name="hero-arrow-down-tray"
+                    class="h-10 w-10"
+                    phx-click="force_download"
+                    phx-value-media-id={media_item.id}
+                    data-confirm="Are you sure you want to force a download of this media?"
+                    tooltip="Force Download"
+                    tooltip_position="bottom-left"
+                  />
+                  <.icon_button
+                    :if={@media_state == "failed" and media_item.error_type != :permanent}
+                    icon_name="hero-arrow-path"
+                    class="h-10 w-10"
+                    phx-click="retry_download"
+                    phx-value-media-id={media_item.id}
+                    data-confirm="Retry this download now?"
+                    tooltip="Retry Now"
+                    tooltip_position="bottom-left"
+                  />
+                  <.icon_button
+                    :if={@media_state == "failed" and media_item.error_type == :permanent}
+                    icon_name="hero-arrow-path"
+                    class="h-10 w-10"
+                    phx-click="force_download"
+                    phx-value-media-id={media_item.id}
+                    data-confirm="Force a retry of this permanent failure?"
+                    tooltip="Force Retry"
+                    tooltip_position="bottom-left"
+                  />
+                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                    <span class="block whitespace-normal break-words">{media_item.title}</span>
+                  </.subtle_link>
+                </div>
+
+                <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
+                  {media_item.last_error}
+                </div>
+              </section>
+            </:col>
+
+            <:col :let={media_item} :if={@media_state == "latest"} label="Status">
+              <.media_status media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+            </:col>
+
+            <:col :let={media_item} label="Upload Date" sort_key="uploaded_at">
+              {DateTime.to_date(media_item.uploaded_at)}
+            </:col>
+
+            <:col :let={media_item} label="Size / Progress">
+              <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
+            </:col>
+
+            <:col :let={media_item} label="Indexed At" sort_key="inserted_at">
+              {format_datetime(media_item.inserted_at)}
+            </:col>
+
+            <:col :let={media_item} label="Downloaded At" sort_key="media_downloaded_at">
+              {format_datetime(media_item.media_downloaded_at)}
+            </:col>
+
+            <:col :let={media_item} label="Source" class="max-w-sm">
+              <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
+                <span class="block whitespace-normal break-words">{media_item.source.custom_name}</span>
+              </.subtle_link>
+            </:col>
+
+            <:col :let={media_item} label="Action">
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop-solid"
@@ -134,148 +323,373 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                 tooltip="Stop Download"
                 tooltip_position="bottom-left"
               />
-            </div>
-          </div>
-
-          <div
-            :if={media_item.last_error}
-            class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
-          >
-            {media_item.last_error}
-          </div>
-
-          <dl class="grid grid-cols-1 gap-3 text-sm">
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Upload Date</dt>
-
-              <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
-            </div>
-
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Size / Progress</dt>
-
-              <dd class="max-w-[65%] text-right text-theme-on-surface">
-                <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
-              </dd>
-            </div>
-
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Indexed At</dt>
-
-              <dd class="text-right text-theme-on-surface">{format_datetime(media_item.inserted_at)}</dd>
-            </div>
-
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Downloaded At</dt>
-
-              <dd class="text-right text-theme-on-surface">{format_datetime(media_item.media_downloaded_at)}</dd>
-            </div>
-          </dl>
-        </article>
-      </div>
-
-      <div class="hidden md:block">
-        <div class="max-w-full overflow-visible">
-          <div class="overflow-x-auto overflow-y-hidden">
-            <.table rows={@records} sort_key={@sort_key} sort_direction={@sort_direction}>
-              <:col :let={media_item} label="Title" class="max-w-sm">
-                <section class="space-y-2">
-                  <div class="flex items-start space-x-1 gap-2">
-                    <.icon
-                      :if={media_item.last_error}
-                      name="hero-exclamation-circle-solid"
-                      class="theme-status-error shrink-0"
-                    /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                    <.icon_button
-                      :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
-                      icon_name="hero-arrow-down-tray"
-                      class="h-10 w-10"
-                      phx-click="force_download"
-                      phx-value-media-id={media_item.id}
-                      data-confirm="Are you sure you want to force a download of this media?"
-                      tooltip="Force Download"
-                      tooltip_position="bottom-left"
-                    />
-                    <.icon_button
-                      :if={@media_state == "failed" and media_item.error_type != :permanent}
-                      icon_name="hero-arrow-path"
-                      class="h-10 w-10"
-                      phx-click="retry_download"
-                      phx-value-media-id={media_item.id}
-                      data-confirm="Retry this download now?"
-                      tooltip="Retry Now"
-                      tooltip_position="bottom-left"
-                    />
-                    <.icon_button
-                      :if={@media_state == "failed" and media_item.error_type == :permanent}
-                      icon_name="hero-arrow-path"
-                      class="h-10 w-10"
-                      phx-click="force_download"
-                      phx-value-media-id={media_item.id}
-                      data-confirm="Force a retry of this permanent failure?"
-                      tooltip="Force Retry"
-                      tooltip_position="bottom-left"
-                    />
-                    <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                      <span class="block whitespace-normal break-words">{media_item.title}</span>
-                    </.subtle_link>
-                  </div>
-
-                  <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
-                    {media_item.last_error}
-                  </div>
-                </section>
-              </:col>
-
-              <:col :let={media_item} label="Upload Date" sort_key="uploaded_at">
-                {DateTime.to_date(media_item.uploaded_at)}
-              </:col>
-
-              <:col :let={media_item} label="Size / Progress">
-                <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
-              </:col>
-
-              <:col :let={media_item} label="Indexed At" sort_key="inserted_at">
-                {format_datetime(media_item.inserted_at)}
-              </:col>
-
-              <:col :let={media_item} label="Downloaded At" sort_key="media_downloaded_at">
-                {format_datetime(media_item.media_downloaded_at)}
-              </:col>
-
-              <:col :let={media_item} label="Source" class="max-w-sm">
-                <.subtle_link href={~p"/sources/#{media_item.source_id}"}>
-                  <span class="block whitespace-normal break-words">{media_item.source.custom_name}</span>
-                </.subtle_link>
-              </:col>
-
-              <:col :let={media_item} label="Action">
-                <.icon_button
-                  :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
-                  icon_name="hero-stop-solid"
-                  variant="danger"
-                  class="h-10 w-10"
-                  phx-click="stop_download"
-                  phx-value-task-id={Map.fetch!(@tasks_by_media_item_id, media_item.id).id}
-                  data-confirm="Are you sure you want to stop this download?"
-                  tooltip="Stop Download"
-                  tooltip_position="bottom-left"
-                />
-                <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">
-                  -
-                </span>
-              </:col>
-            </.table>
-          </div>
+              <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">
+                -
+              </span>
+            </:col>
+          </.table>
         </div>
       </div>
-
-      <section class="flex justify-center mt-5">
-        <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
-      </section>
     </div>
     """
   end
+
+  attr :grouping, :string, required: true
+  attr :time_range, :map, required: true
+  attr :view_mode, :string, required: true
+  attr :sort_key, :atom, required: true
+  attr :sort_direction, :atom, required: true
+
+  defp latest_controls(assigns) do
+    ~H"""
+    <div id="latest-toolbar">
+      <div
+        id="latest-mobile-controls"
+        class="theme-surface-accent mb-4 space-y-3 rounded-m3-lg border border-theme-outline p-3 sm:hidden"
+      >
+        <form action={~p"/"} method="get">
+          <input type="hidden" name="tab" value="latest" />
+          <input type="hidden" name="from" value={@time_range.from} /><input type="hidden" name="to" value={@time_range.to} />
+          <div class="flex gap-1 rounded-m3-sm border border-theme-outline p-1" role="group" aria-label="Indexed time frame">
+            <button
+              :for={{value, label} <- [{"day", "1 day"}, {"week", "7 days"}]}
+              type="submit"
+              name="range"
+              value={value}
+              aria-pressed={to_string(@time_range.range == value)}
+              class={[
+                "theme-filter-button min-w-0 flex-1 justify-center whitespace-nowrap rounded-m3-xs px-1!",
+                if(@time_range.range == value,
+                  do: "bg-theme-primary text-theme-on-primary",
+                  else: "text-theme-on-surface-muted"
+                )
+              ]}
+            >{label}</button>
+            <button
+              type="button"
+              class={[
+                "theme-filter-button min-w-0 flex-1 justify-center whitespace-nowrap rounded-m3-xs px-1!",
+                if(@time_range.range == "custom",
+                  do: "bg-theme-primary text-theme-on-primary",
+                  else: "text-theme-on-surface-muted"
+                )
+              ]}
+              aria-pressed={to_string(@time_range.range == "custom")}
+              aria-haspopup="dialog"
+              aria-controls="latest-filter-sheet"
+              phx-click={JS.dispatch("open-dialog", to: "#latest-filter-sheet", detail: %{custom: true})}
+            >Custom</button>
+          </div>
+        </form>
+
+        <div class="flex items-center justify-between gap-2">
+          <.button
+            type="button"
+            variant="outline"
+            aria-haspopup="dialog"
+            aria-controls="latest-filter-sheet"
+            phx-click={JS.dispatch("open-dialog", to: "#latest-filter-sheet")}
+          >
+            <.icon name="hero-adjustments-horizontal" class="mr-2 h-4 w-4" /> Filters
+          </.button>
+
+          <.view_choices
+            label="Latest layout"
+            event="view_change"
+            value_name="view"
+            selected={@view_mode}
+            choices={[{"list", "List", "hero-list-bullet"}, {"grid", "Grid", "hero-squares-2x2"}]}
+            icons_only
+          />
+        </div>
+
+        <p id="latest-mobile-summary" class="text-xs text-theme-on-surface-muted" aria-live="polite">
+          {if @grouping == "source", do: "By source", else: "Latest first"} · {Map.fetch!(
+            %{inserted_at: "Indexed at", uploaded_at: "Upload date", media_downloaded_at: "Downloaded at"},
+            @sort_key
+          )} · {if @sort_direction == :desc, do: "Newest first", else: "Oldest first"}
+        </p>
+
+        <p :if={@time_range.range == "custom"} class="text-xs text-theme-on-surface-muted">
+          {@time_range.from} – {@time_range.to}
+        </p>
+
+        <p :if={@time_range.error} role="alert" class="theme-status-error text-sm">{@time_range.error}</p>
+      </div>
+
+      <div id="latest-desktop-controls" class="hidden sm:block mb-4 space-y-3 border-b border-theme-outline/70 pb-4">
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <.view_choices
+              label="Latest grouping"
+              event="grouping_change"
+              value_name="grouping"
+              selected={@grouping}
+              choices={[{"latest", "Latest", "hero-clock"}, {"source", "By source", "hero-rectangle-stack"}]}
+            />
+            <.view_choices
+              label="Latest layout"
+              event="view_change"
+              value_name="view"
+              selected={@view_mode}
+              choices={[{"list", "List", "hero-list-bullet"}, {"grid", "Grid", "hero-squares-2x2"}]}
+            />
+          </div>
+
+          <form action={~p"/"} method="get" class="shrink-0">
+            <input type="hidden" name="tab" value="latest" /> <input type="hidden" name="from" value={@time_range.from} />
+            <input type="hidden" name="to" value={@time_range.to} />
+            <div
+              class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
+              role="group"
+              aria-label="Indexed time frame"
+            >
+              <button
+                :for={{value, label} <- [{"day", "1 day"}, {"week", "7 days"}, {"custom", "Custom"}]}
+                type="submit"
+                name="range"
+                value={value}
+                aria-pressed={to_string(@time_range.range == value)}
+                class={[
+                  "inline-flex min-h-11 items-center rounded-m3-xs px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 lg:px-2 2xl:px-3",
+                  if(@time_range.range == value,
+                    do: "bg-theme-primary text-theme-on-primary",
+                    else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
+                  )
+                ]}
+              >{label}</button>
+            </div>
+          </form>
+
+          <form
+            :if={@time_range.range == "custom"}
+            id="latest-custom-range"
+            action={~p"/"}
+            method="get"
+            class="grid w-full grid-cols-2 items-end gap-3 sm:w-auto sm:flex"
+          >
+            <input type="hidden" name="tab" value="latest" /> <input type="hidden" name="range" value="custom" />
+            <div class="min-w-0 sm:w-36">
+              <.date_picker
+                id="latest-from"
+                name="from"
+                label="From"
+                value={@time_range.from}
+                timezone={@time_range.timezone}
+              />
+            </div>
+
+            <div class="min-w-0 sm:w-36">
+              <.date_picker id="latest-to" name="to" label="To" value={@time_range.to} timezone={@time_range.timezone} />
+            </div>
+            <.button type="submit" variant="primary">Apply</.button>
+            <p :if={@time_range.error} role="alert" class="theme-status-error col-span-2 w-full text-sm">
+              {@time_range.error}
+            </p>
+          </form>
+
+          <form
+            id="latest-sort"
+            phx-change="latest_sort"
+            class="grid w-full grid-cols-2 items-end gap-3 sm:ml-auto sm:w-auto lg:w-72 2xl:w-auto"
+          >
+            <.input
+              type="select"
+              id="latest-sort-key"
+              name="sort_key"
+              label="Sort by"
+              value={@sort_key}
+              options={[
+                {"Indexed At", :inserted_at},
+                {"Upload Date", :uploaded_at},
+                {"Downloaded At", :media_downloaded_at}
+              ]}
+              inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
+            />
+            <.input
+              type="select"
+              id="latest-sort-direction"
+              name="sort_direction"
+              label="Order"
+              value={@sort_direction}
+              options={[{"Newest first", :desc}, {"Oldest first", :asc}]}
+              inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
+            />
+          </form>
+        </div>
+
+        <div class="flex flex-wrap gap-x-3 gap-y-1">
+          <p :if={@time_range.range != "custom"} class="text-xs text-theme-on-surface-muted">
+            {if @time_range.range == "day", do: "Indexed in the past 24 hours.", else: "Indexed in the past 7 days."}
+          </p>
+
+          <p :if={@grouping == "source"} class="w-full text-xs text-theme-on-surface-muted">
+            Sources are ordered by their latest indexed item. The date sort applies within each source.
+          </p>
+        </div>
+      </div>
+
+      <dialog
+        id="latest-filter-sheet"
+        phx-hook="ResponsiveDialog"
+        class="theme-bottom-sheet"
+        aria-labelledby="latest-filter-title"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <h2 id="latest-filter-title" class="text-lg font-semibold">Filter &amp; sort</h2>
+
+          <.button
+            type="button"
+            variant="outline"
+            phx-click={JS.dispatch("close-dialog", to: "#latest-filter-sheet")}
+            aria-label="Close filters"
+          >
+            <.icon name="hero-x-mark" class="h-4 w-4" />
+          </.button>
+        </div>
+
+        <div class="mt-4 space-y-4">
+          <div>
+            <p class="mb-1 text-sm font-medium text-theme-on-surface-muted">Group media</p>
+
+            <.view_choices
+              label="Latest grouping"
+              event="grouping_change"
+              value_name="grouping"
+              selected={@grouping}
+              choices={[{"latest", "Latest", "hero-clock"}, {"source", "By source", "hero-rectangle-stack"}]}
+            />
+            <p :if={@grouping == "source"} class="mt-2 text-xs text-theme-on-surface-muted">
+              Sources are ordered by their latest indexed item. Sorting applies within each source.
+            </p>
+          </div>
+
+          <form
+            id="latest-mobile-sort"
+            phx-change="latest_sort"
+            class="grid w-full grid-cols-1 items-end gap-3"
+          >
+            <.input
+              type="select"
+              id="latest-mobile-sort-key"
+              name="sort_key"
+              label="Sort by"
+              value={@sort_key}
+              options={[
+                {"Indexed At", :inserted_at},
+                {"Upload Date", :uploaded_at},
+                {"Downloaded At", :media_downloaded_at}
+              ]}
+              inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
+            />
+            <.input
+              type="select"
+              id="latest-mobile-sort-direction"
+              name="sort_direction"
+              label="Order"
+              value={@sort_direction}
+              options={[{"Newest first", :desc}, {"Oldest first", :asc}]}
+              inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
+            />
+          </form>
+
+          <details id="latest-mobile-dates" open={@time_range.range == "custom"}>
+            <summary class="theme-filter-button cursor-pointer rounded-m3-sm">Custom date range</summary>
+
+            <form
+              id="latest-mobile-custom-range"
+              action={~p"/"}
+              method="get"
+              class="grid w-full grid-cols-1 items-end gap-3"
+            >
+              <input type="hidden" name="tab" value="latest" /> <input type="hidden" name="range" value="custom" />
+              <div class="min-w-0">
+                <.date_picker
+                  id="latest-mobile-from"
+                  name="from"
+                  label="From"
+                  value={@time_range.from}
+                  timezone={@time_range.timezone}
+                />
+              </div>
+
+              <div class="min-w-0">
+                <.date_picker
+                  id="latest-mobile-to"
+                  name="to"
+                  label="To"
+                  value={@time_range.to}
+                  timezone={@time_range.timezone}
+                />
+              </div>
+              <.button type="submit" variant="primary" class="w-full">Apply date range</.button>
+              <p :if={@time_range.error} role="alert" class="theme-status-error w-full text-sm">
+                {@time_range.error}
+              </p>
+            </form>
+
+            <p class="mt-2 text-xs text-theme-on-surface-muted">
+              Dates use {@time_range.timezone}. Both dates are included.
+            </p>
+          </details>
+
+          <.button
+            type="button"
+            variant="primary"
+            class="w-full"
+            phx-click={JS.dispatch("close-dialog", to: "#latest-filter-sheet")}
+          >Done</.button>
+        </div>
+      </dialog>
+    </div>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :event, :string, required: true
+  attr :value_name, :string, required: true
+  attr :selected, :string, required: true
+  attr :choices, :list, required: true
+
+  attr :icons_only, :boolean, default: false
+
+  defp view_choices(assigns) do
+    ~H"""
+    <div
+      class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
+      role="group"
+      aria-label={@label}
+    >
+      <button
+        :for={{value, label, icon} <- @choices}
+        type="button"
+        class={[
+          "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-m3-xs px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 lg:px-2 2xl:px-3",
+          if(value == @selected,
+            do: "bg-theme-primary text-theme-on-primary",
+            else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
+          )
+        ]}
+        phx-click={@event}
+        {[{"phx-value-#{@value_name}", value}]}
+        aria-pressed={to_string(value == @selected)}
+        aria-label={label}
+        title={label}
+      >
+        <.icon name={icon} class="h-4 w-4" aria-hidden="true" />
+        <span class={if @icons_only, do: "sr-only", else: "lg:hidden 2xl:inline"}>{label}</span>
+      </button>
+    </div>
+    """
+  end
+
+  defp record_groups(records, "source") do
+    records
+    |> Enum.chunk_by(& &1.source_id)
+    |> Enum.map(fn items -> %{source: hd(items).source, records: items} end)
+  end
+
+  defp record_groups(records, _grouping), do: [%{source: nil, records: records}]
 
   def mount(_params, session, socket) do
     PinchflatWeb.Endpoint.subscribe("job:state")
@@ -284,9 +698,11 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     page = 1
     media_state = session["media_state"]
     error_type_filter = "all"
-    sort_key = nil
+    sort_key = if media_state == "latest", do: :inserted_at
     sort_direction = :desc
     base_query = generate_base_query(media_state, error_type_filter)
+    time_range = normalize_time_range(session["latest_range"] || %{})
+    base_query = if media_state == "latest", do: latest_query(time_range, "latest"), else: base_query
     pagination_attrs = fetch_pagination_attributes(base_query, page, media_state, sort_key, sort_direction)
 
     {:ok,
@@ -295,12 +711,49 @@ defmodule Pinchflat.Pages.HistoryTableLive do
        Map.merge(pagination_attrs, %{
          base_query: base_query,
          media_state: media_state,
+         grouping: "latest",
+         view_mode: "list",
+         time_range: time_range,
          error_type_filter: error_type_filter,
          sort_key: sort_key,
          sort_direction: sort_direction
        })
      )}
   end
+
+  def handle_event("view_change", %{"view" => view}, socket) when view in ~w(list grid) do
+    {:noreply, assign(socket, :view_mode, view)}
+  end
+
+  def handle_event("view_change", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "grouping_change",
+        %{"grouping" => grouping},
+        %{assigns: %{media_state: "latest"} = assigns} = socket
+      )
+      when grouping in ~w(latest source) do
+    base_query = latest_query(assigns.time_range, grouping)
+    pagination = fetch_pagination_attributes(base_query, 1, "latest", assigns.sort_key, assigns.sort_direction)
+    {:noreply, assign(socket, Map.merge(pagination, %{base_query: base_query, grouping: grouping}))}
+  end
+
+  def handle_event("grouping_change", _params, socket), do: {:noreply, socket}
+
+  def handle_event("latest_sort", %{"sort_key" => key, "sort_direction" => direction}, %{assigns: assigns} = socket)
+      when direction in ~w(asc desc) do
+    case Map.fetch(@sort_fields, key) do
+      {:ok, sort_key} ->
+        sort_direction = if direction == "asc", do: :asc, else: :desc
+        pagination = fetch_pagination_attributes(assigns.base_query, 1, assigns.media_state, sort_key, sort_direction)
+        {:noreply, assign(socket, Map.merge(pagination, %{sort_key: sort_key, sort_direction: sort_direction}))}
+
+      :error ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("latest_sort", _params, socket), do: {:noreply, socket}
 
   def handle_event("page_change", %{"direction" => direction}, %{assigns: assigns} = socket) do
     direction = if direction == "inc", do: 1, else: -1
@@ -358,16 +811,21 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   def handle_event("reload_page", _params, %{assigns: assigns} = socket) do
+    base_query =
+      if assigns.media_state == "latest",
+        do: latest_query(assigns.time_range, assigns.grouping),
+        else: assigns.base_query
+
     new_assigns =
       fetch_pagination_attributes(
-        assigns.base_query,
+        base_query,
         assigns.page,
         assigns.media_state,
         assigns.sort_key,
         assigns.sort_direction
       )
 
-    {:noreply, assign(socket, new_assigns)}
+    {:noreply, assign(socket, Map.put(new_assigns, :base_query, base_query))}
   end
 
   def handle_event("force_download", %{"media-id" => media_id}, %{assigns: assigns} = socket) do
@@ -529,6 +987,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     end
   end
 
+  defp generate_base_query_for_state("latest"), do: MediaQuery.new()
+
   defp generate_base_query_for_state("pending") do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
@@ -589,6 +1049,80 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :download_prevented_reason,
         :media_size_bytes
       ])
+    )
+  end
+
+  defp normalize_time_range(params) do
+    range = if params["range"] in ~w(day week custom), do: params["range"], else: "day"
+    timezone = Application.fetch_env!(:pinchflat, :timezone)
+    today = timezone |> DateTime.now!() |> DateTime.to_date()
+    from = date_param(params, "from", Date.add(today, -6))
+    to = date_param(params, "to", today)
+
+    error =
+      if range == "custom" do
+        with {:ok, first} <- Date.from_iso8601(from),
+             {:ok, last} <- Date.from_iso8601(to),
+             true <- Date.compare(first, last) != :gt do
+          nil
+        else
+          _ -> "Enter valid dates with From on or before To."
+        end
+      end
+
+    %{range: range, from: from, to: to, error: error, timezone: timezone}
+  end
+
+  defp date_param(params, key, default) do
+    case params[key] do
+      nil -> Date.to_iso8601(default)
+      value when is_binary(value) -> value
+      _ -> ""
+    end
+  end
+
+  defp latest_query(time_range, grouping) do
+    query = filter_indexed_time(MediaQuery.new(), time_range)
+    if grouping == "source", do: group_sources(query), else: query
+  end
+
+  defp filter_indexed_time(query, %{error: error}) when not is_nil(error), do: where(query, false)
+
+  defp filter_indexed_time(query, %{range: "custom", from: first, to: last, timezone: timezone}) do
+    first = start_of_date(Date.from_iso8601!(first), timezone)
+    last = start_of_date(Date.add(Date.from_iso8601!(last), 1), timezone)
+    where(query, [m], m.inserted_at >= ^first and m.inserted_at < ^last)
+  end
+
+  defp filter_indexed_time(query, %{range: range}) do
+    days = if range == "week", do: 7, else: 1
+    cutoff = DateTime.add(DateTime.utc_now(), -days, :day)
+    where(query, [m], m.inserted_at >= ^cutoff)
+  end
+
+  defp start_of_date(date, timezone) do
+    # Some zones change clocks at midnight; use the first instant of the local date.
+    datetime =
+      case DateTime.new(date, ~T[00:00:00], timezone) do
+        {:ok, datetime} -> datetime
+        {:ambiguous, first, _second} -> first
+        {:gap, _before, next} -> next
+      end
+
+    DateTime.shift_zone!(datetime, "Etc/UTC")
+  end
+
+  defp group_sources(query) do
+    latest_by_source =
+      from(m in query,
+        group_by: m.source_id,
+        select: %{source_id: m.source_id, indexed_at: max(m.inserted_at)}
+      )
+
+    from(m in query,
+      join: source in subquery(latest_by_source),
+      on: source.source_id == m.source_id,
+      order_by: [desc: source.indexed_at, asc: m.source_id]
     )
   end
 
@@ -730,6 +1264,40 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   defp failure_presentation(:transient), do: {"Transient failure", "theme-badge-warning"}
   defp failure_presentation(:permanent), do: {"Permanent failure", "theme-danger-panel"}
   defp failure_presentation(_unknown), do: {"Failure", "theme-danger-panel"}
+
+  attr :media_item, :map, required: true
+  attr :task, :any, default: nil
+
+  defp media_status(assigns) do
+    {label, class} = media_status_presentation(assigns.media_item, assigns.task)
+    assigns = assign(assigns, label: label, class: class)
+
+    ~H"""
+    <span
+      data-media-status={@media_item.id}
+      class={["inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium", @class]}
+    >
+      {@label}
+    </span>
+    """
+  end
+
+  defp media_status_presentation(_item, %{job: %{state: "executing"}}),
+    do: {"Downloading", "bg-theme-primary-container text-theme-on-primary-container"}
+
+  defp media_status_presentation(_item, %{job: %{state: state}}) when state in ~w(available scheduled retryable),
+    do:
+      {if(state == "retryable", do: "Retrying", else: "Queued"),
+       "bg-theme-primary-container text-theme-on-primary-container"}
+
+  defp media_status_presentation(item, _task) do
+    cond do
+      item.media_filepath != nil -> {"Downloaded", "theme-badge-success"}
+      item.prevent_download and item.download_prevented_reason != :error -> {"Prevented", "theme-badge-warning"}
+      item.last_error != nil -> failure_presentation(item.error_type)
+      true -> {"Pending", "bg-theme-surface-4 text-theme-on-surface-muted"}
+    end
+  end
 
   defp update_task_progress(tasks_by_media_item_id, records, %{media_item_id: media_item_id} = payload)
        when is_integer(media_item_id) do

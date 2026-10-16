@@ -273,6 +273,12 @@
   }
 
   @media (any-pointer: coarse) {
+    .theme-calendar-panel {
+      @apply p-1!;
+    }
+    .theme-calendar-grid {
+      @apply gap-0!;
+    }
     .theme-button-compact,
     .theme-icon-button,
     .theme-icon-button-compact,
@@ -284,6 +290,18 @@
   .theme-outline-button,
   .theme-button-secondary {
     @apply rounded-m3-sm border border-theme-outline bg-theme-surface text-theme-on-surface transition hover:border-theme-outline-strong hover:bg-theme-surface-2;
+  }
+
+  .theme-calendar-panel {
+    @apply rounded-m3-lg border border-theme-outline bg-theme-surface-2 p-3 text-theme-on-surface shadow-m3-3 max-sm:p-1;
+  }
+
+  .theme-calendar-grid {
+    @apply grid grid-cols-7 gap-1 max-sm:gap-0;
+  }
+
+  .theme-calendar-day {
+    @apply flex aspect-square items-center justify-center rounded-m3-sm text-sm transition hover:ring-1 hover:ring-theme-primary focus-visible:outline-2 focus-visible:outline-theme-primary;
   }
 
   .theme-primary-button {
@@ -417,4 +435,20 @@
   to {
     --theme-perimeter-angle: 360deg;
   }
+}
+
+/* Native dialog keeps focus in mobile filter sheets. */
+.theme-bottom-sheet {
+  @apply border border-theme-outline bg-theme-surface-2 text-theme-on-surface rounded-t-m3-lg p-4;
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 40rem;
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+.theme-bottom-sheet::backdrop {
+  background: rgb(var(--theme-scrim) / 0.8);
 }
