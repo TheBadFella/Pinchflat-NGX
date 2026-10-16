@@ -36,11 +36,17 @@ defmodule PinchflatWeb.PageControllerTest do
       assert html_response(conn, 200) =~ ~s(href="/?tab=latest")
     end
 
-    test "deep-links to Latest without changing the default tab", %{conn: conn} do
+    test "defaults to Latest and preserves explicit tab links", %{conn: conn} do
       Settings.set(onboarding: false)
 
       default_conn = get(conn, ~p"/")
-      assert default_conn.assigns.active_tab == "pending"
+      assert default_conn.assigns.active_tab == "latest"
+
+      invalid_conn = get(recycle(default_conn), ~p"/?tab=unknown")
+      assert invalid_conn.assigns.active_tab == "latest"
+
+      pending_conn = get(recycle(invalid_conn), ~p"/?tab=pending")
+      assert pending_conn.assigns.active_tab == "pending"
 
       latest_conn = get(recycle(default_conn), ~p"/?tab=latest")
       assert latest_conn.assigns.active_tab == "latest"
