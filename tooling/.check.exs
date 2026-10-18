@@ -15,12 +15,11 @@
   tools: [
     {:compiler, env: %{"MIX_ENV" => "test"}},
     {:formatter, env: %{"MIX_ENV" => "test"}},
-    # ex_check 0.17 enables hex_audit; Phoenix 1.8.15 pulls cowlib 2.21.0 with no patched release yet.
-    {:hex_audit, false},
     {:sobelow, "mix sobelow --config"},
     {:prettier_formatting, "yarn run lint:check", fix: "yarn run lint:fix"},
     {:npm_test, false},
     {:sidebar_ui, "node --test test/assets/sidebar_test.mjs"},
+    {:browse_ui, "node --test test/assets/browse_search_test.mjs"},
     {:gettext, false},
     {:ex_unit, env: %{"MIX_ENV" => "test", "EX_CHECK" => "1"}}
 

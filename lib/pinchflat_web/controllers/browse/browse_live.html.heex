@@ -1,9 +1,9 @@
-<div class="mx-auto max-w-7xl break-words">
+<div id="browse-page" phx-hook="BrowseSearch" class="mx-auto max-w-7xl break-words">
   <.flash id="browse-flash-info" kind={:info} flash={@flash} />
   <.flash id="browse-flash-error" kind={:error} flash={@flash} />
   <%!-- Header --%>
   <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    <div>
+    <div class="min-w-0">
       <h1 class="text-2xl font-bold tracking-tight text-theme-on-surface sm:text-3xl">
         Browse YouTube
       </h1>
@@ -13,7 +13,7 @@
     </div>
 
     <%!-- Header Actions: Paste URL & Profile Selector --%>
-    <div class="flex min-w-0 flex-wrap items-center gap-3">
+    <div class="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto sm:max-w-sm">
       <.button
         variant="secondary"
         type="button"
@@ -25,16 +25,22 @@
         <span>Paste URL</span>
       </.button>
 
-      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <div class="flex w-full min-w-0 items-center gap-2">
         <label for="profile_selector" class="text-sm font-medium text-theme-on-surface-muted whitespace-nowrap">
           Media Profile:
         </label>
         <%= if @profiles != [] do %>
-          <form id="profile_selector_form" phx-change="select_profile" class="m-0 min-w-0 flex-1">
+          <%!-- The URL hook restores this form; automatic recovery can overwrite its query with the fresh mount's blank query. --%>
+          <form
+            id="profile_selector_form"
+            phx-change="select_profile"
+            phx-auto-recover="ignore"
+            class="m-0 min-w-0 flex-1"
+          >
             <select
               id="profile_selector"
               name="profile_id"
-              class="theme-select min-h-11 w-full max-w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 px-3 py-2 text-sm text-theme-on-surface focus:outline-none"
+              class="theme-select min-h-11 w-full min-w-0 max-w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 px-3 py-2 text-sm text-theme-on-surface focus:outline-none"
             >
               <%= if is_nil(@selected_profile_id) do %>
                 <option value="" selected>Select a media profile...</option>
@@ -153,6 +159,27 @@
       </div>
     </div>
   <% end %>
+
+  <p id="browse-search-status" role="status" aria-live="polite" class="mb-4 text-sm text-theme-on-surface-muted">
+    <%= cond do %>
+      <% @loading? -> %>
+        Searching... Previous results are paused.
+      <% @error -> %>
+        Search did not complete.
+      <% @query != "" -> %>
+        {length(@results)} {if length(@results) == 1, do: "result", else: "results"}
+      <% true -> %>
+    <% end %>
+  </p>
+  <p
+    id="browse-connection-status"
+    class="hidden text-sm theme-status-warning"
+    role="status"
+    phx-disconnected={JS.show()}
+    phx-connected={JS.hide()}
+  >
+    Connection lost. Reconnecting...
+  </p>
 
   <%= if @error do %>
     <div class="theme-status-card theme-status-card-error mb-6">
@@ -344,180 +371,182 @@
   <% end %>
 
   <%!-- Results Grid / List --%>
-  <%= if @results != [] and not @loading? do %>
-    <%= if @active_tab == :videos do %>
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <%= for video <- @results do %>
-          <div class="theme-surface flex flex-col overflow-hidden p-4 transition hover:border-theme-outline-strong">
-            <%!-- Thumbnail --%>
-            <div class="relative aspect-video w-full overflow-hidden rounded-m3-sm bg-theme-surface-2">
-              <%= if video.thumbnail do %>
-                <img
-                  src={video.thumbnail}
-                  alt={video.title}
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  class="h-full w-full object-cover"
-                />
-              <% else %>
-                <div class="flex h-full w-full items-center justify-center text-theme-on-surface-muted">
-                  <.icon name="hero-video-camera" class="h-10 w-10 opacity-30" />
-                </div>
-              <% end %>
-              <span class="absolute bottom-2 right-2 rounded-m3-xs bg-theme-bg/85 px-1.5 py-0.5 text-xs font-mono text-theme-on-surface">
-                {PinchflatWeb.Browse.BrowseLive.format_duration(video.duration)}
-              </span>
-            </div>
-
-            <%!-- Card Body --%>
-            <div class="mt-3 flex flex-1 flex-col justify-between">
-              <div>
-                <h3 class="line-clamp-2 text-sm font-semibold text-theme-on-surface" title={video.title}>
-                  {video.title}
-                </h3>
-                <p class="mt-1 text-xs text-theme-on-surface-muted truncate">
-                  {video.channel_title}
-                </p>
-              </div>
-
-              <%!-- Status & Action Footer --%>
-              <div class="mt-4 flex items-center justify-between gap-2 border-t border-theme-outline/40 pt-3">
-                <%= if video[:status] && video.status.badge_text do %>
-                  <span class={[
-                    "text-xs font-medium rounded-m3-xs px-2 py-1",
-                    cond do
-                      video.status.state == :in_library -> "theme-badge-success"
-                      video.status.state in [:downloading, :queued, :scheduled] -> "theme-status-info"
-                      true -> "theme-badge-warning"
-                    end
-                  ]}>
-                    {video.status.badge_text}
-                  </span>
-                <% else %>
-                  <span class="text-xs text-theme-on-surface-muted">Not in library</span>
-                <% end %>
-
-                <div class="flex items-center gap-2">
-                  <.button
-                    variant="secondary"
-                    type="button"
-                    phx-click="view_video_details"
-                    phx-value-id={video.id}
-                  >
-                    Details
-                  </.button>
-
-                  <%= if video[:status] && video.status.open_local_path do %>
-                    <.button
-                      variant="secondary"
-                      href={video.status.open_local_path}
-                      class="text-theme-primary"
-                    >
-                      Open
-                    </.button>
-                  <% end %>
-
-                  <%= if video[:status] && video.status.can_download? do %>
-                    <.button
-                      variant="primary"
-                      type="button"
-                      phx-click="download_video"
-                      phx-value-id={video.id}
-                    >
-                      Download
-                    </.button>
-                  <% end %>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    <% else %>
-      <%!-- Channels Grid --%>
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <%= for channel <- @results do %>
-          <div class="theme-surface flex flex-col justify-between p-5 transition hover:border-theme-outline-strong">
-            <div class="flex items-center gap-4">
-              <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-theme-outline/50 bg-theme-surface-2">
-                <%= if channel.thumbnail do %>
+  <%= if @results != [] do %>
+    <div id="browse-results" aria-busy={to_string(@loading?)} inert={@loading?}>
+      <%= if @active_tab == :videos do %>
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <%= for video <- @results do %>
+            <div class="theme-surface flex flex-col overflow-hidden p-4 transition hover:border-theme-outline-strong">
+              <%!-- Thumbnail --%>
+              <div class="relative aspect-video w-full overflow-hidden rounded-m3-sm bg-theme-surface-2">
+                <%= if video.thumbnail do %>
                   <img
-                    src={channel.thumbnail}
-                    alt={channel.title}
+                    src={video.thumbnail}
+                    alt={video.title}
                     loading="lazy"
                     referrerpolicy="no-referrer"
                     class="h-full w-full object-cover"
                   />
                 <% else %>
                   <div class="flex h-full w-full items-center justify-center text-theme-on-surface-muted">
-                    <.icon name="hero-tv" class="h-6 w-6 opacity-40" />
+                    <.icon name="hero-video-camera" class="h-10 w-10 opacity-30" />
                   </div>
                 <% end %>
+                <span class="absolute bottom-2 right-2 rounded-m3-xs bg-theme-bg/85 px-1.5 py-0.5 text-xs font-mono text-theme-on-surface">
+                  {PinchflatWeb.Browse.BrowseLive.format_duration(video.duration)}
+                </span>
               </div>
 
-              <div class="min-w-0 flex-1">
-                <h3 class="truncate text-base font-semibold text-theme-on-surface" title={channel.title}>
-                  {channel.title}
-                </h3>
-                <p class="truncate text-xs text-theme-on-surface-muted">
-                  {channel.handle || channel.id}
-                </p>
-                <%= if channel[:status] && channel.status.badge_text do %>
-                  <span class={[
-                    "mt-1 inline-block text-[11px] font-medium rounded-m3-xs px-2 py-0.5",
-                    if(channel.status.state == :subscribed, do: "theme-badge-success", else: "theme-badge-warning")
-                  ]}>
-                    {channel.status.badge_text}
-                  </span>
+              <%!-- Card Body --%>
+              <div class="mt-3 flex flex-1 flex-col justify-between">
+                <div>
+                  <h3 class="line-clamp-2 text-sm font-semibold text-theme-on-surface" title={video.title}>
+                    {video.title}
+                  </h3>
+                  <p class="mt-1 text-xs text-theme-on-surface-muted truncate">
+                    {video.channel_title}
+                  </p>
+                </div>
+
+                <%!-- Status & Action Footer --%>
+                <div class="mt-4 flex items-center justify-between gap-2 border-t border-theme-outline/40 pt-3">
+                  <%= if video[:status] && video.status.badge_text do %>
+                    <span class={[
+                      "text-xs font-medium rounded-m3-xs px-2 py-1",
+                      cond do
+                        video.status.state == :in_library -> "theme-badge-success"
+                        video.status.state in [:downloading, :queued, :scheduled] -> "theme-status-info"
+                        true -> "theme-badge-warning"
+                      end
+                    ]}>
+                      {video.status.badge_text}
+                    </span>
+                  <% else %>
+                    <span class="text-xs text-theme-on-surface-muted">Not in library</span>
+                  <% end %>
+
+                  <div class="flex items-center gap-2">
+                    <.button
+                      variant="secondary"
+                      type="button"
+                      phx-click="view_video_details"
+                      phx-value-id={video.id}
+                    >
+                      Details
+                    </.button>
+
+                    <%= if video[:status] && video.status.open_local_path do %>
+                      <.button
+                        variant="secondary"
+                        href={video.status.open_local_path}
+                        class="text-theme-primary"
+                      >
+                        Open
+                      </.button>
+                    <% end %>
+
+                    <%= if video[:status] && video.status.can_download? do %>
+                      <.button
+                        variant="primary"
+                        type="button"
+                        phx-click="download_video"
+                        phx-value-id={video.id}
+                      >
+                        Download
+                      </.button>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <%!-- Channels Grid --%>
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <%= for channel <- @results do %>
+            <div class="theme-surface flex flex-col justify-between p-5 transition hover:border-theme-outline-strong">
+              <div class="flex items-center gap-4">
+                <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-theme-outline/50 bg-theme-surface-2">
+                  <%= if channel.thumbnail do %>
+                    <img
+                      src={channel.thumbnail}
+                      alt={channel.title}
+                      loading="lazy"
+                      referrerpolicy="no-referrer"
+                      class="h-full w-full object-cover"
+                    />
+                  <% else %>
+                    <div class="flex h-full w-full items-center justify-center text-theme-on-surface-muted">
+                      <.icon name="hero-tv" class="h-6 w-6 opacity-40" />
+                    </div>
+                  <% end %>
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <h3 class="truncate text-base font-semibold text-theme-on-surface" title={channel.title}>
+                    {channel.title}
+                  </h3>
+                  <p class="truncate text-xs text-theme-on-surface-muted">
+                    {channel.handle || channel.id}
+                  </p>
+                  <%= if channel[:status] && channel.status.badge_text do %>
+                    <span class={[
+                      "mt-1 inline-block text-[11px] font-medium rounded-m3-xs px-2 py-0.5",
+                      if(channel.status.state == :subscribed, do: "theme-badge-success", else: "theme-badge-warning")
+                    ]}>
+                      {channel.status.badge_text}
+                    </span>
+                  <% end %>
+                </div>
+              </div>
+
+              <div class="mt-5 flex items-center justify-end gap-2 border-t border-theme-outline/40 pt-3">
+                <.button
+                  variant="secondary"
+                  type="button"
+                  phx-click="view_channel_preview"
+                  phx-value-id={channel.id}
+                  phx-value-title={channel.title}
+                >
+                  Preview Videos
+                </.button>
+
+                <%= if channel[:status] && channel.status.open_source_id do %>
+                  <.button
+                    variant="secondary"
+                    href={~p"/sources/#{channel.status.open_source_id}"}
+                    class="text-theme-primary"
+                  >
+                    Open Source
+                  </.button>
+                <% end %>
+
+                <%= if channel[:status] && channel.status.can_subscribe? do %>
+                  <.button
+                    variant="primary"
+                    type="button"
+                    id={"subscribe-channel-#{channel.id}"}
+                    phx-click={
+                      JS.push_focus()
+                      |> JS.push("prompt_subscribe_channel",
+                        value: %{
+                          id: channel.id,
+                          title: channel.title,
+                          handle: channel[:handle]
+                        }
+                      )
+                    }
+                  >
+                    Subscribe
+                  </.button>
                 <% end %>
               </div>
             </div>
-
-            <div class="mt-5 flex items-center justify-end gap-2 border-t border-theme-outline/40 pt-3">
-              <.button
-                variant="secondary"
-                type="button"
-                phx-click="view_channel_preview"
-                phx-value-id={channel.id}
-                phx-value-title={channel.title}
-              >
-                Preview Videos
-              </.button>
-
-              <%= if channel[:status] && channel.status.open_source_id do %>
-                <.button
-                  variant="secondary"
-                  href={~p"/sources/#{channel.status.open_source_id}"}
-                  class="text-theme-primary"
-                >
-                  Open Source
-                </.button>
-              <% end %>
-
-              <%= if channel[:status] && channel.status.can_subscribe? do %>
-                <.button
-                  variant="primary"
-                  type="button"
-                  id={"subscribe-channel-#{channel.id}"}
-                  phx-click={
-                    JS.push_focus()
-                    |> JS.push("prompt_subscribe_channel",
-                      value: %{
-                        id: channel.id,
-                        title: channel.title,
-                        handle: channel[:handle]
-                      }
-                    )
-                  }
-                >
-                  Subscribe
-                </.button>
-              <% end %>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    <% end %>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
   <% end %>
 
   <%!-- Empty State --%>

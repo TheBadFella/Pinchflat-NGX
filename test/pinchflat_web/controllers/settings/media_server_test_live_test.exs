@@ -25,7 +25,7 @@ defmodule Pinchflat.Settings.MediaServerTestLiveTest do
           plex_token: "tok"
         })
 
-      expect(HTTPClientMock, :get, fn url, _headers ->
+      expect(HTTPClientMock, :get, fn url, _headers, _opts ->
         assert url =~ "/library/sections"
         {:ok, "<MediaContainer/>"}
       end)
@@ -69,7 +69,7 @@ defmodule Pinchflat.Settings.MediaServerTestLiveTest do
           jellyfin_api_key: "bad_key"
         })
 
-      expect(HTTPClientMock, :get, fn url, _headers ->
+      expect(HTTPClientMock, :get, fn url, _headers, _opts ->
         assert url =~ "/System/Info"
         {:error, "HTTP request failed with status code 401"}
       end)

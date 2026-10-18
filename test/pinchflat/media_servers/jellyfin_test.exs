@@ -13,7 +13,7 @@ defmodule Pinchflat.MediaServers.JellyfinTest do
         jellyfin_api_key: "jelly_api_token_456"
       }
 
-      expect(HTTPClientMock, :post, fn url, headers, body ->
+      expect(HTTPClientMock, :post, fn url, headers, body, _opts ->
         assert url == "http://192.168.1.100:8096/Library/Refresh"
         assert {"Authorization", ~s(MediaBrowser Token="jelly_api_token_456")} in headers
         assert body == ""
@@ -29,7 +29,7 @@ defmodule Pinchflat.MediaServers.JellyfinTest do
         jellyfin_api_key: "jelly_api_token"
       }
 
-      expect(HTTPClientMock, :post, fn _url, _headers, _body ->
+      expect(HTTPClientMock, :post, fn _url, _headers, _body, _opts ->
         {:error, "HTTP request failed with status code 401"}
       end)
 
@@ -51,7 +51,7 @@ defmodule Pinchflat.MediaServers.JellyfinTest do
         jellyfin_api_key: "jelly_api_token_456"
       }
 
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://192.168.1.100:8096/System/Info"
         assert {"Authorization", ~s(MediaBrowser Token="jelly_api_token_456")} in headers
         {:ok, "{\"Version\":\"10.9.0\",\"ServerName\":\"MyServer\"}"}
@@ -66,7 +66,7 @@ defmodule Pinchflat.MediaServers.JellyfinTest do
         jellyfin_api_key: "bad_key"
       }
 
-      expect(HTTPClientMock, :get, fn _url, _headers ->
+      expect(HTTPClientMock, :get, fn _url, _headers, _opts ->
         {:error, "HTTP request failed with status code 401"}
       end)
 
@@ -77,7 +77,7 @@ defmodule Pinchflat.MediaServers.JellyfinTest do
   test "escapes API keys as quoted authorization parameters" do
     settings = %{jellyfin_url: "http://jelly.local", jellyfin_api_key: ~S(a"b\c)}
 
-    expect(HTTPClientMock, :get, fn _url, headers ->
+    expect(HTTPClientMock, :get, fn _url, headers, _opts ->
       assert headers == [{"Authorization", ~S(MediaBrowser Token="a\"b\\c")}]
       {:ok, ""}
     end)

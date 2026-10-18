@@ -74,10 +74,35 @@ defmodule PinchflatWeb.Plugs do
   defp query_string(%{query_string: qs}), do: "?" <> qs
 
   @doc """
-  Removes the `x-frame-options` header from the response to allow the page to be embedded in an iframe.
+  Applies the configured dashboard embedding policy while preserving other CSP directives.
   """
   def allow_iframe_embed(conn, _opts) do
-    delete_resp_header(conn, "x-frame-options")
+    origins = Application.get_env(:pinchflat, :iframe_allowed_origins, [])
+
+    cond do
+      not Application.get_env(:pinchflat, :allow_iframe_embed, true) ->
+        conn
+        |> put_resp_header("x-frame-options", "SAMEORIGIN")
+        |> frame_ancestors("'self'")
+
+      origins != [] ->
+        conn
+        |> delete_resp_header("x-frame-options")
+        |> frame_ancestors(Enum.join(["'self'" | origins], " "))
+
+      true ->
+        delete_resp_header(conn, "x-frame-options")
+    end
+  end
+
+  defp frame_ancestors(conn, origins) do
+    directives =
+      conn
+      |> get_resp_header("content-security-policy")
+      |> Enum.flat_map(&String.split(&1, ";", trim: true))
+      |> Enum.reject(&(String.trim(&1) |> String.starts_with?("frame-ancestors ")))
+
+    put_resp_header(conn, "content-security-policy", Enum.join(directives ++ ["frame-ancestors #{origins}"], "; "))
   end
 
   @doc """

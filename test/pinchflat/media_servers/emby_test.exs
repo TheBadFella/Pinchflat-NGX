@@ -33,7 +33,7 @@ defmodule Pinchflat.MediaServers.EmbyTest do
         emby_confirm_full_scan: true
       }
 
-      expect(HTTPClientMock, :post, fn url, headers, body ->
+      expect(HTTPClientMock, :post, fn url, headers, body, _opts ->
         assert url == "http://192.168.1.100:8096/Library/Refresh"
         assert {"X-Emby-Token", "emby_key_789"} in headers
         assert body == ""
@@ -50,7 +50,7 @@ defmodule Pinchflat.MediaServers.EmbyTest do
         emby_confirm_full_scan: true
       }
 
-      expect(HTTPClientMock, :post, fn _url, _headers, _body ->
+      expect(HTTPClientMock, :post, fn _url, _headers, _body, _opts ->
         {:error, "HTTP request failed with status code 401"}
       end)
 
@@ -66,7 +66,7 @@ defmodule Pinchflat.MediaServers.EmbyTest do
         emby_confirm_full_scan: false
       }
 
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://192.168.1.100:8096/System/Info"
         assert {"X-Emby-Token", "emby_key_789"} in headers
         {:ok, "{\"Version\":\"4.8.0.0\"}"}

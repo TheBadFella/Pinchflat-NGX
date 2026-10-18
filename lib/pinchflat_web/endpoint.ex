@@ -98,7 +98,8 @@ defmodule PinchflatWeb.Endpoint do
   plug Plug.MethodOverride
   plug :ignore_head_range
   plug Plug.Head
-  plug Plug.Session, @session_options
+  plug PinchflatWeb.Plugs.ProxyScheme
+  plug :session
 
   plug :override_base_url
   plug :strip_trailing_extension
@@ -108,6 +109,15 @@ defmodule PinchflatWeb.Endpoint do
   # Plug.Head converts HEAD to GET; remove Range before that conversion.
   defp ignore_head_range(%Plug.Conn{method: "HEAD"} = conn, _opts), do: Plug.Conn.delete_req_header(conn, "range")
   defp ignore_head_range(conn, _opts), do: conn
+
+  defp session(conn, _opts) do
+    options =
+      if Application.get_env(:pinchflat, :force_secure_session_cookie, false),
+        do: Keyword.put(@session_options, :secure, true),
+        else: @session_options
+
+    Plug.Session.call(conn, Plug.Session.init(options))
+  end
 
   # Disables logging in Plug.Telemetry for healthcheck requests
   def log_level(%Plug.Conn{path_info: ["healthcheck"]}), do: false
@@ -121,11 +131,7 @@ defmodule PinchflatWeb.Endpoint do
   # that would probably be more difficult for end-users to set up than just
   # having the application figure it out.
   defp override_base_url(conn, _opts) do
-    new_scheme =
-      case get_req_header(conn, "x-forwarded-proto") do
-        [scheme] -> scheme
-        _ -> to_string(conn.scheme)
-      end
+    new_scheme = conn.private[:router_scheme] || to_string(conn.scheme)
 
     new_port = if conn.port in [80, 443], do: "", else: ":#{conn.port}"
     new_base_url = "#{new_scheme}://#{conn.host}#{new_port}"

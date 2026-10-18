@@ -56,7 +56,7 @@ defmodule PinchflatWeb.Api.ShareControllerTest do
         |> put_req_header("authorization", "Bearer #{secret}")
         |> post("/api/share/intake", %{"url" => "https://youtu.be/dQw4w9WgXcQ"})
 
-      assert json_response(response, 401)["error"] == "unauthorized"
+      assert json_response(response, 401)["error"] == "expired_token"
 
       assert {Pinchflat.Repo.aggregate(Pinchflat.Sources.Source, :count), Pinchflat.Repo.aggregate(Oban.Job, :count)} ==
                before_counts

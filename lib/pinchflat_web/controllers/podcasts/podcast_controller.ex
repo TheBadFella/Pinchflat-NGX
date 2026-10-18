@@ -29,7 +29,7 @@ defmodule PinchflatWeb.Podcasts.PodcastController do
   )
 
   def opml_feed(conn, _params) do
-    url_base = url(conn, ~p"/")
+    url_base = Phoenix.VerifiedRoutes.unverified_url(conn, "")
     xml = OpmlFeedBuilder.build(url_base, PodcastHelpers.opml_sources())
 
     conn
@@ -57,7 +57,7 @@ defmodule PinchflatWeb.Podcasts.PodcastController do
 
   def rss_feed(conn, %{"uuid" => uuid}) do
     source = Repo.get_by!(Source, uuid: uuid)
-    url_base = url(conn, ~p"/")
+    url_base = Phoenix.VerifiedRoutes.unverified_url(conn, "")
     xml = RssFeedBuilder.build(source, limit: 2_000, url_base: url_base)
 
     conn

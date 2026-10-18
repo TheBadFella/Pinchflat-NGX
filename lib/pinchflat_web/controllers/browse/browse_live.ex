@@ -58,6 +58,21 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   end
 
   @impl true
+  def handle_event("restore_search", params, socket) do
+    {:noreply, restore_search(params, socket)}
+  end
+
+  def handle_event(event, _params, %{assigns: %{loading?: true}} = socket)
+      when event in [
+             "view_video_details",
+             "view_channel_preview",
+             "download_video",
+             "prompt_subscribe_channel",
+             "confirm_subscribe_channel"
+           ] do
+    {:noreply, socket}
+  end
+
   def handle_event("search", %{"query" => query} = params, socket) do
     trimmed_query = String.trim(query)
 
@@ -80,7 +95,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
         |> assign(:active_tab, tab)
         |> assign(:search_tab, tab)
         |> assign(:search_generation, new_gen)
-        |> assign(:results, [])
+        |> assign(:results, if(tab == socket.assigns.active_tab, do: socket.assigns.results, else: []))
         |> assign(:loading?, true)
         |> assign(:busy?, false)
         |> assign(:error, nil)
@@ -88,6 +103,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
         |> assign(:selected_channel_preview, nil)
         |> assign(:detail_loading?, false)
         |> assign(:preview_loading?, false)
+        |> remember_search()
         |> start_search_async(trimmed_query, tab, socket.assigns.selected_profile_id, new_gen)
 
       {:noreply, socket}
@@ -119,6 +135,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       |> assign(:selected_channel_preview, nil)
       |> assign(:detail_loading?, false)
       |> assign(:preview_loading?, false)
+      |> remember_search()
 
     if socket.assigns.query != "" and not was_loading? do
       socket =
@@ -177,7 +194,8 @@ defmodule PinchflatWeb.Browse.BrowseLive do
      socket
      |> assign(:results, updated_results)
      |> assign(:selected_video_detail, updated_detail)
-     |> assign(:selected_channel_preview, updated_preview)}
+     |> assign(:selected_channel_preview, updated_preview)
+     |> remember_search()}
   end
 
   @impl true
@@ -962,6 +980,55 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
   defp default_profile_id([single]), do: single.id
   defp default_profile_id(_), do: nil
+
+  defp remember_search(socket) do
+    push_event(socket, "browse:remember", %{
+      q: socket.assigns.query,
+      tab: socket.assigns.active_tab,
+      profile: socket.assigns.selected_profile_id
+    })
+  end
+
+  defp restore_search(%{"q" => query} = params, socket) when is_binary(query) do
+    tab = if params["tab"] == "channels", do: :channels, else: :videos
+
+    profile_id =
+      case parse_search_profile(params["profile"]) do
+        {id, ""} -> if Enum.any?(socket.assigns.profiles, &(&1.id == id)), do: id
+        _ -> socket.assigns.selected_profile_id
+      end
+
+    desired = {String.trim(query), tab, profile_id}
+    current = {socket.assigns.query, socket.assigns.active_tab, socket.assigns.selected_profile_id}
+
+    if String.length(query) <= 200 and desired != current do
+      socket = assign(socket, selected_profile_id: profile_id)
+
+      if String.trim(query) == "" do
+        YoutubeBrowser.cancel_operation(self())
+
+        socket
+        |> cancel_async(:search_task)
+        |> assign(
+          query: "",
+          active_tab: tab,
+          results: [],
+          loading?: false,
+          search_generation: socket.assigns.search_generation + 1
+        )
+      else
+        {:noreply, socket} = handle_event("search", %{"query" => query, "tab" => to_string(tab)}, socket)
+        socket
+      end
+    else
+      socket
+    end
+  end
+
+  defp restore_search(_params, socket), do: socket
+
+  defp parse_search_profile(value) when is_binary(value), do: Integer.parse(value)
+  defp parse_search_profile(_value), do: :error
 
   defp start_search_async(socket, query, :videos, profile_id, gen) do
     caller = self()

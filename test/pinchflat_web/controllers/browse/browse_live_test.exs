@@ -50,6 +50,65 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
   setup :set_mox_global
 
+  test "restores URL search state in the controller-rendered LiveView", %{conn: conn} do
+    profile = media_profile_fixture()
+    Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "restored query", _opts -> {:ok, @mock_videos} end)
+    {:ok, view, _} = live_isolated(conn, BrowseLive)
+
+    render_hook(view, "restore_search", %{
+      "q" => "restored query",
+      "tab" => "videos",
+      "profile" => to_string(profile.id)
+    })
+
+    assert render_async(view) =~ "Elixir Phoenix LiveView Guide"
+    assert has_element?(view, "#browse_query[value='restored query']")
+    assert has_element?(view, "#profile_selector_form[phx-auto-recover='ignore']")
+  end
+
+  test "restores Unicode queries within the search input character limit", %{conn: conn} do
+    profile = media_profile_fixture()
+    query = String.duplicate("検索", 60)
+    Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn ^query, _opts -> {:ok, @mock_videos} end)
+    {:ok, view, _} = live_isolated(conn, BrowseLive)
+
+    render_hook(view, "restore_search", %{"q" => query, "profile" => to_string(profile.id)})
+
+    assert render_async(view) =~ "Elixir Phoenix LiveView Guide"
+    assert has_element?(view, "#browse_query[value='#{query}']")
+
+    render_hook(view, "restore_search", %{"q" => String.duplicate("a", 201)})
+    assert has_element?(view, "#browse_query[value='#{query}']")
+  end
+
+  test "keeps previous results inert and refuses stale download actions while searching", %{conn: conn} do
+    media_profile_fixture()
+    caller = self()
+    Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "first", _opts -> {:ok, @mock_videos} end)
+
+    Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "second", _opts ->
+      send(caller, {:search_waiting, self()})
+
+      receive do
+        :finish_search -> {:ok, []}
+      after
+        5000 -> {:error, :timeout}
+      end
+    end)
+
+    {:ok, view, _} = live_isolated(conn, BrowseLive)
+    view |> form("#browse_search_form", %{"query" => "first"}) |> render_submit()
+    assert render_async(view) =~ "Elixir Phoenix LiveView Guide"
+
+    view |> form("#browse_search_form", %{"query" => "second"}) |> render_submit()
+    assert_receive {:search_waiting, provider}
+    assert has_element?(view, "#browse-results[inert][aria-busy='true']", "Elixir Phoenix LiveView Guide")
+    render_hook(view, "download_video", %{"id" => "vid_test_123"})
+    assert Repo.aggregate(Source, :count) == 0
+    send(provider, :finish_search)
+    refute render_async(view) =~ "Elixir Phoenix LiveView Guide"
+  end
+
   test "bookmarklet opens a preview without creating sources or jobs", %{conn: conn} do
     media_profile_fixture()
     before_counts = {Repo.aggregate(Source, :count), Repo.aggregate(Oban.Job, :count)}

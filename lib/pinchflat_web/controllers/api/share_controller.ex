@@ -71,7 +71,10 @@ defmodule PinchflatWeb.Api.ShareController do
       {:error, :revoked_token} ->
         send_json_error(conn, 401, "revoked_token", "This share token has been revoked")
 
-      {:error, reason} when reason in [:revoked, :expired, :invalid_token] ->
+      {:error, :expired} ->
+        send_json_error(conn, 401, "expired_token", "This share token has expired")
+
+      {:error, reason} when reason in [:revoked, :invalid_token] ->
         send_json_error(conn, 401, "unauthorized", "Share token is no longer active")
 
       {:error, :profile_deleted} ->
