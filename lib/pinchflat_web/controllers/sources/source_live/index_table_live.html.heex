@@ -62,6 +62,25 @@
     </.form>
   </div>
 
+  <.form
+    for={%{}}
+    id="selected-source-cutoff"
+    action={~p"/sources/cutoff/preview"}
+    method="post"
+    class="mb-4 grid min-w-0 grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap"
+  >
+    <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+    <.input
+      type="date"
+      id="selected-source-cutoff-date"
+      name="cutoff_date"
+      value=""
+      label="Download cutoff for selected sources"
+      help="Leave blank to remove the cutoff. Preview before applying."
+    />
+    <.button type="submit" variant="outline" disabled={MapSet.size(@selected_ids) == 0}>Preview cutoff</.button>
+  </.form>
+
   <div :if={@view_mode == :table}>
     <div class="space-y-4 md:hidden">
       <article :for={source <- @sources} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
