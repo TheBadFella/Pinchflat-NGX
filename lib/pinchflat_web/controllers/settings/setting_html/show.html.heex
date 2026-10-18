@@ -98,6 +98,15 @@
     <button
       type="button"
       class="theme-filter-button rounded-full border"
+      x-on:click="selectGroup('media-servers')"
+      x-bind:class="selectedGroup === 'media-servers' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'media-servers'"
+    >
+      Media Servers
+    </button>
+    <button
+      type="button"
+      class="theme-filter-button rounded-full border"
       x-on:click="selectGroup('access')"
       data-settings-group="access"
       x-bind:class="selectedGroup === 'access' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"

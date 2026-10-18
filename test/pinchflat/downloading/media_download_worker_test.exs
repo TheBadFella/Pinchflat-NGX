@@ -97,6 +97,38 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.media_filepath != nil
     end
 
+    test "finalized downloads enqueue a library refresh", %{media_item: media_item} do
+      {:ok, _} =
+        Settings.update_setting(Settings.record(), %{
+          plex_enabled: true,
+          plex_url: "http://owned-plex:32400",
+          plex_token: "owned"
+        })
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+      downloaded = Repo.reload!(media_item)
+      assert downloaded.media_filepath
+      assert downloaded.media_downloaded_at
+      assert_enqueued(worker: Pinchflat.MediaServers.RefreshWorker, args: %{"server_type" => "plex"})
+    end
+
+    test "failed downloads do not enqueue a library refresh", %{media_item: media_item} do
+      {:ok, _} =
+        Settings.update_setting(Settings.record(), %{
+          plex_enabled: true,
+          plex_url: "http://owned-plex:32400",
+          plex_token: "owned"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :download, _opts, _ot, _addl -> {:error, "owned download failure"}
+      end)
+
+      assert {:error, :download_failed} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+      assert Repo.reload!(media_item).media_downloaded_at == nil
+      refute_enqueued(worker: Pinchflat.MediaServers.RefreshWorker)
+    end
+
     test "saves the metadata to the media_item", %{media_item: media_item} do
       assert media_item.metadata == nil
       perform_job(MediaDownloadWorker, %{id: media_item.id})

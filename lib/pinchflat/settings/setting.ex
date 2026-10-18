@@ -52,7 +52,19 @@ defmodule Pinchflat.Settings.Setting do
     :cookie_health_last_authenticated_at,
     :cookie_health_last_error,
     :cookie_health_cookie_digest,
-    :cookie_health_alert_sent_for_digest
+    :cookie_health_alert_sent_for_digest,
+    :plex_enabled,
+    :plex_url,
+    :plex_token,
+    :plex_library_section_id,
+    :jellyfin_enabled,
+    :jellyfin_url,
+    :jellyfin_api_key,
+    :jellyfin_library_id,
+    :emby_enabled,
+    :emby_url,
+    :emby_api_key,
+    :emby_confirm_full_scan
   ]
 
   @time_formats ~w(24h 12h)
@@ -124,6 +136,21 @@ defmodule Pinchflat.Settings.Setting do
 
     field :video_codec_preference, :string
     field :audio_codec_preference, :string
+
+    field :plex_enabled, :boolean, default: false
+    field :plex_url, :string
+    field :plex_token, :string, redact: true
+    field :plex_library_section_id, :string, default: "all"
+
+    field :jellyfin_enabled, :boolean, default: false
+    field :jellyfin_url, :string
+    field :jellyfin_api_key, :string, redact: true
+    field :jellyfin_library_id, :string
+
+    field :emby_enabled, :boolean, default: false
+    field :emby_url, :string
+    field :emby_api_key, :string, redact: true
+    field :emby_confirm_full_scan, :boolean, default: false
   end
 
   @doc false
@@ -146,6 +173,7 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_number(:download_space_protection_threshold_bytes, greater_than_or_equal_to: 1)
     |> validate_number(:cookie_health_check_interval_hours, greater_than_or_equal_to: 1, less_than_or_equal_to: 168)
     |> validate_canary_url()
+    |> validate_media_server_settings()
   end
 
   @doc """
@@ -186,6 +214,30 @@ defmodule Pinchflat.Settings.Setting do
             "must be a valid YouTube video or shorts URL"
           )
         end
+    end
+  end
+
+  defp validate_media_server_settings(changeset) do
+    changeset
+    |> validate_server_config(:plex_enabled, :plex_url, :plex_token)
+    |> validate_server_config(:jellyfin_enabled, :jellyfin_url, :jellyfin_api_key)
+    |> validate_server_config(:emby_enabled, :emby_url, :emby_api_key)
+  end
+
+  defp validate_server_config(changeset, enabled_field, url_field, credential_field) do
+    if get_field(changeset, enabled_field) do
+      changeset
+      |> validate_required([url_field, credential_field])
+      |> validate_http_url(url_field)
+    else
+      changeset
+    end
+  end
+
+  defp validate_http_url(changeset, field) do
+    case Pinchflat.MediaServers.validate_server_url(get_field(changeset, field)) do
+      {:ok, url} -> put_change(changeset, field, url)
+      {:error, _} -> add_error(changeset, field, "must be an HTTP or HTTPS URL without credentials, query or fragment")
     end
   end
 end
