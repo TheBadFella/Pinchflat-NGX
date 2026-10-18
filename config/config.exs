@@ -19,6 +19,8 @@ config :pinchflat,
   database_adapter: database_adapter,
   generators: [timestamp_type: :utc_datetime],
   env: config_env(),
+  build_track: "stable",
+  build_sha: nil,
   # Specifying backend data here makes mocking and local testing SUPER easy
   yt_dlp_executable: System.find_executable("yt-dlp"),
   apprise_executable: System.find_executable("apprise"),

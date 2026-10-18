@@ -102,7 +102,33 @@ download_staging_directory =
       nil
   end
 
+build_track =
+  case System.get_env("BUILD_TRACK") || System.get_env("PINCHFLAT_BUILD_TRACK") do
+    value when is_binary(value) ->
+      case String.trim(value) do
+        "" -> Application.get_env(:pinchflat, :build_track, "stable")
+        trimmed -> String.downcase(trimmed)
+      end
+
+    _ ->
+      Application.get_env(:pinchflat, :build_track, "stable")
+  end
+
+build_sha =
+  case System.get_env("BUILD_SHA") || System.get_env("PINCHFLAT_BUILD_SHA") do
+    value when is_binary(value) ->
+      case String.trim(value) do
+        "" -> Application.get_env(:pinchflat, :build_sha)
+        trimmed -> trimmed
+      end
+
+    _ ->
+      Application.get_env(:pinchflat, :build_sha)
+  end
+
 config :pinchflat,
+  build_track: build_track,
+  build_sha: build_sha,
   basic_auth_username: System.get_env("BASIC_AUTH_USERNAME"),
   basic_auth_password: System.get_env("BASIC_AUTH_PASSWORD"),
   # Optional bgutil PO-token provider. An absent or blank URL keeps the
