@@ -37,43 +37,65 @@ defmodule Pinchflat.Sources do
 
   Returns {:ok, [%Source{}]} | {:error, term()}
   """
-  def pause_selected_sources(ids) when is_list(ids) and length(ids) in 1..100 do
+  def pause_selected_sources(ids) do
+    result =
+      Repo.transaction(fn ->
+        case get_selected_sources(ids, lock: true) do
+          {:ok, sources} ->
+            Enum.map(sources, fn source ->
+              case update_source(source, %{download_media: false}, run_post_commit_tasks: false) do
+                {:ok, updated} -> updated
+                {:error, changeset} -> Repo.rollback(changeset)
+              end
+            end)
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, sources} ->
+        Enum.each(sources, &DownloadingHelpers.dequeue_pending_download_tasks(&1, include_executing: true))
+        {:ok, sources}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Loads up to 100 selected sources, rejecting the selection if any source or
+  profile is being deleted. Use `lock: true` within a transaction when updating.
+
+  Returns {:ok, [%Source{}]} | {:error, :invalid_selection | :unavailable_source}
+  """
+  def get_selected_sources(ids, opts \\ [])
+
+  def get_selected_sources(ids, opts) when is_list(ids) and length(ids) in 1..100 do
     if Enum.all?(ids, &(is_binary(&1) and Regex.match?(~r/^[1-9][0-9]{0,17}$/, &1))) do
       ids = ids |> Enum.map(&String.to_integer/1) |> Enum.uniq()
 
-      result =
-        Repo.transaction(fn ->
-          sources =
-            Repo.all(
-              from s in Source,
-                join: profile in assoc(s, :media_profile),
-                where: s.id in ^ids and is_nil(s.marked_for_deletion_at) and is_nil(profile.marked_for_deletion_at)
-            )
+      profiles = from p in MediaProfile, where: is_nil(p.marked_for_deletion_at), select: p.id
 
-          if length(sources) != length(ids), do: Repo.rollback(:unavailable_source)
+      query =
+        from s in Source,
+          where: s.id in ^ids and is_nil(s.marked_for_deletion_at) and s.media_profile_id in subquery(profiles),
+          order_by: s.id
 
-          Enum.map(sources, fn source ->
-            case update_source(source, %{download_media: false}, run_post_commit_tasks: false) do
-              {:ok, updated} -> updated
-              {:error, changeset} -> Repo.rollback(changeset)
-            end
-          end)
-        end)
+      query =
+        if Keyword.get(opts, :lock, false) and Pinchflat.Database.postgres?(),
+          do: lock(query, "FOR UPDATE"),
+          else: query
 
-      case result do
-        {:ok, sources} ->
-          Enum.each(sources, &DownloadingHelpers.dequeue_pending_download_tasks(&1, include_executing: true))
-          {:ok, sources}
-
-        error ->
-          error
-      end
+      sources = Repo.all(query)
+      if length(sources) == length(ids), do: {:ok, sources}, else: {:error, :unavailable_source}
     else
       {:error, :invalid_selection}
     end
   end
 
-  def pause_selected_sources(_ids), do: {:error, :invalid_selection}
+  def get_selected_sources(_ids, _opts), do: {:error, :invalid_selection}
 
   @doc """
   Returns the configured path to the shared cookie file.
