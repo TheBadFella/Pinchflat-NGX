@@ -78,6 +78,10 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
       end)
 
     DownloadStaging.cleanup_stale(active_media_item_ids)
+
+    if File.dir?(DownloadStaging.replacement_directory()) do
+      DownloadStaging.cleanup_stale(active_media_item_ids, root: DownloadStaging.replacement_directory())
+    end
   end
 
   # If a node cannot gracefully shut down, the currently executing jobs get stuck
