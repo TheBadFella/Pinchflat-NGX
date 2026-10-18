@@ -15,6 +15,9 @@ Application.put_env(:pinchflat, :youtube_api, YoutubeApiMock)
 
 Mox.defmock(DiskSpaceCheckerMock, for: Pinchflat.Diagnostics.DiskSpaceBehaviour)
 Application.put_env(:pinchflat, :disk_space_checker, DiskSpaceCheckerMock)
+
+Mox.defmock(YoutubeBrowserProviderMock, for: Pinchflat.YoutubeBrowser.Provider)
+Application.put_env(:pinchflat, :youtube_browser_provider, YoutubeBrowserProviderMock)
 # These tests temporarily change PostgreSQL column types. Keep them out of the
 # normal suite so cached Postgrex plans cannot observe a changed result type;
 # the dedicated PostgreSQL migration job opts back in with --include.

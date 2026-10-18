@@ -30,6 +30,8 @@ defmodule Pinchflat.Application do
       {Phoenix.PubSub, name: Pinchflat.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: Pinchflat.Finch},
+      # YouTube browser provider concurrency and cancellation coordinator
+      Pinchflat.YoutubeBrowser.ProviderCoordinator,
       # Start a worker by calling: Pinchflat.Worker.start_link(arg)
       # {Pinchflat.Worker, arg},
       # Start to serve requests, typically the last entry (except for the post-boot tasks)

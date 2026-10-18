@@ -113,6 +113,7 @@ jobs:
           test/pinchflat/database/channel_discovery_migration_postgres_test.exs
           test/pinchflat/database/upload_date_index_migration_postgres_test.exs
           test/pinchflat/database/library_text_migration_postgres_test.exs
+          test/pinchflat/database/source_description_migration_postgres_test.exs
           test/pinchflat/sources/directory_move_test.exs
 
       - name: Cleanup

@@ -1,0 +1,817 @@
+<div class="mx-auto max-w-7xl break-words">
+  <.flash id="browse-flash-info" kind={:info} flash={@flash} />
+  <.flash id="browse-flash-error" kind={:error} flash={@flash} />
+  <%!-- Header --%>
+  <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight text-theme-on-surface sm:text-3xl">
+        Browse YouTube
+      </h1>
+      <p class="mt-1 text-sm text-theme-on-surface-muted">
+        Search YouTube, see what is already in your library, and download videos.
+      </p>
+    </div>
+
+    <%!-- Header Actions: Paste URL & Profile Selector --%>
+    <div class="flex min-w-0 flex-wrap items-center gap-3">
+      <.button
+        variant="secondary"
+        type="button"
+        id="open-paste-url-button"
+        phx-click={JS.push_focus() |> JS.push("open_paste_url_modal")}
+        class="gap-1.5"
+      >
+        <.icon name="hero-arrow-down-tray" class="h-4 w-4 text-theme-primary" />
+        <span>Paste URL</span>
+      </.button>
+
+      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <label for="profile_selector" class="text-sm font-medium text-theme-on-surface-muted whitespace-nowrap">
+          Media Profile:
+        </label>
+        <%= if @profiles != [] do %>
+          <form id="profile_selector_form" phx-change="select_profile" class="m-0 min-w-0 flex-1">
+            <select
+              id="profile_selector"
+              name="profile_id"
+              class="theme-select min-h-11 w-full max-w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 px-3 py-2 text-sm text-theme-on-surface focus:outline-none"
+            >
+              <%= if is_nil(@selected_profile_id) do %>
+                <option value="" selected>Select a media profile...</option>
+              <% end %>
+              <%= for profile <- @profiles do %>
+                <option value={profile.id} selected={profile.id == @selected_profile_id}>
+                  {profile.name}
+                </option>
+              <% end %>
+            </select>
+          </form>
+        <% else %>
+          <.button
+            variant="secondary"
+            navigate={~p"/media_profiles/new"}
+            class="text-theme-primary"
+          >
+            Create Profile
+          </.button>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <%!-- Search & Controls Card --%>
+  <div class="theme-surface mb-8 p-4 sm:p-6">
+    <form id="browse_search_form" phx-submit="search" class="flex flex-col gap-4">
+      <input type="hidden" name="tab" value={@active_tab} />
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <%!-- Query Input --%>
+        <div class="relative min-w-0 flex-1">
+          <input
+            type="text"
+            id="browse_query"
+            aria-label="Search YouTube"
+            name="query"
+            value={@query}
+            placeholder="Search YouTube videos or channels..."
+            maxlength="200"
+            disabled={@loading?}
+            class="theme-input min-h-[44px] w-full rounded-m3-sm border border-theme-outline/70 px-4 py-2 text-sm text-theme-on-surface placeholder:text-theme-on-surface-muted focus:border-theme-primary"
+          />
+        </div>
+
+        <%!-- Submit & Cancel Buttons --%>
+        <div class="flex items-center gap-2">
+          <.button
+            variant="primary"
+            type="submit"
+            disabled={@loading?}
+          >
+            <%= if @loading? do %>
+              <.icon name="hero-arrow-path" class="mr-2 h-4 w-4 animate-spin" /> Searching...
+            <% else %>
+              <.icon name="hero-magnifying-glass" class="mr-2 h-4 w-4" /> Search
+            <% end %>
+          </.button>
+
+          <%= if @loading? do %>
+            <.button
+              variant="secondary"
+              type="button"
+              phx-click="cancel_search"
+              class="text-theme-on-surface hover:text-theme-error"
+            >
+              Cancel
+            </.button>
+          <% end %>
+        </div>
+      </div>
+
+      <%!-- Tabs (Videos vs Channels) --%>
+      <div class="flex border-b border-theme-outline/50 gap-4 pt-2">
+        <button
+          type="button"
+          phx-click="switch_tab"
+          phx-value-tab="videos"
+          class={[
+            "min-h-[44px] pb-2 text-sm font-medium transition-colors border-b-2 -mb-[2px] px-2",
+            if(@active_tab == :videos,
+              do: "border-theme-primary text-theme-primary",
+              else: "border-transparent text-theme-on-surface-muted hover:text-theme-on-surface"
+            )
+          ]}
+        >
+          <.icon name="hero-video-camera" class="mr-1.5 inline-block h-4 w-4" /> Videos
+        </button>
+
+        <button
+          type="button"
+          phx-click="switch_tab"
+          phx-value-tab="channels"
+          class={[
+            "min-h-[44px] pb-2 text-sm font-medium transition-colors border-b-2 -mb-[2px] px-2",
+            if(@active_tab == :channels,
+              do: "border-theme-primary text-theme-primary",
+              else: "border-transparent text-theme-on-surface-muted hover:text-theme-on-surface"
+            )
+          ]}
+        >
+          <.icon name="hero-tv" class="mr-1.5 inline-block h-4 w-4" /> Channels
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <%!-- Notifications / Status Feedback --%>
+  <%= if @busy? do %>
+    <div class="theme-status-card theme-status-card-warning mb-6">
+      <div class="flex items-center gap-3">
+        <.icon name="hero-clock" class="h-5 w-5 shrink-0" />
+        <div>
+          <h4 class="font-semibold text-sm">Provider is busy</h4>
+          <p class="text-xs">The background extractor is at maximum capacity. Please wait a moment and search again.</p>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <%= if @error do %>
+    <div class="theme-status-card theme-status-card-error mb-6">
+      <div class="flex items-center gap-3">
+        <.icon name="hero-exclamation-triangle" class="h-5 w-5 shrink-0" />
+        <span class="text-sm">{@error}</span>
+      </div>
+    </div>
+  <% end %>
+
+  <%!-- Detail Modal / Panel for Video --%>
+  <%= if @selected_video_detail do %>
+    <div class="theme-surface-raised mb-8 p-6">
+      <div class="flex items-start justify-between gap-4 border-b border-theme-outline/50 pb-4">
+        <div class="min-w-0">
+          <span class="text-xs font-semibold uppercase tracking-wider text-theme-primary">Video Details</span>
+          <h2 class="break-words text-xl font-bold text-theme-on-surface">{@selected_video_detail.title}</h2>
+          <p class="text-sm text-theme-on-surface-muted">
+            {@selected_video_detail.channel_title} &bull; {PinchflatWeb.Browse.BrowseLive.format_duration(
+              @selected_video_detail.duration
+            )}
+          </p>
+        </div>
+        <.button
+          variant="secondary"
+          type="button"
+          phx-click="close_video_details"
+          class="text-theme-on-surface-muted hover:text-theme-on-surface min-w-11"
+          aria-label="Close details"
+        >
+          <.icon name="hero-x-mark" class="h-5 w-5" />
+        </.button>
+      </div>
+
+      <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <%= if @selected_video_detail.thumbnail do %>
+          <div class="overflow-hidden rounded-m3-sm border border-theme-outline/50">
+            <img
+              src={@selected_video_detail.thumbnail}
+              alt={@selected_video_detail.title}
+              loading="lazy"
+              referrerpolicy="no-referrer"
+              class="w-full object-cover"
+            />
+          </div>
+        <% end %>
+
+        <div class="md:col-span-2 flex flex-col gap-4">
+          <%= if @selected_video_detail.description do %>
+            <div class="max-h-48 overflow-y-auto rounded-m3-sm border border-theme-outline/40 bg-theme-surface p-3 text-xs text-theme-on-surface-muted whitespace-pre-wrap">
+              {@selected_video_detail.description}
+            </div>
+          <% end %>
+
+          <%!-- Library Copy Breakdown --%>
+          <%= if @selected_video_detail.status && @selected_video_detail.status.copies != [] do %>
+            <div class="rounded-m3-sm border border-theme-outline/60 bg-theme-surface p-4">
+              <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-theme-on-surface">
+                Matching Local Library Copies
+              </h3>
+              <div class="flex flex-col gap-2">
+                <%= for copy <- @selected_video_detail.status.copies do %>
+                  <div class="flex items-center justify-between gap-3 text-xs">
+                    <div>
+                      <span class="font-medium text-theme-on-surface">{copy.source_name}</span>
+                      <span class="text-theme-on-surface-muted">({copy.media_profile_name})</span>
+                    </div>
+                    <div>
+                      <%= if copy.file_state == :verified_present do %>
+                        <span class="theme-badge-success rounded-m3-xs px-2 py-0.5">In library</span>
+                      <% else %>
+                        <span class="rounded-m3-xs border border-theme-outline/70 px-2 py-0.5 text-theme-on-surface-muted">
+                          {copy.job_state || "Indexed"}
+                        </span>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+
+          <%!-- Action in Details --%>
+          <div class="mt-auto flex items-center gap-3 pt-2">
+            <%= if @selected_video_detail.status && @selected_video_detail.status.open_local_path do %>
+              <.button
+                variant="secondary"
+                href={@selected_video_detail.status.open_local_path}
+                class="text-theme-primary"
+              >
+                <.icon name="hero-play" class="mr-2 h-4 w-4" /> Open Local Video
+              </.button>
+            <% end %>
+
+            <%= if @selected_video_detail.status && @selected_video_detail.status.can_download? do %>
+              <.button
+                variant="primary"
+                type="button"
+                phx-click="download_video"
+                phx-value-id={@selected_video_detail.id}
+              >
+                <.icon name="hero-arrow-down-tray" class="mr-2 h-4 w-4" /> Download
+              </.button>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <%!-- Channel Preview Panel --%>
+  <%= if @selected_channel_preview do %>
+    <div class="theme-surface-raised mb-8 p-6">
+      <div class="flex items-start justify-between gap-4 border-b border-theme-outline/50 pb-4">
+        <div class="min-w-0">
+          <span class="text-xs font-semibold uppercase tracking-wider text-theme-primary">Channel Preview</span>
+          <h2 class="break-words text-xl font-bold text-theme-on-surface">{@selected_channel_preview.title}</h2>
+          <p class="text-xs text-theme-on-surface-muted">
+            Displaying the first 25 recent videos from this channel's Videos tab.
+          </p>
+        </div>
+        <.button
+          variant="secondary"
+          type="button"
+          phx-click="close_channel_preview"
+          class="text-theme-on-surface-muted hover:text-theme-on-surface min-w-11"
+          aria-label="Close channel preview"
+        >
+          <.icon name="hero-x-mark" class="h-5 w-5" />
+        </.button>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <%= for video <- @selected_channel_preview.videos do %>
+          <div class="theme-surface flex flex-col overflow-hidden p-3 transition hover:border-theme-outline-strong">
+            <div class="relative aspect-video w-full overflow-hidden rounded-m3-xs bg-theme-surface-2">
+              <%= if video.thumbnail do %>
+                <img
+                  src={video.thumbnail}
+                  alt={video.title}
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  class="h-full w-full object-cover"
+                />
+              <% end %>
+              <span class="absolute bottom-1 right-1 rounded-m3-xs bg-theme-bg/80 px-1.5 py-0.5 text-[10px] font-mono text-theme-on-surface">
+                {PinchflatWeb.Browse.BrowseLive.format_duration(video.duration)}
+              </span>
+            </div>
+
+            <div class="mt-2 flex flex-1 flex-col justify-between">
+              <div>
+                <h4 class="line-clamp-2 text-xs font-semibold text-theme-on-surface" title={video.title}>
+                  {video.title}
+                </h4>
+              </div>
+
+              <div class="mt-3 flex items-center justify-between gap-2 border-t border-theme-outline/40 pt-2">
+                <%= if video[:status] && video.status.badge_text do %>
+                  <span class={[
+                    "text-[10px] font-medium rounded-m3-xs px-2 py-0.5",
+                    if(video.status.state == :in_library, do: "theme-badge-success", else: "theme-badge-warning")
+                  ]}>
+                    {video.status.badge_text}
+                  </span>
+                <% else %>
+                  <span></span>
+                <% end %>
+
+                <div class="flex items-center gap-1">
+                  <%= if video[:status] && video.status.can_download? do %>
+                    <.button
+                      variant="primary"
+                      type="button"
+                      phx-click="download_video"
+                      phx-value-id={video.id}
+                      class="min-h-[36px]"
+                    >
+                      Download
+                    </.button>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <%!-- Results Grid / List --%>
+  <%= if @results != [] and not @loading? do %>
+    <%= if @active_tab == :videos do %>
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <%= for video <- @results do %>
+          <div class="theme-surface flex flex-col overflow-hidden p-4 transition hover:border-theme-outline-strong">
+            <%!-- Thumbnail --%>
+            <div class="relative aspect-video w-full overflow-hidden rounded-m3-sm bg-theme-surface-2">
+              <%= if video.thumbnail do %>
+                <img
+                  src={video.thumbnail}
+                  alt={video.title}
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  class="h-full w-full object-cover"
+                />
+              <% else %>
+                <div class="flex h-full w-full items-center justify-center text-theme-on-surface-muted">
+                  <.icon name="hero-video-camera" class="h-10 w-10 opacity-30" />
+                </div>
+              <% end %>
+              <span class="absolute bottom-2 right-2 rounded-m3-xs bg-theme-bg/85 px-1.5 py-0.5 text-xs font-mono text-theme-on-surface">
+                {PinchflatWeb.Browse.BrowseLive.format_duration(video.duration)}
+              </span>
+            </div>
+
+            <%!-- Card Body --%>
+            <div class="mt-3 flex flex-1 flex-col justify-between">
+              <div>
+                <h3 class="line-clamp-2 text-sm font-semibold text-theme-on-surface" title={video.title}>
+                  {video.title}
+                </h3>
+                <p class="mt-1 text-xs text-theme-on-surface-muted truncate">
+                  {video.channel_title}
+                </p>
+              </div>
+
+              <%!-- Status & Action Footer --%>
+              <div class="mt-4 flex items-center justify-between gap-2 border-t border-theme-outline/40 pt-3">
+                <%= if video[:status] && video.status.badge_text do %>
+                  <span class={[
+                    "text-xs font-medium rounded-m3-xs px-2 py-1",
+                    cond do
+                      video.status.state == :in_library -> "theme-badge-success"
+                      video.status.state in [:downloading, :queued, :scheduled] -> "theme-status-info"
+                      true -> "theme-badge-warning"
+                    end
+                  ]}>
+                    {video.status.badge_text}
+                  </span>
+                <% else %>
+                  <span class="text-xs text-theme-on-surface-muted">Not in library</span>
+                <% end %>
+
+                <div class="flex items-center gap-2">
+                  <.button
+                    variant="secondary"
+                    type="button"
+                    phx-click="view_video_details"
+                    phx-value-id={video.id}
+                  >
+                    Details
+                  </.button>
+
+                  <%= if video[:status] && video.status.open_local_path do %>
+                    <.button
+                      variant="secondary"
+                      href={video.status.open_local_path}
+                      class="text-theme-primary"
+                    >
+                      Open
+                    </.button>
+                  <% end %>
+
+                  <%= if video[:status] && video.status.can_download? do %>
+                    <.button
+                      variant="primary"
+                      type="button"
+                      phx-click="download_video"
+                      phx-value-id={video.id}
+                    >
+                      Download
+                    </.button>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <%!-- Channels Grid --%>
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <%= for channel <- @results do %>
+          <div class="theme-surface flex flex-col justify-between p-5 transition hover:border-theme-outline-strong">
+            <div class="flex items-center gap-4">
+              <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-theme-outline/50 bg-theme-surface-2">
+                <%= if channel.thumbnail do %>
+                  <img
+                    src={channel.thumbnail}
+                    alt={channel.title}
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                    class="h-full w-full object-cover"
+                  />
+                <% else %>
+                  <div class="flex h-full w-full items-center justify-center text-theme-on-surface-muted">
+                    <.icon name="hero-tv" class="h-6 w-6 opacity-40" />
+                  </div>
+                <% end %>
+              </div>
+
+              <div class="min-w-0 flex-1">
+                <h3 class="truncate text-base font-semibold text-theme-on-surface" title={channel.title}>
+                  {channel.title}
+                </h3>
+                <p class="truncate text-xs text-theme-on-surface-muted">
+                  {channel.handle || channel.id}
+                </p>
+                <%= if channel[:status] && channel.status.badge_text do %>
+                  <span class={[
+                    "mt-1 inline-block text-[11px] font-medium rounded-m3-xs px-2 py-0.5",
+                    if(channel.status.state == :subscribed, do: "theme-badge-success", else: "theme-badge-warning")
+                  ]}>
+                    {channel.status.badge_text}
+                  </span>
+                <% end %>
+              </div>
+            </div>
+
+            <div class="mt-5 flex items-center justify-end gap-2 border-t border-theme-outline/40 pt-3">
+              <.button
+                variant="secondary"
+                type="button"
+                phx-click="view_channel_preview"
+                phx-value-id={channel.id}
+                phx-value-title={channel.title}
+              >
+                Preview Videos
+              </.button>
+
+              <%= if channel[:status] && channel.status.open_source_id do %>
+                <.button
+                  variant="secondary"
+                  href={~p"/sources/#{channel.status.open_source_id}"}
+                  class="text-theme-primary"
+                >
+                  Open Source
+                </.button>
+              <% end %>
+
+              <%= if channel[:status] && channel.status.can_subscribe? do %>
+                <.button
+                  variant="primary"
+                  type="button"
+                  id={"subscribe-channel-#{channel.id}"}
+                  phx-click={
+                    JS.push_focus()
+                    |> JS.push("prompt_subscribe_channel",
+                      value: %{
+                        id: channel.id,
+                        title: channel.title,
+                        handle: channel[:handle]
+                      }
+                    )
+                  }
+                >
+                  Subscribe
+                </.button>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  <% end %>
+
+  <%!-- Empty State --%>
+  <%= if @results == [] and not @loading? and @query != "" and is_nil(@error) do %>
+    <div class="theme-surface flex flex-col items-center justify-center p-12 text-center">
+      <.icon name="hero-magnifying-glass" class="h-12 w-12 text-theme-on-surface-muted opacity-40 mb-3" />
+      <h3 class="text-base font-semibold text-theme-on-surface">No results found</h3>
+      <p class="mt-1 text-sm text-theme-on-surface-muted">
+        No YouTube {if @active_tab == :videos, do: "videos", else: "channels"} matched your query "{@query}".
+      </p>
+    </div>
+  <% end %>
+
+  <%!-- Explicit Channel Subscription Confirmation Modal --%>
+  <%= if @confirming_channel do %>
+    <div
+      id="confirm-subscribe-overlay"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-theme-scrim/80 p-4"
+    >
+      <.focus_wrap
+        id="confirm-subscribe-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-subscribe-title"
+        phx-window-keydown={JS.pop_focus() |> JS.push("cancel_subscribe_channel")}
+        phx-key="escape"
+        phx-click-away={JS.pop_focus() |> JS.push("cancel_subscribe_channel")}
+        class="theme-surface-raised max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-m3-lg p-6 shadow-m3-3 transition"
+      >
+        <div class="flex items-start justify-between gap-4 border-b border-theme-outline/40 pb-4">
+          <div class="min-w-0">
+            <span class="text-xs font-semibold uppercase tracking-wider text-theme-primary">Channel Subscription</span>
+            <h2 id="confirm-subscribe-title" class="break-words text-lg font-bold text-theme-on-surface">
+              {@confirming_channel.title}
+            </h2>
+            <p class="text-xs text-theme-on-surface-muted">
+              {@confirming_channel[:handle] || @confirming_channel.id}
+            </p>
+          </div>
+          <.button
+            variant="secondary"
+            type="button"
+            phx-click={JS.pop_focus() |> JS.push("cancel_subscribe_channel")}
+            class="min-w-11"
+            aria-label="Cancel subscription"
+          >
+            <.icon name="hero-x-mark" class="h-5 w-5" />
+          </.button>
+        </div>
+
+        <div class="my-4 space-y-3 text-sm text-theme-on-surface">
+          <p>
+            You are subscribing to this channel using profile <strong class="text-theme-primary">{PinchflatWeb.Browse.BrowseLive.current_profile_name(@profiles, @selected_profile_id)}</strong>.
+          </p>
+          <ul class="list-disc space-y-1.5 pl-5 text-xs text-theme-on-surface-muted">
+            <li>New and existing videos will be periodically indexed for this channel.</li>
+            <li>
+              Downloads are enabled for all indexed videos (download cutoff is unset by default on newly added sources; you can configure cutoffs and limits in source settings).
+            </li>
+            <li>No videos are downloaded immediately until the initial indexing pass evaluates items.</li>
+          </ul>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-theme-outline/40 pt-4">
+          <.button
+            variant="secondary"
+            type="button"
+            phx-click={JS.pop_focus() |> JS.push("cancel_subscribe_channel")}
+          >
+            Cancel
+          </.button>
+          <.button
+            variant="primary"
+            type="button"
+            phx-click={
+              JS.pop_focus()
+              |> JS.push("confirm_subscribe_channel",
+                value: %{
+                  id: @confirming_channel.id,
+                  title: @confirming_channel.title
+                }
+              )
+            }
+          >
+            Confirm Subscription
+          </.button>
+        </div>
+      </.focus_wrap>
+    </div>
+  <% end %>
+
+  <%!-- Paste URL Modal Dialog --%>
+  <%= if @paste_url_modal_open? do %>
+    <div
+      id="paste-url-overlay"
+      phx-remove={JS.focus(to: "#open-paste-url-button")}
+      class="fixed inset-0 z-50 flex items-center justify-center bg-theme-scrim/80 p-4"
+    >
+      <.focus_wrap
+        id="paste-url-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="paste-url-title"
+        phx-window-keydown={JS.pop_focus() |> JS.push("close_paste_url_modal")}
+        phx-key="escape"
+        phx-click-away={JS.pop_focus() |> JS.push("close_paste_url_modal")}
+        class="theme-surface-raised max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-m3-lg p-6 shadow-m3-3 transition"
+      >
+        <%!-- Dialog Header --%>
+        <div class="flex items-start justify-between gap-4 border-b border-theme-outline/40 pb-4">
+          <div class="min-w-0">
+            <span class="text-xs font-semibold uppercase tracking-wider text-theme-primary">Quick Download</span>
+            <h2 id="paste-url-title" class="break-words text-lg font-bold text-theme-on-surface">
+              Download from YouTube URL
+            </h2>
+            <p class="text-xs text-theme-on-surface-muted">
+              Paste a single video, Short, or live stream link to preview and download.
+            </p>
+          </div>
+          <.button
+            variant="secondary"
+            type="button"
+            id="close-paste-url-button"
+            phx-click={JS.pop_focus() |> JS.push("close_paste_url_modal")}
+            class="min-w-11"
+            aria-label="Close dialog"
+          >
+            <.icon name="hero-x-mark" class="h-5 w-5" />
+          </.button>
+        </div>
+
+        <%!-- Dialog Body / Form --%>
+        <div class="my-4 space-y-4">
+          <%!-- Profile Selector --%>
+          <div>
+            <label for="paste_profile_select" class="mb-1 block text-sm font-medium text-theme-on-surface">
+              Media Profile <span class="text-theme-error">*</span>
+            </label>
+            <%= if @profiles != [] do %>
+              <form id="paste_profile_form" phx-change="select_paste_profile" class="m-0">
+                <select
+                  id="paste_profile_select"
+                  name="profile_id"
+                  class="theme-select min-h-[44px] w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 px-3 py-2 text-sm text-theme-on-surface focus:outline-none"
+                >
+                  <%= if is_nil(@paste_selected_profile_id) do %>
+                    <option value="" selected>Select a media profile...</option>
+                  <% end %>
+                  <%= for profile <- @profiles do %>
+                    <option value={profile.id} selected={profile.id == @paste_selected_profile_id}>
+                      {profile.name}
+                    </option>
+                  <% end %>
+                </select>
+              </form>
+            <% else %>
+              <p class="text-xs text-theme-error">No media profiles configured. Please create a profile first.</p>
+            <% end %>
+          </div>
+
+          <%!-- URL Input Form --%>
+          <form id="paste_url_form" phx-submit="resolve_pasted_url" phx-change="update_pasted_url" class="space-y-3">
+            <div>
+              <label for="paste_url_input" class="mb-1 block text-sm font-medium text-theme-on-surface">
+                YouTube Video URL
+              </label>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="paste_url_input"
+                  name="url"
+                  value={@pasted_url}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  maxlength="2048"
+                  autocomplete="off"
+                  disabled={@paste_resolving? or @paste_downloading?}
+                  class="theme-input min-h-[44px] min-w-0 flex-1 rounded-m3-sm border border-theme-outline/70 px-3 py-2 text-sm text-theme-on-surface placeholder:text-theme-on-surface-muted focus:border-theme-primary"
+                />
+                <.button
+                  variant="secondary"
+                  type="submit"
+                  id="paste_url_resolve_button"
+                  disabled={@paste_resolving? or @paste_downloading? or String.trim(@pasted_url) == ""}
+                >
+                  <%= if @paste_resolving? do %>
+                    <.icon name="hero-arrow-path" class="mr-1.5 h-4 w-4 animate-spin" /> Resolving...
+                  <% else %>
+                    Resolve
+                  <% end %>
+                </.button>
+              </div>
+            </div>
+          </form>
+
+          <%!-- Error Notification --%>
+          <%= if @paste_error do %>
+            <div
+              id="paste-url-error"
+              class="theme-status-card theme-status-card-error flex items-start gap-2 rounded-m3-sm p-3 text-xs"
+            >
+              <.icon name="hero-exclamation-triangle" class="h-4 w-4 shrink-0 text-theme-error mt-0.5" />
+              <span>{@paste_error}</span>
+            </div>
+          <% end %>
+
+          <%!-- Resolved Video Preview Card --%>
+          <%= if @paste_resolved_video do %>
+            <div
+              id="paste-resolved-preview"
+              class="theme-surface-raised rounded-m3-sm border border-theme-outline/40 p-3 space-y-2"
+            >
+              <div class="flex items-start gap-3">
+                <%= if @paste_resolved_video[:thumbnail] do %>
+                  <img
+                    src={@paste_resolved_video.thumbnail}
+                    alt={@paste_resolved_video.title}
+                    class="h-16 w-28 rounded object-cover shrink-0 bg-theme-surface-3"
+                  />
+                <% end %>
+                <div class="min-w-0 flex-1">
+                  <h4 class="text-sm font-semibold text-theme-on-surface line-clamp-2">
+                    {@paste_resolved_video.title}
+                  </h4>
+                  <p class="text-xs text-theme-on-surface-muted mt-0.5">
+                    {@paste_resolved_video[:channel_title] || @paste_resolved_video[:channel]}
+                  </p>
+                  <%= if @paste_resolved_video[:duration] do %>
+                    <span class="inline-block mt-1 text-[11px] text-theme-on-surface-muted font-mono">
+                      {PinchflatWeb.Browse.BrowseLive.format_duration(@paste_resolved_video.duration)}
+                    </span>
+                  <% end %>
+                </div>
+              </div>
+
+              <%!-- Status Badge & State --%>
+              <div class="flex items-center justify-between border-t border-theme-outline/30 pt-2 text-xs">
+                <span class="text-theme-on-surface-muted">Library Status:</span>
+                <%= if @paste_resolved_video[:status] && @paste_resolved_video.status.badge_text do %>
+                  <span class={[
+                    "text-xs font-medium rounded-m3-xs px-2 py-1",
+                    cond do
+                      @paste_resolved_video.status.state == :in_library -> "theme-badge-success"
+                      @paste_resolved_video.status.state in [:downloading, :queued, :scheduled] -> "theme-status-info"
+                      true -> "theme-badge-warning"
+                    end
+                  ]}>
+                    {@paste_resolved_video.status.badge_text}
+                  </span>
+                <% else %>
+                  <span class="text-xs text-theme-on-surface-muted">Not in library</span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <%!-- Dialog Actions --%>
+        <div class="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-theme-outline/40 pt-4">
+          <.button
+            variant="secondary"
+            type="button"
+            id="paste-cancel-button"
+            phx-click={JS.pop_focus() |> JS.push("close_paste_url_modal")}
+          >
+            Cancel
+          </.button>
+
+          <%= if @paste_resolved_video && @paste_resolved_video[:status] && @paste_resolved_video.status.open_local_path do %>
+            <.button
+              variant="secondary"
+              href={@paste_resolved_video.status.open_local_path}
+              class="text-theme-primary"
+            >
+              Open in Library
+            </.button>
+          <% end %>
+
+          <%= if @paste_resolved_video && (!@paste_resolved_video[:status] || @paste_resolved_video.status.can_download?) do %>
+            <.button
+              variant="primary"
+              type="button"
+              id="paste-download-button"
+              disabled={@paste_downloading? or is_nil(@paste_selected_profile_id)}
+              phx-click="download_pasted_video"
+            >
+              <%= if @paste_downloading? do %>
+                <.icon name="hero-arrow-path" class="mr-1.5 h-4 w-4 animate-spin" /> Starting...
+              <% else %>
+                <.icon name="hero-arrow-down-tray" class="mr-1.5 h-4 w-4" /> Download
+              <% end %>
+            </.button>
+          <% end %>
+        </div>
+      </.focus_wrap>
+    </div>
+  <% end %>
+</div>

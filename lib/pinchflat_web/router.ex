@@ -82,6 +82,7 @@ defmodule PinchflatWeb.Router do
 
     resources "/media_profiles", MediaProfiles.MediaProfileController
     resources "/search", Searches.SearchController, only: [:show], singleton: true
+    get "/browse", BrowseController, :index
 
     resources "/settings", Settings.SettingController, only: [:show, :update], singleton: true
     post "/settings/resume_downloads", Settings.SettingController, :resume_downloads
