@@ -12,6 +12,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Tasks
+  alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.AvailabilityPolicy
   alias Pinchflat.Media.MediaItem
@@ -111,22 +112,32 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   end
 
   @doc """
-  Deletes pending download tasks for a source's media items.
+  Deletes queued download tasks for a source, including replacement downloads
+  for media that already has a file. Other worker types are preserved.
 
   Options:
     - `:include_executing` - when true, also cancels currently executing download tasks
 
-  Returns integer()
+  Returns the number of media items whose download tasks were removed.
   """
   def dequeue_pending_download_tasks(%Source{} = source, opts \\ []) do
     include_executing = Keyword.get(opts, :include_executing, false)
-    media_items = Media.list_pending_media_items_for(source)
 
-    Enum.each(media_items, fn media_item ->
-      Tasks.delete_pending_tasks_for(media_item, nil, include_executing: include_executing)
-    end)
+    states =
+      if include_executing, do: ~w(available scheduled retryable executing), else: ~w(available scheduled retryable)
 
-    length(media_items)
+    tasks =
+      from(t in Task,
+        join: job in assoc(t, :job),
+        join: media in assoc(t, :media_item),
+        where: media.source_id == ^source.id,
+        where: job.worker == "Pinchflat.Downloading.MediaDownloadWorker",
+        where: job.state in ^states
+      )
+      |> Repo.all()
+
+    Enum.each(tasks, &Tasks.delete_task/1)
+    tasks |> Enum.map(& &1.media_item_id) |> Enum.uniq() |> length()
   end
 
   @doc """
