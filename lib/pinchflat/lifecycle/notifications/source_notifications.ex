@@ -10,35 +10,46 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   alias Pinchflat.Repo
   alias Pinchflat.Settings
 
+  @title_limit 10
+  @title_length 200
+  # Keep title-enabled notifications within Pushover's 1,024-character body limit.
+  # SMS providers may still segment messages. Apprise's default input format is plain text.
+  @body_length 1024
+
   @doc """
-  Wraps a function that may change the number of pending  or downloaded
-  media items for a source, sending an apprise notification if
-  the count changes.
+  Wraps indexing and sends a new-media notification. With titles enabled,
+  only newly inserted pending or downloaded items are counted. Otherwise,
+  preserves the existing pending/downloaded count comparison.
 
   Returns the return value of the provided function
   """
+  def wrap_new_media_notification(servers, source, func)
+
+  def wrap_new_media_notification(_, %{download_media: false}, func), do: func.()
+
   def wrap_new_media_notification(servers, source, func) do
-    before_count = relevant_media_item_count(source)
-    retval = func.()
-    after_count = relevant_media_item_count(source)
-
-    send_new_media_notification(servers, source, after_count - before_count)
-
-    retval
+    if Settings.get!(:notification_include_video_titles) do
+      wrap_with_video_titles(servers, source, func)
+    else
+      wrap_without_video_titles(servers, source, func)
+    end
   end
 
   @doc """
-  Sends a notification if the count of new media items has changed
+  Sends a notification when the count of new media items is positive.
+  Optionally accepts media items whose titles are included when enabled in Settings.
 
   Returns :ok
   """
-  def send_new_media_notification(_, _, count) when count <= 0, do: :ok
+  def send_new_media_notification(servers, source, changed_count, media_items \\ [])
 
-  def send_new_media_notification(servers, source, changed_count) do
+  def send_new_media_notification(_, _, count, _) when count <= 0, do: :ok
+
+  def send_new_media_notification(servers, source, changed_count, media_items) do
     opts =
       [
         title: "[Pinchflat-ngx] New media found",
-        body: notification_body(source, changed_count)
+        body: notification_body(source, changed_count, media_items)
       ]
 
     case backend_runner().run(servers, opts) do
@@ -53,6 +64,55 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
     end
 
     :ok
+  end
+
+  defp wrap_without_video_titles(servers, source, func) do
+    before_count = relevant_media_item_count(source)
+    retval = func.()
+    after_count = relevant_media_item_count(source)
+
+    send_new_media_notification(servers, source, after_count - before_count)
+
+    retval
+  end
+
+  defp wrap_with_video_titles(servers, source, func) do
+    watermark = MediaQuery.new() |> where(^MediaQuery.for_source(source)) |> Repo.aggregate(:max, :id)
+    retval = func.()
+
+    new_media_items =
+      source
+      |> relevant_media_items()
+      |> where([mi], mi.id > ^(watermark || 0))
+      # The window count uses the same snapshot and predicate as the titles, before LIMIT.
+      |> select([mi], %{
+        id: mi.id,
+        title: mi.title,
+        media_id: mi.media_id,
+        uploaded_at: mi.uploaded_at,
+        total: over(count(mi.id))
+      })
+      |> order_by([mi], desc_nulls_last: mi.uploaded_at, desc: mi.id)
+      |> limit(@title_limit)
+      |> Repo.all()
+
+    count =
+      case new_media_items do
+        [%{total: total} | _] -> total
+        [] -> 0
+      end
+
+    send_new_media_notification(servers, source, count, new_media_items)
+
+    retval
+  end
+
+  defp relevant_media_items(source) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^MediaQuery.for_source(source))
+    |> where(^dynamic(^MediaQuery.pending() or ^MediaQuery.downloaded()))
+    |> where(^source.download_media)
   end
 
   defp relevant_media_item_count(source) do
@@ -81,15 +141,86 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
     Application.get_env(:pinchflat, :apprise_runner)
   end
 
-  defp notification_body(source, changed_count) do
-    body = "Found #{changed_count} new media item(s) for #{source.custom_name}. Downloading them now"
+  defp notification_body(source, changed_count, media_items) do
+    header = build_notification_header(source.custom_name, changed_count)
+    link = build_notification_link(source)
 
+    if Settings.get!(:notification_include_video_titles) do
+      build_bounded_notification_body(source.custom_name, link, changed_count, media_items)
+    else
+      header <> link
+    end
+  end
+
+  defp build_notification_header(source_name, count) do
+    "Found #{count} new media item(s) for #{source_name}. Downloading them now"
+  end
+
+  defp build_notification_link(source) do
     case Settings.get(:external_base_url) do
       {:ok, base_url} when is_binary(base_url) and base_url != "" ->
-        "#{body}\n\n#{source_url(base_url, source)}"
+        "\n\n#{source_url(base_url, source)}"
 
       _ ->
-        body
+        ""
+    end
+  end
+
+  defp build_bounded_notification_body(source_name, link, count, media_items) do
+    suffix_budget = if media_items == [], do: 0, else: count_codepoints(build_remaining_suffix(count, 0))
+    fixed_header_length = count_codepoints(build_notification_header("", count))
+    # Omit an oversized URL rather than sending a broken, truncated link.
+    link = if count_codepoints(link) + suffix_budget + fixed_header_length >= @body_length, do: "", else: link
+    name_budget = @body_length - fixed_header_length - count_codepoints(link) - suffix_budget
+    header = build_notification_header(truncate(source_name, name_budget), count)
+    available = @body_length - count_codepoints(header) - count_codepoints(link)
+
+    {titles, shown} =
+      media_items
+      |> Enum.sort_by(&{get_upload_timestamp(&1), Map.get(&1, :id, 0)}, :desc)
+      |> Enum.take(@title_limit)
+      |> Enum.reduce_while({"", 0}, fn item, {titles, shown} ->
+        separator = if shown == 0, do: "\n\n", else: "\n"
+        candidate = titles <> separator <> "- " <> video_title(item)
+
+        if count_codepoints(candidate <> build_remaining_suffix(count, shown + 1)) <= available do
+          {:cont, {candidate, shown + 1}}
+        else
+          {:halt, {titles, shown}}
+        end
+      end)
+
+    suffix = if media_items == [], do: "", else: build_remaining_suffix(count, shown)
+
+    header <> titles <> suffix <> link
+  end
+
+  defp build_remaining_suffix(count, shown) when shown >= count, do: ""
+
+  defp build_remaining_suffix(count, shown) do
+    separator = if shown == 0, do: "\n\n", else: "\n"
+    "#{separator}… and #{count - shown} more"
+  end
+
+  defp get_upload_timestamp(%{uploaded_at: %DateTime{} = uploaded_at}), do: DateTime.to_unix(uploaded_at)
+  defp get_upload_timestamp(_), do: 0
+
+  defp video_title(media_item) do
+    title = media_item.title |> to_string() |> String.replace(~r/\s+/u, " ") |> String.trim()
+    title = if title == "", do: media_item.media_id, else: title
+
+    truncate(title, @title_length)
+  end
+
+  defp count_codepoints(text), do: text |> String.codepoints() |> length()
+
+  defp truncate(text, length) do
+    codepoints = String.codepoints(text)
+
+    if length(codepoints) > length do
+      Enum.join(Enum.take(codepoints, length - 1)) <> "…"
+    else
+      text
     end
   end
 
