@@ -5,7 +5,7 @@ defmodule Pinchflat.RetentionRuntimeConfigTest do
 
   alias Pinchflat.Downloading.MediaRetentionWorker
 
-  @env_vars ~w(RETENTION_CRON TZ)
+  @env_vars ~w(RETENTION_CRON RETENTION_TIMEZONE TZ)
 
   setup do
     previous_values = Map.new(@env_vars, &{&1, System.get_env(&1)})
@@ -26,25 +26,33 @@ defmodule Pinchflat.RetentionRuntimeConfigTest do
     assert :ok = Oban.Cron.validate(cron_config())
   end
 
-  test "uses the configured cron and TZ only for retention" do
+  test "uses the configured cron and retention timezone only for retention" do
     original_entries = other_entries()
 
     System.put_env("RETENTION_CRON", "0 */4 * * *")
-    System.put_env("TZ", "Europe/Berlin")
+    System.put_env("RETENTION_TIMEZONE", "Europe/Berlin")
+    System.put_env("TZ", "America/New_York")
 
     assert retention_entry() == {"0 */4 * * *", MediaRetentionWorker, timezone: "Europe/Berlin"}
     assert other_entries() == original_entries
     assert :ok = Oban.Cron.validate(cron_config())
   end
 
-  test "uses TZ with the default schedule" do
+  test "keeps the default UTC schedule when only TZ is configured" do
     System.put_env("TZ", "Europe/Berlin")
+
+    assert retention_entry() == {"0 1 * * *", MediaRetentionWorker, timezone: "Etc/UTC"}
+  end
+
+  test "uses the retention timezone with the default schedule" do
+    System.put_env("RETENTION_TIMEZONE", "Europe/Berlin")
 
     assert retention_entry() == {"0 1 * * *", MediaRetentionWorker, timezone: "Europe/Berlin"}
   end
 
-  test "uses UTC with a custom schedule when TZ is unset" do
+  test "uses UTC with a custom schedule regardless of TZ" do
     System.put_env("RETENTION_CRON", "0 */4 * * *")
+    System.put_env("TZ", "Europe/Berlin")
 
     assert retention_entry() == {"0 */4 * * *", MediaRetentionWorker, timezone: "Etc/UTC"}
   end
@@ -58,7 +66,7 @@ defmodule Pinchflat.RetentionRuntimeConfigTest do
 
   test "rejects invalid and empty timezones" do
     for value <- ["", "Invalid/Timezone"] do
-      System.put_env("TZ", value)
+      System.put_env("RETENTION_TIMEZONE", value)
       assert {:error, _reason} = Oban.Cron.validate(cron_config())
     end
   end

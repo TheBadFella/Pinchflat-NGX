@@ -18,7 +18,8 @@ defmodule Pinchflat.Downloading.MediaQualityUpgradeWorker do
 
   This worker is scheduled to run daily at 02:00 UTC via the Oban Cron plugin.
   With the default UTC retention schedule it runs after retention; a custom
-  retention schedule or TZ may change that order.
+  retention schedule or timezone may change that order. Media eligible for retention
+  deletion is excluded from automatic upgrades.
 
   Returns :ok
   """

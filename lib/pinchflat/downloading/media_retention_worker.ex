@@ -18,7 +18,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   them from being re-downloaded.
 
   This worker is scheduled via the Oban Cron plugin, daily at 01:00 by default.
-  RETENTION_CRON overrides the schedule; TZ sets its timezone (UTC if unset).
+  RETENTION_CRON overrides the schedule; RETENTION_TIMEZONE sets its timezone (UTC if unset).
 
   Returns :ok
   """

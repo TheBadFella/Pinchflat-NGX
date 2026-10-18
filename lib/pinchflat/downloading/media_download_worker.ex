@@ -97,13 +97,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     Ecto.StaleEntryError -> Logger.info("#{__MODULE__} discarded: media item #{media_item_id} stale")
   end
 
-  # If this is a quality upgrade, only check if the source is set to download media
-  # or that the media item's download hasn't been prevented
+  # Recheck retention here because media may have expired while its upgrade was queued.
+  # Forced downloads retain their explicit override of automatic download restrictions.
   defp should_download_media(media_item, should_force, true = _is_quality_upgrade) do
     cond do
       should_force -> :ok
       !media_item.source.download_media -> {:skip, :source_downloads_disabled}
       media_item.prevent_download -> {:skip, :item_prevented}
+      Media.retention_cullable?(media_item) -> {:skip, :retention_expired}
       true -> :ok
     end
   end

@@ -199,20 +199,29 @@ that many days after download and are removed on the next retention run. Leave t
 it to `0` to keep media indefinitely.
 
 `RETENTION_CRON` controls how often the retention worker runs. It defaults to `0 1 * * *` (daily at 01:00).
-The worker uses `TZ`, or `Etc/UTC` when `TZ` is unset. For example, to check every four hours:
+`RETENTION_TIMEZONE` sets its timezone and defaults to `Etc/UTC`, independently of `TZ`.
+For example, to check every four hours in Berlin time:
 
 ```yaml
 environment:
   TZ: Europe/Berlin
   RETENTION_CRON: '0 */4 * * *'
+  RETENTION_TIMEZONE: Europe/Berlin
 ```
 
 Recreate the container after changing these variables. No custom startup command or `sed` patch is needed.
 Invalid or empty cron expressions and timezones cause startup to fail.
 
-Retention now follows `TZ`, including daylight saving time, instead of always running in UTC.
+Without these settings, retention continues to run daily at 01:00 UTC, even when `TZ` is configured.
+An explicit `RETENTION_TIMEZONE` follows daylight saving time where applicable.
 Other scheduled jobs retain their existing UTC schedules, so retention may run after quality upgrades
 or database maintenance when you change its schedule or timezone.
+
+Automatic quality upgrades skip media already eligible for retention deletion, including media that
+expires while its upgrade is queued. This prevents an upgrade from restarting an already expired
+retention period before cleanup runs. Media protected from deletion remains eligible for upgrades,
+and forced downloads retain their override. Successful downloads that are allowed still update the
+download timestamp as before.
 
 ### PostgreSQL image
 

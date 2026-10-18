@@ -640,6 +640,63 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
   end
 
   describe "perform/1 when testing re-downloads" do
+    test "skips an automatic upgrade that expires while queued" do
+      profile = media_profile_fixture(%{redownload_delay_days: 2})
+      source = source_fixture(%{media_profile_id: profile.id, retention_period_days: 4})
+
+      item =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(4, :days),
+          media_downloaded_at: now_minus(3, :days)
+        })
+
+      perform_job(Pinchflat.Downloading.MediaQualityUpgradeWorker, %{})
+      assert [job] = all_enqueued(worker: MediaDownloadWorker, args: %{id: item.id})
+
+      # Move the fixture's timestamps back to simulate time spent in the queue.
+      expired_downloaded_at = now_minus(5, :days) |> DateTime.truncate(:second)
+
+      Media.update_media_item(item, %{
+        uploaded_at: now_minus(6, :days),
+        media_downloaded_at: expired_downloaded_at
+      })
+
+      expect(YtDlpRunnerMock, :run, 0, fn _url, _action, _opts, _ot, _addl -> :ok end)
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(MediaDownloadWorker, job.args)
+        end)
+
+      assert log =~ "reason=retention_expired"
+      assert Repo.reload!(item).media_downloaded_at == expired_downloaded_at
+      assert is_nil(Repo.reload!(item).media_redownloaded_at)
+      assert File.exists?(item.media_filepath)
+    end
+
+    test "allows protected and forced upgrades after the retention period" do
+      for {prevent_culling, force} <- [{true, false}, {false, true}] do
+        source = source_fixture(%{retention_period_days: 2})
+
+        item =
+          media_item_fixture(%{
+            source_id: source.id,
+            uploaded_at: now_minus(6, :days),
+            media_downloaded_at: now_minus(5, :days),
+            prevent_culling: prevent_culling
+          })
+
+        expect(YtDlpRunnerMock, :run, 2, fn
+          _url, :download, _opts, _ot, _addl -> {:ok, render_metadata(:media_metadata)}
+          _url, :download_thumbnail, _opts, _ot, _addl -> {:ok, ""}
+        end)
+
+        assert :ok = perform_job(MediaDownloadWorker, %{id: item.id, quality_upgrade?: true, force: force})
+        assert Repo.reload!(item).media_redownloaded_at
+      end
+    end
+
     test "sets redownloaded_at on the media_item", %{media_item: media_item} do
       perform_job(MediaDownloadWorker, %{id: media_item.id, quality_upgrade?: true})
       media_item = Repo.reload(media_item)
