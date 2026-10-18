@@ -1,1 +1,1 @@
-{live_render(@conn, PinchflatWeb.Browse.BrowseLive)}
+{live_render(@conn, PinchflatWeb.Browse.BrowseLive, session: %{"prefill_url" => @conn.query_params["url"]})}

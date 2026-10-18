@@ -939,4 +939,94 @@ defmodule PinchflatWeb.Schemas do
       required: [:errors]
     })
   end
+
+  defmodule ShareIntakeRequest do
+    @moduledoc """
+    Schema for single-video share intake request.
+    """
+
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      title: "ShareIntakeRequest",
+      description: "Request body for submitting a single YouTube video URL via share token",
+      type: :object,
+      properties: %{
+        url: %Schema{
+          type: :string,
+          description: "Canonical YouTube video URL (watch, shorts, live, youtu.be)",
+          example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        }
+      },
+      required: [:url]
+    })
+  end
+
+  defmodule ShareIntakeResponse do
+    @moduledoc """
+    Schema for successful share intake response.
+    """
+
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      title: "ShareIntakeResponse",
+      description: "Response indicating the video was accepted and queued for download",
+      type: :object,
+      properties: %{
+        status: %Schema{
+          type: :string,
+          enum: ["queued", "queued_paused", "indexing"],
+          description: "Queue status of the accepted item",
+          example: "queued"
+        },
+        video_id: %Schema{type: :string, description: "11-character YouTube video ID", example: "dQw4w9WgXcQ"},
+        canonical_url: %Schema{
+          type: :string,
+          description: "Canonical HTTPS watch URL",
+          example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        },
+        media_profile_id: %Schema{
+          type: :integer,
+          description: "ID of the media profile bound to the token",
+          example: 1
+        },
+        message: %Schema{
+          type: :string,
+          description: "Human-readable status message",
+          example: "Video queued for download"
+        }
+      },
+      required: [:status, :video_id, :canonical_url, :media_profile_id]
+    })
+  end
+
+  defmodule ShareIntakeErrorResponse do
+    @moduledoc """
+    Schema for share intake error response.
+    """
+
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      title: "ShareIntakeErrorResponse",
+      description: "Response indicating share intake was rejected or failed",
+      type: :object,
+      properties: %{
+        error: %Schema{
+          type: :string,
+          description: "Error classification code",
+          example: "unauthorized"
+        },
+        message: %Schema{
+          type: :string,
+          description: "Human-readable error explanation",
+          example: "Invalid authorization token"
+        },
+        reason: %Schema{type: :string, description: "Detailed policy or rejection reason", example: "source_disabled"},
+        retry_after: %Schema{type: :integer, description: "Retry delay in seconds when rate limited", example: 45}
+      },
+      required: [:error, :message]
+    })
+  end
 end

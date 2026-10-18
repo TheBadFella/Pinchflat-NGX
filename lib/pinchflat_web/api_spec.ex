@@ -4,7 +4,7 @@ defmodule PinchflatWeb.ApiSpec do
   Collects operations from controller @operation decorators.
   """
 
-  alias OpenApiSpex.{Info, OpenApi, Server}
+  alias OpenApiSpex.{Components, Info, OpenApi, SecurityScheme, Server}
 
   @behaviour OpenApi
 
@@ -22,6 +22,11 @@ defmodule PinchflatWeb.ApiSpec do
           description: "Current server"
         }
       ],
+      components: %Components{
+        securitySchemes: %{
+          "shareToken" => %SecurityScheme{type: "http", scheme: "bearer", description: "Profile-bound share token"}
+        }
+      },
       # Paths will be populated by OpenApiSpex.Plug.PutApiSpec from router + controller operations
       paths: collect_paths()
     }

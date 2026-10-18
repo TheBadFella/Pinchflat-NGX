@@ -9,7 +9,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   alias Pinchflat.YoutubeBrowser.UrlParser
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     if connected?(socket) do
       PinchflatWeb.Endpoint.subscribe("job:state")
       PinchflatWeb.Endpoint.subscribe("job:progress")
@@ -44,6 +44,15 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       |> assign(:paste_resolving?, false)
       |> assign(:paste_downloading?, false)
       |> assign(:paste_selected_profile_id, selected_profile_id)
+
+    socket =
+      case session["prefill_url"] do
+        url when is_binary(url) and url != "" ->
+          assign(socket, paste_url_modal_open?: true, pasted_url: String.slice(url, 0, 2049))
+
+        _ ->
+          socket
+      end
 
     {:ok, socket}
   end

@@ -50,6 +50,15 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
   setup :set_mox_global
 
+  test "bookmarklet opens a preview without creating sources or jobs", %{conn: conn} do
+    media_profile_fixture()
+    before_counts = {Repo.aggregate(Source, :count), Repo.aggregate(Oban.Job, :count)}
+    html = conn |> get(~p"/browse?url=https://youtu.be/dQw4w9WgXcQ") |> html_response(200)
+    assert html =~ "https://youtu.be/dQw4w9WgXcQ"
+    assert html =~ "paste_url_resolve_button"
+    assert {Repo.aggregate(Source, :count), Repo.aggregate(Oban.Job, :count)} == before_counts
+  end
+
   test "browse keeps the application sidebar and header", %{conn: conn} do
     media_profile_fixture()
     html = conn |> get(~p"/browse") |> html_response(200)

@@ -339,6 +339,16 @@
   <% end %>
 </section>
 
+<section id="api-access-settings" class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('access')">
+  <h3 class="text-2xl text-theme-on-surface">API &amp; Access</h3>
+  <div class="mt-6">
+    {live_render(@conn, Pinchflat.Settings.ShareTokensLive,
+      id: "share-tokens-live",
+      session: %{"base_url" => url(@conn, ~p"/")}
+    )}
+  </div>
+</section>
+
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   <.button
     variant="primary"
@@ -353,7 +363,7 @@
 <p
   class="theme-surface-raised px-5 py-8 text-center text-sm text-theme-on-surface-muted sm:px-7.5"
   x-cloak
-  x-show="!matchGroup('notifications') && !matchGroup('extractor') && !matchGroup('storage') && !matchGroup('discovery') && !matchGroup('ytdlp') && !matchGroup('cookies') && !matchGroup('backups') && !((advancedMode || query.trim()) && matchGroup('codec'))"
+  x-show="!matchGroup('notifications') && !matchGroup('extractor') && !matchGroup('storage') && !matchGroup('discovery') && !matchGroup('ytdlp') && !matchGroup('cookies') && !matchGroup('backups') && !matchGroup('access') && !((advancedMode || query.trim()) && matchGroup('codec'))"
 >
   No settings match "<span x-text="query.trim()"></span>".
 </p>

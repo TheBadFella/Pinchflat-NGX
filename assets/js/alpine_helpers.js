@@ -46,6 +46,7 @@ window.settingsPage = () => ({
   selectedGroup: '',
   advancedMode: JSON.parse(localStorage.getItem('advancedMode') || 'false'),
   groups: {
+    access: 'api access sharing share tokens bookmarklet shortcuts credentials',
     notifications:
       'notifications notify apprise server webhook discord telegram email external base url public pinchflat',
     extractor:
