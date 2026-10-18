@@ -18,6 +18,7 @@ defmodule Pinchflat.Settings.Setting do
     :yt_dlp_nightly_baseline,
     :apprise_version,
     :apprise_server,
+    :notification_include_video_titles,
     :external_base_url,
     :video_codec_preference,
     :audio_codec_preference,
@@ -87,6 +88,7 @@ defmodule Pinchflat.Settings.Setting do
     field :yt_dlp_nightly_baseline, :string
     field :apprise_version, :string
     field :apprise_server, :string
+    field :notification_include_video_titles, :boolean, default: false
     field :external_base_url, :string
     field :youtube_api_key, :string
     field :route_token, :string

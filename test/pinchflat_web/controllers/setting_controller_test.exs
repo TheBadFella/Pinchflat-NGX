@@ -26,6 +26,22 @@ defmodule PinchflatWeb.SettingControllerTest do
   end
 
   describe "update settings" do
+    test "saves and disables video titles in notifications", %{conn: conn} do
+      refute Pinchflat.Settings.get!(:notification_include_video_titles)
+
+      updated = put(conn, ~p"/settings", setting: %{notification_include_video_titles: "true"})
+      assert redirected_to(updated) == ~p"/settings"
+      assert Pinchflat.Settings.get!(:notification_include_video_titles)
+
+      html = conn |> get(~p"/settings") |> html_response(200)
+      assert html =~ "Include video titles"
+      assert html =~ ~s(name="setting[notification_include_video_titles]")
+
+      disabled = put(conn, ~p"/settings", setting: %{notification_include_video_titles: "false"})
+      assert redirected_to(disabled) == ~p"/settings"
+      refute Pinchflat.Settings.get!(:notification_include_video_titles)
+    end
+
     test "filters credentials in settings request logs", %{conn: conn} do
       previous_level = Logger.level()
       Logger.configure(level: :debug)
