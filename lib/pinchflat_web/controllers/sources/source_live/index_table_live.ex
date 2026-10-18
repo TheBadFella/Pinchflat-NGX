@@ -60,7 +60,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           sort_key: session["initial_sort_key"],
           sort_direction: session["initial_sort_direction"],
           view_mode: normalize_view_mode(session["initial_view_mode"]),
-          refresh_pending: false
+          refresh_pending: false,
+          selected_ids: MapSet.new()
         },
         get_pagination_attributes(sources_query(), 1, limit)
       )
@@ -75,6 +76,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     new_page = update_page_number(assigns.page, direction, assigns.total_pages)
 
     socket
+    |> assign(:selected_ids, MapSet.new())
     |> assign(get_pagination_attributes(sources_query(), new_page, assigns.limit))
     |> set_sources()
     |> then(&{:noreply, &1})
@@ -89,6 +91,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     }
 
     socket
+    |> assign(:selected_ids, MapSet.new())
     |> assign(new_params)
     |> set_sources()
     |> then(&{:noreply, &1})
@@ -96,6 +99,25 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   def handle_event("view_change", %{"view" => view_mode}, socket) do
     {:noreply, assign(socket, :view_mode, normalize_view_mode(view_mode))}
+  end
+
+  def handle_event("select_page", _params, socket) do
+    {:noreply, assign(socket, :selected_ids, MapSet.new(socket.assigns.sources, &to_string(&1.id)))}
+  end
+
+  def handle_event("clear_selection", _params, socket) do
+    {:noreply, assign(socket, :selected_ids, MapSet.new())}
+  end
+
+  def handle_event("toggle_source_selection", %{"id" => id}, socket) do
+    selected = socket.assigns.selected_ids
+
+    if Enum.any?(socket.assigns.sources, &(to_string(&1.id) == id)) do
+      selected = if MapSet.member?(selected, id), do: MapSet.delete(selected, id), else: MapSet.put(selected, id)
+      {:noreply, assign(socket, :selected_ids, selected)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info(%{topic: "job:state", event: "change"}, socket) do
@@ -144,7 +166,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       |> offset(^assigns.offset)
       |> Repo.all()
 
-    assign(socket, %{sources: sources})
+    visible_ids = MapSet.new(sources, &to_string(&1.id))
+    assign(socket, %{sources: sources, selected_ids: MapSet.intersection(assigns.selected_ids, visible_ids)})
   end
 
   @refresh_throttle_ms 500
