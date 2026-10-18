@@ -381,6 +381,10 @@
     @apply bg-theme-warning/25 text-theme-warning;
   }
 
+  .theme-badge-dev {
+    @apply bg-theme-tertiary text-theme-on-tertiary;
+  }
+
   .theme-sidebar-active {
     @apply relative overflow-hidden border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container;
   }

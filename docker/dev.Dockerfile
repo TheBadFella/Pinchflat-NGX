@@ -138,5 +138,6 @@ COPY . ./
 
 # Gives us iex shell history
 ENV ERL_AFLAGS="-kernel shell_history enabled"
+ENV BUILD_TRACK="dev"
 
 EXPOSE 4008

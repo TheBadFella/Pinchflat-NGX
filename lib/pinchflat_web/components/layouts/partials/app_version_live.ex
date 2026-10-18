@@ -14,7 +14,7 @@ defmodule Pinchflat.AppVersionLive do
       <div class="flex flex-col gap-1.5">
         <div class="flex min-w-0 flex-nowrap items-center justify-between gap-1.5">
           <.link
-            href="https://github.com/TheBadFella/pinchflat-ngx/releases"
+            href={app_releases_url(@status)}
             target="_blank"
             class="shrink-0 font-medium text-theme-on-surface transition hover:text-theme-primary"
             title={"Pinchflat-ngx #{@current_version}"}
@@ -24,7 +24,7 @@ defmodule Pinchflat.AppVersionLive do
           <.version_chip
             label={app_chip_label(@status)}
             tooltip={app_chip_tooltip(@status)}
-            warning={match?({:update_available, _, _}, @status)}
+            variant={app_chip_variant(@status)}
           />
         </div>
         <div class="flex min-w-0 flex-nowrap items-center justify-between gap-1.5">
@@ -52,7 +52,7 @@ defmodule Pinchflat.AppVersionLive do
     {:ok,
      assign(socket, %{
        status: AppReleaseCheck.status(),
-       current_version: AppReleaseCheck.current_version(),
+       current_version: AppReleaseCheck.display_version(),
        policy: policy,
        pinned_version: Settings.get!(:yt_dlp_pinned_version),
        yt_dlp_version: Settings.get!(:yt_dlp_version) || "unknown"
@@ -61,7 +61,7 @@ defmodule Pinchflat.AppVersionLive do
 
   attr :label, :string, required: true
   attr :tooltip, :string, required: true
-  attr :warning, :boolean, default: false
+  attr :variant, :atom, default: :primary
 
   defp version_chip(assigns) do
     ~H"""
@@ -69,28 +69,50 @@ defmodule Pinchflat.AppVersionLive do
       class={[
         "group relative inline-flex max-w-full shrink items-center gap-0.5 rounded-full px-1.5 py-0.5",
         "text-center text-[0.6875rem] font-medium leading-none",
-        if(@warning,
-          do: "theme-badge-warning",
-          else: "bg-theme-primary text-theme-on-primary"
-        )
+        version_chip_color(@variant)
       ]}
       title={@tooltip}
       aria-label={@tooltip}
     >
       <span class="truncate">{@label}</span>
-      <span :if={@warning} aria-hidden="true">!</span>
+      <span :if={@variant == :warning} aria-hidden="true">!</span>
     </span>
     """
   end
 
-  defp app_chip_label({:latest, _current}), do: "Latest"
+  defp version_chip_color(:warning), do: "theme-badge-warning"
+  defp version_chip_color(:dev), do: "theme-badge-dev"
+  defp version_chip_color(_), do: "bg-theme-primary text-theme-on-primary"
 
+  defp app_chip_variant({:dev, _sha}), do: :dev
+  defp app_chip_variant({:update_available, _, _}), do: :warning
+  defp app_chip_variant(_status), do: :primary
+
+  defp app_chip_label({:dev, _sha}), do: "Dev"
+  defp app_chip_label({:latest, _current}), do: "Latest"
   defp app_chip_label({:update_available, current, _latest}), do: current
 
+  defp app_chip_tooltip({:dev, sha}) when is_binary(sha) and sha != "" do
+    "dev-#{String.slice(sha, 0, 7)}"
+  end
+
+  defp app_chip_tooltip({:dev, _sha}), do: "dev"
   defp app_chip_tooltip({:latest, current}), do: current
 
   defp app_chip_tooltip({:update_available, _current, latest}) do
     "Update available: #{latest}"
+  end
+
+  defp app_releases_url({:dev, sha}) when is_binary(sha) and sha != "" do
+    "https://github.com/TheBadFella/pinchflat-ngx/commit/#{sha}"
+  end
+
+  defp app_releases_url({:dev, _sha}) do
+    "https://github.com/TheBadFella/pinchflat-ngx"
+  end
+
+  defp app_releases_url(_status) do
+    "https://github.com/TheBadFella/pinchflat-ngx/releases"
   end
 
   defp ytdlp_chip_label("stable", _pinned), do: "Stable"
