@@ -193,6 +193,7 @@ defmodule Pinchflat.Media.MediaQuery do
       ^downloaded() and
         not (^download_prevented()) and
         not (^redownloaded()) and
+        not (^cullable()) and
         ^past_redownload_delay()
     )
   end

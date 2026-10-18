@@ -98,6 +98,9 @@ defmodule Pinchflat.Media do
   This also makes things work as expected when downloading media from a source for the
   first time.
 
+  Excludes media eligible for retention deletion. Media protected from deletion
+  remains eligible for upgrades.
+
   Returns [%MediaItem{}, ...]
   """
   def list_upgradeable_media_items do
@@ -158,6 +161,21 @@ defmodule Pinchflat.Media do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic([m, s, mp], m.id == ^media_item.id and ^MediaQuery.pending()))
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Checks the current database state to determine whether a media item is eligible
+  for retention deletion. Respects the source's retention period and the item's
+  deletion protection.
+
+  Returns boolean()
+  """
+  def retention_cullable?(%MediaItem{id: id}) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:source)
+    |> where([mi], mi.id == ^id)
+    |> where(^MediaQuery.cullable())
     |> Repo.exists?()
   end
 

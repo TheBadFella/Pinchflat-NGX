@@ -17,7 +17,8 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   Deletes media items that are past their retention date and prevents
   them from being re-downloaded.
 
-  This worker is scheduled to run daily via the Oban Cron plugin.
+  This worker is scheduled via the Oban Cron plugin, daily at 01:00 by default.
+  RETENTION_CRON overrides the schedule; RETENTION_TIMEZONE sets its timezone (UTC if unset).
 
   Returns :ok
   """
