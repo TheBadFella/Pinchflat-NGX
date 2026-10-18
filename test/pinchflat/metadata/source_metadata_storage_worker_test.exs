@@ -30,6 +30,35 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
   end
 
   describe "perform/1" do
+    test "stores metadata for a standalone video without playlist output" do
+      video_id = "dQw4w9WgXcQ"
+
+      source =
+        source_fixture(%{
+          collection_type: :video,
+          source_type: :video,
+          collection_id: video_id,
+          original_url: "https://www.youtube.com/watch?v=#{video_id}"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _template, _addl ->
+          {:ok, Jason.encode!(%{id: video_id, title: "Owned video", filename: "/tmp/test/media/owned-video.mp4"})}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_source_metadata, opts, template, _addl ->
+          assert :no_playlist in opts
+          assert template == "%()j"
+          {:ok, ~s({"id":"dQw4w9WgXcQ","title":"Owned video","description":"Owned video metadata"})}
+      end)
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      updated = Sources.get_source!(source.id)
+      assert updated.custom_name == "Owned video"
+      assert updated.description == "Owned video metadata"
+    end
+
     test "won't call itself in an infinite loop" do
       stub(YtDlpRunnerMock, :run, fn
         _url, :get_source_details, _opts, _ot, _addl -> {:ok, source_details_return_fixture()}

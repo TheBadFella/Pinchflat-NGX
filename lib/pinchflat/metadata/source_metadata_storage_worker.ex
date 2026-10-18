@@ -323,6 +323,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   defp fetch_metadata_for_source(source) do
     tmp_output_path = "#{tmp_directory()}/#{StringUtils.random_string(16)}/source_image.%(ext)S"
     base_opts = [convert_thumbnails: "jpg", output: tmp_output_path]
+    base_opts = if source.collection_type == :video, do: [:no_playlist | base_opts], else: base_opts
     should_use_cookies = Sources.use_cookies?(source, :metadata)
 
     opts =

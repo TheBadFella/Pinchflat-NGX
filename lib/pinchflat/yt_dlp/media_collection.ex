@@ -176,6 +176,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   don't return very useful images so you can set this to 1 to get the first video's
   images, for instance.
 
+  Pass `:no_playlist` for a standalone video so its metadata is printed at the video stage.
+
   Returns {:ok, map()} | {:error, any, ...}.
   """
   def get_source_metadata(source_url, command_opts, addl_opts \\ []) do
@@ -183,7 +185,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     _playlist_items = Keyword.fetch!(command_opts, :playlist_items)
 
     all_command_opts = [:skip_download] ++ command_opts
-    output_template = "playlist:%()j"
+    output_template = if :no_playlist in command_opts, do: "%()j", else: "playlist:%()j"
     action = :get_source_metadata
 
     with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts) do

@@ -282,6 +282,18 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
   end
 
   describe "get_source_metadata/1" do
+    test "single-video metadata is printed at the video stage" do
+      url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_metadata, opts, template, _addl ->
+        assert :no_playlist in opts
+        if template == "%()j", do: {:ok, ~s({"title":"Owned video"})}, else: {:ok, ""}
+      end)
+
+      assert {:ok, %{"title" => "Owned video"}} =
+               MediaCollection.get_source_metadata(url, [:no_playlist, playlist_items: 1])
+    end
+
     test "returns a map with data on success" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_metadata, _opts, _ot, _addl_opts ->
         Phoenix.json_library().encode(%{channel: "PinchflatTestChannel"})
