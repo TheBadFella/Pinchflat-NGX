@@ -690,11 +690,22 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "deletes old files if the media item has been updated" do
+      stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 1_000_000} end)
+
       expect(YtDlpRunnerMock, :run, 2, fn
-        _url, :download, _opts, _ot, _addl ->
-          tmp_media_item = media_item_with_attachments()
-          metadata = render_parsed_metadata(:media_metadata)
-          metadata = Map.put(metadata, "filepath", tmp_media_item.media_filepath)
+        _url, :download, opts, _ot, _addl ->
+          filepath = opts |> Keyword.fetch!(:output) |> Path.dirname() |> Path.join("new-video.mp4")
+          File.mkdir_p!(Path.dirname(filepath))
+          File.write!(filepath, "completed replacement")
+
+          metadata =
+            render_parsed_metadata(:media_metadata)
+            |> Map.merge(%{
+              "filepath" => filepath,
+              "infojson_filename" => nil,
+              "requested_subtitles" => nil,
+              "thumbnails" => nil
+            })
 
           {:ok, Phoenix.json_library().encode!(metadata)}
 

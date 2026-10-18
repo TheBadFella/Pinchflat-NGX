@@ -33,13 +33,18 @@ defmodule Pinchflat.Downloading.DownloadStaging do
     end
   end
 
+  @doc "Returns the media-volume staging root used to protect existing files during replacement."
+  def replacement_directory do
+    Path.join(Application.fetch_env!(:pinchflat, :media_directory), ".pinchflat-replacements")
+  end
+
   @doc """
   Validates the configured staging root without creating a download directory.
 
   Returns :disabled | {:ok, binary()} | {:error, atom()}.
   """
-  def validate_configuration do
-    case configured_directory() do
+  def validate_configuration(opts \\ []) do
+    case Keyword.get(opts, :root, configured_directory()) do
       nil ->
         :disabled
 
@@ -52,12 +57,13 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   end
 
   @doc """
-  Creates a unique staging directory for a media item.
+  Creates a unique staging directory for a media item. An internal `:root`
+  override can protect replacements when optional download staging is disabled.
 
   Returns {:ok, binary() | nil} | {:error, atom()}.
   """
-  def prepare(media_item_id) do
-    case validate_configuration() do
+  def prepare(media_item_id, opts \\ []) do
+    case validate_configuration(opts) do
       :disabled ->
         {:ok, nil}
 
@@ -107,7 +113,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   def transfer(parsed_json, nil, _opts) when is_map(parsed_json), do: {:ok, parsed_json}
 
   def transfer(parsed_json, staging_directory, opts) when is_map(parsed_json) and is_binary(staging_directory) do
-    with :ok <- validate_staging_directory(staging_directory),
+    with :ok <- validate_staging_directory(staging_directory, opts),
          {:ok, paths} <- artifact_paths(parsed_json),
          {:ok, path_map} <- transfer_paths(paths, staging_directory, opts) do
       {:ok, rewrite_paths(parsed_json, path_map)}
@@ -120,10 +126,12 @@ defmodule Pinchflat.Downloading.DownloadStaging do
 
   Returns :ok.
   """
-  def cleanup(nil), do: :ok
+  def cleanup(staging_directory, opts \\ [])
 
-  def cleanup(staging_directory) when is_binary(staging_directory) do
-    case configured_directory() do
+  def cleanup(nil, _opts), do: :ok
+
+  def cleanup(staging_directory, opts) when is_binary(staging_directory) do
+    case Keyword.get(opts, :root, configured_directory()) do
       nil ->
         :ok
 
@@ -150,7 +158,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   Returns :ok.
   """
   def cleanup_stale(active_media_item_ids \\ MapSet.new(), opts \\ []) do
-    case validate_configuration() do
+    case validate_configuration(opts) do
       :disabled ->
         :ok
 
@@ -168,7 +176,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
               directory = Path.join(root, entry)
 
               if stale_directory?(directory, entry, active_ids, stale_after_seconds) do
-                cleanup(directory)
+                cleanup(directory, opts)
               end
             end)
 
@@ -248,8 +256,8 @@ defmodule Pinchflat.Downloading.DownloadStaging do
     end
   end
 
-  defp validate_staging_directory(staging_directory) do
-    case configured_directory() do
+  defp validate_staging_directory(staging_directory, opts) do
+    case Keyword.get(opts, :root, configured_directory()) do
       nil ->
         {:error, :staging_disabled}
 

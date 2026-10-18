@@ -81,6 +81,68 @@ defmodule Pinchflat.Downloading.MediaDownloaderStagingTest do
     assert File.ls!(staging_root) == []
   end
 
+  for outcome <- [:failure, :success] do
+    test "preserves existing media during a forced replacement ending in #{outcome}", %{media_item: item} do
+      Application.put_env(:pinchflat, :download_staging_directory, nil)
+      {:ok, item} = Pinchflat.Media.update_media_item(item, %{media_id: "replacement_video"})
+      source = Pinchflat.Sources.get_source!(item.source_id)
+
+      {:ok, _source} =
+        Pinchflat.Sources.update_source(source, %{output_path_template_override: "/replacement/{{ id }}.{{ ext }}"})
+
+      original = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "replacement/#{item.media_id}.mp4")
+      File.mkdir_p!(Path.dirname(original))
+      File.write!(original, "existing playable media")
+      {:ok, item} = Pinchflat.Media.update_media_item(item, %{media_filepath: original})
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, opts, _template, _addl ->
+        output_directory = opts |> Keyword.fetch!(:output) |> Path.dirname()
+
+        # yt-dlp removes the final file at the start of --force-overwrites.
+        if output_directory == Path.dirname(original), do: File.rm!(original)
+        assert File.read!(original) == "existing playable media"
+
+        if unquote(outcome) == :failure do
+          {:error, "ERROR: No space left on device", 1}
+        else
+          replacement = Path.join(output_directory, "#{item.media_id}.mp4")
+          File.mkdir_p!(Path.dirname(replacement))
+          File.write!(replacement, "completed replacement")
+
+          metadata =
+            render_parsed_metadata(:media_metadata)
+            |> Map.merge(%{
+              "filepath" => replacement,
+              "infojson_filename" => nil,
+              "requested_subtitles" => nil,
+              "thumbnails" => nil
+            })
+
+          {:ok, Phoenix.json_library().encode!(metadata)}
+        end
+      end)
+
+      stub(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _template, _addl -> {:ok, ""} end)
+
+      result =
+        MediaDownloader.download_for_media_item(item,
+          overwrite_behaviour: :force_overwrites,
+          skip_download_precheck: true
+        )
+
+      if unquote(outcome) == :failure do
+        assert {:error, :download_failed, "ERROR: No space left on device"} = result
+        assert File.read!(original) == "existing playable media"
+      else
+        assert {:ok, updated} = result
+        assert updated.media_filepath == original
+        assert File.read!(original) == "completed replacement"
+      end
+
+      assert Repo.reload!(item).media_filepath == original
+    end
+  end
+
   test "cleans an item staging directory after yt-dlp failure without updating the database", %{
     media_item: media_item,
     staging_root: staging_root
