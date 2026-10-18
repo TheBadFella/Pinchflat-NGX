@@ -293,6 +293,26 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
       :ok
     end
 
+    test "includes new titles once and does not notify again on a repeated scan" do
+      Settings.set(notification_include_video_titles: true)
+      source = source_fixture()
+
+      expect(YtDlpRunnerMock, :run, 6, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      expect(AppriseRunnerMock, :run, fn "server_1", opts ->
+        assert opts[:body] ==
+                 "Found 3 new media item(s) for #{source.custom_name}. Downloading them now\n\n" <>
+                   "- Video 1\n- Video 2\n- Video 3"
+
+        {:ok, ""}
+      end)
+
+      perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+      perform_job(MediaCollectionIndexingWorker, %{id: source.id, force: true})
+    end
+
     test "sends a notification if new media was found" do
       source = source_fixture()
 

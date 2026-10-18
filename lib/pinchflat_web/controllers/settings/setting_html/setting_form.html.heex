@@ -16,6 +16,12 @@
       session: %{"value" => f[:apprise_server].value}
     )}
     <.input
+      field={f[:notification_include_video_titles]}
+      type="checkbox"
+      label="Include video titles"
+      help="Include up to 10 video titles in new media notifications."
+    />
+    <.input
       field={f[:external_base_url]}
       placeholder="https://pinchflat.example.com"
       type="text"
