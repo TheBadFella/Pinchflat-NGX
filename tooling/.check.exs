@@ -20,6 +20,7 @@
     {:npm_test, false},
     {:sidebar_ui, "node --test test/assets/sidebar_test.mjs"},
     {:browse_ui, "node --test test/assets/browse_search_test.mjs"},
+    {:controls_ui, "node --test test/assets/date_picker_test.mjs test/assets/responsive_dialog_test.mjs"},
     {:gettext, false},
     {:ex_unit, env: %{"MIX_ENV" => "test", "EX_CHECK" => "1"}}
 

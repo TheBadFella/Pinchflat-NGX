@@ -6,6 +6,21 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   alias Pinchflat.Utils.NumberUtils
   alias PinchflatWeb.CoreComponents
 
+  attr :feedback, :map, default: nil
+
+  @doc "Renders an accessible queue-action outcome."
+  def action_feedback(assigns) do
+    ~H"""
+    <p
+      :if={@feedback}
+      role={if @feedback.type == :error, do: "alert", else: "status"}
+      class={["mb-4 text-sm", if(@feedback.type == :error, do: "theme-status-error", else: "text-theme-on-surface")]}
+    >
+      {@feedback.message}
+    </p>
+    """
+  end
+
   @doc """
   Renders a code block with the given content.
   """

@@ -112,6 +112,79 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert retained.index_cutoff_date == ~D[2026-10-07]
   end
 
+  test "copies current sharing credentials and preserves revocation", ctx do
+    edit_source(ctx.path, """
+    CREATE TABLE IF NOT EXISTS share_tokens (
+      id INTEGER PRIMARY KEY, name TEXT, token_digest TEXT, media_profile_id INTEGER,
+      revoked_at TEXT, expires_at TEXT, last_used_at TEXT, inserted_at TEXT, updated_at TEXT
+    );
+    INSERT INTO share_tokens (id,name,token_digest,media_profile_id,revoked_at,inserted_at,updated_at)
+    VALUES (71,'Retained token','fixture-digest',#{ctx.source.media_profile_id},
+            '2026-10-01 00:00:00','2026-09-01 00:00:00','2026-10-01 00:00:00');
+    """)
+
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert report["tables"]["share_tokens"] == %{"rows" => 1, "validated" => true}
+
+    assert Repo.query!("SELECT media_profile_id, revoked_at IS NOT NULL FROM share_tokens WHERE id=71").rows ==
+             [[ctx.source.media_profile_id, true]]
+  end
+
+  test "loads subtitles serialized by the SQLite adapter", ctx do
+    encoded = Jason.encode!([Jason.encode!(["en", "/downloads/unchanged.en.srt"])])
+
+    {:ok, db} = Sqlite3.open(ctx.path, mode: :readwrite)
+
+    try do
+      Snapshot.query!(db, "UPDATE media_items SET subtitle_filepaths=?", [encoded])
+    after
+      Sqlite3.close(db)
+    end
+
+    assert {:ok, _} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.get!(MediaItem, ctx.item.id).subtitle_filepaths == [["en", "/downloads/unchanged.en.srt"]]
+  end
+
+  test "preserves retired SQLite IDs above the highest surviving row", ctx do
+    edit_source(ctx.path, """
+    UPDATE sqlite_sequence SET seq=9000000 WHERE name='sources';
+    """)
+
+    assert {:ok, _} = Transfer.run(ctx.path, ctx.directory)
+    assert Pinchflat.SourcesFixtures.source_fixture().id == 9_000_001
+  end
+
+  test "loads job error maps serialized by the SQLite adapter", ctx do
+    errors = [%{"attempt" => 1, "error" => "Synthetic retry error", "at" => "2026-10-18T00:00:00Z"}]
+    {:ok, encoded} = Ecto.Type.adapter_dump(Ecto.Adapters.SQLite3, {:array, :map}, errors)
+    {:ok, db} = Sqlite3.open(ctx.path, mode: :readwrite)
+
+    try do
+      Snapshot.query!(db, "UPDATE oban_jobs SET errors=? WHERE id=?", [encoded, ctx.interrupted_job.id])
+    after
+      Sqlite3.close(db)
+    end
+
+    assert {:ok, _} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.get!(Oban.Job, ctx.interrupted_job.id).errors == errors
+  end
+
+  test "late failure rolls back sequence changes as well as copied rows", ctx do
+    Repo.query!("ALTER SEQUENCE sources_id_seq RESTART WITH 8000000")
+    before = Repo.query!("SELECT last_value, is_called FROM sources_id_seq").rows
+    edit_source(ctx.path, "ALTER TABLE tasks ADD COLUMN unsupported_fixture TEXT")
+
+    assert {:error, :unsupported_source_columns} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.query!("SELECT last_value, is_called FROM sources_id_seq").rows == before
+    assert Repo.aggregate(Source, :count) == 0
+  end
+
+  test "an unfinished legacy review cannot be bypassed through transfer", ctx do
+    edit_source(ctx.path, "UPDATE legacy_migration_records SET status='pending_review'")
+    assert {:error, :legacy_review_pending} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.aggregate(Source, :count) == 0
+  end
+
   test "refuses fractional timestamps that cannot be preserved in the target schema", ctx do
     edit_source(ctx.path, "UPDATE media_items SET details_updated_at = '2026-10-07T01:02:03.123456'")
     assert {:error, :validation_mismatch} = Transfer.run(ctx.path, ctx.directory)
@@ -266,7 +339,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
 
         definitions =
           Enum.map_join(columns, ",", fn
-            ["id", _] -> "id INTEGER PRIMARY KEY"
+            ["id", _] -> "id INTEGER PRIMARY KEY AUTOINCREMENT"
             [name, _] -> "\"" <> name <> "\""
           end)
 
@@ -275,7 +348,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         rows = Repo.query!("SELECT " <> names <> " FROM " <> table <> " ORDER BY id").rows
 
         Enum.each(rows, fn row ->
-          params = Enum.zip(row, columns) |> Enum.map(fn {value, [_name, type]} -> sqlite_value(value, type) end)
+          params = Enum.zip(row, columns) |> Enum.map(fn {value, [name, type]} -> sqlite_value(value, name, type) end)
 
           Snapshot.query!(
             db,
@@ -299,6 +372,13 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     end
   end
 
+  defp sqlite_value(value, "subtitle_filepaths", _type),
+    do: Ecto.Type.adapter_dump(Ecto.Adapters.SQLite3, {:array, {:array, :string}}, value) |> elem(1)
+
+  defp sqlite_value(value, "errors", _type),
+    do: Ecto.Type.adapter_dump(Ecto.Adapters.SQLite3, {:array, :map}, value) |> elem(1)
+
+  defp sqlite_value(value, _name, type), do: sqlite_value(value, type)
   defp sqlite_value(nil, _type), do: nil
   defp sqlite_value(value, "bool"), do: if(value, do: 1, else: 0)
   defp sqlite_value(value, "uuid"), do: Ecto.UUID.load!(value)

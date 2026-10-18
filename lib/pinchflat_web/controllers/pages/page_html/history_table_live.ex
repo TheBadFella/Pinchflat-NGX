@@ -13,6 +13,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
   alias PinchflatWeb.CustomComponents.TextComponents
+  alias PinchflatWeb.Helpers.JobActionHelpers
 
   @limit System.get_env("PAGINATION_HISTORY_LIMIT", System.get_env("PAGINATION_LIMIT", "10")) |> String.to_integer()
   @sort_fields %{
@@ -24,6 +25,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
   def render(%{records: []} = assigns) do
     ~H"""
+    <.action_feedback feedback={@action_feedback} />
     <.latest_controls
       :if={@media_state == "latest"}
       grouping={@grouping}
@@ -42,6 +44,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   def render(assigns) do
     ~H"""
     <div>
+      <.action_feedback feedback={@action_feedback} />
       <.latest_controls
         :if={@media_state == "latest"}
         grouping={@grouping}
@@ -710,6 +713,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
        socket,
        Map.merge(pagination_attrs, %{
          base_query: base_query,
+         action_feedback: nil,
          media_state: media_state,
          grouping: "latest",
          view_mode: "list",
@@ -830,7 +834,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
   def handle_event("force_download", %{"media-id" => media_id}, %{assigns: assigns} = socket) do
     media_item = Media.get_media_item!(media_id)
-    MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+    result = MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+    socket = assign(socket, :action_feedback, JobActionHelpers.feedback(result))
 
     new_assigns =
       fetch_pagination_attributes(
@@ -846,7 +851,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
   def handle_event("retry_download", %{"media-id" => media_id}, %{assigns: assigns} = socket) do
     media_item = Media.get_media_item!(media_id)
-    MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
+    result = MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
+    socket = assign(socket, :action_feedback, JobActionHelpers.feedback(result))
 
     new_assigns =
       fetch_pagination_attributes(
@@ -861,7 +867,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   def handle_event("retry_all_failed", _params, %{assigns: assigns} = socket) do
-    DownloadingHelpers.retry_failed_download_tasks()
+    results = DownloadingHelpers.retry_failed_download_tasks()
+    socket = assign(socket, :action_feedback, JobActionHelpers.feedback(results))
 
     new_assigns =
       fetch_pagination_attributes(

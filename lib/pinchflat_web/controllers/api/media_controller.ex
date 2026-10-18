@@ -10,6 +10,7 @@ defmodule PinchflatWeb.Api.MediaController do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias PinchflatWeb.Schemas
+  alias PinchflatWeb.Helpers.JobActionHelpers
 
   @default_limit 50
   @min_limit 1
@@ -122,6 +123,7 @@ defmodule PinchflatWeb.Api.MediaController do
     ],
     responses: [
       ok: {"Download job created", "application/json", Schemas.ActionResponse},
+      service_unavailable: {"Download could not be queued", "application/json", Schemas.ActionErrorResponse},
       not_found: {"Media item not found", "application/json", Schemas.NotFoundResponse}
     ]
   )
@@ -129,15 +131,8 @@ defmodule PinchflatWeb.Api.MediaController do
   def download(conn, %{"id" => id}) do
     media_item = Media.get_media_item!(id) |> Repo.preload(:source)
 
-    case MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true}) do
-      {:ok, _} -> :ok
-      {:error, :duplicate_job} -> :ok
-      err -> err
-    end
-
-    conn
-    |> put_status(:ok)
-    |> json(%{message: "Download job created"})
+    result = MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+    JobActionHelpers.respond(conn, result, "Download job created")
   end
 
   operation(:recent_downloads,

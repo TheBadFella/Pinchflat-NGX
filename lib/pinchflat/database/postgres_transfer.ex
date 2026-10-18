@@ -37,15 +37,20 @@ defmodule Pinchflat.Database.PostgresTransfer do
     tables = Snapshot.tables()
     Repo.query!("LOCK TABLE " <> Enum.join(tables, ", ") <> " IN ACCESS EXCLUSIVE MODE")
 
-    Enum.each(tables -- ["settings", "settings_backup"], fn table ->
+    Enum.each(tables -- ["settings", "settings_backup", "legacy_migration_records"], fn table ->
       if Repo.query!("SELECT COUNT(*) FROM " <> table).rows != [[0]], do: Repo.rollback(:target_not_empty)
     end)
+
+    if Repo.query!(
+         "SELECT COUNT(*) FROM legacy_migration_records WHERE provenance NOT IN ('fresh_install', 'existing_or_fresh') OR status != 'completed' OR provenance IS NULL OR status IS NULL OR original_max_version IS NOT NULL OR original_source_count IS NOT NULL OR confirmed_at IS NOT NULL OR queue_pauses IS NOT NULL OR artwork_repairs IS NOT NULL"
+       ).rows != [[0]],
+       do: Repo.rollback(:target_not_empty)
 
     record = Repo.one!(from(r in Pinchflat.Database.PostgresMigrationRecord, where: r.id == 1, lock: "FOR UPDATE"))
     if record.status != "running", do: Repo.rollback(:not_running)
     # The fresh schema seeds settings and its obsolete pre-2024 backup. The
     # explicit transfer replaces these two rows with the retained library's values.
-    Enum.each(["settings", "settings_backup"], &Repo.query!("DELETE FROM " <> &1))
+    Enum.each(["settings", "settings_backup", "legacy_migration_records"], &Repo.query!("DELETE FROM " <> &1))
     results = Map.new(tables, fn table -> {table, copy_table!(db, table)} end)
     report = %{"backup" => backup, "tables" => results, "library" => library_summary()}
     record = Repo.get!(Pinchflat.Database.PostgresMigrationRecord, 1)
@@ -94,11 +99,10 @@ defmodule Pinchflat.Database.PostgresTransfer do
     if target_count != count or :crypto.hash_final(target_hash) != :crypto.hash_final(source_hash),
       do: Repo.rollback(:validation_mismatch)
 
-    Repo.query!(
-      "SELECT setval(pg_get_serial_sequence($1, 'id'), COALESCE((SELECT MAX(id) FROM " <>
-        table <> "), 1), EXISTS(SELECT 1 FROM " <> table <> "))",
-      [table]
-    )
+    [[sequence]] = Repo.query!("SELECT pg_get_serial_sequence($1, 'id')", [table]).rows
+    [[next_id]] = Repo.query!("SELECT GREATEST(COALESCE(MAX(id), 0) + 1, 1) FROM " <> table).rows
+    # Unlike setval, RESTART rolls back with the surrounding transfer transaction.
+    Repo.query!("ALTER SEQUENCE " <> sequence <> " RESTART WITH " <> to_string(max(next_id, source_next_id(db, table))))
 
     %{"rows" => count, "validated" => true}
   end
@@ -109,12 +113,44 @@ defmodule Pinchflat.Database.PostgresTransfer do
     Enum.zip(row, columns)
     |> Enum.map(fn {value, [column, type]} ->
       cond do
-        executing and column == "state" -> "retryable"
-        executing and column == "attempted_by" -> nil
-        executing and column == "attempt" -> max(value - 1, 0)
-        true -> load_value(value, type)
+        executing and column == "state" ->
+          "retryable"
+
+        executing and column == "attempted_by" ->
+          nil
+
+        executing and column == "attempt" ->
+          max(value - 1, 0)
+
+        table == "media_items" and column == "subtitle_filepaths" ->
+          load_sqlite_array(value, {:array, {:array, :string}})
+
+        table == "oban_jobs" and column == "errors" ->
+          load_sqlite_array(value, {:array, :map})
+
+        true ->
+          load_value(value, type)
       end
     end)
+  end
+
+  defp load_sqlite_array(value, type) do
+    case Ecto.Type.adapter_load(Ecto.Adapters.SQLite3, type, value) do
+      {:ok, decoded} -> decoded
+      _ -> Snapshot.fail(:unsupported_column_type)
+    end
+  end
+
+  defp source_next_id(db, table) do
+    if Snapshot.query!(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'") == [] do
+      1
+    else
+      case Snapshot.query!(db, "SELECT seq FROM sqlite_sequence WHERE name=?", [table]) do
+        [[seq]] when is_integer(seq) and seq >= 0 -> seq + 1
+        [] -> 1
+        _ -> Snapshot.fail(:unsupported_source_sequence)
+      end
+    end
   end
 
   defp insert_rows!(_table, _select, []), do: :ok

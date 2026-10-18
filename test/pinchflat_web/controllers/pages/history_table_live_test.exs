@@ -426,6 +426,7 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       |> render_click()
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => failed.id})
+      assert render(view) =~ "1 queued, 0 already queued, 0 failed."
     end
 
     test "filters failures by type and labels retry actions", %{conn: conn} do

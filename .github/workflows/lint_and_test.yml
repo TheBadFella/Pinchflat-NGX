@@ -1,6 +1,9 @@
 name: Perform linting and run tests
 
 on:
+  pull_request:
+  push:
+    branches: [master]
   workflow_dispatch:
 
 # Cancel in-progress runs for the same branch/PR

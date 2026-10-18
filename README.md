@@ -136,7 +136,11 @@ Pinchflat-ngx can protect the web interface with OAuth2/OpenID Connect. It suppo
 validation, configurable scopes, and fixed callback URLs for reverse-proxy deployments.
 
 OIDC replaces Basic Auth for browser routes when enabled. Feed endpoints retain Basic Auth and route-token support for
-podcast clients; API endpoints and `/healthcheck` remain unauthenticated by design.
+podcast clients. General API endpoints require `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD`
+when Basic Auth or OIDC is enabled. API clients send these credentials using HTTP Basic Auth;
+an OIDC browser session does not authorize API calls. With OIDC alone and no Basic Auth credentials,
+general API requests are rejected. Unconfigured trusted-network installations retain unauthenticated access.
+`/healthcheck` and `/api/spec` remain public; share intake uses its own scoped tokens.
 
 **[Set up OIDC &rarr;](https://github.com/TheBadFella/pinchflat-ngx/wiki/OIDC-Single-Sign-On)**
 

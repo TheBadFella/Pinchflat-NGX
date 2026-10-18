@@ -43,7 +43,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def import_new(conn, _params) do
-    render(conn, :import_new, media_profiles: media_profiles(), results: nil, error: nil)
+    render(conn, :import_new, media_profiles: media_profiles(), preview: nil, error: nil)
   end
 
   def import_create(conn, %{"import" => %{"file" => %Plug.Upload{} = upload, "media_profile_id" => profile_id}}) do
@@ -57,36 +57,16 @@ defmodule PinchflatWeb.Sources.SourceController do
       unique_urls = Enum.uniq(urls)
       duplicates = length(urls) - length(unique_urls)
 
-      results =
-        Enum.map(unique_urls, fn url ->
-          case Sources.create_source(%{"original_url" => url, "media_profile_id" => id}) do
-            {:ok, _source} ->
-              {url, :ok}
-
-            {:error, changeset} ->
-              message =
-                changeset
-                |> format_changeset_errors()
-                |> Enum.map_join("; ", fn {field, errors} -> "#{field} #{Enum.join(errors, ", ")}" end)
-
-              {url, message}
-          end
-        end)
-
       render(conn, :import_new,
         media_profiles: media_profiles(),
-        results: %{
-          items: results,
-          added: Enum.count(results, fn {_url, result} -> result == :ok end),
-          duplicates: duplicates
-        },
+        preview: %{"urls" => unique_urls, "profile_id" => id, "duplicates" => duplicates},
         error: nil
       )
     else
       _ ->
         render(conn, :import_new,
           media_profiles: media_profiles(),
-          results: nil,
+          preview: nil,
           error: "Choose a profile and a text file with 1 to 100 URLs (100 KB maximum)."
         )
     end
@@ -95,7 +75,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   def import_create(conn, _params) do
     render(conn, :import_new,
       media_profiles: media_profiles(),
-      results: nil,
+      preview: nil,
       error: "Choose a profile and a text file with 1 to 100 URLs (100 KB maximum)."
     )
   end
@@ -683,10 +663,10 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   defp wrap_forced_action(conn, source_id, message, fun) do
     source = Sources.get_source!(source_id)
-    fun.(source)
+    feedback = PinchflatWeb.Helpers.JobActionHelpers.feedback(fun.(source), message)
 
     conn
-    |> put_flash(:info, message)
+    |> put_flash(feedback.type, feedback.message)
     |> redirect(to: ~p"/sources/#{source}")
   end
 

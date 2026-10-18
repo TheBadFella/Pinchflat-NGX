@@ -10,11 +10,19 @@
 </div>
 
 <div class="theme-surface-raised px-5 py-6 sm:px-7.5">
-  <p class="mb-6 text-theme-on-surface-muted">
+  <p :if={is_nil(@preview)} class="mb-6 text-theme-on-surface-muted">
     Upload a text file with one YouTube channel, playlist, or video URL per line. Blank and repeated lines are skipped. Each source uses the media profile selected below.
   </p>
 
-  <.form for={%{}} as={:import} action={~p"/sources/import"} method="post" multipart class="max-w-xl space-y-5">
+  <.form
+    :if={is_nil(@preview)}
+    for={%{}}
+    as={:import}
+    action={~p"/sources/import"}
+    method="post"
+    multipart
+    class="max-w-xl space-y-5"
+  >
     <.input name="import[file]" type="file" value={nil} accept=".txt,text/plain" label="Text file" required />
     <div>
       <label for="import_media_profile_id" class="block text-sm font-medium text-theme-on-surface">Media Profile</label>
@@ -28,21 +36,10 @@
         <option :for={profile <- @media_profiles} value={profile.id}>{profile.name}</option>
       </select>
     </div>
-    <.button rounding="rounded-m3-sm">Import Sources</.button>
+    <.button rounding="rounded-m3-sm">Preview Sources</.button>
   </.form>
 
   <p :if={@error} class="mt-6 text-theme-error" role="alert">{@error}</p>
 
-  <div :if={@results} class="mt-8 space-y-4" aria-live="polite">
-    <h3 class="font-semibold text-theme-on-surface">Import results</h3>
-    <p class="text-theme-on-surface-muted">
-      {@results.added} added, {length(@results.items) - @results.added} failed, {@results.duplicates} repeated lines skipped.
-    </p>
-    <ul class="space-y-2">
-      <li :for={{url, result} <- @results.items} class="break-all text-sm text-theme-on-surface">
-        <span :if={result == :ok}>Added: {url}</span>
-        <span :if={result != :ok}>Could not add {url}: {result}</span>
-      </li>
-    </ul>
-  </div>
+  {if @preview, do: live_render(@conn, PinchflatWeb.Sources.ImportLive, session: @preview)}
 </div>

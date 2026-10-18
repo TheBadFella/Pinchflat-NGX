@@ -9,6 +9,7 @@ defmodule PinchflatWeb.Api.SourceActionsController do
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias Pinchflat.Media.FileSyncingWorker
   alias PinchflatWeb.Schemas
+  alias PinchflatWeb.Helpers.JobActionHelpers
 
   tags(["Sources"])
 
@@ -21,17 +22,15 @@ defmodule PinchflatWeb.Api.SourceActionsController do
     ],
     responses: [
       ok: {"Download jobs created", "application/json", Schemas.ActionResponse},
+      service_unavailable: {"Some downloads could not be queued", "application/json", Schemas.ActionErrorResponse},
       not_found: {"Source not found", "application/json", Schemas.NotFoundResponse}
     ]
   )
 
   def download_pending(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
-    DownloadingHelpers.retry_pending_download_tasks(source)
-
-    conn
-    |> put_status(:ok)
-    |> json(%{message: "Download jobs created for pending media items"})
+    result = DownloadingHelpers.retry_pending_download_tasks(source)
+    JobActionHelpers.respond(conn, result, "Download jobs created for pending media items")
   end
 
   operation(:redownload,
@@ -43,17 +42,15 @@ defmodule PinchflatWeb.Api.SourceActionsController do
     ],
     responses: [
       ok: {"Re-download jobs created", "application/json", Schemas.ActionResponse},
+      service_unavailable: {"Some downloads could not be queued", "application/json", Schemas.ActionErrorResponse},
       not_found: {"Source not found", "application/json", Schemas.NotFoundResponse}
     ]
   )
 
   def redownload(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
-    DownloadingHelpers.kickoff_redownload_for_existing_media(source)
-
-    conn
-    |> put_status(:ok)
-    |> json(%{message: "Re-download jobs created for existing media items"})
+    result = DownloadingHelpers.kickoff_redownload_for_existing_media(source)
+    JobActionHelpers.respond(conn, result, "Re-download jobs created for existing media items")
   end
 
   operation(:index,
@@ -65,17 +62,15 @@ defmodule PinchflatWeb.Api.SourceActionsController do
     ],
     responses: [
       ok: {"Index job created", "application/json", Schemas.ActionResponse},
+      service_unavailable: {"Index could not be queued", "application/json", Schemas.ActionErrorResponse},
       not_found: {"Source not found", "application/json", Schemas.NotFoundResponse}
     ]
   )
 
   def index(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
-    SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
-
-    conn
-    |> put_status(:ok)
-    |> json(%{message: "Index job created"})
+    result = SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
+    JobActionHelpers.respond(conn, result, "Index job created")
   end
 
   operation(:refresh_metadata,
@@ -87,17 +82,15 @@ defmodule PinchflatWeb.Api.SourceActionsController do
     ],
     responses: [
       ok: {"Metadata refresh job created", "application/json", Schemas.ActionResponse},
+      service_unavailable: {"Refresh could not be queued", "application/json", Schemas.ActionErrorResponse},
       not_found: {"Source not found", "application/json", Schemas.NotFoundResponse}
     ]
   )
 
   def refresh_metadata(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
-    SourceMetadataStorageWorker.kickoff_with_task(source)
-
-    conn
-    |> put_status(:ok)
-    |> json(%{message: "Metadata refresh job created"})
+    result = SourceMetadataStorageWorker.kickoff_with_task(source)
+    JobActionHelpers.respond(conn, result, "Metadata refresh job created")
   end
 
   operation(:sync_files,
@@ -109,16 +102,14 @@ defmodule PinchflatWeb.Api.SourceActionsController do
     ],
     responses: [
       ok: {"File sync job created", "application/json", Schemas.ActionResponse},
+      service_unavailable: {"File sync could not be queued", "application/json", Schemas.ActionErrorResponse},
       not_found: {"Source not found", "application/json", Schemas.NotFoundResponse}
     ]
   )
 
   def sync_files(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
-    FileSyncingWorker.kickoff_with_task(source)
-
-    conn
-    |> put_status(:ok)
-    |> json(%{message: "File sync job created"})
+    result = FileSyncingWorker.kickoff_with_task(source)
+    JobActionHelpers.respond(conn, result, "File sync job created")
   end
 end

@@ -2,7 +2,7 @@ defmodule Pinchflat.Database.SqliteSnapshot do
   @moduledoc "Reads a retained SQLite library without opening it for writes."
   alias Exqlite.Sqlite3
 
-  @tables ~w(media_profiles settings_backup settings sources media_items source_metadata media_metadata channel_discovery_suggestions reconcile_plans reconcile_plan_items oban_jobs tasks)
+  @tables ~w(media_profiles settings_backup settings sources media_items source_metadata media_metadata channel_discovery_suggestions reconcile_plans reconcile_plan_items share_tokens oban_jobs tasks legacy_migration_records)
   @migration_version 20_261_007_120_000
 
   def tables, do: @tables
@@ -53,6 +53,12 @@ defmodule Pinchflat.Database.SqliteSnapshot do
 
     if versions != expected, do: fail(:unsupported_source_version)
     if query!(db, "SELECT COUNT(*) FROM settings") != [[1]], do: fail(:source_settings)
+
+    if query!(db, "SELECT COUNT(*) FROM legacy_migration_records WHERE status != 'completed' OR status IS NULL") != [
+         [0]
+       ],
+       do: fail(:legacy_review_pending)
+
     :ok
   end
 
