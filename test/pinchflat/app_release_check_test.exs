@@ -8,17 +8,34 @@ defmodule Pinchflat.AppReleaseCheckTest do
   setup :verify_on_exit!
 
   setup do
-    previous = Application.get_env(:pinchflat, :app_release_check)
+    previous_check = Application.get_env(:pinchflat, :app_release_check)
+    previous_track = Application.get_env(:pinchflat, :build_track)
+    previous_sha = Application.get_env(:pinchflat, :build_sha)
+
     Application.put_env(:pinchflat, :app_release_check, true)
+    Application.put_env(:pinchflat, :build_track, "stable")
+    Application.delete_env(:pinchflat, :build_sha)
     AppReleaseCheck.clear_cache()
 
     on_exit(fn ->
       AppReleaseCheck.clear_cache()
 
-      if previous == nil do
+      if previous_check == nil do
         Application.delete_env(:pinchflat, :app_release_check)
       else
-        Application.put_env(:pinchflat, :app_release_check, previous)
+        Application.put_env(:pinchflat, :app_release_check, previous_check)
+      end
+
+      if previous_track == nil do
+        Application.delete_env(:pinchflat, :build_track)
+      else
+        Application.put_env(:pinchflat, :build_track, previous_track)
+      end
+
+      if previous_sha == nil do
+        Application.delete_env(:pinchflat, :build_sha)
+      else
+        Application.put_env(:pinchflat, :build_sha, previous_sha)
       end
     end)
 
@@ -51,6 +68,44 @@ defmodule Pinchflat.AppReleaseCheckTest do
 
       current = AppReleaseCheck.current_version()
       assert {:latest, ^current} = AppReleaseCheck.status()
+    end
+
+    test "reports dev with commit sha without querying GitHub when build_track is dev" do
+      Application.put_env(:pinchflat, :build_track, "dev")
+      Application.put_env(:pinchflat, :build_sha, "1b7c57fe3ea7c0f0e8ad2749b342e44eced7c85c")
+
+      assert {:dev, "1b7c57fe3ea7c0f0e8ad2749b342e44eced7c85c"} = AppReleaseCheck.status()
+    end
+
+    test "reports dev with nil sha when sha is absent or blank" do
+      Application.put_env(:pinchflat, :build_track, "dev")
+      Application.delete_env(:pinchflat, :build_sha)
+
+      assert {:dev, nil} = AppReleaseCheck.status()
+
+      Application.put_env(:pinchflat, :build_sha, "   ")
+      assert {:dev, nil} = AppReleaseCheck.status()
+    end
+  end
+
+  describe "display_version/0" do
+    test "returns current version for stable track" do
+      Application.put_env(:pinchflat, :build_track, "stable")
+      assert AppReleaseCheck.display_version() == AppReleaseCheck.current_version()
+    end
+
+    test "includes dev tag and short sha when running dev build" do
+      Application.put_env(:pinchflat, :build_track, "dev")
+      Application.put_env(:pinchflat, :build_sha, "1b7c57fe3ea7c0f0e8ad2749b342e44eced7c85c")
+
+      assert AppReleaseCheck.display_version() == "#{AppReleaseCheck.current_version()} (dev-1b7c57f)"
+    end
+
+    test "falls back to dev tag when sha is absent" do
+      Application.put_env(:pinchflat, :build_track, "dev")
+      Application.delete_env(:pinchflat, :build_sha)
+
+      assert AppReleaseCheck.display_version() == "#{AppReleaseCheck.current_version()} (dev)"
     end
   end
 end

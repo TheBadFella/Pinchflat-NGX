@@ -1,6 +1,7 @@
 import Config
 
 config :pinchflat,
+  build_track: "dev",
   media_directory: Path.join([File.cwd!(), "tmp", "media"]),
   metadata_directory: Path.join([File.cwd!(), "tmp", "metadata"]),
   extras_directory: Path.join([File.cwd!(), "tmp", "extras"]),

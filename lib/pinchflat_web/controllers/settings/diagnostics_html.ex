@@ -1,6 +1,7 @@
 defmodule PinchflatWeb.Settings.DiagnosticsHTML do
   use PinchflatWeb, :html
 
+  alias Pinchflat.AppReleaseCheck
   alias Pinchflat.Database
   alias Pinchflat.Diagnostics.DatabaseDiagnostics
   alias Pinchflat.Diagnostics.QueueDiagnostics
@@ -105,7 +106,7 @@ defmodule PinchflatWeb.Settings.DiagnosticsHTML do
 
   def diagnostic_info_string do
     """
-    - App Version: #{Application.spec(:pinchflat)[:vsn]}
+    - App Version: #{AppReleaseCheck.display_version()}
     - Database: #{Database.adapter()}
     - yt-dlp Version: #{Settings.get!(:yt_dlp_version)}
     - yt-dlp Update Behavior: #{UpdateManager.humanize_policy(Settings.get!(:yt_dlp_update_policy))}
