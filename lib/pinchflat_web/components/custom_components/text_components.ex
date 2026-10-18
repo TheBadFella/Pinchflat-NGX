@@ -1,10 +1,60 @@
 defmodule PinchflatWeb.CustomComponents.TextComponents do
   @moduledoc false
   use Phoenix.Component
+  use PinchflatWeb, :verified_routes
 
   alias Pinchflat.Settings
   alias Pinchflat.Utils.NumberUtils
   alias PinchflatWeb.CoreComponents
+  alias PinchflatWeb.Helpers.DownloadFailureHelpers
+
+  attr :media_item, :map, required: true
+  attr :task, :any, default: nil
+
+  @doc "Renders recovery guidance and collapsed technical details for a download failure."
+  def download_failure(assigns) do
+    {title, advice, settings?} = DownloadFailureHelpers.explanation(assigns.media_item.last_error)
+    {retry_status, scheduled_at} = DownloadFailureHelpers.retry_status(assigns.media_item, assigns.task)
+
+    assigns =
+      assigns
+      |> assign(:title, title)
+      |> assign(:advice, advice)
+      |> assign(:settings?, settings?)
+      |> assign(:retry_status, retry_status)
+      |> assign(:scheduled_at, scheduled_at)
+
+    ~H"""
+    <div class="download-failure theme-danger-panel min-w-0 space-y-2 rounded-m3-sm p-3 text-sm break-words">
+      <p class="font-medium">{@title}</p>
+
+      <p>{@advice}</p>
+
+      <p>
+        {@retry_status}
+        <span :if={@scheduled_at}>
+          Scheduled for <.datetime_in_zone datetime={@scheduled_at} format="%Y-%m-%d %H:%M" />.
+        </span>
+      </p>
+
+      <div class="flex flex-wrap gap-3">
+        <.link :if={@settings?} href={~p"/settings"} class="theme-touch-target inline-flex min-h-11 items-center underline">
+          Open settings
+        </.link>
+
+        <.link href={~p"/diagnostics"} class="theme-touch-target inline-flex min-h-11 items-center underline">
+          Open diagnostics
+        </.link>
+      </div>
+
+      <details>
+        <summary class="theme-touch-target min-h-11 cursor-pointer py-3 underline">Technical details</summary>
+
+        <p class="mt-2 whitespace-pre-wrap break-words text-xs">{@media_item.last_error}</p>
+      </details>
+    </div>
+    """
+  end
 
   attr :feedback, :map, default: nil
 
