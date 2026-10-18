@@ -142,21 +142,21 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
   end
 
   defp notification_body(source, changed_count, media_items) do
-    header = notification_header(source.custom_name, changed_count)
-    link = notification_link(source)
+    header = build_notification_header(source.custom_name, changed_count)
+    link = build_notification_link(source)
 
     if Settings.get!(:notification_include_video_titles) do
-      bounded_notification_body(source.custom_name, link, changed_count, media_items)
+      build_bounded_notification_body(source.custom_name, link, changed_count, media_items)
     else
       header <> link
     end
   end
 
-  defp notification_header(source_name, count) do
+  defp build_notification_header(source_name, count) do
     "Found #{count} new media item(s) for #{source_name}. Downloading them now"
   end
 
-  defp notification_link(source) do
+  defp build_notification_link(source) do
     case Settings.get(:external_base_url) do
       {:ok, base_url} when is_binary(base_url) and base_url != "" ->
         "\n\n#{source_url(base_url, source)}"
@@ -166,44 +166,44 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
     end
   end
 
-  defp bounded_notification_body(source_name, link, count, media_items) do
-    suffix_budget = if media_items == [], do: 0, else: text_length(remaining_suffix(count, 0))
-    fixed_header_length = text_length(notification_header("", count))
+  defp build_bounded_notification_body(source_name, link, count, media_items) do
+    suffix_budget = if media_items == [], do: 0, else: count_codepoints(build_remaining_suffix(count, 0))
+    fixed_header_length = count_codepoints(build_notification_header("", count))
     # Omit an oversized URL rather than sending a broken, truncated link.
-    link = if text_length(link) + suffix_budget + fixed_header_length >= @body_length, do: "", else: link
-    name_budget = @body_length - fixed_header_length - text_length(link) - suffix_budget
-    header = notification_header(truncate(source_name, name_budget), count)
-    available = @body_length - text_length(header) - text_length(link)
+    link = if count_codepoints(link) + suffix_budget + fixed_header_length >= @body_length, do: "", else: link
+    name_budget = @body_length - fixed_header_length - count_codepoints(link) - suffix_budget
+    header = build_notification_header(truncate(source_name, name_budget), count)
+    available = @body_length - count_codepoints(header) - count_codepoints(link)
 
     {titles, shown} =
       media_items
-      |> Enum.sort_by(&{upload_timestamp(&1), Map.get(&1, :id, 0)}, :desc)
+      |> Enum.sort_by(&{get_upload_timestamp(&1), Map.get(&1, :id, 0)}, :desc)
       |> Enum.take(@title_limit)
       |> Enum.reduce_while({"", 0}, fn item, {titles, shown} ->
         separator = if shown == 0, do: "\n\n", else: "\n"
         candidate = titles <> separator <> "- " <> video_title(item)
 
-        if text_length(candidate <> remaining_suffix(count, shown + 1)) <= available do
+        if count_codepoints(candidate <> build_remaining_suffix(count, shown + 1)) <= available do
           {:cont, {candidate, shown + 1}}
         else
           {:halt, {titles, shown}}
         end
       end)
 
-    suffix = if media_items == [], do: "", else: remaining_suffix(count, shown)
+    suffix = if media_items == [], do: "", else: build_remaining_suffix(count, shown)
 
     header <> titles <> suffix <> link
   end
 
-  defp remaining_suffix(count, shown) when shown >= count, do: ""
+  defp build_remaining_suffix(count, shown) when shown >= count, do: ""
 
-  defp remaining_suffix(count, shown) do
+  defp build_remaining_suffix(count, shown) do
     separator = if shown == 0, do: "\n\n", else: "\n"
     "#{separator}… and #{count - shown} more"
   end
 
-  defp upload_timestamp(%{uploaded_at: %DateTime{} = uploaded_at}), do: DateTime.to_unix(uploaded_at)
-  defp upload_timestamp(_), do: 0
+  defp get_upload_timestamp(%{uploaded_at: %DateTime{} = uploaded_at}), do: DateTime.to_unix(uploaded_at)
+  defp get_upload_timestamp(_), do: 0
 
   defp video_title(media_item) do
     title = media_item.title |> to_string() |> String.replace(~r/\s+/u, " ") |> String.trim()
@@ -212,7 +212,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
     truncate(title, @title_length)
   end
 
-  defp text_length(text), do: text |> String.codepoints() |> length()
+  defp count_codepoints(text), do: text |> String.codepoints() |> length()
 
   defp truncate(text, length) do
     codepoints = String.codepoints(text)
