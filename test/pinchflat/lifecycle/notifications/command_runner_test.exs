@@ -71,6 +71,14 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
       assert record_arguments(fn -> assert {:ok, ""} = Runner.run("server_1", []) end) == ["--verbose", "server_1"]
     end
 
+    test "passes unmatched Markdown delimiters literally using the default plain-text format" do
+      body = "*unmatched _underscore [link]( `code <tag> & text"
+
+      args = record_arguments(fn -> assert {:ok, ""} = Runner.run("server_1", body: body) end)
+
+      assert args == ["--verbose", "--body", body, "server_1"]
+    end
+
     test "returns the exit status when the command fails" do
       wrap_executable("/bin/false", fn ->
         assert {:error, "Apprise exited with status 1. Check the notification server configuration."} =

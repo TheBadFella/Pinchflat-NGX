@@ -1,6 +1,7 @@
 defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   @moduledoc """
-  Runs apprise commands using the `System.cmd/3` function
+  Runs apprise commands using the `System.cmd/3` function.
+  Notification bodies use Apprise's default plain-text input format.
   """
 
   require Logger

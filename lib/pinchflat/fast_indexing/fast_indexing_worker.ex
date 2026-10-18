@@ -71,7 +71,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingWorker do
       |> Enum.filter(&Media.pending_download?(&1))
 
     if source.download_media do
-      SourceNotifications.send_new_media_notification(apprise_server, source, length(new_media_items))
+      SourceNotifications.send_new_media_notification(apprise_server, source, length(new_media_items), new_media_items)
     end
   end
 

@@ -100,6 +100,26 @@ defmodule Pinchflat.FastIndexing.FastIndexingWorkerTest do
       :ok
     end
 
+    test "includes the newly found video title when enabled" do
+      Settings.set(notification_include_video_titles: true)
+      source = source_fixture(fast_index: true)
+      metadata = render_metadata(:media_metadata)
+      title = Jason.decode!(metadata)["title"]
+
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl ->
+        {:ok, metadata}
+      end)
+
+      expect(AppriseRunnerMock, :run, fn "server_1", opts ->
+        assert opts[:body] =~ "\n\n- #{title}"
+        {:ok, ""}
+      end)
+
+      perform_job(FastIndexingWorker, %{id: source.id})
+    end
+
     test "sends a notification if new media was found" do
       source = source_fixture(fast_index: true)
 
