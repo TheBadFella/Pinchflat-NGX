@@ -16,7 +16,7 @@ defmodule Pinchflat.MediaServers.Plex do
       url = build_refresh_url(base_url, section_id)
       headers = [{"X-Plex-Token", token}]
 
-      case http_client().get(url, headers) do
+      case http_client().get(url, headers, receive_timeout: 10_000) do
         {:ok, _body} ->
           :ok
 
@@ -34,7 +34,7 @@ defmodule Pinchflat.MediaServers.Plex do
       url = "#{base_url}/library/sections"
       headers = [{"X-Plex-Token", token}]
 
-      case http_client().get(url, headers) do
+      case http_client().get(url, headers, receive_timeout: 10_000) do
         {:ok, _body} ->
           {:ok, :connected}
 

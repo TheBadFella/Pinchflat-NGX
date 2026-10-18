@@ -1,6 +1,61 @@
 import Config
 require Logger
 
+trusted_proxy_ips =
+  case System.get_env("TRUSTED_PROXY_IPS") do
+    nil ->
+      nil
+
+    value ->
+      value
+      |> String.split(",", trim: true)
+      |> Enum.map(fn address ->
+        case :inet.parse_address(String.to_charlist(String.trim(address))) do
+          {:ok, ip} -> ip
+          _ -> raise ArgumentError, "TRUSTED_PROXY_IPS must contain exact IPv4 or IPv6 addresses"
+        end
+      end)
+  end
+
+iframe_allowed_origins =
+  System.get_env("IFRAME_ALLOWED_ORIGINS", "")
+  |> String.split(",", trim: true)
+  |> Enum.map(fn origin ->
+    case URI.new(String.trim(origin)) do
+      {:ok, %URI{scheme: scheme, host: host, userinfo: nil, query: nil, fragment: nil, path: path, port: port} = uri}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" and path in [nil, "", "/"] and
+             port > 0 and port < 65_536 ->
+        if Regex.match?(~r/\A[a-zA-Z0-9._:-]+\z/, host) do
+          URI.to_string(%{uri | path: nil})
+        else
+          raise ArgumentError, "IFRAME_ALLOWED_ORIGINS contains an invalid hostname"
+        end
+
+      _ ->
+        raise ArgumentError, "IFRAME_ALLOWED_ORIGINS must contain HTTP or HTTPS origins without paths or credentials"
+    end
+  end)
+
+secure_session_cookie =
+  case System.get_env("SECURE_SESSION_COOKIE", "false") do
+    "true" -> true
+    "false" -> false
+    _ -> raise ArgumentError, "SECURE_SESSION_COOKIE must be true or false"
+  end
+
+allow_iframe_embed =
+  case System.get_env("ALLOW_IFRAME_EMBED", "true") do
+    "true" -> true
+    "false" -> false
+    _ -> raise ArgumentError, "ALLOW_IFRAME_EMBED must be true or false"
+  end
+
+config :pinchflat,
+  trusted_proxy_ips: trusted_proxy_ips,
+  force_secure_session_cookie: secure_session_cookie,
+  allow_iframe_embed: allow_iframe_embed,
+  iframe_allowed_origins: iframe_allowed_origins
+
 database_adapter = Application.get_env(:pinchflat, :database_adapter, :sqlite)
 
 # config/runtime.exs is executed for all environments, including

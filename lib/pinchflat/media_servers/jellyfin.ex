@@ -16,7 +16,7 @@ defmodule Pinchflat.MediaServers.Jellyfin do
       url = "#{base_url}/Library/Refresh"
       headers = authorization_headers(api_key)
 
-      case http_client().post(url, headers, "") do
+      case http_client().post(url, headers, "", receive_timeout: 10_000) do
         {:ok, _body} ->
           :ok
 
@@ -34,7 +34,7 @@ defmodule Pinchflat.MediaServers.Jellyfin do
       url = "#{base_url}/System/Info"
       headers = authorization_headers(api_key)
 
-      case http_client().get(url, headers) do
+      case http_client().get(url, headers, receive_timeout: 10_000) do
         {:ok, _body} ->
           {:ok, :connected}
 

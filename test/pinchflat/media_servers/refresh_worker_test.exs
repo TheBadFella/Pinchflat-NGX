@@ -22,7 +22,7 @@ defmodule Pinchflat.MediaServers.RefreshWorkerTest do
           plex_library_section_id: "all"
         })
 
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://plex:32400/library/sections/all/refresh"
         assert {"X-Plex-Token", "secret_tok"} in headers
         {:ok, "done"}
@@ -73,7 +73,7 @@ defmodule Pinchflat.MediaServers.RefreshWorkerTest do
           jellyfin_api_key: "key"
         })
 
-      expect(HTTPClientMock, :post, fn _url, _headers, _body ->
+      expect(HTTPClientMock, :post, fn _url, _headers, _body, _opts ->
         {:error, "HTTP request failed with status code 500"}
       end)
 

@@ -23,7 +23,7 @@ defmodule Pinchflat.MediaServers.PlexTest do
         plex_library_section_id: "3"
       }
 
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://192.168.1.100:32400/library/sections/3/refresh"
         assert {"X-Plex-Token", "secret_plex_token_123"} in headers
         {:ok, "success"}
@@ -39,7 +39,7 @@ defmodule Pinchflat.MediaServers.PlexTest do
         plex_library_section_id: "all"
       }
 
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://192.168.1.100:32400/library/sections/all/refresh"
         assert {"X-Plex-Token", "secret_plex_token_123"} in headers
         {:ok, "success"}
@@ -55,7 +55,7 @@ defmodule Pinchflat.MediaServers.PlexTest do
         plex_library_section_id: "all"
       }
 
-      expect(HTTPClientMock, :get, fn _url, _headers ->
+      expect(HTTPClientMock, :get, fn _url, _headers, _opts ->
         {:error, "HTTP request failed with status code 401"}
       end)
 
@@ -77,7 +77,7 @@ defmodule Pinchflat.MediaServers.PlexTest do
         plex_token: "secret_plex_token_123"
       }
 
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://192.168.1.100:32400/library/sections"
         assert {"X-Plex-Token", "secret_plex_token_123"} in headers
         {:ok, "<MediaContainer size=\"0\"></MediaContainer>"}
@@ -92,7 +92,7 @@ defmodule Pinchflat.MediaServers.PlexTest do
         plex_token: "bad_token"
       }
 
-      expect(HTTPClientMock, :get, fn _url, _headers ->
+      expect(HTTPClientMock, :get, fn _url, _headers, _opts ->
         {:error, "HTTP request failed with status code 401"}
       end)
 

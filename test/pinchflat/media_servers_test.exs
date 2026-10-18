@@ -99,7 +99,7 @@ defmodule Pinchflat.MediaServersTest do
           plex_library_section_id: "all"
         })
 
-      expect(HTTPClientMock, :get, fn url, _headers ->
+      expect(HTTPClientMock, :get, fn url, _headers, _opts ->
         assert url =~ "sections/all/refresh"
         {:ok, "ok"}
       end)
@@ -110,7 +110,7 @@ defmodule Pinchflat.MediaServersTest do
 
   describe "test_connection/2" do
     test "dispatches test to appropriate server module" do
-      expect(HTTPClientMock, :get, fn url, headers ->
+      expect(HTTPClientMock, :get, fn url, headers, _opts ->
         assert url == "http://test-plex:32400/library/sections"
         assert {"X-Plex-Token", "t"} in headers
         {:ok, "ok"}
