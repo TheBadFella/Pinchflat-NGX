@@ -141,6 +141,25 @@ defmodule Pinchflat.Downloading.DownloadStagingTest do
     assert {:error, :insufficient_staging_space} = DownloadStaging.prepare(26)
   end
 
+  test "replacement root cleanup preserves active attempts and refuses paths outside its root" do
+    Application.put_env(:pinchflat, :download_staging_directory, nil)
+    root = DownloadStaging.replacement_directory()
+    opts = [root: root, stale_after_seconds: 0]
+    assert {:ok, active} = DownloadStaging.prepare(30, opts)
+    assert {:ok, stale} = DownloadStaging.prepare(31, opts)
+    outside = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "keep-this-video")
+    File.mkdir_p!(outside)
+    File.write!(Path.join(outside, "video.mp4"), "existing media")
+
+    assert :ok = DownloadStaging.cleanup_stale([30], opts)
+    assert File.dir?(active)
+    refute File.exists?(stale)
+    assert :ok = DownloadStaging.cleanup(outside, opts)
+    assert File.read!(Path.join(outside, "video.mp4")) == "existing media"
+    assert :ok = DownloadStaging.cleanup(active, opts)
+    assert File.ls!(root) == []
+  end
+
   defp create_artifacts(staging_directory) do
     source_files =
       Enum.map(
