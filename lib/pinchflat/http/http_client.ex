@@ -39,9 +39,31 @@ defmodule Pinchflat.HTTP.HTTPClient do
     end
   end
 
+  @doc """
+  Makes a POST request to the given URL and returns the response.
+  """
+  @impl HTTPBehaviour
+  def post(url, headers \\ [], body \\ "", opts \\ []) do
+    headers = parse_headers(headers)
+    {connect_address, request_opts} = Keyword.pop(opts, :connect_address)
+
+    case connect_address do
+      nil ->
+        Finch.build(:post, url, headers, body)
+        |> request(request_opts)
+
+      address when is_tuple(address) ->
+        Finch.build(:post, url, headers, body)
+        |> request_to_address(address, request_opts)
+
+      _address ->
+        {:error, "HTTP request failed: invalid connection address"}
+    end
+  end
+
   defp request(request, opts) do
     case Finch.request(request, Pinchflat.Finch, opts) do
-      {:ok, %Response{status: 200, body: body}} ->
+      {:ok, %Response{status: status_code, body: body}} when status_code in 200..299 ->
         {:ok, body}
 
       {:ok, %Response{status: status_code}} ->

@@ -22,6 +22,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Downloading.SpaceProtection
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
+  alias Pinchflat.MediaServers
 
   @doc """
   Starts the media_item media download worker and creates a task for the media_item.
@@ -152,6 +153,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
         :ok = FileSyncing.delete_outdated_files(media_item, updated_media_item)
         run_user_script(:media_downloaded, updated_media_item)
+        MediaServers.dispatch_post_download_refresh(updated_media_item)
 
         :ok
 

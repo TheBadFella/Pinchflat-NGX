@@ -46,6 +46,7 @@ window.settingsPage = () => ({
   selectedGroup: '',
   advancedMode: JSON.parse(localStorage.getItem('advancedMode') || 'false'),
   groups: {
+    'media-servers': 'media servers plex jellyfin emby refresh scan library integrations',
     access: 'api access sharing share tokens bookmarklet shortcuts credentials',
     notifications:
       'notifications notify apprise server webhook discord telegram email external base url public pinchflat',
