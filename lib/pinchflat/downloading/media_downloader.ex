@@ -87,8 +87,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp attempt_download_and_update_for_media_item(media_item, override_opts) do
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     media_with_preloads = Repo.preload(media_item, [:metadata, source: :media_profile])
+    staging_opts = replacement_staging_options(media_with_preloads, override_opts)
 
-    case DownloadStaging.prepare(media_with_preloads.id) do
+    case DownloadStaging.prepare(media_with_preloads.id, staging_opts) do
       {:ok, staging_directory} ->
         try do
           download_override_opts = maybe_add_staging_directory(override_opts, staging_directory)
@@ -100,7 +101,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
                  download_override_opts
                ) do
             {:ok, parsed_json} ->
-              case DownloadStaging.transfer(parsed_json, staging_directory) do
+              case DownloadStaging.transfer(parsed_json, staging_directory, staging_opts) do
                 {:ok, transferred_json} ->
                   update_media_item_from_parsed_json(media_with_preloads, transferred_json)
 
@@ -138,11 +139,20 @@ defmodule Pinchflat.Downloading.MediaDownloader do
               {:error, :unknown, "Unknown error: #{inspect(err)}"}
           end
         after
-          DownloadStaging.cleanup(staging_directory)
+          DownloadStaging.cleanup(staging_directory, staging_opts)
         end
 
       {:error, reason} ->
         {:error, :staging_unavailable, staging_error_message(reason)}
+    end
+  end
+
+  defp replacement_staging_options(media_item, override_opts) do
+    if override_opts[:overwrite_behaviour] == :force_overwrites &&
+         is_binary(media_item.media_filepath) && File.regular?(media_item.media_filepath) do
+      [root: DownloadStaging.configured_directory() || DownloadStaging.replacement_directory()]
+    else
+      []
     end
   end
 
