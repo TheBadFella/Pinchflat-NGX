@@ -115,6 +115,7 @@ defmodule PinchflatWeb.ApiSpec do
               :restore_automatic_downloads,
               :start_all,
               :pause_all,
+              :pause_selected,
               :stop_all,
               :force_download_pending,
               :force_redownload,

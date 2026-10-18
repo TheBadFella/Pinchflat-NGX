@@ -414,6 +414,22 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  def pause_selected(conn, params) do
+    case Sources.pause_selected_sources(params["source_ids"]) do
+      {:ok, sources} ->
+        noun = if length(sources) == 1, do: "source", else: "sources"
+
+        conn
+        |> put_flash(:info, "Downloads paused for #{length(sources)} #{noun}.")
+        |> redirect(to: ~p"/sources")
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Could not pause the selection. Refresh and select up to 100 available sources.")
+        |> redirect(to: ~p"/sources")
+    end
+  end
+
   def pause_all(conn, %{"source_id" => id} = params) do
     source = Sources.get_source!(id)
 
