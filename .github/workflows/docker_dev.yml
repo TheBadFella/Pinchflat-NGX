@@ -1,0 +1,150 @@
+name: Build Dev Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        type: choice
+        description: 'Build platforms'
+        required: true
+        default: 'linux/amd64'
+        options:
+          - 'linux/amd64'
+          - 'linux/amd64,linux/arm64'
+
+# Every branch writes the same dev tags, so serialize publication across branches.
+concurrency:
+  group: docker-dev-images
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build (${{ matrix.database }}, ${{ matrix.platform }})
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+        platform: ${{ fromJSON(inputs.platforms == 'linux/amd64,linux/arm64' && '["linux/amd64","linux/arm64"]' || '["linux/amd64"]') }}
+    steps:
+      - name: Prepare image name
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${REGISTRY}/${owner}/pinchflat-ngx" >> "$GITHUB_ENV"
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+
+      - name: Checkout selected commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./docker/selfhosted.Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            DATABASE_ADAPTER=${{ matrix.database }}
+            YT_DLP_CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.database }}-${{ env.PLATFORM_PAIR }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=build-${{ matrix.database }}-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,scope=build-${{ matrix.database }}-${{ env.PLATFORM_PAIR }},mode=max
+          sbom: true
+          provenance: true
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dev-digests-${{ matrix.database }}-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish (${{ matrix.database }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        database: [sqlite, postgres]
+    steps:
+      - name: Prepare image tags
+        env:
+          SUFFIX: ${{ matrix.database == 'postgres' && '-postgres' || '' }}
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "IMAGE_NAME=${REGISTRY}/${owner}/pinchflat-ngx"
+            echo "DEV_TAG=dev${SUFFIX}"
+            echo "COMMIT_TAG=dev-${GITHUB_SHA}${SUFFIX}"
+          } >> "$GITHUB_ENV"
+
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dev-digests-${{ matrix.database }}-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish development tags
+        working-directory: /tmp/digests
+        run: |
+          sources=()
+          for digest in *; do sources+=("${IMAGE_NAME}@sha256:${digest}"); done
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${DEV_TAG}" \
+            --tag "${IMAGE_NAME}:${COMMIT_TAG}" \
+            "${sources[@]}"
+          docker buildx imagetools inspect "${IMAGE_NAME}:${COMMIT_TAG}"
+          {
+            echo "### Development image (${{ matrix.database }})"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Platforms: ${{ inputs.platforms }}"
+            echo "- Moving tag: \`${IMAGE_NAME}:${DEV_TAG}\`"
+            echo "- Commit tag: \`${IMAGE_NAME}:${COMMIT_TAG}\`"
+            echo '- Pin the image digest to keep the exact build when rebuilding the same commit.'
+            echo '- Use a separate test config, database and media directory.'
+          } >> "$GITHUB_STEP_SUMMARY"
