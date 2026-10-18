@@ -125,15 +125,15 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       if @view_mode == "grid", do: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3", else: "space-y-4 md:hidden"
     }>
       <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-        <div class="flex items-center justify-between gap-3">
+        <div class="flex flex-col gap-3">
           <div class="min-w-0 flex-1 space-y-2">
-            <div class="flex items-start gap-2">
+            <div class="flex flex-wrap items-start gap-2">
               <.icon
                 :if={media_item.last_error}
                 name="hero-exclamation-circle-solid"
                 class="theme-status-error mt-0.5 shrink-0"
               /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-              <div class="min-w-0">
+              <div class="w-full min-w-0">
                 <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
                   <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
                     {media_item.title}
@@ -198,24 +198,22 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           </div>
         </div>
 
-        <div
+        <.download_failure
           :if={media_item.last_error}
-          class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
-        >
-          {media_item.last_error}
-        </div>
-
+          media_item={media_item}
+          task={Map.get(@tasks_by_media_item_id, media_item.id)}
+        />
         <dl class="grid grid-cols-1 gap-3 text-sm">
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Upload Date</dt>
 
-            <dd class="text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
+            <dd class="min-w-0 break-words text-right text-theme-on-surface">{DateTime.to_date(media_item.uploaded_at)}</dd>
           </div>
 
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Size / Progress</dt>
 
-            <dd class="max-w-[65%] text-right text-theme-on-surface">
+            <dd class="min-w-0 max-w-[65%] break-words text-right text-theme-on-surface">
               <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
             </dd>
           </div>
@@ -223,13 +221,15 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Indexed At</dt>
 
-            <dd class="text-right text-theme-on-surface">{format_datetime(media_item.inserted_at)}</dd>
+            <dd class="min-w-0 break-words text-right text-theme-on-surface">{format_datetime(media_item.inserted_at)}</dd>
           </div>
 
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Downloaded At</dt>
 
-            <dd class="text-right text-theme-on-surface">{format_datetime(media_item.media_downloaded_at)}</dd>
+            <dd class="min-w-0 break-words text-right text-theme-on-surface">
+              {format_datetime(media_item.media_downloaded_at)}
+            </dd>
           </div>
         </dl>
       </article>
@@ -282,9 +282,11 @@ defmodule Pinchflat.Pages.HistoryTableLive do
                   </.subtle_link>
                 </div>
 
-                <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
-                  {media_item.last_error}
-                </div>
+                <.download_failure
+                  :if={media_item.last_error}
+                  media_item={media_item}
+                  task={Map.get(@tasks_by_media_item_id, media_item.id)}
+                />
               </section>
             </:col>
 
@@ -1010,6 +1012,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :media_downloaded_at,
         :source_id,
         :last_error,
+        :prevent_download,
         :error_type,
         :download_prevented_reason,
         :media_size_bytes
@@ -1031,6 +1034,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :media_downloaded_at,
         :source_id,
         :last_error,
+        :prevent_download,
         :error_type,
         :download_prevented_reason,
         :media_size_bytes
@@ -1052,6 +1056,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :media_downloaded_at,
         :source_id,
         :last_error,
+        :prevent_download,
         :error_type,
         :download_prevented_reason,
         :media_size_bytes
@@ -1233,7 +1238,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       {size_or_progress_label(@media_item, nil)}
     </div>
 
-    <div :if={!is_nil(@task)} class="min-w-40 space-y-2">
+    <div :if={!is_nil(@task)} class="w-40 max-w-full space-y-2 break-words">
       <div class="text-right text-theme-on-surface">{size_or_progress_label(@media_item, @task)}</div>
 
       <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">

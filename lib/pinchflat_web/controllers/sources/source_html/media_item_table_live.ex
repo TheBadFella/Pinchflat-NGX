@@ -49,6 +49,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           >
             <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
           </.button>
+
           <form :if={@media_state == "failed"} id="source-error-type-filter" phx-change="filter_error_type">
             <label class="sr-only" for="source-error-type">Failure type</label>
             <select
@@ -57,10 +58,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               class="theme-input rounded-m3-sm text-sm"
             >
               <option value="all" selected={@error_type_filter == "all"}>All failures</option>
+
               <option value="transient" selected={@error_type_filter == "transient"}>Transient failures</option>
+
               <option value="permanent" selected={@error_type_filter == "permanent"}>Permanent failures</option>
             </select>
           </form>
+
           <div class="theme-surface-accent rounded-m3-sm">
             <div class="relative">
               <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
@@ -81,6 +85,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </div>
         </div>
       </header>
+
       <div :for={group <- @grouped_records} class="space-y-4">
         <section
           class="theme-surface-accent rounded-m3-lg"
@@ -114,7 +119,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           >
             <div class="space-y-4 md:hidden">
               <article :for={media_item <- group.records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-                <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col gap-3">
                   <div class="min-w-0 flex-1 space-y-2">
                     <div
                       :if={@media_state == "pending"}
@@ -122,14 +127,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                     >
                       Queue #{Map.get(@queue_positions, media_item.id, "-")}
                     </div>
-                    <div class="flex items-start gap-2">
+
+                    <div class="flex flex-wrap items-start gap-2">
                       <.icon
                         :if={media_item.last_error}
                         name="hero-exclamation-circle-solid"
                         class="theme-status-error mt-0.5 shrink-0"
-                      />
-                      <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                      <div class="min-w-0">
+                      /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                      <div class="w-full min-w-0">
                         <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
                           <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
                             {media_item.title}
@@ -190,36 +195,42 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   </div>
                 </div>
 
-                <div
+                <.download_failure
                   :if={media_item.last_error}
-                  class="theme-danger-panel whitespace-pre-wrap break-words rounded-m3-sm p-3 text-xs"
-                >
-                  {media_item.last_error}
-                </div>
-
+                  media_item={media_item}
+                  task={Map.get(@tasks_by_media_item_id, media_item.id)}
+                />
                 <dl class="grid grid-cols-1 gap-3 text-sm">
                   <div class="flex items-start justify-between gap-3">
                     <dt class="text-theme-on-surface-muted">Upload Date</dt>
-                    <dd class="text-right text-theme-on-surface">{upload_date_label(media_item.uploaded_at)}</dd>
+
+                    <dd class="min-w-0 break-words text-right text-theme-on-surface">
+                      {upload_date_label(media_item.uploaded_at)}
+                    </dd>
                   </div>
+
                   <div class="flex items-start justify-between gap-3">
                     <dt class="text-theme-on-surface-muted">Availability</dt>
+
                     <dd class="text-right"><.availability_badge availability={media_item.availability} /></dd>
                   </div>
+
                   <div class="flex items-start justify-between gap-3">
                     <dt class="text-theme-on-surface-muted">Size / Progress</dt>
-                    <dd class="max-w-[65%] text-right text-theme-on-surface">
+
+                    <dd class="min-w-0 max-w-[65%] break-words text-right text-theme-on-surface">
                       <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
                     </dd>
                   </div>
+
                   <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
                     <dt class="text-theme-on-surface-muted">Status</dt>
-                    <dd class="text-right text-theme-on-surface">
+
+                    <dd class="min-w-0 break-words text-right text-theme-on-surface">
                       <% status = media_status(media_item) %>
                       <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
                         <span class={["flex items-center gap-1.5", status.class]}>
-                          <.icon name={status.icon} class="w-5 h-5 shrink-0" />
-                          <span>{status.label}</span>
+                          <.icon name={status.icon} class="w-5 h-5 shrink-0" /> <span>{status.label}</span>
                         </span>
                       </.tooltip>
                     </dd>
@@ -241,8 +252,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                         :if={media_item.last_error}
                         name="hero-exclamation-circle-solid"
                         class="theme-status-error shrink-0"
-                      />
-                      <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                      /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                       <.icon_button
                         :if={@media_state not in ["downloaded", "failed"]}
                         icon_name="hero-arrow-down-tray"
@@ -278,9 +288,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                       </.subtle_link>
                     </div>
 
-                    <div :if={media_item.last_error} class="theme-status-error whitespace-pre-wrap break-words text-xs">
-                      {media_item.last_error}
-                    </div>
+                    <.download_failure
+                      :if={media_item.last_error}
+                      media_item={media_item}
+                      task={Map.get(@tasks_by_media_item_id, media_item.id)}
+                    />
                   </section>
                 </:col>
 
@@ -288,8 +300,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   <% status = media_status(media_item) %>
                   <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
                     <span class={["flex items-center gap-1.5", status.class]}>
-                      <.icon name={status.icon} class="w-5 h-5 shrink-0" />
-                      <span>{status.label}</span>
+                      <.icon name={status.icon} class="w-5 h-5 shrink-0" /> <span>{status.label}</span>
                     </span>
                   </.tooltip>
                 </:col>
@@ -319,6 +330,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   />
                   <span :if={!Map.has_key?(@tasks_by_media_item_id, media_item.id)} class="text-theme-on-surface-muted">-</span>
                 </:col>
+
                 <:col :let={media_item} label="" class="align-middle text-right">
                   <div class="flex justify-end">
                     <.icon_link
@@ -334,6 +346,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </div>
         </section>
       </div>
+
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>
@@ -873,8 +886,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     <div :if={is_nil(@task)} class="text-theme-on-surface">
       {size_or_progress_label(@media_item, nil)}
     </div>
-    <div :if={!is_nil(@task)} class="min-w-40 space-y-2">
+
+    <div :if={!is_nil(@task)} class="w-40 max-w-full space-y-2 break-words">
       <div class="text-right text-theme-on-surface">{size_or_progress_label(@media_item, @task)}</div>
+
       <div class="h-2 overflow-hidden rounded-full bg-theme-surface-4">
         <div
           class="h-full rounded-full bg-theme-primary transition-all duration-300"
