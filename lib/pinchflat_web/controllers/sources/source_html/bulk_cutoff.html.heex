@@ -1,0 +1,45 @@
+<div class="mx-auto max-w-3xl space-y-6">
+  <h2 class="text-title-md2 font-bold text-theme-on-surface">Confirm cutoff change</h2>
+  <section class="theme-surface-raised space-y-4 p-5">
+    <p class="text-theme-on-surface">
+      Set the download cutoff to
+      <strong>{if @preview.cutoff, do: Date.to_iso8601(@preview.cutoff), else: "No cutoff"}</strong>
+      for the following {length(@preview.sources)} selected {if length(@preview.sources) == 1,
+        do: "source",
+        else: "sources"}. <span :if={@preview.cutoff}>Media uploaded on or after this date is included.</span>
+      <span :if={is_nil(@preview.cutoff)}>All upload dates are eligible, subject to the other source settings.</span>
+    </p>
+    <ul class="space-y-2 text-sm text-theme-on-surface-muted">
+      <li :for={source <- @preview.sources} class="break-words">
+        {source.custom_name}: {if source.download_cutoff_date,
+          do: Date.to_iso8601(source.download_cutoff_date),
+          else: "No cutoff"}
+      </li>
+    </ul>
+    <dl id="cutoff-impact" class="space-y-3 text-theme-on-surface">
+      <div class="flex justify-between gap-4">
+        <dt>Downloaded items before cutoff</dt>
+        <dd class="shrink-0 font-semibold">{@preview.downloaded_before}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt>Eligible for removal by scheduled retention</dt>
+        <dd class="shrink-0 font-semibold">{@preview.removable}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt>Protected from culling</dt>
+        <dd class="shrink-0 font-semibold">{@preview.downloaded_before - @preview.removable}</dd>
+      </div>
+    </dl>
+    <p class="text-sm text-theme-on-surface-muted">
+      Counts reflect the current library and may change before retention runs. Confirming changes the cutoff only;
+      it does not delete files immediately or start downloads. Normal indexing and retention use the new cutoff.
+      Moving the date earlier or clearing it can make older indexed media eligible for download.
+      Indexing cutoffs, monitoring and pause settings stay as they are.
+    </p>
+    <.form for={%{}} action={~p"/sources/cutoff/apply"} method="post" class="flex flex-wrap gap-3">
+      <input type="hidden" name="token" value={@token} />
+      <.button type="submit" variant="warning">Confirm cutoff change</.button>
+      <.button href={~p"/sources"} variant="outline">Cancel</.button>
+    </.form>
+  </section>
+</div>
