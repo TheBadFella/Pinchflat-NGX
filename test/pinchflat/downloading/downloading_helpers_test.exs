@@ -80,6 +80,25 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       refute_enqueued(worker: MediaDownloadWorker)
       assert [] = Tasks.list_tasks_for(media_item)
     end
+
+    test "preserves executing replacements unless explicitly included and keeps other workers" do
+      source = source_fixture()
+      item = media_item_fixture(source_id: source.id, media_filepath: "/existing/video.mp4")
+      {:ok, download} = MediaDownloadWorker.kickoff_with_task(item, %{force: true})
+      job = Pinchflat.Repo.get!(Oban.Job, download.job_id)
+      job |> Ecto.Changeset.change(%{state: "executing"}) |> Pinchflat.Repo.update!()
+
+      {:ok, metadata} =
+        %{}
+        |> Oban.Job.new(worker: Pinchflat.Metadata.SourceMetadataStorageWorker)
+        |> Tasks.create_job_with_task(item)
+
+      assert 0 == DownloadingHelpers.dequeue_pending_download_tasks(source)
+      assert Pinchflat.Repo.get!(Oban.Job, download.job_id).state == "executing"
+      assert 1 == DownloadingHelpers.dequeue_pending_download_tasks(source, include_executing: true)
+      assert Pinchflat.Repo.get!(Oban.Job, download.job_id).state == "cancelled"
+      assert Pinchflat.Repo.get!(Oban.Job, metadata.job_id).state == "available"
+    end
   end
 
   describe "kickoff_download_if_pending/1" do
