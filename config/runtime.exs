@@ -208,7 +208,8 @@ config :pinchflat, reconcile_backfill_concurrency: max(yt_dlp_worker_count, 1)
 
 cron_jobs = [
   {"#{current_minute} #{current_hour} * * *", Pinchflat.YtDlp.UpdateWorker},
-  {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
+  {System.get_env("RETENTION_CRON", "0 1 * * *"), Pinchflat.Downloading.MediaRetentionWorker,
+   timezone: System.get_env("TZ", "Etc/UTC")},
   {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker},
   # Discovery is opt-in in the database. The worker cancels this cheap
   # scheduled job while disabled, so a setting change does not require a
@@ -218,8 +219,9 @@ cron_jobs = [
 
 cron_jobs =
   if database_adapter == :sqlite do
-    # Monthly, after retention (1AM) and quality upgrades (2AM) have had a
-    # chance to delete records whose space the VACUUM can then reclaim.
+    # Monthly at 3AM UTC, after the default UTC retention (1AM) and quality
+    # upgrades (2AM). Custom retention schedules or TZ may change that order.
+    # VACUUM can reclaim space from records deleted by those workers.
     cron_jobs ++ [{"0 3 1 * *", Pinchflat.Diagnostics.DatabaseMaintenanceWorker}]
   else
     cron_jobs

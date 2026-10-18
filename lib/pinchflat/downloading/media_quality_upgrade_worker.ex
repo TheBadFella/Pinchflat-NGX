@@ -16,8 +16,9 @@ defmodule Pinchflat.Downloading.MediaQualityUpgradeWorker do
   of upgrading the quality of the media or improving things like sponsorblock
   segments.
 
-  This worker is scheduled to run daily via the Oban Cron plugin
-  and it should run _after_ the retention worker.
+  This worker is scheduled to run daily at 02:00 UTC via the Oban Cron plugin.
+  With the default UTC retention schedule it runs after retention; a custom
+  retention schedule or TZ may change that order.
 
   Returns :ok
   """

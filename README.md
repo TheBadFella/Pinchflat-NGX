@@ -192,6 +192,28 @@ Save this as `compose.yaml`, replace the timezone if needed, and run `docker com
 > Migrating an existing library from upstream Pinchflat? See [Migrating from Pinchflat](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Migrating-from-Pinchflat) on the wiki.
 > for pre-migration backups, drop-in Compose configuration, and the migration review walkthrough.
 
+### Retention schedule
+
+Set the retention period per source with **Retention Period (days)**. Files become eligible for deletion
+that many days after download and are removed on the next retention run. Leave the period blank or set
+it to `0` to keep media indefinitely.
+
+`RETENTION_CRON` controls how often the retention worker runs. It defaults to `0 1 * * *` (daily at 01:00).
+The worker uses `TZ`, or `Etc/UTC` when `TZ` is unset. For example, to check every four hours:
+
+```yaml
+environment:
+  TZ: Europe/Berlin
+  RETENTION_CRON: '0 */4 * * *'
+```
+
+Recreate the container after changing these variables. No custom startup command or `sed` patch is needed.
+Invalid or empty cron expressions and timezones cause startup to fail.
+
+Retention now follows `TZ`, including daylight saving time, instead of always running in UTC.
+Other scheduled jobs retain their existing UTC schedules, so retention may run after quality upgrades
+or database maintenance when you change its schedule or timezone.
+
 ### PostgreSQL image
 
 The `latest` image continues to use SQLite. To start a new installation with PostgreSQL, use the
