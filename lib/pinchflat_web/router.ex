@@ -112,6 +112,8 @@ defmodule PinchflatWeb.Router do
     post "/diagnostics/vacuum_database", Settings.DiagnosticsController, :vacuum_database
     post "/diagnostics/toggle_scheduled_compaction", Settings.DiagnosticsController, :toggle_scheduled_compaction
 
+    post "/sources/pause_selected", Sources.SourceController, :pause_selected
+
     resources "/sources", Sources.SourceController do
       post "/restore_automatic_downloads", Sources.SourceController, :restore_automatic_downloads
       post "/start_all", Sources.SourceController, :start_all
