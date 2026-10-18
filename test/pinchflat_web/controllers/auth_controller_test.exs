@@ -328,12 +328,12 @@ defmodule PinchflatWeb.AuthControllerTest do
       end
     end
 
-    test "API routes stay reachable without an SSO session", %{conn: conn} do
+    test "management API routes require credentials even when the browser uses SSO", %{conn: conn} do
       Application.put_env(:pinchflat, :oidc, @oidc_config)
 
       conn = get(conn, ~p"/api/media/recent_downloads")
 
-      assert json_response(conn, 200)
+      assert conn.status == 401
     end
 
     test "the healthcheck stays reachable without an SSO session", %{conn: conn} do

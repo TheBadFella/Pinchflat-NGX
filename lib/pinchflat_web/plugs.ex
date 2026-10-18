@@ -46,6 +46,38 @@ defmodule PinchflatWeb.Plugs do
   end
 
   @doc """
+  Requires the existing Basic Auth credentials for management API requests when
+  browser authentication is configured. OIDC sessions do not authorize API writes.
+  Returns the connection, or a halted 401 response.
+  """
+  def management_api_auth(conn, opts) do
+    username = Application.get_env(:pinchflat, :basic_auth_username)
+    password = Application.get_env(:pinchflat, :basic_auth_password)
+
+    cond do
+      credential_set?(username) && credential_set?(password) ->
+        case get_req_header(conn, "authorization") do
+          [_header] -> basic_auth(conn, opts)
+          _ -> api_unauthorized(conn)
+        end
+
+      PinchflatWeb.OIDC.enabled?() || credential_set?(username) || credential_set?(password) ->
+        api_unauthorized(conn)
+
+      true ->
+        conn
+    end
+  end
+
+  defp api_unauthorized(conn) do
+    conn
+    |> put_resp_header("www-authenticate", ~s(Basic realm="Pinchflat"))
+    |> put_resp_content_type("application/json")
+    |> send_resp(401, Jason.encode!(%{error: "API access requires configured Basic Auth credentials."}))
+    |> halt()
+  end
+
+  @doc """
   Requires an SSO session when OIDC is configured; no-op otherwise.
 
   Redirects unauthenticated browser requests to the login page, preserving
@@ -148,10 +180,11 @@ defmodule PinchflatWeb.Plugs do
   end
 
   @doc """
-  Keeps API writes held during migration review while allowing read-only requests.
+  Keeps API writes held during legacy or PostgreSQL migration review while allowing read-only requests.
   """
   def hold_migration_api_writes(conn, _opts) do
-    if conn.method not in ["GET", "HEAD", "OPTIONS"] && Pinchflat.LegacyMigration.legacy_migration_pending?() do
+    if conn.method not in ["GET", "HEAD", "OPTIONS"] &&
+         (Pinchflat.LegacyMigration.legacy_migration_pending?() or Pinchflat.Database.PostgresMigration.pending?()) do
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.send_resp(423, Jason.encode!(%{error: "Complete migration review before changing the library."}))

@@ -24,6 +24,11 @@ defmodule PinchflatWeb.ApiSpec do
       ],
       components: %Components{
         securitySchemes: %{
+          "basicAuth" => %SecurityScheme{
+            type: "http",
+            scheme: "basic",
+            description: "Required for general API access when Basic Auth or OIDC is enabled"
+          },
           "shareToken" => %SecurityScheme{type: "http", scheme: "bearer", description: "Profile-bound share token"}
         }
       },
@@ -44,9 +49,19 @@ defmodule PinchflatWeb.ApiSpec do
       method = verb_to_operation_key(route.verb)
 
       case {method, get_operation(route.plug, route.plug_opts)} do
-        {nil, _operation} -> acc
-        {_method, nil} -> acc
-        {method, operation} -> Map.update(acc, path, %{method => operation}, &Map.put(&1, method, operation))
+        {nil, _operation} ->
+          acc
+
+        {_method, nil} ->
+          acc
+
+        {method, operation} ->
+          operation =
+            if String.starts_with?(path, "/api/") and path not in ["/api/spec", "/api/share/intake"],
+              do: %{operation | security: [%{"basicAuth" => []}]},
+              else: operation
+
+          Map.update(acc, path, %{method => operation}, &Map.put(&1, method, operation))
       end
     end)
     |> Enum.into(%{}, fn {path, operations} ->
@@ -93,6 +108,8 @@ defmodule PinchflatWeb.ApiSpec do
             action in [
               :new,
               :edit,
+              :import_new,
+              :import_create,
               :upload_cookies,
               :save_cookies,
               :restore_automatic_downloads,

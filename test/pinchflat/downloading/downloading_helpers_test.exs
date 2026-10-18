@@ -208,7 +208,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
           error_type: :permanent
         )
 
-      assert DownloadingHelpers.retry_failed_download_tasks() == 1
+      assert [{:ok, _task}] = DownloadingHelpers.retry_failed_download_tasks()
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => transient.id, "reset_last_error" => true})
       refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => permanent.id})
     end

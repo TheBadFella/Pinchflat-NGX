@@ -11,12 +11,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
+  alias PinchflatWeb.Helpers.JobActionHelpers
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
   @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
 
   def render(%{total_record_count: 0} = assigns) do
     ~H"""
+    <.action_feedback feedback={@action_feedback} />
     <div class="mb-4 flex items-center">
       <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
       <p class="ml-2">Nothing Here!</p>
@@ -27,6 +29,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def render(assigns) do
     ~H"""
     <div>
+      <.action_feedback feedback={@action_feedback} />
       <header class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
@@ -366,7 +369,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         }
       )
 
-    {:ok, assign(socket, new_assigns)}
+    {:ok, socket |> assign(new_assigns) |> assign(:action_feedback, nil)}
   end
 
   def handle_event("page_change", %{"direction" => direction}, %{assigns: assigns} = socket) do
@@ -402,25 +405,25 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_event("force_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
-    MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
+    result = MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
     PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(result))}
   end
 
   def handle_event("retry_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
-    MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
+    result = MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
     PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(result))}
   end
 
   def handle_event("retry_all_failed", _params, socket) do
-    DownloadingHelpers.retry_failed_download_tasks(socket.assigns.source)
+    results = DownloadingHelpers.retry_failed_download_tasks(socket.assigns.source)
     PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
   end
 
   def handle_event("stop_download", %{"task-id" => task_id}, socket) do

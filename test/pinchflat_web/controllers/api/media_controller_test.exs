@@ -108,6 +108,16 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
   end
 
   describe "POST /api/media/:id/actions/download" do
+    test "reports an already queued download without claiming another job was created", %{conn: conn} do
+      item = media_item_fixture()
+      post(conn, "/api/media/#{item.id}/actions/download")
+      [job] = all_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker)
+      Repo.update!(Ecto.Changeset.change(job, state: "executing"))
+      response = post(build_conn(), "/api/media/#{item.id}/actions/download")
+      assert json_response(response, 200)["message"] == "Already queued."
+      assert Repo.aggregate(Oban.Job, :count) == 1
+    end
+
     test "triggers download job", %{conn: conn} do
       item = media_item_fixture()
 

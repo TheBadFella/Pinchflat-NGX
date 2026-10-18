@@ -914,6 +914,18 @@ defmodule PinchflatWeb.Schemas do
     })
   end
 
+  defmodule ActionErrorResponse do
+    @moduledoc "An action could not be queued."
+    require OpenApiSpex
+
+    OpenApiSpex.schema(%{
+      title: "ActionErrorResponse",
+      type: :object,
+      properties: %{error: %Schema{type: :string}},
+      required: [:error]
+    })
+  end
+
   defmodule ValidationErrorResponse do
     @moduledoc """
     Schema for 422 validation error responses.

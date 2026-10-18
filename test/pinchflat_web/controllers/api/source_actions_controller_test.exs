@@ -10,7 +10,7 @@ defmodule PinchflatWeb.Api.SourceActionsControllerTest do
       conn = post(conn, "/api/sources/#{source.id}/actions/download_pending")
       response = json_response(conn, 200)
 
-      assert response["message"] == "Download jobs created for pending media items"
+      assert response["message"] == "0 queued, 0 already queued, 0 failed."
     end
 
     test "returns 404 when source does not exist", %{conn: conn} do
@@ -27,7 +27,7 @@ defmodule PinchflatWeb.Api.SourceActionsControllerTest do
       conn = post(conn, "/api/sources/#{source.id}/actions/redownload")
       response = json_response(conn, 200)
 
-      assert response["message"] == "Re-download jobs created for existing media items"
+      assert response["message"] == "0 queued, 0 already queued, 0 failed."
     end
 
     test "returns 404 when source does not exist", %{conn: conn} do

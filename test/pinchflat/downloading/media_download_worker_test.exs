@@ -1,6 +1,17 @@
 defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
   use Pinchflat.DataCase
 
+  test "a rejected replacement preserves the previous queued task" do
+    item = Pinchflat.MediaFixtures.media_item_fixture()
+    assert {:ok, task} = Pinchflat.Downloading.MediaDownloadWorker.kickoff_with_task(item)
+
+    assert {:error, _} =
+             Pinchflat.Downloading.MediaDownloadWorker.kickoff_with_task(item, %{reset_last_error: true}, priority: -1)
+
+    assert Repo.get!(Pinchflat.Tasks.Task, task.id).job_id == task.job_id
+    assert Repo.get!(Oban.Job, task.job_id).state == "available"
+  end
+
   import ExUnit.CaptureLog
   import Pinchflat.MediaFixtures
   import Pinchflat.ProfilesFixtures

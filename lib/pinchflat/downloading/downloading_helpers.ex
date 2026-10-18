@@ -76,22 +76,22 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   Starts retry-style download tasks for any pending media items in a source.
   Existing `last_error` values are cleared when the new attempt begins.
 
-  Returns :ok
+  Returns [{:ok, %Task{}} | {:error, any()}]
   """
   def retry_pending_download_tasks(%Source{download_media: true} = source) do
     source
     |> Media.list_pending_media_items_for()
-    |> Enum.each(&MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
+    |> Enum.map(&MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
   end
 
-  def retry_pending_download_tasks(%Source{download_media: false}), do: :ok
+  def retry_pending_download_tasks(%Source{download_media: false}), do: []
 
   @doc """
   Re-enqueues download jobs for retryable media items that have a recorded error.
   Permanent failures are left for an explicit force retry. Pass a source to limit
   the retry to that source; omit it to retry every failed item.
 
-  Returns integer()
+  Returns [{:ok, %Task{}} | {:error, any()}]
   """
   def retry_failed_download_tasks(%Source{} = source) do
     source
@@ -107,9 +107,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   defp do_retry_failed_download_tasks(media_items) do
     retryable_media_items = Enum.reject(media_items, &(&1.error_type == :permanent))
 
-    Enum.each(retryable_media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
-
-    length(retryable_media_items)
+    Enum.map(retryable_media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
   end
 
   @doc """

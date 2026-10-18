@@ -36,6 +36,10 @@ defmodule PinchflatWeb.Router do
     plug OpenApiSpex.Plug.PutApiSpec, module: PinchflatWeb.ApiSpec
   end
 
+  pipeline :management_api do
+    plug :management_api_auth
+  end
+
   scope "/", PinchflatWeb do
     pipe_through [:maybe_basic_auth, :token_protected_route]
 
@@ -136,11 +140,16 @@ defmodule PinchflatWeb.Router do
     get "/healthcheck", HealthController, :check, log: false
   end
 
-  # No auth or CSRF protection for internal API endpoints
+  # Sharing has its own scoped token authorization; the specification is public.
   scope "/api", PinchflatWeb do
     pipe_through :api
 
     post "/share/intake", Api.ShareController, :intake
+    get "/spec", ApiSpecController, :spec
+  end
+
+  scope "/api", PinchflatWeb do
+    pipe_through [:management_api, :api]
 
     # Media endpoints
     get "/media/recent_downloads", Api.MediaController, :recent_downloads
@@ -173,9 +182,6 @@ defmodule PinchflatWeb.Router do
 
     # Statistics endpoint
     get "/stats", Api.StatsController, :index
-
-    # OpenAPI spec
-    get "/spec", ApiSpecController, :spec
   end
 
   # Scalar API documentation UI
