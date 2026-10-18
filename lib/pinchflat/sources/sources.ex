@@ -32,6 +32,50 @@ defmodule Pinchflat.Sources do
   }
 
   @doc """
+  Pauses downloads for up to 100 available sources without disabling monitoring
+  or deleting files. Rejects the entire selection if any source is unavailable.
+
+  Returns {:ok, [%Source{}]} | {:error, term()}
+  """
+  def pause_selected_sources(ids) when is_list(ids) and length(ids) in 1..100 do
+    if Enum.all?(ids, &(is_binary(&1) and Regex.match?(~r/^[1-9][0-9]{0,17}$/, &1))) do
+      ids = ids |> Enum.map(&String.to_integer/1) |> Enum.uniq()
+
+      result =
+        Repo.transaction(fn ->
+          sources =
+            Repo.all(
+              from s in Source,
+                join: profile in assoc(s, :media_profile),
+                where: s.id in ^ids and is_nil(s.marked_for_deletion_at) and is_nil(profile.marked_for_deletion_at)
+            )
+
+          if length(sources) != length(ids), do: Repo.rollback(:unavailable_source)
+
+          Enum.map(sources, fn source ->
+            case update_source(source, %{download_media: false}, run_post_commit_tasks: false) do
+              {:ok, updated} -> updated
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end)
+        end)
+
+      case result do
+        {:ok, sources} ->
+          Enum.each(sources, &DownloadingHelpers.dequeue_pending_download_tasks(&1, include_executing: true))
+          {:ok, sources}
+
+        error ->
+          error
+      end
+    else
+      {:error, :invalid_selection}
+    end
+  end
+
+  def pause_selected_sources(_ids), do: {:error, :invalid_selection}
+
+  @doc """
   Returns the configured path to the shared cookie file.
 
   Returns binary()
