@@ -140,6 +140,8 @@ defmodule PinchflatWeb.Router do
   scope "/api", PinchflatWeb do
     pipe_through :api
 
+    post "/share/intake", Api.ShareController, :intake
+
     # Media endpoints
     get "/media/recent_downloads", Api.MediaController, :recent_downloads
     get "/media", Api.MediaController, :index

@@ -32,6 +32,7 @@ defmodule Pinchflat.Application do
       {Finch, name: Pinchflat.Finch},
       # YouTube browser provider concurrency and cancellation coordinator
       Pinchflat.YoutubeBrowser.ProviderCoordinator,
+      Pinchflat.ShareTokens.RateLimiter,
       # Start a worker by calling: Pinchflat.Worker.start_link(arg)
       # {Pinchflat.Worker, arg},
       # Start to serve requests, typically the last entry (except for the post-boot tasks)

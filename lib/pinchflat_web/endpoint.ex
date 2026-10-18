@@ -68,10 +68,32 @@ defmodule PinchflatWeb.Endpoint do
     event_prefix: [:phoenix, :endpoint],
     log: {__MODULE__, :log_level, []}
 
-  plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
-    pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
+  @parsers_opts Plug.Parsers.init(
+                  parsers: [:urlencoded, :multipart, :json],
+                  pass: ["*/*"],
+                  body_reader: {PinchflatWeb.Plugs.RequestBodyReader, :read_body, []},
+                  json_decoder: Phoenix.json_library()
+                )
+
+  plug :parse_request_body
+
+  defp parse_request_body(conn, _opts) do
+    if conn.method == "POST" and PinchflatWeb.Plugs.RequestBodyReader.share_intake_request?(conn) and
+         not Enum.any?(get_req_header(conn, "content-type"), &Regex.match?(~r/^application\/json(?:\s*;|$)/i, &1)) do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(415, Jason.encode!(%{error: "unsupported_media_type", message: "Use application/json"}))
+      |> halt()
+    else
+      Plug.Parsers.call(conn, @parsers_opts)
+    end
+  rescue
+    Plug.Parsers.RequestTooLargeError ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(413, Jason.encode!(%{error: "payload_too_large", message: "Request body too large"}))
+      |> Plug.Conn.halt()
+  end
 
   plug Plug.MethodOverride
   plug :ignore_head_range
