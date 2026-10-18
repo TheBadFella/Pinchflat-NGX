@@ -899,6 +899,28 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert Repo.get!(Oban.Job, task.job_id).state == "cancelled"
     end
 
+    for action <- [:pause_all, :stop_all] do
+      test "#{action} cancels replacement work without touching other jobs or media", %{conn: conn} do
+        source = source_fixture(%{enabled: true, download_media: true})
+        item = media_item_with_attachments(%{source_id: source.id})
+        original = File.read!(item.media_filepath)
+        {:ok, replacement} = MediaDownloadWorker.kickoff_with_task(item, %{force: true})
+        Repo.update_all(from(j in Oban.Job, where: j.id == ^replacement.job_id), set: [state: "executing"])
+
+        other_item = media_item_fixture(%{media_filepath: nil})
+        {:ok, other_task} = MediaDownloadWorker.kickoff_with_task(other_item)
+
+        conn = post(conn, "/sources/#{source.id}/#{unquote(action)}", %{"return_to" => "/sources"})
+
+        assert redirected_to(conn) == "/sources"
+        refute Repo.reload!(source).download_media
+        assert Repo.get!(Oban.Job, replacement.job_id).state == "cancelled"
+        assert Repo.get!(Oban.Job, other_task.job_id).state == "available"
+        assert File.read!(item.media_filepath) == original
+        assert Repo.reload!(item).media_filepath == item.media_filepath
+      end
+    end
+
     test "stop_all reports when there is nothing to stop", %{conn: conn} do
       source = source_fixture(%{enabled: true, download_media: true})
 
