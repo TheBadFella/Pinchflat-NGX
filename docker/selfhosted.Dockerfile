@@ -96,6 +96,8 @@ ARG PORT=8945
 ARG BGUTIL_PLUGIN_VERSION=2.0.0
 ARG YT_DLP_CACHE_BUST=""
 ARG DATABASE_ADAPTER=sqlite
+ARG BUILD_TRACK=stable
+ARG BUILD_SHA=""
 
 COPY --from=builder ./usr/local/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder ./usr/local/bin/ffprobe /usr/bin/ffprobe
@@ -196,6 +198,8 @@ ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
 ENV PORT=${PORT}
 ENV RUN_CONTEXT="selfhosted"
 ENV UMASK=022
+ENV BUILD_TRACK=${BUILD_TRACK}
+ENV BUILD_SHA=${BUILD_SHA}
 EXPOSE ${PORT}
 
 # Only copy the final release from the build stage

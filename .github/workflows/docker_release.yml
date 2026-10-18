@@ -124,6 +124,8 @@ jobs:
           build-args: |
             DATABASE_ADAPTER=${{ matrix.database }}
             YT_DLP_CACHE_BUST=${{ env.YT_DLP_CACHE_BUST }}
+            BUILD_TRACK=stable
+            BUILD_SHA=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=build-${{ matrix.database }}-${{ env.PLATFORM_PAIR }}

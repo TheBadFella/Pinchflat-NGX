@@ -46,6 +46,11 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
       assert html =~ "Healthy"
       refute html =~ "must-not-render"
     end
+
+    test "diagnostic_info_string includes the display version" do
+      info = PinchflatWeb.Settings.DiagnosticsHTML.diagnostic_info_string()
+      assert info =~ "App Version: #{Pinchflat.AppReleaseCheck.display_version()}"
+    end
   end
 
   describe "test_po_token_provider" do

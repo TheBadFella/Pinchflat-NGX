@@ -21,27 +21,82 @@ defmodule Pinchflat.AppReleaseCheck do
   end
 
   @doc """
+  Returns the configured build track (`"stable"` or `"dev"`).
+  """
+  def build_track do
+    Application.get_env(:pinchflat, :build_track, "stable")
+  end
+
+  @doc """
+  Returns whether this instance is running a development build.
+  """
+  def dev? do
+    build_track() == "dev"
+  end
+
+  @doc """
+  Returns the commit SHA embedded in this build, or nil if not set.
+  """
+  def build_sha do
+    case Application.get_env(:pinchflat, :build_sha) do
+      sha when is_binary(sha) ->
+        case String.trim(sha) do
+          "" -> nil
+          trimmed -> trimmed
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Returns a human-readable display version.
+  For dev builds, appends the dev tag and short commit SHA if available.
+  """
+  def display_version do
+    base = current_version()
+
+    if dev?() do
+      case build_sha() do
+        sha when is_binary(sha) and sha != "" ->
+          "#{base} (dev-#{String.slice(sha, 0, 7)})"
+
+        _ ->
+          "#{base} (dev)"
+      end
+    else
+      base
+    end
+  end
+
+  @doc """
+  Returns `{:dev, sha}` when running a development build.
   Returns `{:latest, current}` when this install matches or is ahead of GitHub,
   or `{:update_available, current, latest}` when GitHub has a newer tag.
 
   Network failures fail closed to `{:latest, current}` so the UI does not
   warn when it cannot tell.
 
-  Returns `{:latest, binary()} | {:update_available, binary(), binary()}`
+  Returns `{:dev, binary() | nil} | {:latest, binary()} | {:update_available, binary(), binary()}`
   """
   def status do
-    current = current_version()
+    if dev?() do
+      {:dev, build_sha()}
+    else
+      current = current_version()
 
-    case latest_version() do
-      {:ok, latest} ->
-        if VersionUtils.compare(current, latest) == :lt do
-          {:update_available, current, latest}
-        else
+      case latest_version() do
+        {:ok, latest} ->
+          if VersionUtils.compare(current, latest) == :lt do
+            {:update_available, current, latest}
+          else
+            {:latest, current}
+          end
+
+        {:error, _reason} ->
           {:latest, current}
-        end
-
-      {:error, _reason} ->
-        {:latest, current}
+      end
     end
   end
 
