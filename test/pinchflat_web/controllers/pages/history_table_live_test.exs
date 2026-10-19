@@ -13,6 +13,28 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
 
   @all_time_range %{"range" => "custom", "from" => "2000-01-01", "to" => "2099-12-31"}
 
+  test "failed download confirmations respect persisted protection", %{conn: conn} do
+    source = source_fixture(download_cutoff_date: ~D[2026-10-17])
+
+    item =
+      media_item_fixture(
+        source_id: source.id,
+        uploaded_at: ~U[2026-10-15 12:00:00Z],
+        media_filepath: nil,
+        last_error: "download failed",
+        error_type: :permanent
+      )
+
+    {:ok, view, _} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "failed"})
+    assert has_element?(view, "[phx-click=force_download][data-confirm*='published on 2026-10-15']")
+    GenServer.stop(view.pid)
+
+    {:ok, _} = Pinchflat.Media.update_media_item(item, %{prevent_culling: true})
+    {:ok, protected_view, _} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "failed"})
+    assert has_element?(protected_view, "[phx-click=force_download]")
+    refute has_element?(protected_view, "[phx-click=force_download][data-confirm*='published on 2026-10-15']")
+  end
+
   describe "latest time range" do
     test "custom dates use the configured timezone across clock changes", %{conn: conn} do
       original_timezone = Application.fetch_env!(:pinchflat, :timezone)

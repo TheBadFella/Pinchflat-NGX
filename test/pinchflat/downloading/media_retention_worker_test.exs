@@ -14,6 +14,36 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
   end
 
   describe "perform/1" do
+    test "cutoff and age cleanup are independent and protection overrides both" do
+      for {days, upload_days, download_days, protected?, deleted?} <- [
+            {10, 4, 1, false, true},
+            {nil, 4, 1, false, true},
+            {0, 4, 1, false, true},
+            {10, 4, 1, true, false},
+            {10, 4, 11, true, false},
+            {10, 2, 1, false, false},
+            {10, 1, 11, false, true},
+            {0, 1, 11, false, false}
+          ] do
+        source = source_fixture(download_cutoff_date: Date.add(Date.utc_today(), -2), retention_period_days: days)
+
+        item =
+          media_item_with_attachments(%{
+            source_id: source.id,
+            uploaded_at: now_minus(upload_days, :days),
+            media_downloaded_at: now_minus(download_days, :days),
+            prevent_culling: protected?
+          })
+
+        assert :ok = perform_job(MediaRetentionWorker, %{})
+
+        assert File.exists?(item.media_filepath) == not deleted?,
+               "unexpected file survival for #{inspect({days, upload_days, download_days, protected?})}"
+
+        assert is_nil(Repo.reload!(item).media_filepath) == deleted?
+      end
+    end
+
     test "sets deleted media to not re-download" do
       {_source, old_media_item, new_media_item} = prepare_records_for_retention_date()
 

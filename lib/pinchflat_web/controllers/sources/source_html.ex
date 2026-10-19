@@ -784,7 +784,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       field(
         "Download cutoff date",
         format_date(source.download_cutoff_date),
-        "Media published before this date is never downloaded"
+        "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
       )
     ]
   end
@@ -803,7 +803,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       field(
         "Retention period",
         retention_label(source.retention_period_days),
-        "Downloaded media older than this is deleted automatically"
+        "Age is counted from download time. Cutoff cleanup can delete files sooner; protected media is excluded from both"
       )
     ]
   end
@@ -899,7 +899,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   defp retention_label(nil), do: nil
-  defp retention_label(0), do: "Keep forever"
+  defp retention_label(0), do: "No age-based deletion"
   defp retention_label(1), do: "1 day"
   defp retention_label(days), do: "#{days} days"
 

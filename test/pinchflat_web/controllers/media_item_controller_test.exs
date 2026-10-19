@@ -6,6 +6,42 @@ defmodule PinchflatWeb.MediaItemControllerTest do
   alias Pinchflat.Repo
   alias Pinchflat.Downloading.MediaDownloadWorker
 
+  describe "automatic deletion guidance" do
+    test "warns before downloading an unprotected video before cutoff", %{conn: conn} do
+      source = Pinchflat.SourcesFixtures.source_fixture(download_cutoff_date: ~D[2026-10-17], retention_period_days: 10)
+      item = media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-10-15 12:00:00Z], media_filepath: nil)
+
+      html = conn |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
+
+      assert html =~ "This video was published on 2026-10-15"
+      assert html =~ "download cutoff date of 2026-10-17"
+      assert html =~ "next scheduled cleanup"
+      assert html =~ "Protect this video"
+      assert html =~ ~p"/sources/#{source.id}/media/#{item}/edit#media_item_prevent_culling"
+    end
+
+    test "shows protection instead of a cutoff warning after saving it", %{conn: conn} do
+      source = Pinchflat.SourcesFixtures.source_fixture(download_cutoff_date: ~D[2026-10-17])
+      item = media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-10-15 12:00:00Z])
+
+      response = put(conn, ~p"/sources/#{source.id}/media/#{item}", media_item: %{prevent_culling: true})
+      assert redirected_to(response) == ~p"/sources/#{source.id}/media/#{item}"
+      assert Repo.reload!(item).prevent_culling
+
+      html = conn |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
+      assert html =~ "Protected from automatic deletion"
+      refute html =~ "This video was published on"
+    end
+
+    test "the cutoff day is included and does not show the warning", %{conn: conn} do
+      source = Pinchflat.SourcesFixtures.source_fixture(download_cutoff_date: ~D[2026-10-17])
+      item = media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-10-17 00:00:00Z])
+
+      html = conn |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
+      refute html =~ "This video was published on"
+    end
+  end
+
   describe "show media" do
     setup [:create_media_item]
 
