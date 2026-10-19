@@ -99,7 +99,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
         DownloadOptionBuilder.build_quality_options_for(source) ++
         DownloadOptionBuilder.build_youtube_options_for(source)
 
-    case YtDlpMedia.get_media_attributes(url, command_opts, use_cookies: should_use_cookies) do
+    case YtDlpMedia.get_media_attributes(url, command_opts, use_cookies: should_use_cookies, source: source) do
       {:ok, media_attrs} ->
         Media.create_media_item_from_backend_attrs(source, media_attrs)
 
