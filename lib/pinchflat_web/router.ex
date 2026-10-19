@@ -113,6 +113,8 @@ defmodule PinchflatWeb.Router do
     post "/diagnostics/toggle_scheduled_compaction", Settings.DiagnosticsController, :toggle_scheduled_compaction
 
     post "/sources/pause_selected", Sources.SourceController, :pause_selected
+    post "/sources/resume_selected", Sources.SourceController, :resume_selected
+    post "/sources/assign_profile_selected", Sources.SourceController, :assign_profile_selected
     post "/sources/cutoff/preview", Sources.BulkCutoffController, :preview
     post "/sources/cutoff/apply", Sources.BulkCutoffController, :apply
 
