@@ -1,14 +1,35 @@
 defmodule PinchflatWeb.Sources.ImportLive do
-  @moduledoc "Reviews a bounded text import and processes one source at a time with visible progress."
+  @moduledoc "Reviews bounded text or Takeout CSV imports and processes one source at a time with visible progress."
   use PinchflatWeb, :live_view
+
+  import Ecto.Query, warn: false
 
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Repo
   alias Pinchflat.Sources
+  alias Pinchflat.Sources.Source
 
   @impl true
   def mount(_params, session, socket) do
-    profile = Repo.get(MediaProfile, session["profile_id"])
+    profile =
+      case Repo.get(MediaProfile, session["profile_id"]) do
+        %MediaProfile{marked_for_deletion_at: nil} = profile -> profile
+        _ -> nil
+      end
+
+    channel_ids = session["channel_ids"] || %{}
+    ids = Map.values(channel_ids)
+
+    existing_ids =
+      Repo.all(
+        from s in Source, where: s.collection_type == :channel and s.collection_id in ^ids, select: s.collection_id
+      )
+
+    existing_urls =
+      channel_ids
+      |> Enum.filter(fn {_url, id} -> id in existing_ids end)
+      |> Enum.map(&elem(&1, 0))
+      |> MapSet.new()
 
     {:ok,
      assign(socket,
@@ -16,6 +37,12 @@ defmodule PinchflatWeb.Sources.ImportLive do
        remaining: session["urls"],
        profile: profile,
        duplicates: session["duplicates"],
+       titles: session["titles"] || %{},
+       channel_ids: channel_ids,
+       row_errors: session["row_errors"] || [],
+       download_media: Map.get(session, "download_media", true),
+       existing_urls: existing_urls,
+       new_count: length(session["urls"]) - MapSet.size(existing_urls),
        results: [],
        current: nil,
        started: false,
@@ -41,13 +68,31 @@ defmodule PinchflatWeb.Sources.ImportLive do
                                                                                                              do: "URL",
                                                                                                              else: "URLs"} to check.
       </p>
-      <p class="text-sm text-theme-on-surface-muted">
+      <p :if={@download_media} class="text-sm text-theme-on-surface-muted">
         URLs are checked during import. New sources use the selected profile and can start indexing and downloading.
-        Keep this page open. Cancel stops after the current source; sources already added are kept.
       </p>
+      <p :if={!@download_media} class="text-sm text-theme-on-surface-muted">
+        CSV imports create monitored sources with downloads paused. Use Resume selected on Sources when ready.
+        Existing channels keep their current profile, monitoring and download settings.
+      </p>
+      <p class="text-sm text-theme-on-surface-muted">
+        Keep this page open. Closing it or restarting the app can interrupt the import; progress is not saved.
+        Cancel stops after the current source; sources already added are kept.
+      </p>
+      <div :if={@row_errors != []} class="rounded-m3-sm bg-theme-surface-3 p-3" role="alert">
+        <h4 class="font-medium text-theme-on-surface">Rejected CSV rows: {length(@row_errors)}</h4>
+        <p class="text-sm text-theme-on-surface-muted">
+          These rows will not be imported. Correct them in the file and upload again.
+        </p>
+        <ul class="mt-2 space-y-1 text-sm">
+          <li :for={error <- @row_errors}>Row {error.row}: {error.message}</li>
+        </ul>
+      </div>
+      <p :if={@urls == []} class="text-sm text-theme-on-surface-muted">No valid sources to import.</p>
+      <p :if={@urls != [] && @new_count == 0} class="text-sm text-theme-on-surface-muted">No new sources to import.</p>
       <p :if={@error} role="alert" class="theme-status-error">{@error}</p>
       <div class="flex flex-wrap gap-3">
-        <.button :if={!@started && @profile} id="confirm-import" phx-click="start">Import Sources</.button>
+        <.button :if={!@started && @profile && @new_count > 0} id="confirm-import" phx-click="start">Import Sources</.button>
         <.button :if={@running} id="cancel-import" phx-click="cancel" disabled={@cancel_requested}>
           {if @cancel_requested, do: "Stopping after current source", else: "Cancel import"}
         </.button>
@@ -65,7 +110,13 @@ defmodule PinchflatWeb.Sources.ImportLive do
       </div>
       <p :if={@current} role="status" class="break-all">Checking: {@current}</p>
       <ul :if={!@started} class="space-y-2">
-        <li :for={url <- @urls} class="break-all">{url}</li>
+        <li :for={url <- @urls} class="space-y-1 break-words [overflow-wrap:anywhere]">
+          <p :if={Map.get(@titles, url, "") != ""} class="font-medium">{@titles[url]}</p>
+          <p class="text-sm text-theme-on-surface-muted">{url}</p>
+          <span :if={MapSet.member?(@existing_urls, url)} class="text-xs font-medium text-theme-on-surface-muted">
+            Already exists — left unchanged
+          </span>
+        </li>
       </ul>
       <ul class="space-y-2">
         <li :for={result <- Enum.reverse(@results)} class="break-all">
@@ -91,6 +142,9 @@ defmodule PinchflatWeb.Sources.ImportLive do
   def handle_async(:import_row, result, socket) do
     row =
       case result do
+        {:ok, :existing} ->
+          %{status: :existing, message: "Already exists"}
+
         {:ok, {:ok, _source}} ->
           %{status: :added, message: "Added"}
 
@@ -119,17 +173,41 @@ defmodule PinchflatWeb.Sources.ImportLive do
   defp import_next(%{assigns: %{remaining: []}} = socket), do: assign(socket, running: false)
 
   defp import_next(socket) do
-    if Pinchflat.YoutubeBrowser.Intake.migration_hold_active?() do
-      assign(socket, running: false, error: "Import stopped for migration review. Sources already added are kept.")
-    else
-      [url | remaining] = socket.assigns.remaining
-      profile_id = socket.assigns.profile.id
+    profile_id = socket.assigns.profile.id
 
-      socket
-      |> assign(current: url, remaining: remaining)
-      |> start_async(:import_row, fn ->
-        Sources.create_source(%{"original_url" => url, "media_profile_id" => profile_id})
-      end)
+    cond do
+      Pinchflat.YoutubeBrowser.Intake.migration_hold_active?() ->
+        assign(socket, running: false, error: "Import stopped for migration review. Sources already added are kept.")
+
+      !Repo.exists?(from p in MediaProfile, where: p.id == ^profile_id and is_nil(p.marked_for_deletion_at)) ->
+        assign(socket,
+          running: false,
+          error: "The selected media profile is no longer available. Sources already added are kept."
+        )
+
+      true ->
+        [url | remaining] = socket.assigns.remaining
+        channel_id = socket.assigns.channel_ids[url]
+
+        attrs = %{
+          "original_url" => url,
+          "media_profile_id" => profile_id,
+          "download_media" => socket.assigns.download_media
+        }
+
+        socket
+        |> assign(current: url, remaining: remaining)
+        |> start_async(:import_row, fn -> import_source(attrs, channel_id) end)
+    end
+  end
+
+  defp import_source(attrs, nil), do: Sources.create_source(attrs)
+
+  defp import_source(attrs, channel_id) do
+    if Repo.exists?(from s in Source, where: s.collection_type == :channel and s.collection_id == ^channel_id) do
+      :existing
+    else
+      Sources.create_source(attrs)
     end
   end
 end

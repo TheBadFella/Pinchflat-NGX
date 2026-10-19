@@ -74,6 +74,7 @@ defmodule Pinchflat.MixProject do
       {:bandit, "~> 1.13.1"},
       {:oban, "~> 2.17"},
       {:nimble_parsec, "~> 1.4"},
+      {:nimble_csv, "~> 1.3"},
       {:tzdata, "~> 1.1"},
       {:prom_ex, "~> 1.12"},
       {:mox, "~> 1.0", only: :test},

@@ -12,6 +12,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Reconciliation
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.SourceImport
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
@@ -47,38 +48,47 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def import_create(conn, %{"import" => %{"file" => %Plug.Upload{} = upload, "media_profile_id" => profile_id}}) do
-    with {id, ""} <- Integer.parse(profile_id),
-         %MediaProfile{} <- Repo.get(MediaProfile, id),
+    with {:ok, profile} <- available_import_profile(profile_id),
          {:ok, %{size: size}} when size <= 100_000 <- File.stat(upload.path),
          {:ok, contents} <- File.read(upload.path),
-         true <- String.valid?(contents),
-         urls = contents |> String.split(~r/\R/) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")),
-         true <- length(urls) in 1..100 do
-      unique_urls = Enum.uniq(urls)
-      duplicates = length(urls) - length(unique_urls)
+         {:ok, preview} <- SourceImport.parse(contents, upload.filename) do
+      session = %{
+        "urls" => preview.urls,
+        "profile_id" => profile.id,
+        "duplicates" => preview.duplicates,
+        "titles" => preview.titles,
+        "channel_ids" => preview.channel_ids,
+        "row_errors" => preview.row_errors,
+        "download_media" => preview.download_media
+      }
 
-      render(conn, :import_new,
-        media_profiles: media_profiles(),
-        preview: %{"urls" => unique_urls, "profile_id" => id, "duplicates" => duplicates},
-        error: nil
-      )
+      render(conn, :import_new, media_profiles: media_profiles(), preview: session, error: nil)
     else
-      _ ->
-        render(conn, :import_new,
-          media_profiles: media_profiles(),
-          preview: nil,
-          error: "Choose a profile and a text file with 1 to 100 URLs (100 KB maximum)."
-        )
+      {:error, message} when is_binary(message) -> import_error(conn, message)
+      _ -> import_error(conn, "Choose an available profile and a source file (100 KB maximum).")
     end
   end
 
-  def import_create(conn, _params) do
-    render(conn, :import_new,
-      media_profiles: media_profiles(),
-      preview: nil,
-      error: "Choose a profile and a text file with 1 to 100 URLs (100 KB maximum)."
-    )
+  def import_create(conn, _params), do: import_error(conn, "Choose a media profile and a .txt or .csv source file.")
+
+  defp import_error(conn, message) do
+    render(conn, :import_new, media_profiles: media_profiles(), preview: nil, error: message)
   end
+
+  defp available_import_profile(id) when is_binary(id) do
+    if Regex.match?(~r/\A[1-9][0-9]{0,17}\z/, id) do
+      query = from p in MediaProfile, where: p.id == ^String.to_integer(id) and is_nil(p.marked_for_deletion_at)
+
+      case Repo.one(query) do
+        nil -> {:error, "The selected media profile is no longer available."}
+        profile -> {:ok, profile}
+      end
+    else
+      {:error, "Choose an available media profile."}
+    end
+  end
+
+  defp available_import_profile(_id), do: {:error, "Choose an available media profile."}
 
   def new(conn, params) do
     profiles = media_profiles()

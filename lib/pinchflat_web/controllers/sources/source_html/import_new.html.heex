@@ -11,7 +11,14 @@
 
 <div class="theme-surface-raised px-5 py-6 sm:px-7.5">
   <p :if={is_nil(@preview)} class="mb-6 text-theme-on-surface-muted">
-    Upload a text file with one YouTube channel, playlist, or video URL per line. Blank and repeated lines are skipped. Each source uses the media profile selected below.
+    Upload a text file with one YouTube channel, playlist, or video URL per line, or a Google Takeout subscriptions.csv file. Blank and repeated entries are skipped.
+  </p>
+
+  <p :if={is_nil(@preview)} class="mb-6 text-sm text-theme-on-surface-muted">
+    Maximum 100 entries and 100 KB per file. CSV sources start with downloads paused; monitoring stays enabled.
+    Text lists follow normal source settings and can start downloading. Previewing does not contact YouTube.
+    Export subscriptions with <.link href="https://takeout.google.com/" target="_blank" rel="noopener noreferrer">Google Takeout</.link>.
+    CSV columns: Channel Id, Channel Url, Channel Title.
   </p>
 
   <.form
@@ -23,7 +30,14 @@
     multipart
     class="max-w-xl space-y-5"
   >
-    <.input name="import[file]" type="file" value={nil} accept=".txt,text/plain" label="Text file" required />
+    <.input
+      name="import[file]"
+      type="file"
+      value={nil}
+      accept=".txt,.csv,text/plain,text/csv"
+      label="Source file"
+      required
+    />
     <div>
       <label for="import_media_profile_id" class="block text-sm font-medium text-theme-on-surface">Media Profile</label>
       <select
