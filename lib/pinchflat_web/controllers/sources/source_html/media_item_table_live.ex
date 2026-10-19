@@ -12,6 +12,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
   alias PinchflatWeb.Helpers.JobActionHelpers
+  alias PinchflatWeb.Helpers.MediaCleanupHelpers
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
   @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
@@ -151,7 +152,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                       class="h-10 w-10"
                       phx-click="force_download"
                       phx-value-media-id={media_item.id}
-                      data-confirm="Are you sure you want to force a download of this media?"
+                      data-confirm={MediaCleanupHelpers.download_confirmation(media_item, @source)}
                       tooltip="Force Download"
                       tooltip_position="bottom-left"
                     />
@@ -161,7 +162,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                       class="h-10 w-10"
                       phx-click="retry_download"
                       phx-value-media-id={media_item.id}
-                      data-confirm="Retry this download now?"
+                      data-confirm={
+                        MediaCleanupHelpers.download_confirmation(media_item, @source, "Retry this download now?")
+                      }
                       tooltip="Retry Now"
                       tooltip_position="bottom-left"
                     />
@@ -171,7 +174,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                       class="h-10 w-10"
                       phx-click="force_download"
                       phx-value-media-id={media_item.id}
-                      data-confirm="Force a retry of this permanent failure?"
+                      data-confirm={
+                        MediaCleanupHelpers.download_confirmation(
+                          media_item,
+                          @source,
+                          "Force a retry of this permanent failure?"
+                        )
+                      }
                       tooltip="Force Retry"
                       tooltip_position="bottom-left"
                     />
@@ -259,7 +268,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                         class="h-10 w-10"
                         phx-click="force_download"
                         phx-value-media-id={media_item.id}
-                        data-confirm="Are you sure you want to force a download of this media?"
+                        data-confirm={MediaCleanupHelpers.download_confirmation(media_item, @source)}
                         tooltip="Force Download"
                         tooltip_position="bottom-left"
                       />
@@ -269,7 +278,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                         class="h-10 w-10"
                         phx-click="retry_download"
                         phx-value-media-id={media_item.id}
-                        data-confirm="Retry this download now?"
+                        data-confirm={
+                          MediaCleanupHelpers.download_confirmation(media_item, @source, "Retry this download now?")
+                        }
                         tooltip="Retry Now"
                         tooltip_position="bottom-left"
                       />
@@ -279,7 +290,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                         class="h-10 w-10"
                         phx-click="force_download"
                         phx-value-media-id={media_item.id}
-                        data-confirm="Force a retry of this permanent failure?"
+                        data-confirm={
+                          MediaCleanupHelpers.download_confirmation(
+                            media_item,
+                            @source,
+                            "Force a retry of this permanent failure?"
+                          )
+                        }
                         tooltip="Force Retry"
                         tooltip_position="bottom-left"
                       />
@@ -661,6 +678,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :title,
       :uploaded_at,
       :prevent_download,
+      :prevent_culling,
       :last_error,
       :error_type,
       :download_prevented_reason,

@@ -20,7 +20,7 @@
     <.link
       href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/force_download"}
       method="post"
-      data-confirm="Are you sure you force a download of this media?"
+      data-confirm={MediaCleanupHelpers.download_confirmation(@media_item, @media_item.source)}
     >
       Force Download
     </.link>
