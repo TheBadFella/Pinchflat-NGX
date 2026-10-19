@@ -103,6 +103,15 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
   end
 
   describe "info_groups/1" do
+    test "zero retention does not promise that files are kept forever" do
+      source = Repo.preload(source_fixture(retention_period_days: 0), :media_profile)
+      storage = Enum.find(SourceHTML.info_groups(source), &(&1.title == "Storage"))
+      retention = Enum.find(storage.fields, &(&1.label == "Retention period"))
+
+      assert retention.value == "No age-based deletion"
+      assert retention.help =~ "Cutoff cleanup can delete files sooner"
+    end
+
     test "marks filter and storage groups unset when those fields are blank" do
       source = Repo.preload(source_fixture(), :media_profile)
       flags = Map.new(SourceHTML.info_groups(source), &{&1.title, &1.any_set?})
