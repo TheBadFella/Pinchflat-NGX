@@ -66,13 +66,13 @@
     <div x-data="{ showUnset: false }">
       <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
         <:tab_append>
-          <div class="flex flex-wrap items-center gap-4">
-            <.switch :if={@active_tab == "source"} model="showUnset" label="Show unset fields" />
-            <.actions_dropdown source={@source} conn={@conn} />
-          </div>
+          <.actions_dropdown source={@source} conn={@conn} />
         </:tab_append>
 
         <:tab title="Source" id="source">
+          <div class="mb-3 flex justify-end">
+            <.switch model="showUnset" label="Show unset fields" />
+          </div>
           <.source_info_panel source={@source} />
         </:tab>
 

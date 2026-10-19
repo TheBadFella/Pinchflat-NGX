@@ -31,6 +31,8 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       html = conn |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
       assert html =~ "Protected from automatic deletion"
       refute html =~ "This video was published on"
+      refute html =~ ~s(id="automatic-deletion")
+      assert html =~ "Change deletion protection"
     end
 
     test "the cutoff day is included and does not show the warning", %{conn: conn} do
@@ -39,6 +41,18 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
       html = conn |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
       refute html =~ "This video was published on"
+      refute html =~ ~s(id="automatic-deletion")
+      refute html =~ ~s(id="automatic-deletion-status")
+      assert html =~ "Protect from automatic deletion"
+    end
+
+    test "a source without a cutoff offers protection through Actions without a warning panel", %{conn: conn} do
+      item = media_item_fixture()
+      html = conn |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+
+      refute html =~ ~s(id="automatic-deletion")
+      refute html =~ ~s(id="automatic-deletion-status")
+      assert html =~ "Protect from automatic deletion"
     end
   end
 
