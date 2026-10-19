@@ -30,7 +30,7 @@
         id="import_media_profile_id"
         name="import[media_profile_id]"
         required
-        class="mt-2 w-full rounded-m3-sm border border-theme-outline bg-theme-surface px-3 py-2 text-theme-on-surface"
+        class="theme-input theme-select mt-2 w-full rounded-m3-sm px-3 py-2 text-theme-on-surface"
       >
         <option value="">Choose a profile</option>
         <option :for={profile <- @media_profiles} value={profile.id}>{profile.name}</option>

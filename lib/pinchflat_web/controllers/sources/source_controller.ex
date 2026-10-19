@@ -430,6 +430,49 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  def resume_selected(conn, params) do
+    case Sources.resume_selected_sources(params["source_ids"]) do
+      {:ok, sources} ->
+        noun = if length(sources) == 1, do: "source", else: "sources"
+
+        conn
+        |> put_flash(:info, "Downloads resumed for #{length(sources)} #{noun}.")
+        |> redirect(to: ~p"/sources")
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Could not resume the selection. Refresh and select up to 100 available sources.")
+        |> redirect(to: ~p"/sources")
+    end
+  end
+
+  def assign_profile_selected(conn, params) do
+    profile_id = params["media_profile_id"]
+
+    if is_nil(profile_id) or profile_id == "" do
+      conn
+      |> put_flash(:error, "Please select a media profile.")
+      |> redirect(to: ~p"/sources")
+    else
+      case Sources.assign_selected_sources_profile(params["source_ids"], profile_id) do
+        {:ok, sources} ->
+          noun = if length(sources) == 1, do: "source", else: "sources"
+
+          conn
+          |> put_flash(:info, "Media profile updated for #{length(sources)} #{noun}.")
+          |> redirect(to: ~p"/sources")
+
+        {:error, _reason} ->
+          conn
+          |> put_flash(
+            :error,
+            "Could not update media profile for the selection. Select a media profile and up to 100 available sources."
+          )
+          |> redirect(to: ~p"/sources")
+      end
+    end
+  end
+
   def pause_all(conn, %{"source_id" => id} = params) do
     source = Sources.get_source!(id)
 

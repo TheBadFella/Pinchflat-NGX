@@ -221,6 +221,10 @@
     animation: perimeter-spin 3.2s linear infinite;
   }
 
+  .theme-field-action {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-theme-on-surface-muted transition hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-theme-primary;
+  }
+
   .theme-select-menu {
     @apply overflow-hidden rounded-m3-md border-2 border-theme-outline-strong bg-theme-surface-1 text-theme-on-surface shadow-m3-3;
   }

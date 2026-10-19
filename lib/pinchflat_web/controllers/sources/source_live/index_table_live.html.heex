@@ -2,6 +2,7 @@
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/70 pb-3">
     <div>
       <p class="text-sm font-medium text-theme-on-surface">Source view</p>
+
       <p class="text-xs text-theme-on-surface-muted">Choose a table or poster library layout.</p>
     </div>
 
@@ -26,6 +27,7 @@
       >
         <.icon name="hero-list-bullet" class="h-4 w-4" aria-hidden="true" /> Table
       </button>
+
       <button
         type="button"
         class={[
@@ -45,41 +47,131 @@
     </div>
   </div>
 
-  <div class="mb-4 flex flex-wrap items-center gap-3">
-    <.button type="button" variant="outline" phx-click="select_page" disabled={@sources == []}>Select page</.button>
-    <.button type="button" variant="outline" phx-click="clear_selection" disabled={MapSet.size(@selected_ids) == 0}>Clear selection</.button>
-    <p class="text-sm text-theme-on-surface-muted" role="status">{MapSet.size(@selected_ids)} selected on this page</p>
-    <.form for={%{}} id="pause-selected-sources" action={~p"/sources/pause_selected"} method="post">
-      <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-      <.button
-        type="submit"
-        variant="warning"
-        disabled={MapSet.size(@selected_ids) == 0}
-        data-confirm={"Pause downloads for #{MapSet.size(@selected_ids)} selected sources? Active downloads will stop. Monitoring stays enabled and files are kept."}
-      >
-        Pause selected
+  <div
+    :if={MapSet.size(@selected_ids) > 0}
+    class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-m3-sm border border-theme-outline/60 bg-theme-surface p-3"
+  >
+    <div class="flex flex-wrap items-center gap-2">
+      <.button type="button" variant="outline" size="compact" phx-click="select_page" disabled={@sources == []}>
+        Select page
       </.button>
-    </.form>
+
+      <.button
+        type="button"
+        variant="outline"
+        size="compact"
+        phx-click="clear_selection"
+        disabled={MapSet.size(@selected_ids) == 0}
+      >
+        Clear selection
+      </.button>
+
+      <span
+        class={[
+          "text-xs font-medium transition",
+          if(MapSet.size(@selected_ids) > 0,
+            do: "font-semibold text-theme-primary",
+            else: "text-theme-on-surface-muted"
+          )
+        ]}
+        role="status"
+      >
+        {MapSet.size(@selected_ids)} selected on this page
+      </span>
+    </div>
   </div>
 
-  <.form
-    for={%{}}
-    id="selected-source-cutoff"
-    action={~p"/sources/cutoff/preview"}
-    method="post"
-    class="mb-4 grid min-w-0 grid-cols-1 items-end gap-3 sm:flex sm:flex-wrap"
+  <section
+    :if={MapSet.size(@selected_ids) > 0}
+    id="selected-source-actions"
+    aria-label="Actions for selected sources"
+    class="mb-4 space-y-4 rounded-m3-sm border border-theme-outline bg-theme-surface p-3"
   >
-    <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-    <.input
-      type="date"
-      id="selected-source-cutoff-date"
-      name="cutoff_date"
-      value=""
-      label="Download cutoff for selected sources"
-      help="Leave blank to remove the cutoff. Preview before applying."
-    />
-    <.button type="submit" variant="outline" disabled={MapSet.size(@selected_ids) == 0}>Preview cutoff</.button>
-  </.form>
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex items-center gap-2">
+        <.form for={%{}} id="pause-selected-sources" action={~p"/sources/pause_selected"} method="post">
+          <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+          <.icon_button
+            type="submit"
+            icon_name="hero-pause-solid"
+            variant="warning"
+            title="Pause selected downloads"
+            aria-label="Pause selected downloads"
+            data-confirm={"Pause downloads for #{MapSet.size(@selected_ids)} selected sources? Active downloads will stop. Monitoring stays enabled and files are kept."}
+          />
+        </.form>
+
+        <.form for={%{}} id="resume-selected-sources" action={~p"/sources/resume_selected"} method="post">
+          <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+          <.icon_button
+            type="submit"
+            icon_name="hero-play-solid"
+            variant="primary"
+            title="Resume selected downloads"
+            aria-label="Resume selected downloads"
+            data-confirm={"Resume downloads for #{MapSet.size(@selected_ids)} selected sources? Monitoring settings and existing files are kept."}
+          />
+        </.form>
+      </div>
+
+      <.form
+        for={%{}}
+        id="selected-source-profile"
+        action={~p"/sources/assign_profile_selected"}
+        method="post"
+        class="flex min-w-0 flex-wrap items-end gap-2"
+      >
+        <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+        <div class="w-full min-w-0 sm:w-64">
+          <.input
+            type="select"
+            id="selected-source-media-profile"
+            name="media_profile_id"
+            label="Media profile"
+            value=""
+            prompt="Choose a profile"
+            options={Enum.map(@media_profiles, &{&1.name, &1.id})}
+            required
+          />
+        </div>
+
+        <.button
+          type="submit"
+          variant="outline"
+          size="compact"
+          data-confirm={"Change the media profile for #{MapSet.size(@selected_ids)} selected sources? Existing files stay in place. Future downloads use the selected profile."}
+        >
+          Assign profile
+        </.button>
+      </.form>
+    </div>
+
+    <.form
+      for={%{}}
+      id="selected-source-cutoff"
+      action={~p"/sources/cutoff/preview"}
+      method="post"
+      class="space-y-2 border-t border-theme-outline/60 pt-3"
+    >
+      <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="w-full min-w-0 sm:w-80">
+          <.date_picker
+            id="selected-source-cutoff-date"
+            name="cutoff_date"
+            label="Download cutoff"
+            value=""
+            timezone={@timezone}
+            required={false}
+            presets={cutoff_date_presets()}
+          />
+        </div>
+        <.button type="submit" variant="outline" size="compact">Preview cutoff</.button>
+      </div>
+
+      <p class="text-xs text-theme-on-surface-muted">Leave blank to remove the cutoff. Preview before applying.</p>
+    </.form>
+  </section>
 
   <div :if={@view_mode == :table}>
     <div class="space-y-4 md:hidden">
@@ -117,6 +209,7 @@
                 <.subtle_link href={~p"/sources/#{source.id}"}>
                   <span class="block text-pretty break-words font-medium text-theme-on-surface">{source.custom_name}</span>
                 </.subtle_link>
+
                 <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
                   <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
                 </.subtle_link>
@@ -207,28 +300,35 @@
         <dl class="grid grid-cols-1 gap-3 text-sm">
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Pending</dt>
+
             <dd class="text-right text-theme-on-surface">
               <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
                 <.localized_number number={source.pending_count} />
               </.subtle_link>
             </dd>
           </div>
+
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Downloaded</dt>
+
             <dd class="text-right text-theme-on-surface">
               <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
                 <.localized_number number={source.downloaded_count} />
               </.subtle_link>
             </dd>
           </div>
+
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Size</dt>
+
             <dd class="text-right text-theme-on-surface">
               <.readable_filesize byte_size={source.media_size_bytes} />
             </dd>
           </div>
+
           <div class="flex items-start justify-between gap-3">
             <dt class="text-theme-on-surface-muted">Enabled</dt>
+
             <dd class="text-right">
               <.live_component
                 module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
@@ -272,8 +372,7 @@
                       <.icon
                         name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
                         class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
-                      />
-                      <span class="sr-only">{source_download_mode_label(source)}</span>
+                      /> <span class="sr-only">{source_download_mode_label(source)}</span>
                     </span>
 
                     <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
@@ -446,6 +545,7 @@
               phx-value-id={source.id}
             />
           </div>
+
           <div
             x-data="{ image_loaded: false }"
             class="relative aspect-[16/10] overflow-hidden bg-theme-surface-4"
@@ -460,6 +560,7 @@
               </span>
               <span class="text-pretty text-sm font-medium drop-shadow-xs">Artwork unavailable</span>
             </div>
+
             <img
               src={source_poster_url(source)}
               alt={"Artwork for #{source.custom_name}"}
@@ -475,8 +576,10 @@
                 <h3 class="text-pretty break-words text-base font-semibold text-theme-on-surface">
                   {source.custom_name}
                 </h3>
+
                 <p class="mt-1 truncate text-sm text-theme-on-surface-muted">{source.media_profile.name}</p>
               </div>
+
               <div class="pointer-events-auto shrink-0">
                 <.live_component
                   module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
@@ -499,24 +602,27 @@
             <dl class="grid grid-cols-2 gap-3 text-sm">
               <div class="rounded-m3-sm bg-theme-surface-2/70 p-3">
                 <dt class="text-theme-on-surface-muted">Downloaded</dt>
+
                 <dd class="mt-1 font-semibold text-theme-on-surface">
                   <.localized_number number={source.downloaded_count} />
                 </dd>
               </div>
+
               <div class="rounded-m3-sm bg-theme-surface-2/70 p-3">
                 <dt class="text-theme-on-surface-muted">Pending</dt>
+
                 <dd class="mt-1 font-semibold text-theme-on-surface">
                   <.localized_number number={source.pending_count} />
                 </dd>
               </div>
             </dl>
-
             <% progress = source_progress(source) %>
             <div class="mt-auto space-y-2" data-progress-state={progress.state}>
               <div class="flex items-center justify-between gap-3 text-xs">
                 <span class="text-theme-on-surface-muted">Download progress</span>
                 <span class="text-right text-theme-on-surface-muted">{progress.label}</span>
               </div>
+
               <div
                 :if={progress.state == :known}
                 class="h-2 overflow-hidden rounded-full bg-theme-surface-4"
