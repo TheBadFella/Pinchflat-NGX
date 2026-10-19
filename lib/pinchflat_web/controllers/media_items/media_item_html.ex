@@ -1,6 +1,8 @@
 defmodule PinchflatWeb.MediaItems.MediaItemHTML do
   use PinchflatWeb, :html
 
+  alias PinchflatWeb.Helpers.MediaCleanupHelpers
+
   embed_templates "media_item_html/*"
 
   @doc """

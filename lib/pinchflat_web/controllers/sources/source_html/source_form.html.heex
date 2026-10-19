@@ -467,31 +467,34 @@
     </section>
 
     <section>
-      <.input
-        field={f[:download_cutoff_date]}
-        type="text"
-        label="Download Cutoff Date"
-        placeholder="YYYY-MM-DD"
-        maxlength="10"
-        pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
-        title="YYYY-MM-DD"
-        help="Only download media uploaded after this date. Leave blank to download all media. Must be in YYYY-MM-DD format. Old media may be deleted or downloaded if you change this date"
-        x-model="cutoffDate"
-      >
-        <:input_append>
-          <div class="ml-3 md:ml-4 shrink-0">
-            <.input
-              prompt="Select preset"
-              name="download_cutoff_date_preset"
-              value=""
-              options={cutoff_date_presets()}
-              type="select"
-              inputclass="w-30 lg:w-60"
-              x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
-            />
-          </div>
-        </:input_append>
-      </.input>
+      <div class="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+        <.input
+          field={f[:download_cutoff_date]}
+          type="text"
+          label="Download Cutoff Date"
+          placeholder="YYYY-MM-DD"
+          maxlength="10"
+          pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
+          title="YYYY-MM-DD"
+          x-model="cutoffDate"
+        />
+        <.input
+          label="Cutoff preset"
+          prompt="Select preset"
+          name="download_cutoff_date_preset"
+          value=""
+          options={cutoff_date_presets()}
+          type="select"
+          inputclass="w-full"
+          x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
+        />
+      </div>
+      <p class="mt-2 text-sm text-theme-on-surface-muted">
+        Automatically download media published on or after this date. Scheduled cleanup also deletes unprotected
+        downloaded media from before this date, including manual downloads, even within their retention period.
+        Leave blank for no cutoff. Prevent Automatic Deletion on a media item's Edit page overrides both cutoff
+        and retention cleanup.
+      </p>
     </section>
 
     <.input
@@ -499,7 +502,7 @@
       type="number"
       label="Retention Period (days)"
       min="0"
-      help="Days between when media is <em>downloaded</em> and when it's deleted. Leave blank to keep media indefinitely"
+      help="Days from download until media is eligible for scheduled deletion. Leave blank or set 0 to disable age-based deletion. Cutoff cleanup can still delete media sooner. Prevent Automatic Deletion overrides both rules"
       html_help={true}
     />
     <section x-show="advancedMode">

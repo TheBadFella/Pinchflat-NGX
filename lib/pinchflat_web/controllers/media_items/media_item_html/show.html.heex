@@ -1,5 +1,5 @@
-<div class="mb-6 flex gap-3 flex-row items-center justify-between">
-  <div class="flex gap-3 items-center min-w-0">
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="flex min-w-0 items-start gap-3 sm:items-center">
     <.link
       href={~p"/sources/#{@media_item.source_id}"}
       aria-label="Back"
@@ -8,12 +8,12 @@
       <.icon name="hero-arrow-left" class="h-5 w-5" />
     </.link>
 
-    <h2 class="ml-4 min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
+    <h2 class="min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
       {@media_item.title}
     </h2>
   </div>
 
-  <nav class="shrink-0">
+  <nav class="shrink-0 self-end sm:self-auto">
     <.button href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit"} variant="primary">
       <.icon name="hero-pencil-square" class="mr-2" /> Edit
     </.button>
@@ -22,6 +22,32 @@
 
 <div class="theme-surface-raised px-7.5 py-5 pt-6">
   <div class="max-w-full">
+    <section id="automatic-deletion" class="mb-6 space-y-3 text-sm text-theme-on-surface">
+      <h3 class="text-lg font-medium">Automatic deletion</h3>
+      <p :if={@media_item.prevent_culling} class="theme-status-success font-medium">
+        Protected from automatic deletion
+      </p>
+      <p :if={@media_item.prevent_culling}>
+        This video's files are excluded from cutoff and retention cleanup. You can still delete them manually.
+      </p>
+      <p
+        :if={MediaCleanupHelpers.cutoff_cleanup?(@media_item, @media_item.source)}
+        class="theme-status-warning"
+      >
+        {MediaCleanupHelpers.cutoff_cleanup_warning(@media_item, @media_item.source)} Enable Prevent Automatic Deletion to keep it.
+      </p>
+      <p :if={!@media_item.prevent_culling && !MediaCleanupHelpers.cutoff_cleanup?(@media_item, @media_item.source)}>
+        This video is not protected from automatic deletion. The source's download cutoff and retention settings apply.
+      </p>
+      <.button
+        href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit#media_item_prevent_culling"}
+        variant="outline"
+        size="compact"
+      >
+        {if @media_item.prevent_culling, do: "Change protection", else: "Protect this video"}
+      </.button>
+    </section>
+
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown media_item={@media_item} /></:tab_append>
 

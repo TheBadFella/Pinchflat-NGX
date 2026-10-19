@@ -18,6 +18,20 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
   end
 
   describe "initial rendering" do
+    test "cutoff download confirmations respect persisted protection", %{conn: conn} do
+      source = source_fixture(download_cutoff_date: ~D[2026-10-17])
+
+      item = media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-10-15 12:00:00Z], media_filepath: nil)
+      {:ok, view, _} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
+      assert has_element?(view, "[phx-click=force_download][data-confirm*='published on 2026-10-15']")
+      GenServer.stop(view.pid)
+
+      {:ok, _} = Pinchflat.Media.update_media_item(item, %{prevent_culling: true})
+      {:ok, protected_view, _} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "other"))
+      assert has_element?(protected_view, "[phx-click=force_download]")
+      refute has_element?(protected_view, "[phx-click=force_download][data-confirm*='published on 2026-10-15']")
+    end
+
     test "shows message when no records", %{conn: conn, source: source} do
       {:ok, _view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source))
 
