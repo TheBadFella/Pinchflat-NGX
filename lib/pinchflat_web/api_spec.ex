@@ -116,6 +116,8 @@ defmodule PinchflatWeb.ApiSpec do
               :start_all,
               :pause_all,
               :pause_selected,
+              :resume_selected,
+              :assign_profile_selected,
               :stop_all,
               :force_download_pending,
               :force_redownload,

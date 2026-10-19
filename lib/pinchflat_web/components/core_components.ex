@@ -348,6 +348,7 @@ defmodule PinchflatWeb.CoreComponents do
           {@rest}
         /> {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </label>
+
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
 
       <.error :for={msg <- @errors}>{msg}</.error>
@@ -426,6 +427,7 @@ defmodule PinchflatWeb.CoreComponents do
           ]}>
           </div>
         </label>
+
         <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
 
         <.error :for={msg <- @errors}>{msg}</.error>
@@ -437,6 +439,7 @@ defmodule PinchflatWeb.CoreComponents do
   def input(%{type: "select"} = assigns) do
     assigns =
       assigns
+      |> assign(:value, if(is_boolean(assigns.value), do: to_string(assigns.value), else: assigns.value))
       |> assign(:id, assigns.id || assigns.name)
       |> assign(:select_options, normalize_select_options(assigns.options || []))
       |> assign(:prompt_option, prompt_option(assigns.prompt))
@@ -528,7 +531,7 @@ defmodule PinchflatWeb.CoreComponents do
             id={@id}
             name={@name}
             class={[
-              "theme-input theme-select relative z-20 w-full appearance-none rounded-m3-sm py-3 pl-5 pr-12 outline-none transition",
+              "theme-input theme-select relative z-20 w-full rounded-m3-sm py-2.5 pl-4 pr-10 outline-none transition",
               "disabled:cursor-not-allowed disabled:opacity-50",
               @inputclass
             ]}
@@ -603,7 +606,7 @@ defmodule PinchflatWeb.CoreComponents do
 
       <div class="flex">
         <div
-          class="theme-field-shell relative w-full isolate"
+          class={["theme-field-shell relative isolate", select_shell_width(@inputclass)]}
           x-data={@custom_select_data}
           x-init="init()"
           x-effect={"if (#{@rest_x_bind_disabled || "false"} || #{!!@rest_disabled}) open = false"}
@@ -627,7 +630,7 @@ defmodule PinchflatWeb.CoreComponents do
             x-ref="trigger"
             type="button"
             class={[
-              "theme-input flex w-full items-center justify-between gap-3 rounded-m3-sm px-5 py-3 text-left outline-none transition",
+              "theme-input flex w-full items-center gap-2.5 rounded-m3-sm px-4 py-2.5 text-left outline-none transition",
               "disabled:cursor-not-allowed disabled:opacity-50",
               @inputclass
             ]}
@@ -646,10 +649,11 @@ defmodule PinchflatWeb.CoreComponents do
             ></span>
             <.icon
               name="hero-chevron-down"
-              class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
+              class="h-4 w-4 shrink-0 text-theme-on-surface-muted transition duration-200"
               x-bind:class="open ? 'rotate-180 text-theme-primary' : ''"
             />
           </button>
+
           <div
             x-cloak
             x-show="open"
@@ -1041,6 +1045,11 @@ defmodule PinchflatWeb.CoreComponents do
 
   defp prompt_option(nil), do: nil
   defp prompt_option(prompt), do: %{label: prompt}
+
+  defp select_shell_width(inputclass) do
+    widths = inputclass |> String.split() |> Enum.filter(&String.match?(&1, ~r/(^|:)(w-|min-w-|max-w-)/))
+    if widths == [], do: "w-full", else: Enum.join(widths, " ")
+  end
 
   defp rest_attr(rest, attr_name) do
     Enum.find_value(rest, fn

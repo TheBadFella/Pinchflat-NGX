@@ -65,6 +65,83 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Resumes downloads for up to 100 available sources without changing monitoring
+  or deleting files. Rejects the entire selection if any source is unavailable.
+  Enqueues pending download tasks for enabled sources.
+
+  Returns {:ok, [%Source{}]} | {:error, term()}
+  """
+  def resume_selected_sources(ids) do
+    result =
+      Repo.transaction(fn ->
+        update_selected_sources(ids, %{download_media: true}, run_post_commit_tasks: false)
+      end)
+
+    case result do
+      {:ok, sources} ->
+        Enum.each(sources, fn source ->
+          if source.enabled do
+            DownloadingHelpers.enqueue_pending_download_tasks(source)
+          end
+        end)
+
+        {:ok, sources}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Updates the media profile for up to 100 available sources.
+  Rejects the entire selection if any source is unavailable or if the profile is invalid.
+
+  Returns {:ok, [%Source{}]} | {:error, term()}
+  """
+  def assign_selected_sources_profile(ids, profile_id) do
+    Repo.transaction(fn ->
+      case validate_target_profile(profile_id) do
+        {:ok, profile} -> update_selected_sources(ids, %{media_profile_id: profile.id})
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp update_selected_sources(ids, attrs, opts \\ []) do
+    case get_selected_sources(ids, lock: true) do
+      {:ok, sources} ->
+        Enum.map(sources, fn source ->
+          case update_source(source, attrs, opts) do
+            {:ok, updated} -> updated
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+        end)
+
+      {:error, reason} ->
+        Repo.rollback(reason)
+    end
+  end
+
+  defp validate_target_profile(profile_id) when is_binary(profile_id) do
+    if Regex.match?(~r/^[1-9][0-9]{0,17}$/, profile_id),
+      do: validate_target_profile(String.to_integer(profile_id)),
+      else: {:error, :invalid_profile}
+  end
+
+  defp validate_target_profile(profile_id) when is_integer(profile_id) and profile_id in 1..999_999_999_999_999_999 do
+    query = from p in MediaProfile, where: p.id == ^profile_id and is_nil(p.marked_for_deletion_at)
+
+    query = if Pinchflat.Database.postgres?(), do: lock(query, "FOR SHARE"), else: query
+
+    case Repo.one(query) do
+      %MediaProfile{} = profile -> {:ok, profile}
+      nil -> {:error, :invalid_profile}
+    end
+  end
+
+  defp validate_target_profile(_profile_id), do: {:error, :invalid_profile}
+
+  @doc """
   Loads up to 100 selected sources, rejecting the selection if any source or
   profile is being deleted. Use `lock: true` within a transaction when updating.
 

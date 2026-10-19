@@ -25,4 +25,22 @@ defmodule PinchflatWeb.CoreComponentsInputTest do
       assert explicit =~ ~s(id="custom-canary")
     end
   end
+
+  test "selects preserve false values and responsive width classes" do
+    html =
+      render_component(&CoreComponents.input/1,
+        type: "select",
+        name: "enabled",
+        value: false,
+        options: [{"Yes", true}, {"No", false}],
+        inputclass: "w-30 lg:w-60"
+      )
+
+    assert html =~ ~r/<input[^>]*type="hidden"[^>]*value="false"/
+    [_, shell_classes] = Regex.run(~r/class="(theme-field-shell[^"\n]*)"/, html)
+    classes = String.split(shell_classes)
+    assert "w-30" in classes
+    assert "lg:w-60" in classes
+    refute "max-w-xl" in classes
+  end
 end

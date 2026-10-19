@@ -9,6 +9,8 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
   attr :label, :string, required: true
   attr :value, :string, required: true
   attr :timezone, :string, required: true
+  attr :required, :boolean, default: true
+  attr :presets, :list, default: []
 
   @doc """
   Renders a date field and calendar. Submits a YYYY-MM-DD string.
@@ -23,7 +25,7 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
       phx-update="ignore"
       class="min-w-0"
       x-data={"pinchflatDatePicker(#{Jason.encode!(@value)}, #{Jason.encode!(@today)})"}
-      title={"Dates use your configured timezone (#{@timezone}). Both selected dates are included."}
+      title={"Dates use your configured timezone (#{@timezone}). Selected dates are included."}
       x-on:click.outside="open = false"
       x-on:keydown.escape="if (open) { $event.preventDefault(); $event.stopPropagation(); close() }"
       x-on:focusout="if (!$el.contains($event.relatedTarget)) open = false"
@@ -35,29 +37,56 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
         <input
           id={@id}
           name={@name}
+          x-ref="dateInput"
           type="text"
           value={@value}
           x-model="value"
           x-on:change="syncMonth()"
-          required
+          required={@required}
           pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
           placeholder="YYYY-MM-DD"
           aria-label={@label}
-          class="min-w-0 w-full bg-transparent py-2 text-sm text-theme-on-surface outline-none"
+          class="min-h-11 min-w-0 w-full bg-transparent py-2 text-sm text-theme-on-surface outline-none"
         />
+        <button
+          :if={!@required}
+          type="button"
+          x-cloak
+          x-show="value !== ''"
+          x-on:click="value = ''; syncMonth(); $refs.dateInput.focus()"
+          class="theme-field-action"
+          aria-label={"Clear #{@label}"}
+          title="Remove cutoff"
+        >
+          <.icon name="hero-x-mark" class="h-5 w-5" />
+        </button>
+
         <button
           x-ref="trigger"
           type="button"
           x-on:click="toggle()"
-          class="theme-icon-button-compact flex shrink-0 items-center justify-center"
+          class="theme-field-action"
           aria-label={"Choose #{@label}"}
           aria-haspopup="dialog"
           x-bind:aria-expanded="open"
           aria-controls={"#{@id}-calendar"}
         >
-          <.icon name="hero-calendar-days" class="h-4 w-4" />
+          <.icon name="hero-calendar-days" class="h-5 w-5" />
         </button>
       </div>
+
+      <select
+        :if={@presets != []}
+        class="theme-input theme-select mt-2 min-h-11 w-full rounded-m3-sm px-3 py-2 text-sm"
+        aria-label="Cutoff date presets"
+        x-on:change="value = $event.target.value; syncMonth(); $event.target.value = ''"
+      >
+        <option value="">Presets...</option>
+
+        <option :for={{label, date} <- @presets} value={date}>{label}</option>
+
+        <option value="">Remove cutoff</option>
+      </select>
 
       <div
         id={"#{@id}-calendar"}
