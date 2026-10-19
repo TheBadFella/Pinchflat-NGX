@@ -22,31 +22,31 @@
 
 <div class="theme-surface-raised px-7.5 py-5 pt-6">
   <div class="max-w-full">
-    <section id="automatic-deletion" class="mb-6 space-y-3 text-sm text-theme-on-surface">
+    <section
+      :if={MediaCleanupHelpers.cutoff_cleanup?(@media_item, @media_item.source)}
+      id="automatic-deletion"
+      class="mb-6 space-y-3 text-sm text-theme-on-surface"
+    >
       <h3 class="text-lg font-medium">Automatic deletion</h3>
-      <p :if={@media_item.prevent_culling} class="theme-status-success font-medium">
-        Protected from automatic deletion
-      </p>
-      <p :if={@media_item.prevent_culling}>
-        This video's files are excluded from cutoff and retention cleanup. You can still delete them manually.
-      </p>
-      <p
-        :if={MediaCleanupHelpers.cutoff_cleanup?(@media_item, @media_item.source)}
-        class="theme-status-warning"
-      >
+      <p class="theme-status-warning">
         {MediaCleanupHelpers.cutoff_cleanup_warning(@media_item, @media_item.source)} Enable Prevent Automatic Deletion to keep it.
-      </p>
-      <p :if={!@media_item.prevent_culling && !MediaCleanupHelpers.cutoff_cleanup?(@media_item, @media_item.source)}>
-        This video is not protected from automatic deletion. The source's download cutoff and retention settings apply.
       </p>
       <.button
         href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit#media_item_prevent_culling"}
         variant="outline"
         size="compact"
       >
-        {if @media_item.prevent_culling, do: "Change protection", else: "Protect this video"}
+        Protect this video
       </.button>
     </section>
+
+    <p
+      :if={@media_item.prevent_culling}
+      id="automatic-deletion-status"
+      class="theme-status-success mb-3 flex items-start gap-2 text-sm"
+    >
+      <.icon name="hero-shield-check" class="mt-0.5 h-4 w-4 shrink-0" /> Protected from automatic deletion
+    </p>
 
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown media_item={@media_item} /></:tab_append>

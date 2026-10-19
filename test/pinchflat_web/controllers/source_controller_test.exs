@@ -664,6 +664,21 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "show source" do
+    test "marks the requested page section and keeps source-only controls out of other sections", %{conn: conn} do
+      source = source_fixture()
+      html = conn |> get(~p"/sources/#{source}?#{[tab: "podcast"]}") |> html_response(200)
+
+      assert [sections] =
+               Regex.run(~r/<nav\b[^>]*aria-label="Page sections"[^>]*>(.*?)<\/nav>/s, html, capture: :all_but_first)
+
+      assert [[current_link]] = Regex.scan(~r/<a\b[^>]*aria-current="page"[^>]*>.*?<\/a>/s, sections)
+      assert current_link =~ "<span>Podcast</span>"
+      refute html =~ "Show unset fields"
+
+      source_html = conn |> get(~p"/sources/#{source}") |> html_response(200)
+      assert source_html =~ "Show unset fields"
+    end
+
     test "renders source media statistics with mutually exclusive counts", %{conn: conn} do
       source = source_fixture()
 

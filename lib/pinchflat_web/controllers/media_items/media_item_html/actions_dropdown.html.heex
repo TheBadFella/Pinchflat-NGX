@@ -1,4 +1,4 @@
-<.button_dropdown text="Actions" class="justify-center min-w-40">
+<.button_dropdown text="Actions" variant="outline" size="compact" class="shrink-0">
   <:option>
     <span x-data="{ copied: false }" x-on:click={~s"
         copyWithCallbacks(
@@ -23,6 +23,12 @@
       data-confirm={MediaCleanupHelpers.download_confirmation(@media_item, @media_item.source)}
     >
       Force Download
+    </.link>
+  </:option>
+
+  <:option>
+    <.link href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit#media_item_prevent_culling"}>
+      {if @media_item.prevent_culling, do: "Change deletion protection", else: "Protect from automatic deletion"}
     </.link>
   </:option>
 

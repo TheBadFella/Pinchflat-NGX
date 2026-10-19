@@ -30,11 +30,24 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
 
     ~H"""
     <div class="w-full">
-      <header class="flex flex-col items-stretch justify-between gap-4 border-b border-theme-outline/70 xl:flex-row xl:items-end">
-        <div class="no-scrollbar flex min-w-0 flex-1 flex-nowrap gap-5 overflow-x-auto sm:gap-8">
+      <header class="flex items-center justify-between gap-2 border-b border-theme-outline/70">
+        <nav
+          aria-label="Page sections"
+          class="no-scrollbar flex min-w-0 flex-1 flex-nowrap gap-3 overflow-x-auto sm:gap-8"
+          x-data="{
+            revealCurrent() {
+              const tab = this.$el.querySelector('[aria-current=page]');
+              this.$el.scrollLeft += tab.getBoundingClientRect().left - this.$el.getBoundingClientRect().left;
+            }
+          }"
+          x-init="$nextTick(() => revealCurrent())"
+          x-on:resize.window.debounce.100ms="revealCurrent()"
+          x-on:focusin="$event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })"
+        >
           <.link
             :for={tab <- @tab}
             href={tab_href(@tab_href, tab.id)}
+            aria-current={if tab.id == @active_tab_id, do: "page"}
             class={[
               "shrink-0 border-b-2 py-4 text-sm font-medium transition md:text-base",
               "text-theme-on-surface-muted hover:text-theme-on-surface",
@@ -46,9 +59,12 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
           >
             <span>{tab.title}</span>
           </.link>
-        </div>
+        </nav>
 
-        <div :if={@tab_append != []} class="flex min-w-0 flex-wrap items-center justify-end gap-3 pb-3">
+        <div
+          :if={@tab_append != []}
+          class="flex min-w-0 shrink-0 items-center justify-end gap-3"
+        >
           {render_slot(@tab_append)}
         </div>
       </header>
