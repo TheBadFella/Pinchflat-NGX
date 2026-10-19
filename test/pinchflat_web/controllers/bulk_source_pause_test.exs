@@ -111,7 +111,7 @@ defmodule PinchflatWeb.BulkSourcePauseTest do
     }
 
     {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
-    assert has_element?(view, "#pause-selected-sources button[disabled]")
+    refute has_element?(view, "#pause-selected-sources")
 
     render_click(view, "select_page")
     assert has_element?(view, "#pause-selected-sources input[name='source_ids[]'][value='#{first.id}']")
@@ -122,14 +122,52 @@ defmodule PinchflatWeb.BulkSourcePauseTest do
     render_click(view, "view_change", %{"view" => "grid"})
     assert has_element?(view, "#source-select-grid-#{first.id}[checked]")
     render_click(view, "page_change", %{"direction" => "inc"})
-    assert has_element?(view, "#pause-selected-sources button[disabled]")
+    refute has_element?(view, "#pause-selected-sources")
     render_click(view, "select_page")
     assert has_element?(view, "#pause-selected-sources input[value='#{second.id}']")
     render_click(view, "clear_selection")
-    assert has_element?(view, "#pause-selected-sources button[disabled]")
+    refute has_element?(view, "#pause-selected-sources")
     render_click(view, "toggle_source_selection", %{"id" => "#{second.id}"})
     assert has_element?(view, "#pause-selected-sources input[value='#{second.id}']")
     render_click(view, "sort_update", %{"sort_key" => "custom_name"})
-    assert has_element?(view, "#pause-selected-sources button[disabled]")
+    refute has_element?(view, "#pause-selected-sources")
+  end
+
+  test "bulk actions appear only after selection and use the shared calendar", %{conn: conn} do
+    source = source_fixture()
+
+    session = %{
+      "initial_sort_key" => :custom_name,
+      "initial_sort_direction" => :asc,
+      "initial_view_mode" => :table,
+      "results_per_page" => 10
+    }
+
+    {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+    refute has_element?(view, "#selected-source-actions")
+    refute has_element?(view, "button[phx-click='select_page']")
+    refute has_element?(view, "button[phx-click='clear_selection']")
+    view |> element("#source-select-mobile-#{source.id}") |> render_click()
+    assert has_element?(view, "button[phx-click='select_page']")
+    assert has_element?(view, "button[phx-click='clear_selection']")
+    assert has_element?(view, "#pause-selected-sources button[aria-label='Pause selected downloads'][data-confirm]")
+    assert has_element?(view, "#resume-selected-sources button[aria-label='Resume selected downloads'][data-confirm]")
+    assert has_element?(view, "#selected-source-cutoff-date-picker [aria-haspopup='dialog']")
+    refute has_element?(view, "#selected-source-cutoff-date[required]")
+
+    assert has_element?(
+             view,
+             "#selected-source-cutoff select[aria-label='Cutoff date presets'] option[value='']",
+             "Remove cutoff"
+           )
+
+    assert has_element?(view, "#selected-source-cutoff input[name='source_ids[]'][value='#{source.id}']")
+    render_click(view, "clear_selection")
+    refute has_element?(view, "#selected-source-actions")
+    refute has_element?(view, "button[phx-click='select_page']")
+    refute has_element?(view, "button[phx-click='clear_selection']")
+    view |> element("#source-select-mobile-#{source.id}") |> render_click()
+    view |> element("#source-select-mobile-#{source.id}") |> render_click()
+    refute has_element?(view, "button[phx-click='select_page']")
   end
 end

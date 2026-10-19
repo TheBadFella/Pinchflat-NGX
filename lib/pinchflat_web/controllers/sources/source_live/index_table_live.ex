@@ -3,11 +3,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   use Pinchflat.Media.MediaQuery
   use Pinchflat.Sources.SourcesQuery
 
+  import PinchflatWeb.CustomComponents.DatePicker, only: [date_picker: 1]
   import PinchflatWeb.Helpers.SortingHelpers
   import PinchflatWeb.Helpers.PaginationHelpers
 
   alias Pinchflat.Database
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Profiles
   alias Pinchflat.Repo
   alias Pinchflat.Sources.Source
   alias PinchflatWeb.Sources.SourceHTML
@@ -29,6 +31,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   Returns the initials used while a source poster is unavailable.
   """
   def source_initials(source), do: SourceHTML.source_initials(source)
+  defdelegate cutoff_date_presets(), to: SourceHTML
 
   @doc """
   Describes source download progress without treating an unknown or empty
@@ -61,7 +64,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           sort_direction: session["initial_sort_direction"],
           view_mode: normalize_view_mode(session["initial_view_mode"]),
           refresh_pending: false,
-          selected_ids: MapSet.new()
+          selected_ids: MapSet.new(),
+          media_profiles: Enum.reject(Profiles.list_media_profiles(), & &1.marked_for_deletion_at),
+          timezone: Application.fetch_env!(:pinchflat, :timezone)
         },
         get_pagination_attributes(sources_query(), 1, limit)
       )
