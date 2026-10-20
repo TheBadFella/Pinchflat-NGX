@@ -570,6 +570,11 @@ defmodule PinchflatWeb.SourceControllerTest do
   describe "update source" do
     setup [:create_source]
 
+    test "shows Shorts template validation errors before directory move confirmation", %{conn: conn, source: source} do
+      conn = put(conn, ~p"/sources/#{source}", source: %{output_path_template_shorts_override: "invalid.mp4"})
+      assert html_response(conn, 200) =~ "must end with .{{ ext }}"
+    end
+
     test "redirects when data is valid", %{conn: conn, source: source, update_attrs: update_attrs} do
       expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
 

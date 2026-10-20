@@ -74,6 +74,44 @@ defmodule Pinchflat.Reconciliation.PathPredictorTest do
     end
   end
 
+  test "Shorts media predictions use Shorts paths while series roots use primary paths", %{media_item: item} do
+    profile = %{
+      item.source.media_profile
+      | output_path_template: "Channel/{{ series_root }}/Season 1/{{ title }}.{{ ext }}",
+        output_path_template_shorts: "Channel/Shorts/{{ title }}.{{ ext }}"
+    }
+
+    item = %{item | short_form_content: true, source: %{item.source | media_profile: profile}}
+
+    expect(YtDlpRunnerMock, :run, fn _, _, opts, _, _ ->
+      assert opts[:output] == "/tmp/test/media/Channel/Shorts/%(title)S.%(ext)S"
+      {:ok, ~s({"filename":"/tmp/test/media/Channel/Shorts/short.mp4"})}
+    end)
+
+    assert {:ok, "/tmp/test/media/Channel/Shorts/short.mp4"} = PathPredictor.predict_media_filepath(item)
+
+    expect(YtDlpRunnerMock, :run, fn _, _, opts, _, _ ->
+      refute String.contains?(opts[:output], "Shorts")
+      assert String.contains?(opts[:output], "Season 1")
+      {:ok, ~s({"filename":"/tmp/test/media/Channel/Season 1/short.mp4"})}
+    end)
+
+    assert {:ok, "/tmp/test/media/Channel"} = PathPredictor.predict_series_directory(item)
+  end
+
+  test "offline reconciliation retains the profile's quality selection", %{media_item: item} do
+    profile = %{item.source.media_profile | preferred_resolution: :audio}
+    item = %{item | source: %{item.source | media_profile: profile}}
+
+    expect(YtDlpRunnerMock, :run, fn _, _, opts, _, _ ->
+      assert :extract_audio in opts
+      assert opts[:format] == "bestaudio/best"
+      {:ok, ~s({"filename":"/tmp/test/media/audio.m4a"})}
+    end)
+
+    assert {:ok, "/tmp/test/media/audio.mp4"} = PathPredictor.predict_media_filepath(item)
+  end
+
   defp downloaded_media_item_with_stored_metadata do
     media_item = Repo.preload(media_item_with_attachments(), :metadata)
 

@@ -719,7 +719,7 @@ defmodule PinchflatWeb.Sources.SourceController do
           Keyword.merge(
             [
               source: source,
-              changeset: changeset,
+              changeset: %{changeset | action: :update},
               media_profiles: media_profiles(),
               available_folders: saved_source_folders(),
               current_path: ~p"/sources/#{source}/edit"

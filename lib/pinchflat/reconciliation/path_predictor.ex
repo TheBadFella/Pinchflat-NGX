@@ -41,7 +41,7 @@ defmodule Pinchflat.Reconciliation.PathPredictor do
   def predict_series_directory(%MediaItem{} = media_item_with_preloads) do
     marker_override = %{"series_root" => MetadataFileHelpers.series_root_marker()}
 
-    with {:ok, rendered} <- render_filepath(media_item_with_preloads, marker_override) do
+    with {:ok, rendered} <- render_filepath(%{media_item_with_preloads | short_form_content: false}, marker_override) do
       MetadataFileHelpers.series_directory_from_media_filepath(rendered)
     end
   end
@@ -55,7 +55,7 @@ defmodule Pinchflat.Reconciliation.PathPredictor do
         YtDlpMedia.predict_filepath_from_metadata(
           media_item.original_url,
           info_json_filepath,
-          output: output_path
+          [output: output_path] ++ DownloadOptionBuilder.build_quality_options_for(media_item.source)
         )
 
       File.rm(info_json_filepath)

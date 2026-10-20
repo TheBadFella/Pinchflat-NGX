@@ -146,8 +146,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     should_use_cookies = Sources.use_cookies?(source, :indexing)
 
     base_command_opts =
-      [output: DownloadOptionBuilder.build_output_path_for(source)] ++
-        build_single_video_options(source) ++
+      build_single_video_options(source) ++
         DownloadOptionBuilder.build_quality_options_for(source) ++
         DownloadOptionBuilder.build_youtube_options_for(source) ++
         build_dateafter_options(source)
@@ -155,11 +154,18 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     results =
       Enum.map(indexing_urls_for(source), fn {url, content_type} ->
         command_opts =
-          base_command_opts ++
+          [
+            output:
+              DownloadOptionBuilder.build_output_path_for(%MediaItem{
+                source: source,
+                short_form_content: content_type == :shorts
+              })
+          ] ++
+            base_command_opts ++
             build_download_archive_options(source, was_forced, content_type) ++
             build_index_cutoff_options(source, content_type)
 
-        run_indexing_command(source, url, command_opts, should_use_cookies)
+        run_indexing_command(source, url, content_type, command_opts, should_use_cookies)
       end)
 
     # A channel can legitimately lack a shorts or streams tab (yt-dlp errors out
@@ -179,15 +185,17 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  defp run_indexing_command(source, url, command_opts, should_use_cookies) do
+  defp run_indexing_command(source, url, content_type, command_opts, should_use_cookies) do
     {:ok, pid} = FileFollowerServer.start_link()
 
-    handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source) end
+    handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source, content_type) end
 
     # Exit code 1 is declared as expected so the runner logs it at debug instead
     # of error — failures are logged here instead, where we can tell a channel
     # legitimately missing a shorts/streams tab apart from a real error.
     runner_opts = [
+      source: source,
+      content_type: content_type,
       file_listener_handler: handler,
       use_cookies: should_use_cookies,
       expected_exit_codes: [1]
@@ -195,7 +203,13 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
     result = MediaCollection.get_media_attributes_for_collection(url, command_opts, runner_opts)
 
+    # Finish streaming writes before the caller persists the corrected final predictions.
+    monitor = Process.monitor(pid)
     FileFollowerServer.stop(pid)
+
+    receive do
+      {:DOWN, ^monitor, :process, ^pid, _reason} -> :ok
+    end
 
     case result do
       {:ok, media_attributes} ->
@@ -255,13 +269,15 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  defp setup_file_follower_watcher(pid, filepath, source) do
+  defp setup_file_follower_watcher(pid, filepath, source, content_type) do
     FileFollowerServer.watch_file(pid, filepath, fn line ->
       case Phoenix.json_library().decode(line) do
         {:ok, media_attrs} ->
-          Logger.debug("FileFollowerServer Handler: Got media attributes: #{inspect(media_attrs)}")
+          Logger.debug("FileFollowerServer Handler: Got media #{inspect(media_attrs["id"])}")
 
-          media_struct = YtDlpMedia.response_to_struct(media_attrs)
+          media_struct =
+            YtDlpMedia.response_to_struct(media_attrs, source, content_type: content_type, render_shorts: false)
+
           create_media_item_and_enqueue_download(source, media_struct)
 
         err ->

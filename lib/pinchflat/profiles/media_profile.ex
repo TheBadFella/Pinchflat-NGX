@@ -12,6 +12,7 @@ defmodule Pinchflat.Profiles.MediaProfile do
   @allowed_fields ~w(
     name
     output_path_template
+    output_path_template_shorts
     download_subs
     download_auto_subs
     embed_subs
@@ -44,6 +45,8 @@ defmodule Pinchflat.Profiles.MediaProfile do
 
     field :output_path_template, :string,
       default: "/{{ source_custom_name }}/{{ upload_yyyy_mm_dd }} {{ title }}/{{ title }} [{{ id }}].{{ ext }}"
+
+    field :output_path_template_shorts, :string
 
     field :download_subs, :boolean, default: false
     field :download_auto_subs, :boolean, default: false
@@ -88,6 +91,7 @@ defmodule Pinchflat.Profiles.MediaProfile do
     |> validate_required(@required_fields)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template, ext_regex(), message: "must end with .{{ ext }}")
+    |> validate_format(:output_path_template_shorts, ext_regex(), message: "must end with .{{ ext }}")
     |> validate_number(:redownload_delay_days, greater_than_or_equal_to: 0)
     |> validate_subset(:sponsorblock_mark_categories, @sponsorblock_categories)
     |> validate_subset(:sponsorblock_remove_categories, @sponsorblock_categories)
