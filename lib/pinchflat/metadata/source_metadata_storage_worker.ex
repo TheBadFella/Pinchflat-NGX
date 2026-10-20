@@ -198,6 +198,11 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
        ) do
     source_metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, source_metadata)
 
+    source =
+      source
+      |> Sources.refresh_video_metadata_title(source_metadata["title"])
+      |> Repo.preload([:metadata, :media_profile])
+
     merged_metadata =
       if source.custom_name_locked and source.metadata do
         existing_meta = %{
@@ -344,7 +349,8 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
       case source.collection_type do
         :channel -> ["channel", "uploader", "title"]
         :playlist -> ["playlist_title", "playlist", "title"]
-        :video -> ["title"]
+        # Video names are refreshed conditionally above to protect concurrent edits.
+        :video -> []
         _ -> ["title", "channel", "uploader"]
       end
 

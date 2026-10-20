@@ -3,6 +3,28 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
 
   alias Pinchflat.Downloading.OutputPathBuilder
 
+  describe "literal_component/1" do
+    test "names remain one component and cannot inject either template syntax" do
+      for {name, expected} <- [
+            {"../../outside", ".._.._outside"},
+            {"..\\..\\outside", ".._.._outside"},
+            {" .. ", "_"},
+            {"100% {{ title }}", "100%% {{ title }}"},
+            {"%(title)s", "%%(title)s"},
+            {"A/B:C", "A_B_C"},
+            {"one\ntwo", "one_two"}
+          ] do
+        assert {:ok, output} =
+                 OutputPathBuilder.build(
+                   "{{ name }}/{{ title }}.{{ ext }}",
+                   %{"name" => OutputPathBuilder.literal_component(name)}
+                 )
+
+        assert output == expected <> "/%(title)S.%(ext)S"
+      end
+    end
+  end
+
   describe "build/2" do
     test "it expands 'standard' curly brace variables in the template" do
       assert {:ok, res} = OutputPathBuilder.build("/videos/{{ title }}.{{ ext }}")
