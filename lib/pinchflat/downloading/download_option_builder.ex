@@ -105,7 +105,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   end
 
   def build_output_path_for(%MediaItem{} = media_item_with_preloads, template_options) do
-    output_path_template = Sources.output_path_template(media_item_with_preloads.source)
+    output_path_template = Sources.output_path_template(media_item_with_preloads.source, media_item_with_preloads)
 
     build_output_path(output_path_template, media_item_with_preloads, template_options)
   end
@@ -271,7 +271,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   end
 
   defp build_relative_output_path(media_item_with_preloads) do
-    output_path_template = Sources.output_path_template(media_item_with_preloads.source)
+    output_path_template = Sources.output_path_template(media_item_with_preloads.source, media_item_with_preloads)
     build_relative_output_path(output_path_template, media_item_with_preloads, %{})
   end
 

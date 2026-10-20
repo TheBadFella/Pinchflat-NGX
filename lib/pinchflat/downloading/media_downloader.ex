@@ -179,6 +179,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     parsed_attrs =
       parsed_json
       |> MetadataParser.parse_for_media_item()
+      # Keep the indexed type that selected this download's path; indexing owns classification.
+      |> Map.put(:short_form_content, media_with_preloads.short_form_content)
       |> Map.merge(%{
         media_downloaded_at: DateTime.utc_now(),
         culled_at: nil,

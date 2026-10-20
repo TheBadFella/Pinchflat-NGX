@@ -34,7 +34,12 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     all_command_opts = [:simulate, :skip_download, :ignore_no_formats_error, :no_warnings] ++ command_opts
     use_cookies = Keyword.get(addl_opts, :use_cookies, false)
     raw_metadata? = Keyword.get(addl_opts, :raw_metadata, false)
-    output_template = if raw_metadata?, do: "%()j", else: YtDlpMedia.indexing_output_template()
+    source = Keyword.get(addl_opts, :source)
+    content_type = Keyword.get(addl_opts, :content_type, :all)
+
+    output_template =
+      if raw_metadata?, do: "%()j", else: YtDlpMedia.indexing_output_template(source, content_type: content_type)
+
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     file_listener_handler = Keyword.get(addl_opts, :file_listener_handler, false)
 
@@ -56,7 +61,9 @@ defmodule Pinchflat.YtDlp.MediaCollection do
           |> Enum.map(fn line ->
             case Phoenix.json_library().decode(line) do
               {:ok, parsed_json} ->
-                if raw_metadata?, do: parsed_json, else: YtDlpMedia.response_to_struct(parsed_json)
+                if raw_metadata?,
+                  do: parsed_json,
+                  else: YtDlpMedia.response_to_struct(parsed_json, source, content_type: content_type)
 
               _ ->
                 nil

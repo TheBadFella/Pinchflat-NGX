@@ -99,6 +99,20 @@
       />
     </section>
 
+    <.input
+      field={f[:output_path_template_shorts]}
+      type="text"
+      inputclass="font-mono"
+      label="Shorts output path template (optional)"
+      help="Used for YouTube Shorts. Leave blank to use the primary output path template. Must end with .{{ ext }}. Channel posters and NFO files stay at the primary series root. Saving leaves existing files in place; later re-downloads and quality upgrades use the new path."
+    />
+    <details class="mt-2 text-sm text-theme-on-surface-muted">
+      <summary class="cursor-pointer py-3 font-medium text-theme-on-surface">How Shorts are identified</summary>
+      <p class="mt-2">
+        Channel tabs identify Shorts directly. Mixed playlists and fast indexing use the URL and existing
+        duration/aspect-ratio detection, which can misclassify short vertical videos.
+      </p>
+    </details>
     <h3 class="mt-10 text-2xl text-theme-on-surface">Subtitle Options</h3>
 
     <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">

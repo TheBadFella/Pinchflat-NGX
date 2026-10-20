@@ -290,6 +290,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
   defp maybe_ignore_unavailable_source_metadata(_source, result), do: result
 
   defp determine_series_directory(source) do
+    # Source-only rendering always uses the primary template, including for Shorts-only channels.
     runner_opts =
       [output: DownloadOptionBuilder.build_output_path_for(source)] ++
         DownloadOptionBuilder.build_youtube_options_for(source)

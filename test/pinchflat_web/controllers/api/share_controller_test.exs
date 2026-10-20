@@ -16,82 +16,99 @@ defmodule PinchflatWeb.Api.ShareControllerTest do
     %{conn: put_req_header(conn, "content-type", "application/json"), profile: profile, token: token, secret: secret}
   end
 
-  test "intake indexing resolves the title before the first download, with artwork disabled", context do
-    %{conn: conn, profile: profile, secret: secret} = context
+  for {kind, duration, ratio, shorts?} <- [{"regular video", 600, 1.7, false}, {"Short", 45, 0.56, true}] do
+    @index_duration duration
+    @index_ratio ratio
+    @index_shorts shorts?
+    test "intake resolves the title and template for #{kind}, with artwork disabled", context do
+      %{conn: conn, profile: profile, secret: secret} = context
 
-    {:ok, _} =
-      Pinchflat.Profiles.update_media_profile(profile, %{
-        output_path_template: "{{ source_custom_name }}/{{ title }}.{{ ext }}",
-        download_source_images: false
-      })
+      {:ok, _} =
+        Pinchflat.Profiles.update_media_profile(profile, %{
+          output_path_template: "{{ source_custom_name }}/{{ title }}.{{ ext }}",
+          output_path_template_shorts: "{{ source_custom_name }}/Shorts/{{ title }}.{{ ext }}",
+          download_source_images: false
+        })
 
-    response =
-      conn
-      |> put_req_header("authorization", "Bearer #{secret}")
-      |> post("/api/share/intake", %{"url" => "https://youtu.be/dQw4w9WgXcQ"})
+      response =
+        conn
+        |> put_req_header("authorization", "Bearer #{secret}")
+        |> post("/api/share/intake", %{"url" => "https://youtu.be/dQw4w9WgXcQ"})
 
-    assert json_response(response, 202)["status"] == "indexing"
-    source = Repo.get_by!(Pinchflat.Sources.Source, collection_id: "dQw4w9WgXcQ", media_profile_id: profile.id)
+      assert json_response(response, 202)["status"] == "indexing"
+      source = Repo.get_by!(Pinchflat.Sources.Source, collection_id: "dQw4w9WgXcQ", media_profile_id: profile.id)
 
-    metadata = %{
-      "id" => source.collection_id,
-      "title" => "Recognisable video",
-      "ext" => "mp4",
-      "original_url" => source.original_url,
-      "upload_date" => "20261019",
-      "duration" => 600,
-      "filename" => "/tmp/test/media/YouTube Video dQw4w9WgXcQ/Recognisable video.mp4"
-    }
+      metadata = %{
+        "id" => source.collection_id,
+        "title" => "Recognisable video",
+        "ext" => "mp4",
+        "original_url" => source.original_url,
+        "upload_date" => "20261019",
+        "duration" => @index_duration,
+        "aspect_ratio" => @index_ratio,
+        "filename" => "/tmp/test/media/YouTube Video dQw4w9WgXcQ/Recognisable video.mp4"
+      }
 
-    stub(AppriseRunnerMock, :run, fn _, _ -> {:ok, ""} end)
-    expected = "/tmp/test/media/Recognisable video/Recognisable video.mp4"
+      stub(AppriseRunnerMock, :run, fn _, _ -> {:ok, ""} end)
 
-    stub(YtDlpRunnerMock, :run, fn
-      _url, :get_media_attributes_for_collection, _opts, _template, _extra ->
-        {:ok, Jason.encode!(metadata)}
+      folder =
+        if @index_shorts, do: "/tmp/test/media/Recognisable video/Shorts", else: "/tmp/test/media/Recognisable video"
 
-      _url, :get_downloadable_status, _opts, _template, _extra ->
-        {:ok, "{}"}
+      expected = folder <> "/Recognisable video.mp4"
+      expected_output = folder <> "/%(title)S.%(ext)S"
+      Process.put(:combined_prediction_calls, 0)
 
-      _url, :download_thumbnail, _opts, _template, _extra ->
-        {:ok, ""}
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_media_attributes_for_collection, _opts, _template, _extra ->
+          {:ok, Jason.encode!(metadata)}
 
-      _url, :download, opts, _template, _extra ->
-        assert List.keyfind(opts, :output, 0) == {:output, "/tmp/test/media/Recognisable video/%(title)S.%(ext)S"}
-        File.mkdir_p!(Path.dirname(expected))
-        File.write!(expected, "fixture media")
+        _url, :get_downloadable_status, _opts, _template, _extra ->
+          {:ok, "{}"}
 
-        downloaded_metadata =
-          render_parsed_metadata(:media_metadata)
-          |> Map.merge(metadata)
-          |> Map.put("filepath", expected)
+        _url, :download_thumbnail, _opts, _template, _extra ->
+          {:ok, ""}
 
-        {:ok, Jason.encode!(downloaded_metadata)}
+        _url, :download, opts, _template, _extra ->
+          assert List.keyfind(opts, :output, 0) == {:output, expected_output}
+          File.mkdir_p!(Path.dirname(expected))
+          File.write!(expected, "fixture media")
 
-      _url, :predict_filepath_from_metadata, opts, _template, _extra ->
-        assert Keyword.fetch!(opts, :output) == "/tmp/test/media/Recognisable video/%(title)S.%(ext)S"
-        assert File.exists?(Keyword.fetch!(opts, :load_info_json))
-        {:ok, Jason.encode!(%{"filename" => expected})}
-    end)
+          downloaded_metadata =
+            render_parsed_metadata(:media_metadata)
+            |> Map.merge(metadata)
+            |> Map.put("filepath", expected)
 
-    assert :ok = perform_job(Pinchflat.SlowIndexing.MediaCollectionIndexingWorker, %{id: source.id})
-    assert Repo.reload!(source).custom_name == "Recognisable video"
-    item = Repo.get_by!(Pinchflat.Media.MediaItem, source_id: source.id)
-    assert item.predicted_media_filepath == expected
-    assert_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker, args: %{"id" => item.id})
-    item = Repo.preload(item, source: :media_profile)
+          {:ok, Jason.encode!(downloaded_metadata)}
 
-    assert Pinchflat.Downloading.DownloadOptionBuilder.build_output_path_for(item) ==
-             "/tmp/test/media/Recognisable video/%(title)S.%(ext)S"
+        _url, :predict_filepath_from_metadata, opts, _template, _extra ->
+          Process.put(:combined_prediction_calls, Process.get(:combined_prediction_calls) + 1)
+          assert Keyword.fetch!(opts, :output) == expected_output
+          assert File.exists?(Keyword.fetch!(opts, :load_info_json))
+          {:ok, Jason.encode!(%{"filename" => expected})}
+      end)
 
-    stub(UserScriptRunnerMock, :run, fn _, _ -> {:ok, "", 0} end)
-    stub(HTTPClientMock, :get, fn _, _, _ -> {:ok, ""} end)
-    on_exit(fn -> File.rm(expected) end)
-    assert :ok = perform_job(Pinchflat.Downloading.MediaDownloadWorker, %{id: item.id})
-    downloaded = Repo.reload!(item)
-    assert downloaded.media_filepath == expected
-    assert downloaded.media_downloaded_at
-    assert File.read!(expected) == "fixture media"
+      assert :ok = perform_job(Pinchflat.SlowIndexing.MediaCollectionIndexingWorker, %{id: source.id})
+      assert Repo.reload!(source).custom_name == "Recognisable video"
+      item = Repo.get_by!(Pinchflat.Media.MediaItem, source_id: source.id)
+      assert item.predicted_media_filepath == expected
+      assert item.short_form_content == @index_shorts
+      assert Process.get(:combined_prediction_calls) == 1
+      assert_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker, args: %{"id" => item.id})
+      item = Repo.preload(item, source: :media_profile)
+
+      assert Pinchflat.Downloading.DownloadOptionBuilder.build_output_path_for(item) ==
+               expected_output
+
+      stub(UserScriptRunnerMock, :run, fn _, _ -> {:ok, "", 0} end)
+      stub(HTTPClientMock, :get, fn _, _, _ -> {:ok, ""} end)
+      on_exit(fn -> File.rm(expected) end)
+      assert :ok = perform_job(Pinchflat.Downloading.MediaDownloadWorker, %{id: item.id})
+      downloaded = Repo.reload!(item)
+      assert downloaded.media_filepath == expected
+      assert downloaded.short_form_content == @index_shorts
+      assert downloaded.media_downloaded_at
+      assert File.read!(expected) == "fixture media"
+    end
   end
 
   describe "POST /api/share/intake - Authentication" do

@@ -551,7 +551,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     test "does not enqueue downloads for media that doesn't match the profile's format options" do
       watcher_poll_interval = Application.get_env(:pinchflat, :file_watcher_poll_interval)
       profile = media_profile_fixture(%{shorts_behaviour: :exclude})
-      source = source_fixture(%{media_profile_id: profile.id})
+      source = source_fixture(%{media_profile_id: profile.id, original_url: "https://www.youtube.com/@fixture/shorts"})
 
       stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, addl_opts ->
         filepath = Keyword.get(addl_opts, :output_filepath)
