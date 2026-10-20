@@ -32,7 +32,14 @@ defmodule Pinchflat.YtDlp.Media do
     :predicted_media_filepath
   ]
 
+  require Logger
+
   alias __MODULE__
+  alias Pinchflat.Sources
+  alias Pinchflat.Repo
+  alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Downloading.DownloadOptionBuilder
+  alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.YtDlp.ResponseDecoder
   alias Pinchflat.Metadata.MetadataFileHelpers
 
@@ -112,12 +119,14 @@ defmodule Pinchflat.YtDlp.Media do
   """
   def get_media_attributes(url, command_opts \\ [], addl_opts \\ []) do
     all_command_opts = [:simulate, :skip_download] ++ command_opts
-    output_template = indexing_output_template()
+    source = Keyword.get(addl_opts, :source)
+    addl_opts = Keyword.delete(addl_opts, :source)
+    output_template = indexing_output_template(source)
 
     with {:ok, output} <-
            backend_runner().run(url, :get_media_attributes, all_command_opts, output_template, addl_opts),
          {:ok, parsed_json} <- ResponseDecoder.decode(output, :get_media_attributes) do
-      {:ok, response_to_struct(parsed_json)}
+      {:ok, response_to_struct(parsed_json, source)}
     end
   end
 
@@ -149,8 +158,20 @@ defmodule Pinchflat.YtDlp.Media do
   NOTE: I've switched back to `original_url` (from `webpage_url`) since it's started indicating
         if something is a short via the URL again
   """
-  def indexing_output_template do
+  def indexing_output_template(source \\ nil, opts \\ [])
+
+  def indexing_output_template(nil, _opts) do
     "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename,availability})j"
+  end
+
+  def indexing_output_template(source, opts) do
+    if Keyword.get(opts, :content_type) in [:videos, :shorts, :streams] ||
+         Sources.output_path_template(source, true) == Sources.output_path_template(source) do
+      indexing_output_template()
+    else
+      # Preserve arbitrary yt-dlp fields so mixed playlists can render Shorts paths offline.
+      "%()j"
+    end
   end
 
   @doc """
@@ -175,25 +196,83 @@ defmodule Pinchflat.YtDlp.Media do
 
   @doc """
   Transforms a response from yt-dlp into a struct. Interprets the response to
-  determine if the media is short-form content.
+  determine if the media is short-form content. Known channel tabs take precedence
+  over the URL/metadata heuristic. Their filenames are already rendered correctly.
+  Mixed sources render Shorts predictions offline once, with the profile's quality
+  options. Streaming callers can defer this using `render_shorts: false`; their
+  prediction stays unknown until final processing.
 
   Returns %Media{}.
   """
-  def response_to_struct(response) do
-    %Media{
+  def response_to_struct(response, source \\ nil, opts \\ []) do
+    media = %Media{
       media_id: response["id"],
       title: response["title"],
       description: response["description"],
       original_url: response["original_url"],
       livestream: !!response["live_status"] && response["live_status"] != "not_live",
       duration_seconds: response["duration"] && round(response["duration"]),
-      short_form_content: response["original_url"] && short_form_content?(response),
+      short_form_content: indexed_short_form_content(response, Keyword.get(opts, :content_type)),
       uploaded_at: response["upload_date"] && parse_uploaded_at(response),
       playlist_index: response["playlist_index"] || 0,
       availability: normalize_availability(response["availability"]),
       predicted_media_filepath: response["filename"]
     }
+
+    correct_shorts_filepath(media, response, source, opts)
   end
+
+  defp correct_shorts_filepath(%Media{short_form_content: true} = media, response, source, opts)
+       when not is_nil(source) do
+    cond do
+      Keyword.get(opts, :content_type) in [:videos, :shorts, :streams] ->
+        media
+
+      Sources.output_path_template(source, true) == Sources.output_path_template(source) ->
+        media
+
+      not Keyword.get(opts, :render_shorts, true) ->
+        %{media | predicted_media_filepath: nil}
+
+      true ->
+        render_shorts_filepath(media, response, source)
+    end
+  end
+
+  defp correct_shorts_filepath(media, _response, _source, _opts), do: media
+
+  defp render_shorts_filepath(media, response, source) do
+    source = Repo.preload(source, :media_profile)
+    item = %MediaItem{source: source, short_form_content: true, playlist_index: media.playlist_index}
+
+    command_opts =
+      [output: DownloadOptionBuilder.build_output_path_for(item)] ++
+        DownloadOptionBuilder.build_quality_options_for(source)
+
+    filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
+
+    try do
+      result =
+        with :ok <- File.write(filepath, Phoenix.json_library().encode!(response)) do
+          predict_filepath_from_metadata(media.original_url, filepath, command_opts)
+        end
+
+      case result do
+        {:ok, predicted} when is_binary(predicted) and predicted != "" ->
+          %{media | predicted_media_filepath: predicted}
+
+        error ->
+          Logger.warning("Shorts path prediction failed: #{inspect(error)}")
+          %{media | predicted_media_filepath: nil}
+      end
+    after
+      File.rm(filepath)
+    end
+  end
+
+  defp indexed_short_form_content(_response, :shorts), do: true
+  defp indexed_short_form_content(_response, tab) when tab in [:videos, :streams], do: false
+  defp indexed_short_form_content(response, _tab), do: response["original_url"] && short_form_content?(response)
 
   defp short_form_content?(response) do
     if String.contains?(response["original_url"], "/shorts/") do

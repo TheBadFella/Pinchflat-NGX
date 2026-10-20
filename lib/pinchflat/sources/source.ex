@@ -73,6 +73,7 @@ defmodule Pinchflat.Sources.Source do
     download_subdirectory
     media_profile_id
     output_path_template_override
+    output_path_template_shorts_override
     marked_for_deletion_at
     min_duration_seconds
     max_duration_seconds
@@ -139,6 +140,7 @@ defmodule Pinchflat.Sources.Source do
     field :title_filter_regex, :string
     field :download_subdirectory, :string
     field :output_path_template_override, :string
+    field :output_path_template_shorts_override, :string
 
     field :min_duration_seconds, :integer
     field :max_duration_seconds, :integer
@@ -190,6 +192,9 @@ defmodule Pinchflat.Sources.Source do
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
+    |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),
+      message: "must end with .{{ ext }}"
+    )
     |> cast_assoc(:metadata, with: &SourceMetadata.changeset/2, required: false)
     |> unique_constraint([:collection_id, :media_profile_id, :title_filter_regex], error_key: :original_url)
   end

@@ -37,6 +37,11 @@ defmodule PinchflatWeb.Schemas do
       properties: %{
         id: %Schema{type: :integer, description: "Internal database ID", example: 1},
         name: %Schema{type: :string, description: "Profile name", example: "HD Videos"},
+        output_path_template_shorts: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Optional YouTube Shorts output template; blank uses the primary template"
+        },
         output_path_template: %Schema{
           type: :string,
           description: "Template for output file paths",
@@ -157,6 +162,16 @@ defmodule PinchflatWeb.Schemas do
           type: :string,
           description: "Original source URL",
           example: "https://www.youtube.com/channel/UCxxx"
+        },
+        output_path_template_override: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Primary output template override"
+        },
+        output_path_template_shorts_override: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Optional Shorts output template override"
         },
         index_frequency_minutes: %Schema{type: :integer, description: "Indexing frequency in minutes", example: 1440},
         fast_index: %Schema{type: :boolean, description: "Use fast indexing", example: false},
@@ -463,6 +478,12 @@ defmodule PinchflatWeb.Schemas do
             },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
+            output_path_template_shorts_override: %Schema{
+              type: :string,
+              nullable: true,
+              description:
+                "Optional Shorts template override; blank uses the profile Shorts template, then the primary template"
+            },
             output_path_template_override: %Schema{
               type: :string,
               description: "Override the media profile's output path template"
@@ -542,6 +563,12 @@ defmodule PinchflatWeb.Schemas do
             },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
+            output_path_template_shorts_override: %Schema{
+              type: :string,
+              nullable: true,
+              description:
+                "Optional Shorts template override; blank uses the profile Shorts template, then the primary template"
+            },
             output_path_template_override: %Schema{
               type: :string,
               description: "Override the media profile's output path template"
@@ -592,6 +619,11 @@ defmodule PinchflatWeb.Schemas do
           type: :object,
           properties: %{
             name: %Schema{type: :string, description: "Profile name (required)", example: "HD Videos"},
+            output_path_template_shorts: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Optional YouTube Shorts output template; blank uses the primary template"
+            },
             output_path_template: %Schema{
               type: :string,
               description: "Template for output file paths (required)",
@@ -668,6 +700,11 @@ defmodule PinchflatWeb.Schemas do
           type: :object,
           properties: %{
             name: %Schema{type: :string, description: "Profile name"},
+            output_path_template_shorts: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Optional YouTube Shorts output template; blank uses the primary template"
+            },
             output_path_template: %Schema{type: :string, description: "Template for output file paths"},
             download_subs: %Schema{type: :boolean, description: "Download subtitles"},
             download_auto_subs: %Schema{type: :boolean, description: "Download auto-generated subtitles"},

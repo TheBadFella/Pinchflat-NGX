@@ -12,6 +12,21 @@ defmodule Pinchflat.Reconciliation.PlanBuilderTest do
   alias Pinchflat.Reconciliation.ReconcilePlanItem
   alias Pinchflat.Metadata.MetadataFileHelpers
 
+  test "plans Shorts media moves using the Shorts template" do
+    item = downloaded_media_item(%{output_path_template_shorts: "Shorts/{{ title }}.{{ ext }}"})
+    {:ok, item} = Media.update_media_item(item, %{short_form_content: true})
+    plan = create_plan(item.source_id)
+    target = "/tmp/test/media/Shorts/video.mp4"
+
+    stub(YtDlpRunnerMock, :run, fn _, _, opts, _, _ ->
+      assert opts[:output] == "/tmp/test/media/Shorts/%(title)S.%(ext)S"
+      {:ok, ~s({"filename":"#{target}"})}
+    end)
+
+    assert {:ok, plan} = PlanBuilder.build_plan_items(plan)
+    assert fetch_item(plan, :move, "media").to_path == target
+  end
+
   describe "build_plan_items/1 (moves and deletes)" do
     test "plans a move when the predicted media path differs" do
       media_item = downloaded_media_item()

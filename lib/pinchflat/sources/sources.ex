@@ -233,15 +233,27 @@ defmodule Pinchflat.Sources do
 
   @doc """
   Returns the relevant output path template for a source.
-  Pulls from the source's override if present, otherwise uses the media profile's.
+  Shorts prefer the source's Shorts override, then the profile's Shorts template.
+  Without a Shorts template, uses the primary source override or profile template.
+  Omitting the media item always selects the primary template.
 
   Returns binary()
   """
-  def output_path_template(source) do
-    source = Repo.preload(source, :media_profile)
-    media_profile = source.media_profile
+  def output_path_template(source, media_item_or_short \\ nil)
 
-    source.output_path_template_override || media_profile.output_path_template
+  def output_path_template(%Source{} = source, %MediaItem{short_form_content: short?}) do
+    output_path_template(source, short?)
+  end
+
+  def output_path_template(%Source{} = source, short?) do
+    source = Repo.preload(source, :media_profile)
+    primary = source.output_path_template_override || source.media_profile.output_path_template
+
+    if short? == true do
+      source.output_path_template_shorts_override || source.media_profile.output_path_template_shorts || primary
+    else
+      primary
+    end
   end
 
   @doc """
