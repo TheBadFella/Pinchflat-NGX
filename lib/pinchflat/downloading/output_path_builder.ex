@@ -6,6 +6,21 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   alias Pinchflat.Downloading.OutputPath.Parser, as: TemplateParser
 
   @doc """
+  Encodes a display name as one literal filename component, without interpreting
+  template syntax or allowing directory separators.
+  """
+  def literal_component(value) when is_binary(value) do
+    component =
+      value
+      |> String.replace(~r/[<>:"\/\\|?*\x00-\x1f\x7f]/u, "_")
+      |> String.trim()
+      |> String.trim_trailing(".")
+      |> String.replace("%", "%%")
+
+    {:literal, if(component == "", do: "_", else: component)}
+  end
+
+  @doc """
   Builds the actual final filepath from a given template. Optionally, you can pass in
   a map of additional options to be used in the template.
 
@@ -20,9 +35,14 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
 
     expanded_options =
       Enum.map(combined_options, fn {key, value} ->
-        {:ok, parse_result} = TemplateParser.parse(value, combined_options, &identifier_fn/2)
+        case value do
+          {:literal, literal} ->
+            {key, literal}
 
-        {key, parse_result}
+          template ->
+            {:ok, parse_result} = TemplateParser.parse(template, combined_options, &identifier_fn/2)
+            {key, parse_result}
+        end
       end)
 
     TemplateParser.parse(template_string, Map.new(expanded_options), &identifier_fn/2)
@@ -37,6 +57,7 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   defp identifier_fn(identifier, variables) do
     case Map.get(variables, identifier) do
       nil -> "%(#{identifier})S"
+      {:literal, literal} -> literal
       value -> value
     end
   end

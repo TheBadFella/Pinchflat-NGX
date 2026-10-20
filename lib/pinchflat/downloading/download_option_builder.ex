@@ -262,7 +262,12 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   end
 
   defp build_output_path(string, media_item_with_preloads, template_options) do
-    Path.join(base_directory(), build_relative_output_path(string, media_item_with_preloads, template_options))
+    relative_path = build_relative_output_path(string, media_item_with_preloads, template_options)
+
+    case DownloadStaging.output_path(base_directory(), relative_path) do
+      {:ok, path} -> path
+      {:error, :path_escape} -> raise ArgumentError, "output path escapes the media directory"
+    end
   end
 
   defp build_relative_output_path(media_item_with_preloads) do
@@ -288,9 +293,9 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
       "media_item_id" => to_string(media_item_with_preloads.id),
       "source_id" => to_string(source.id),
       "media_profile_id" => to_string(source.media_profile_id),
-      "source_custom_name" => source.custom_name,
+      "source_custom_name" => OutputPathBuilder.literal_component(source.custom_name),
       "source_collection_id" => source.collection_id,
-      "source_collection_name" => source.collection_name,
+      "source_collection_name" => OutputPathBuilder.literal_component(source.collection_name),
       "source_collection_type" => to_string(source.collection_type),
       "media_playlist_index" => pad_int(media_item_with_preloads.playlist_index),
       "media_upload_date_index" => pad_int(media_item_with_preloads.upload_date_index)

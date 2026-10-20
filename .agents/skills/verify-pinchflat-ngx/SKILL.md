@@ -7,6 +7,8 @@ description: Choose and run proportionate verification for Pinchflat-ngx changes
 
 Read [repository context](../../repository-context.md) for commands, prerequisites and contracts. Read scoped AGENTS files for the changed area. This is a verification recipe, not a claim that an app instance is available.
 
+For asynchronous intake/indexing changes, include one regression from the real entry point through the relevant workers to persisted naming and output paths. Check configuration-dependent scheduling, retry behavior and concurrent user edits where relevant. Distinguish accepted requests, completed jobs, correct files and packaged/live-provider proof; none substitutes for the others.
+
 1. Define the observable result from the user's request. Select the existing test, CLI, UI or configuration check that can distinguish correct behavior from this failure.
 2. Inspect setup/teardown, environment loading, network calls and filesystem targets. Use isolated fixture state. Establish which process, data directory and port belong to this run before driving an app. Do not infer safety from a command named test, check or dry-run.
 3. Run the smallest useful check, then broaden for shared contracts or the repository's required release gate. A regression test must fail for the reported defect; avoid tests that duplicate the implementation or merely inspect source text.

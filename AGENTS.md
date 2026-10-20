@@ -482,3 +482,11 @@ Lefthook runs on commit (configured in `lefthook.yml`):
 - For implementation, debugging or review, read [change-pinchflat-ngx](.agents/skills/change-pinchflat-ngx/SKILL.md).
 
 Load the relevant skill, not the full catalog. These workflows preserve the user's scope and the repository's specific contracts. [Source revisions and licenses](.agents/skill-provenance.md).
+
+## Verify completed asynchronous workflows
+
+For changes to intake, indexing or background downloads, define success from the user's completed result: persisted source/media state and the expected output path. HTTP acceptance and an enqueued job prove only acceptance. Trace each affected real entry point and the workers it schedules; do not supply test-only metadata that those callers omit.
+
+Add a regression that starts at the affected API or UI boundary, executes the relevant workers with fixture-backed external responses, and asserts the final name and destination. Exercise settings that can accidentally control unrelated behavior, such as artwork disabled, plus retries and user edits during work. Mock external services at the runner/HTTP boundary, not the application workflow being checked.
+
+Before claiming deployment verification, smoke-test the packaged image through the changed entry points in isolated state. Report acceptance, completed processing and filesystem outcomes separately; identify fixture-backed checks and live-provider checks accurately. Scope checks to the change rather than requiring a whole-product audit.
