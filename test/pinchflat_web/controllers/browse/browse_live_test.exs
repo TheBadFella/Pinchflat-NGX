@@ -358,7 +358,27 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       rendered = render_click(download_btn)
 
       assert rendered =~ "Single-video source created" or rendered =~ "Queued"
-      assert Repo.get_by(Source, collection_id: "vid_test_123", media_profile_id: profile.id) != nil
+      source = Repo.get_by!(Source, collection_id: "vid_test_123", media_profile_id: profile.id)
+      stub(AppriseRunnerMock, :run, fn _, _ -> {:ok, ""} end)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_media_attributes_for_collection, _opts, _template, _extra ->
+          {:ok,
+           Jason.encode!(%{
+             "id" => "vid_test_123",
+             "title" => "Indexed Browse title",
+             "original_url" => source.original_url,
+             "upload_date" => "20261019",
+             "duration" => 600,
+             "filename" => "/tmp/test/media/Indexed Browse title.mp4"
+           })}
+
+        _url, :predict_filepath_from_metadata, _opts, _template, _extra ->
+          {:ok, Jason.encode!(%{"filename" => "/tmp/test/media/Indexed Browse title.mp4"})}
+      end)
+
+      assert :ok = perform_job(Pinchflat.SlowIndexing.MediaCollectionIndexingWorker, %{id: source.id})
+      assert Repo.reload!(source).custom_name == "Indexed Browse title"
     end
   end
 

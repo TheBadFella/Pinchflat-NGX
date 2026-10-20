@@ -20,6 +20,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     - :file_listener_handler - a function that will be called with the path to the
       file that will be written to when yt-dlp is done. This is useful for
       setting up a file watcher to know when the file is ready to be read.
+    - :raw_metadata - return full metadata maps for single-video title/path resolution
     - :use_cookies - whether or not to use user-provided cookies when fetching the media details
     - :expected_exit_codes - passed through to the runner; non-zero exit codes the
       caller treats as a normal outcome (logged at debug instead of error)
@@ -32,7 +33,8 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     # available formats since we're just getting the media details
     all_command_opts = [:simulate, :skip_download, :ignore_no_formats_error, :no_warnings] ++ command_opts
     use_cookies = Keyword.get(addl_opts, :use_cookies, false)
-    output_template = YtDlpMedia.indexing_output_template()
+    raw_metadata? = Keyword.get(addl_opts, :raw_metadata, false)
+    output_template = if raw_metadata?, do: "%()j", else: YtDlpMedia.indexing_output_template()
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     file_listener_handler = Keyword.get(addl_opts, :file_listener_handler, false)
 
@@ -54,7 +56,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
           |> Enum.map(fn line ->
             case Phoenix.json_library().decode(line) do
               {:ok, parsed_json} ->
-                YtDlpMedia.response_to_struct(parsed_json)
+                if raw_metadata?, do: parsed_json, else: YtDlpMedia.response_to_struct(parsed_json)
 
               _ ->
                 nil

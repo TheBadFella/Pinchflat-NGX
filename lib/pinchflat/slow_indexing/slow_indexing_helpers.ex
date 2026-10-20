@@ -97,17 +97,64 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
   Returns [%MediaItem{} | %Ecto.Changeset{}]
   """
-  def index_and_enqueue_download_for_media_items(%Source{} = source, opts \\ []) do
-    # The media_profile is needed to determine the quality options to _then_ determine a more
-    # accurate predicted filepath
-    source = Repo.preload(source, [:media_profile])
-    # See the method definition below for more info on how file watchers work
-    # (important reading if you're not familiar with it)
-    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts)
-    # Reload because the source may have been updated during the (long-running) indexing process
-    # and important settings like `download_media` may have changed.
-    source = Repo.reload!(source)
+  def index_and_enqueue_download_for_media_items(source, opts \\ [])
 
+  def index_and_enqueue_download_for_media_items(%Source{collection_type: :video} = source, opts) do
+    source = Repo.preload(source, :media_profile)
+    was_forced = Keyword.get(opts, :was_forced, false)
+
+    command_opts =
+      base_indexing_options(source) ++
+        build_download_archive_options(source, was_forced, :all) ++ build_index_cutoff_options(source, :all)
+
+    {:ok, metadata} =
+      MediaCollection.get_media_attributes_for_collection(source.original_url, command_opts,
+        raw_metadata: true,
+        use_cookies: Sources.use_cookies?(source, :indexing),
+        expected_exit_codes: [1]
+      )
+
+    persist_single_video_index(source, metadata, command_opts)
+  end
+
+  def index_and_enqueue_download_for_media_items(%Source{} = source, opts) do
+    source = Repo.preload(source, :media_profile)
+    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts)
+    persist_indexed_media(Repo.reload!(source), media_attributes)
+  end
+
+  defp persist_single_video_index(source, metadata, command_opts) do
+    case Repo.transaction(fn ->
+           query = from(s in Source, where: s.id == ^source.id)
+           query = if Pinchflat.Database.postgres?(), do: lock(query, "FOR UPDATE"), else: query
+           current = Repo.one!(query)
+           identity_fields = [:collection_type, :collection_id, :original_url, :media_profile_id]
+
+           if Map.take(source, identity_fields) != Map.take(current, identity_fields) do
+             Repo.rollback(:source_changed_during_indexing)
+           end
+
+           # Keep name resolution, offline prediction and queueing under the same
+           # short write lock; the network fetch has already finished.
+           media_attributes =
+             Enum.map(metadata, fn attrs ->
+               updated = Sources.resolve_intake_video_title(current, attrs["id"], attrs["title"])
+               {:ok, attrs} = refresh_video_prediction(source, updated, attrs, command_opts)
+               YtDlpMedia.response_to_struct(attrs)
+             end)
+
+           persist_indexed_media(Repo.reload!(current), media_attributes)
+         end) do
+      {:ok, result} ->
+        result
+
+      {:error, :source_changed_during_indexing} ->
+        Logger.info("Discarding stale single-video index for source #{source.id}")
+        []
+    end
+  end
+
+  defp persist_indexed_media(source, media_attributes) do
     result =
       Enum.map(media_attributes, fn media_attrs ->
         case Media.create_media_item_from_backend_attrs(source, media_attrs) do
@@ -145,12 +192,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     was_forced = Keyword.get(opts, :was_forced, false)
     should_use_cookies = Sources.use_cookies?(source, :indexing)
 
-    base_command_opts =
-      [output: DownloadOptionBuilder.build_output_path_for(source)] ++
-        build_single_video_options(source) ++
-        DownloadOptionBuilder.build_quality_options_for(source) ++
-        DownloadOptionBuilder.build_youtube_options_for(source) ++
-        build_dateafter_options(source)
+    base_command_opts = base_indexing_options(source)
 
     results =
       Enum.map(indexing_urls_for(source), fn {url, content_type} ->
@@ -179,6 +221,14 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
+  defp base_indexing_options(source) do
+    [output: DownloadOptionBuilder.build_output_path_for(source)] ++
+      build_single_video_options(source) ++
+      DownloadOptionBuilder.build_quality_options_for(source) ++
+      DownloadOptionBuilder.build_youtube_options_for(source) ++
+      build_dateafter_options(source)
+  end
+
   defp run_indexing_command(source, url, command_opts, should_use_cookies) do
     {:ok, pid} = FileFollowerServer.start_link()
 
@@ -204,6 +254,33 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       err ->
         log_indexing_failure(url, err)
         err
+    end
+  end
+
+  defp refresh_video_prediction(source, updated_source, attrs, command_opts) do
+    if source.custom_name == updated_source.custom_name do
+      {:ok, attrs}
+    else
+      filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
+      File.write!(filepath, Phoenix.json_library().encode!(attrs))
+      output = DownloadOptionBuilder.build_output_path_for(updated_source)
+
+      try do
+        case YtDlpMedia.predict_filepath_from_metadata(source.original_url, filepath, [
+               {:output, output} | Enum.reject(command_opts, &match?({:output, _}, &1))
+             ]) do
+          {:ok, filename} when is_binary(filename) and filename != "" ->
+            {:ok, Map.put(attrs, "filename", filename)}
+
+          {:ok, _} ->
+            {:error, :missing_predicted_filepath}
+
+          error ->
+            error
+        end
+      after
+        File.rm(filepath)
+      end
     end
   end
 
