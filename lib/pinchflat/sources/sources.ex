@@ -601,6 +601,52 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Refreshes an unlocked video's title only if its identity and name still match
+  the snapshot used to fetch metadata. Returns the reloaded source.
+  """
+  def refresh_video_metadata_title(%Source{collection_type: :video} = source, title) when is_binary(title) do
+    if String.trim(title) != "" do
+      from(s in Source,
+        where:
+          s.id == ^source.id and s.collection_type == :video and
+            s.collection_id == ^source.collection_id and s.original_url == ^source.original_url and
+            s.custom_name == ^source.custom_name and s.custom_name_locked == false
+      )
+      |> Repo.update_all(set: [custom_name: title, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)])
+    end
+
+    Repo.reload!(source)
+  end
+
+  def refresh_video_metadata_title(source, _title), do: source
+
+  @doc """
+  Resolves an intake-generated single-video name without replacing a manual name
+  or a locked name. The database condition protects edits made during indexing.
+  Returns the reloaded source.
+  """
+  def resolve_intake_video_title(%Source{collection_type: :video} = source, video_id, title)
+      when is_binary(title) and video_id == source.collection_id do
+    placeholder = "YouTube Video #{source.collection_id}"
+
+    if String.trim(title) != "" do
+      from(s in Source,
+        where:
+          s.id == ^source.id and s.collection_type == :video and s.collection_id == ^video_id and
+            s.custom_name == ^placeholder and
+            s.collection_name == ^placeholder and s.custom_name_locked == false
+      )
+      |> Repo.update_all(
+        set: [custom_name: title, collection_name: title, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+      )
+    end
+
+    Repo.reload!(source)
+  end
+
+  def resolve_intake_video_title(source, _video_id, _title), do: Repo.reload!(source)
+
+  @doc """
   Creates a source. May attempt to pull additional source details from the
   original_url (if provided). Will attempt to start indexing the source's
   media if successfully inserted.

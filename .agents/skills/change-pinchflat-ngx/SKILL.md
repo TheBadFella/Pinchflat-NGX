@@ -11,6 +11,8 @@ Read [repository context](../../repository-context.md) and applicable AGENTS ins
 
 State the requested behavior and observable acceptance condition. Use repository terminology. Investigate code and existing decisions before asking questions; ask only when an unresolved choice materially changes the outcome. Do not turn a small fix into an interview, issue-tracker setup or redesign. Record a durable decision only when it captures a real tradeoff future work needs.
 
+Before implementation, trace actual callers and their supplied options through background work to persisted names and output paths. State the completed user outcome as an acceptance condition. A helper test with metadata absent from real requests does not establish that outcome.
+
 ## Diagnose and implement
 
 For a bug, seek a focused reproduction of the user's symptom. If it requires unavailable production access, continue source analysis with hypotheses clearly labeled; do not claim reproduction. Test a falsifiable hypothesis with a targeted probe, then fix the responsible code and remove temporary instrumentation.

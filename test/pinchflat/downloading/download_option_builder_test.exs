@@ -50,6 +50,26 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:output, "/tmp/test/media/99.%(ext)s"} in res
     end
 
+    test "rejects a template that escapes the media root even without staging", %{media_item: item} do
+      source = %{item.source | output_path_template_override: "../outside/{{ title }}.{{ ext }}"}
+
+      assert_raise ArgumentError, "output path escapes the media directory", fn ->
+        DownloadOptionBuilder.build_output_path_for(source)
+      end
+    end
+
+    test "treats source names as literal components", %{media_item: item} do
+      source = %{
+        item.source
+        | custom_name: "../../outside",
+          collection_name: "%(title)s",
+          output_path_template_override: "{{ source_custom_name }}/{{ source_collection_name }}/{{ title }}.{{ ext }}"
+      }
+
+      assert DownloadOptionBuilder.build_output_path_for(source) ==
+               "/tmp/test/media/.._.._outside/%%(title)s/%(title)S.%(ext)S"
+    end
+
     test "uses source's output override if present", %{media_item: media_item} do
       source = media_item.source
       {:ok, _} = Sources.update_source(source, %{output_path_template_override: "override.%(ext)s"})

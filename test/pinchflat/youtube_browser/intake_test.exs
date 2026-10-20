@@ -182,6 +182,88 @@ defmodule Pinchflat.YoutubeBrowser.IntakeTest do
     end
   end
 
+  describe "indexed intake titles" do
+    test "only the matching generated video name is resolved, including retries" do
+      source =
+        source_fixture(
+          collection_type: :video,
+          collection_id: "title_test",
+          custom_name: "YouTube Video title_test",
+          collection_name: "YouTube Video title_test"
+        )
+
+      updated = Pinchflat.Sources.resolve_intake_video_title(source, "title_test", "Resolved title")
+      assert updated.custom_name == "Resolved title"
+      assert updated.collection_name == "Resolved title"
+
+      assert Pinchflat.Sources.resolve_intake_video_title(source, "title_test", "Later title").custom_name ==
+               "Resolved title"
+    end
+
+    test "an edit committed after indexing starts survives the stale source snapshot" do
+      source =
+        source_fixture(
+          collection_type: :video,
+          collection_id: "title_edit",
+          custom_name: "YouTube Video title_edit",
+          collection_name: "YouTube Video title_edit"
+        )
+
+      source |> Ecto.Changeset.change(custom_name: "User's name") |> Repo.update!()
+
+      assert Pinchflat.Sources.resolve_intake_video_title(source, "title_edit", "Fetched title").custom_name ==
+               "User's name"
+    end
+
+    test "a lock committed during indexing survives the stale source snapshot" do
+      source =
+        source_fixture(
+          collection_type: :video,
+          collection_id: "title_lock",
+          custom_name: "YouTube Video title_lock",
+          collection_name: "YouTube Video title_lock"
+        )
+
+      source |> Ecto.Changeset.change(custom_name_locked: true) |> Repo.update!()
+
+      assert Pinchflat.Sources.resolve_intake_video_title(source, "title_lock", "Fetched title").custom_name ==
+               source.custom_name
+    end
+
+    test "a source retargeted during indexing keeps its new identity" do
+      source =
+        source_fixture(
+          collection_type: :video,
+          collection_id: "old_video",
+          custom_name: "YouTube Video old_video",
+          collection_name: "YouTube Video old_video"
+        )
+
+      source |> Ecto.Changeset.change(collection_id: "new_video") |> Repo.update!()
+
+      assert Pinchflat.Sources.resolve_intake_video_title(source, "old_video", "Old title").custom_name ==
+               source.custom_name
+    end
+
+    test "missing titles and mismatched video IDs leave the placeholder alone" do
+      source =
+        source_fixture(
+          collection_type: :video,
+          collection_id: "title_missing",
+          custom_name: "YouTube Video title_missing",
+          collection_name: "YouTube Video title_missing"
+        )
+
+      for title <- [nil, "", "   "] do
+        assert Pinchflat.Sources.resolve_intake_video_title(source, "title_missing", title).custom_name ==
+                 source.custom_name
+      end
+
+      assert Pinchflat.Sources.resolve_intake_video_title(source, "another_video", "Fetched title").custom_name ==
+               source.custom_name
+    end
+  end
+
   describe "safety boundaries and invalid inputs" do
     test "B14: rejects invalid or non-existent profile ID" do
       assert {:error, :invalid_profile} = Intake.download_video("vid_123", 999_999)
