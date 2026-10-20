@@ -55,6 +55,7 @@
           >
             Standard
           </button>
+
           <button
             type="button"
             class="theme-filter-button rounded-full"
@@ -80,6 +81,7 @@
       <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-sm font-medium text-theme-on-surface">
         <span x-text="sourceTypeLabel"></span>
       </label>
+
       <.input
         field={f[:original_url]}
         type="text"
@@ -88,6 +90,7 @@
       />
       <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted" x-text="sourceTypeHelp"></p>
     </section>
+
     <.input
       :if={!@new_source}
       field={f[:original_url]}
@@ -98,10 +101,12 @@
       x-model.fill="sourceUrl"
     />
     <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
+
     <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
       Name and description are refreshed from source metadata unless you lock the individual field. Locked fields
       can still be edited and saved here; the lock only affects automated refreshes.
     </p>
+
     <.input
       field={f[:custom_name]}
       type="text"
@@ -175,6 +180,7 @@
       The Indexing Cutoff Date doesn't apply to playlists — they aren't ordered by upload date, so
       indexing can't safely stop early.
     </p>
+
     <p x-cloak x-show="indexCutoffAfterDownloadCutoff" class="mt-1 text-sm text-theme-warning">
       The Indexing Cutoff Date is after the Download Cutoff Date — media between the two dates would
       never be indexed, so it could never be downloaded. Set it on or before the Download Cutoff
@@ -241,17 +247,15 @@
         help="Overrides yt-dlp's default YouTube player-client selection for this source. Default is recommended unless you need a specific client."
         x-model="playerClient"
       />
-
       <div class="mt-4 rounded-m3-sm border border-theme-outline/40 bg-theme-surface-2 p-4">
         <div class="mb-3">
           <h4 class="text-sm font-semibold text-theme-on-surface">Client Fallback Chain</h4>
+
           <p class="text-xs text-theme-on-surface-muted mt-1">
             If the primary client encounters an HTTP 403 or bot check, Pinchflat will sequentially try these fallback clients in order (up to 4 total clients).
           </p>
         </div>
-
         <input type="hidden" name="source[player_client_fallbacks][]" value="" />
-
         <div x-show="fallbacks.length > 0" class="space-y-2 mb-3">
           <template x-for="(fb, idx) in fallbacks" x-bind:key="fb">
             <div class="flex items-center justify-between rounded-m3-xs border border-theme-outline/30 bg-theme-surface-1 px-3 py-2 text-xs">
@@ -260,6 +264,7 @@
                 <span class="font-mono text-theme-on-surface-muted" x-text="`#${idx + 1}`"></span>
                 <span class="font-medium text-theme-on-surface font-mono" x-text="fb"></span>
               </div>
+
               <div class="flex items-center gap-1">
                 <button
                   type="button"
@@ -276,6 +281,7 @@
                 >
                   ↑
                 </button>
+
                 <button
                   type="button"
                   class="theme-icon-button theme-outline-button text-xs"
@@ -291,6 +297,7 @@
                 >
                   ↓
                 </button>
+
                 <button
                   type="button"
                   class="theme-icon-button theme-outline-button text-xs text-theme-error hover:border-theme-error"
@@ -319,6 +326,7 @@
             class="theme-input rounded-m3-xs px-3 py-1.5 text-xs text-theme-on-surface focus:ring-0"
           >
             <option value="">Select fallback client to add...</option>
+
             <%= for {label, val} <- Source.player_client_options() do %>
               <option
                 value={to_string(val)}
@@ -330,6 +338,7 @@
               </option>
             <% end %>
           </select>
+
           <button
             type="button"
             class="theme-button theme-outline-button"
@@ -345,9 +354,11 @@
             + Add Fallback
           </button>
         </div>
+
         <p x-show="!playerClient" class="text-xs text-theme-on-surface-muted mt-2">
           Select a primary YouTube Player Client above to enable fallback chains.
         </p>
+
         <p
           x-show="playerClient && (playerClient ? 1 : 0) + fallbacks.length >= 4"
           class="text-xs text-theme-on-surface-muted mt-2"
@@ -365,6 +376,7 @@
         Members-only media may fail without cookies. Configure a cookies.txt file and select a cookie behaviour if
         you want Pinchflat-ngx to access it; this setting will not enable cookies automatically.
       </div>
+
       <div
         x-cloak
         x-show="[playerClient, ...fallbacks].includes('web_creator') && cookieBehaviour !== 'all_operations'"
@@ -373,6 +385,7 @@
       >
         Web Creator requires account cookies. Select All Operations to use this client reliably.
       </div>
+
       <div
         x-cloak
         x-show="[playerClient, ...fallbacks].some(c => ['android', 'ios', 'tv_simply'].includes(c)) && cookieBehaviour !== 'disabled'"
@@ -428,6 +441,7 @@
           >
             Upload cookies.txt
           </.button>
+
           <.button
             type="button"
             class="w-auto px-5 py-3 text-sm"
@@ -436,6 +450,7 @@
           >
             Paste Cookie Contents
           </.button>
+
           <.button
             :if={@cookie_file_exists}
             type="button"
@@ -565,6 +580,7 @@
               x-bind:class="sourceFolderPickerOpen ? 'text-theme-primary' : ''"
             />
           </button>
+
           <div
             x-cloak
             x-show="sourceFolderPickerOpen"
@@ -605,18 +621,33 @@
             <:input_append>
               <button
                 type="button"
-                class="ml-3 inline-flex shrink-0 items-center rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-4 py-3 text-sm font-medium text-theme-on-surface transition hover:bg-theme-surface-3 md:ml-4"
+                class="ml-3 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-3 py-3 text-sm font-medium text-theme-on-surface transition hover:bg-theme-surface-3 sm:px-4 md:ml-4"
                 title="Start from the media profile template, then tweak only what you need for this source."
                 aria-label="Insert media profile template. Start from the media profile template, then tweak only what you need for this source."
                 x-on:click="inputValue = placeholders[mediaProfileId]"
               >
-                Insert media profile template
+                <span class="sm:hidden"><.icon name="hero-document-duplicate" class="h-5 w-5" /></span>
+                <span class="hidden sm:inline">Insert media profile template</span>
               </button>
             </:input_append>
           </.input>
         </div>
       </section>
 
+      <.input
+        field={f[:output_path_template_shorts_override]}
+        type="text"
+        inputclass="font-mono"
+        label="Shorts output path template override (optional)"
+        help="Used for this source's YouTube Shorts. Leave blank to use the media profile's Shorts template, or the primary output path template if neither is set. Must end with .{{ ext }}. Saving leaves existing files in place; later re-downloads and quality upgrades use the new path."
+      />
+      <details class="mt-2 text-sm text-theme-on-surface-muted">
+        <summary class="cursor-pointer py-3 font-medium text-theme-on-surface">How Shorts are identified</summary>
+        <p class="mt-2">
+          Channel tabs identify Shorts directly. Mixed playlists and fast indexing use the URL and existing
+          duration/aspect-ratio detection, which can misclassify short vertical videos.
+        </p>
+      </details>
       <p class="mt-4 text-sm text-theme-on-surface-muted">
         Need custom yt-dlp arguments for this source? After saving, add them to
         <code>extras/yt-dlp-configs/source-123-config.txt</code>
@@ -653,6 +684,7 @@
           x-bind:class="sourceFolderHelpOpen ? 'rotate-180 text-theme-primary' : ''"
         />
       </button>
+
       <div
         x-cloak
         x-show="sourceFolderHelpOpen"
@@ -708,6 +740,7 @@
           x-bind:class="fastIndexHelpOpen ? 'rotate-180 text-theme-primary' : ''"
         />
       </button>
+
       <div
         x-cloak
         x-show="fastIndexHelpOpen"

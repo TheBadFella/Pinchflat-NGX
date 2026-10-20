@@ -746,11 +746,12 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       perform_job(MediaDownloadWorker, %{id: media_item.id, force: true})
     end
 
-    test "deletes old files if the media item has been updated" do
+    test "a successful Shorts replacement uses the new template and then removes the old file" do
       stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 1_000_000} end)
 
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :download, opts, _ot, _addl ->
+          assert String.ends_with?(Path.dirname(opts[:output]), "/shorts")
           filepath = opts |> Keyword.fetch!(:output) |> Path.dirname() |> Path.join("new-video.mp4")
           File.mkdir_p!(Path.dirname(filepath))
           File.write!(filepath, "completed replacement")
@@ -770,13 +771,36 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
           {:ok, ""}
       end)
 
-      old_media_item = media_item_with_attachments()
+      profile = media_profile_fixture(%{output_path_template_shorts: "shorts/{{ title }}.{{ ext }}"})
+      source = source_fixture(%{media_profile_id: profile.id})
+      old_media_item = media_item_with_attachments(%{source_id: source.id, short_form_content: true})
       perform_job(MediaDownloadWorker, %{id: old_media_item.id, force: true})
       updated_media_item = Repo.reload(old_media_item)
 
+      assert updated_media_item.short_form_content
       assert updated_media_item.media_filepath != old_media_item.media_filepath
       refute File.exists?(old_media_item.media_filepath)
       assert File.exists?(updated_media_item.media_filepath)
+
+      assert updated_media_item.media_filepath ==
+               Path.join(Application.fetch_env!(:pinchflat, :media_directory), "shorts/new-video.mp4")
+    end
+
+    test "a failed Shorts replacement preserves the existing file and database path" do
+      stub(DiskSpaceCheckerMock, :available_bytes, fn _ -> {:ok, 1_000_000} end)
+      profile = media_profile_fixture(%{output_path_template_shorts: "shorts/{{ title }}.{{ ext }}"})
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_with_attachments(%{source_id: source.id, short_form_content: true})
+      original = File.read!(item.media_filepath)
+
+      expect(YtDlpRunnerMock, :run, fn _, :download, opts, _, _ ->
+        assert String.ends_with?(Path.dirname(opts[:output]), "/shorts")
+        {:error, "synthetic replacement failure", 1}
+      end)
+
+      assert {:error, :download_failed} = perform_job(MediaDownloadWorker, %{id: item.id, force: true})
+      assert Repo.reload!(item).media_filepath == item.media_filepath
+      assert File.read!(item.media_filepath) == original
     end
   end
 
