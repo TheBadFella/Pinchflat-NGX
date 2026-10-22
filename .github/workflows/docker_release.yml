@@ -22,9 +22,6 @@ on:
         required: true
         default: true
 
-  push:
-    tags:
-      - '*'
   release:
     types:
       - published
@@ -52,7 +49,7 @@ jobs:
       - name: Determine build matrix
         id: set-matrix
         run: |
-          # Published releases and tag pushes build both architectures
+          # Published releases build both architectures
           # workflow_dispatch uses the selected platforms input
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
