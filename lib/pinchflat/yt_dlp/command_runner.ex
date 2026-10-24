@@ -14,6 +14,13 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
   @behaviour YtDlpCommandRunner
 
+  # Stage markers tell us how far yt-dlp got when it exits without writing the
+  # requested output. A video rejected by a metadata filter gets the pre_process
+  # marker but never reaches after_filter, so no after_move JSON is written.
+  @pre_filter_marker "pinchflat-pre-process"
+  @post_filter_marker "pinchflat-after-filter"
+  @filter_skip_message "yt-dlp skipped this media item because it did not match the configured download filters"
+
   @doc """
   Runs a yt-dlp command and returns the string output. Saves the output to
   a file and then returns its contents because yt-dlp will return warnings
@@ -31,14 +38,20 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       normal outcome and handles itself. These (plus 101, which this runner already
       treats as success) get logged at debug instead of error.
 
-  Returns {:ok, binary()} | {:error, output, status}.
+  Returns {:ok, binary()} | {:skipped, binary()} | {:error, output, status}.
+
+  `{:skipped, message}` means yt-dlp exited successfully but intentionally
+  filtered out the media before downloading it (for example `--datebefore` or
+  `--match-filter`), so no `after_move` output exists. It is not a successful
+  download and it is not an I/O or metadata failure.
   """
   @impl YtDlpCommandRunner
   def run(url, action_name, command_opts, output_template, addl_opts \\ []) do
     Logger.debug("Running yt-dlp command for action: #{action_name}")
 
     output_filepath = generate_output_filepath(addl_opts)
-    print_to_file_opts = [{:print_to_file, output_template}, output_filepath]
+    marker_filepath = stage_marker_filepath(action_name, output_filepath)
+    print_to_file_opts = [{:print_to_file, output_template}, output_filepath] ++ stage_marker_options(marker_filepath)
 
     user_configured_opts =
       cookie_file_options(addl_opts) ++
@@ -52,6 +65,8 @@ defmodule Pinchflat.YtDlp.CommandRunner do
     expected_exit_codes = [101] ++ Keyword.get(addl_opts, :expected_exit_codes, [])
 
     wrap_cmd_opts = [expected_exit_codes: expected_exit_codes]
+
+    maybe_remove(marker_filepath)
 
     command_result =
       if action_name == :download && Keyword.has_key?(addl_opts, :progress_handler) do
@@ -67,10 +82,15 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       #   101 = Download cancelled by --max-downloads etc
       #     2 = Error in user-provided options
       #     1 = Any other error
-      {_, status} when status in [0, 101] ->
+      {command_output, 0} ->
+        read_download_output(output_filepath, marker_filepath, command_output)
+
+      {_, status} when status == 101 ->
+        maybe_remove(marker_filepath)
         File.read(output_filepath)
 
       {output, status} ->
+        maybe_remove(marker_filepath)
         {:error, output, status}
     end
   end
@@ -145,6 +165,67 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       path -> path
     end
   end
+
+  defp stage_marker_filepath(:download, output_filepath), do: output_filepath <> ".stages"
+  defp stage_marker_filepath(_action, _output_filepath), do: nil
+
+  defp stage_marker_options(nil), do: []
+
+  defp stage_marker_options(marker_filepath) do
+    [
+      {:print_to_file, "pre_process:#{@pre_filter_marker}"},
+      marker_filepath,
+      {:print_to_file, "after_filter:#{@post_filter_marker}"},
+      marker_filepath
+    ]
+  end
+
+  defp read_download_output(output_filepath, marker_filepath, command_output) do
+    result = File.read(output_filepath)
+    skipped? = filtered_out?(result, marker_filepath)
+
+    maybe_remove(marker_filepath)
+
+    if skipped?, do: {:skipped, filter_skip_message(command_output)}, else: result
+  end
+
+  # A successful exit with no after_move output is only a filter skip when
+  # yt-dlp started processing the video (pre_process) but never passed the
+  # metadata filters (after_filter). An empty output after after_filter ran is
+  # still a genuine failure, and a missing output file stays an I/O error.
+  defp filtered_out?({:ok, output}, marker_filepath) do
+    String.trim(output) == "" and filter_rejected?(marker_filepath)
+  end
+
+  defp filtered_out?(_result, _marker_filepath), do: false
+
+  defp filter_rejected?(nil), do: false
+
+  defp filter_rejected?(marker_filepath) do
+    case File.read(marker_filepath) do
+      {:ok, stages} ->
+        String.contains?(stages, @pre_filter_marker) and not String.contains?(stages, @post_filter_marker)
+
+      _ ->
+        false
+    end
+  end
+
+  defp filter_skip_message(command_output) do
+    reason =
+      command_output
+      |> String.split("\n")
+      |> Enum.reverse()
+      |> Enum.find(&String.starts_with?(&1, "[download] "))
+
+    case reason do
+      nil -> @filter_skip_message
+      line -> @filter_skip_message <> ": " <> String.trim_leading(line, "[download] ")
+    end
+  end
+
+  defp maybe_remove(nil), do: :ok
+  defp maybe_remove(filepath), do: File.rm(filepath)
 
   defp global_options(addl_opts) do
     quiet_opt = if Keyword.has_key?(addl_opts, :progress_handler), do: [], else: [:quiet]

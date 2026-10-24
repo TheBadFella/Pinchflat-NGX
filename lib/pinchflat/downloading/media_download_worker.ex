@@ -191,6 +191,12 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         maybe_update_progress(job_id, %{progress_status: message})
         {:snooze, 60}
 
+      {:error, :filtered, message} ->
+        persist_download_failure(media_item, :permanent, should_force)
+        maybe_update_progress(job_id, %{progress_status: "Skipped: does not match download filters"})
+        Logger.info("yt-dlp download skipped by filter: #{inspect(message)}")
+        {:ok, :non_retry}
+
       {:error, _error_atom, message} ->
         maybe_ignore_unavailable_media(media_item, job_id, message, should_force)
     end

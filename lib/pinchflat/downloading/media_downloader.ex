@@ -81,6 +81,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   #   - `:unsuitable_for_download` if the media item fails the precheck
   #   - `:unrecoverable` if there was an initial failure and the recovery attempt failed
   #   - `:download_failed` for all other yt-dlp-related downloading errors
+  #   - `:filtered` when yt-dlp intentionally skipped the media via a configured filter
   #   - `:unknown` for any other errors, including those not related to yt-dlp
   # - If we retry using cookies, all of the above return values apply. The cookie retry
   #   logic is handled transparently as far as the caller is concerned
@@ -119,6 +120,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
             {:error, :staging_unavailable, message} ->
               {:error, :staging_unavailable, message}
+
+            {:skipped, message} ->
+              Logger.info("yt-dlp filtered out media item ##{media_with_preloads.id}: #{inspect(message)}")
+
+              {:error, :filtered, message}
 
             {:error, guard_reason, guard_message}
             when guard_reason in [:cancelled, :migration_hold, :insufficient_storage] ->

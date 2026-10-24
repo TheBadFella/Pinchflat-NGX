@@ -86,6 +86,18 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
       assert Repo.reload!(media_item).last_error == message
     end
 
+    test "filtered skips are returned as a filtered error", %{media_item: media_item} do
+      message = "yt-dlp skipped this media item: 2021-01-12 upload date is not in range"
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
+        _url, :download, _opts, _ot, _addl -> {:skipped, message}
+      end)
+
+      assert {:error, :filtered, ^message} = MediaDownloader.download_for_media_item(media_item)
+      assert Repo.reload!(media_item).last_error == message
+    end
+
     test "unknown errors are passed through", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :get_downloadable_status, _opts, _ot, _addl -> {:ok, "{}"}
