@@ -271,7 +271,7 @@
 <!-- Failed Jobs -->
 <% retryable = retryable_jobs() %>
 <% discarded = discarded_jobs() %>
-<div class="theme-surface-raised px-5 py-5 sm:px-7.5">
+<div id="failed-jobs" class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h3 class="text-lg font-semibold text-theme-on-surface">Failed Jobs</h3>
     <%= if length(retryable) > 0 do %>
@@ -287,16 +287,16 @@
     <% end %>
   </div>
 
-  <.tabbed_layout>
+  <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
     <:tab title={"Retryable (#{length(retryable)})"} id="retryable">
       <%= if length(retryable) == 0 do %>
-        <p class="text-theme-on-surface-muted">No retryable jobs. Everything is running smoothly!</p>
+        <p class="text-theme-on-surface-muted">No jobs are waiting to retry.</p>
       <% else %>
         <p class="mb-4 text-sm text-theme-on-surface-muted">
           These jobs have failed and are waiting to be retried automatically. You can reset them to retry immediately, or requeue them to run again after other queued jobs.
         </p>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full whitespace-nowrap text-sm [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr class="border-b border-theme-outline">
                 <th class="py-2 text-left text-theme-on-surface-muted">ID</th>
@@ -321,14 +321,14 @@
                     <.link
                       href={~p"/diagnostics/reset_job/#{job.id}"}
                       method="post"
-                      class="mr-3 text-theme-primary hover:underline"
+                      class="theme-button theme-button-compact theme-outline-button mr-3"
                     >
                       Reset
                     </.link>
                     <.link
                       href={~p"/diagnostics/requeue_job/#{job.id}"}
                       method="post"
-                      class="text-theme-primary hover:underline"
+                      class="theme-button theme-button-compact theme-outline-button"
                       data-confirm="Requeue this job? It moves to the back of the queue so other jobs can run first."
                     >
                       Requeue
@@ -350,7 +350,7 @@
           These jobs failed and exhausted all of their retries, so they won't run again on their own. Reset one to queue it for another attempt.
         </p>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full whitespace-nowrap text-sm [&_td]:pr-4 [&_th]:pr-4">
             <thead>
               <tr class="border-b border-theme-outline">
                 <th class="py-2 text-left text-theme-on-surface-muted">ID</th>
@@ -377,7 +377,7 @@
                     <.link
                       href={~p"/diagnostics/reset_job/#{job.id}"}
                       method="post"
-                      class="text-theme-primary hover:underline"
+                      class="theme-button theme-button-compact theme-outline-button"
                     >
                       Reset
                     </.link>

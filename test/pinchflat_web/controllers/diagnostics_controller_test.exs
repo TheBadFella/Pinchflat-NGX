@@ -14,6 +14,43 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
   end
 
   describe "show diagnostics" do
+    test "follows the Discarded tab link and can return to Retryable", %{conn: conn, task: task} do
+      task.job_id
+      |> then(&Repo.get!(Oban.Job, &1))
+      |> Ecto.Changeset.change(state: "discarded", errors: [%{"error" => "Indexing probe failure"}])
+      |> Repo.update!()
+
+      html = conn |> get(~p"/diagnostics") |> html_response(200)
+
+      [discarded_href] =
+        html |> LazyHTML.from_document() |> LazyHTML.query("a[href*='tab=discarded']") |> LazyHTML.attribute("href")
+
+      discarded_html = conn |> recycle() |> get(discarded_href) |> html_response(200)
+      assert discarded_html =~ "Indexing probe failure"
+      refute discarded_html =~ "No jobs are waiting to retry."
+
+      [retryable_href] =
+        discarded_html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("a[href*='tab=retryable']")
+        |> LazyHTML.attribute("href")
+
+      retryable_html = conn |> recycle() |> get(retryable_href) |> html_response(200)
+      assert retryable_html =~ "No jobs are waiting to retry."
+      refute retryable_html =~ "Indexing probe failure"
+    end
+
+    test "unknown tabs fall back to Retryable", %{conn: conn} do
+      html = conn |> get(~p"/diagnostics?tab=unknown") |> html_response(200)
+      assert html =~ "No jobs are waiting to retry."
+    end
+
+    test "the Discarded tab has an empty state when no jobs were discarded", %{conn: conn} do
+      html = conn |> get(~p"/diagnostics?tab=discarded") |> html_response(200)
+      assert html =~ "No discarded jobs."
+      refute html =~ "No jobs are waiting to retry."
+    end
+
     test "renders the page", %{conn: conn} do
       conn = get(conn, ~p"/diagnostics")
 
