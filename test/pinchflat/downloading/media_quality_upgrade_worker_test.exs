@@ -10,10 +10,10 @@ defmodule Pinchflat.Downloading.MediaQualityUpgradeWorkerTest do
   alias Pinchflat.Downloading.MediaRetentionWorker
 
   describe "perform/1" do
-    test "leaves expired media for retention when upgrades run before retention" do
+    test "leaves inherited expired media for retention when upgrades run before retention" do
       stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "", 0} end)
-      profile = media_profile_fixture(%{redownload_delay_days: 4})
-      expired_source = source_fixture(%{media_profile_id: profile.id, retention_period_days: 2})
+      profile = media_profile_fixture(%{redownload_delay_days: 4, retention_period_days: 2})
+      expired_source = source_fixture(%{media_profile_id: profile.id, retention_period_days: nil})
       retained_source = source_fixture(%{media_profile_id: profile.id, retention_period_days: 7})
       downloaded_at = now_minus(5, :days) |> DateTime.truncate(:second)
       attrs = %{uploaded_at: now_minus(6, :days), media_downloaded_at: downloaded_at}

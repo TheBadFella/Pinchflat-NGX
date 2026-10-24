@@ -99,9 +99,16 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
       assert Enum.map(items, &Media.retention_cullable?/1) == [true, true, false, false]
 
       # Moving one inheriting source to an unset profile restores the no-age-cleanup policy.
-      {:ok, _} = Pinchflat.Sources.update_source(inheriting, %{media_profile_id: media_profile_fixture().id}, run_post_commit_tasks: false)
+      {:ok, _} =
+        Pinchflat.Sources.update_source(inheriting, %{media_profile_id: media_profile_fixture().id},
+          run_post_commit_tasks: false
+        )
+
       assert Enum.map(items, &Media.retention_cullable?/1) == [true, false, false, false]
-      {:ok, _} = Pinchflat.Sources.update_source(inheriting, %{media_profile_id: other_profile.id}, run_post_commit_tasks: false)
+
+      {:ok, _} =
+        Pinchflat.Sources.update_source(inheriting, %{media_profile_id: other_profile.id}, run_post_commit_tasks: false)
+
       assert Enum.map(items, &Media.retention_cullable?/1) == [true, true, false, false]
 
       assert :ok = perform_job(MediaRetentionWorker, %{})

@@ -113,7 +113,7 @@ defmodule Pinchflat.Media.MediaQuery do
       dynamic(
         [mi, source, media_profile],
         fragment(
-          "COALESCE(?, ?) > 0 AND ? + (COALESCE(?, ?) * INTERVAL '1 day') < NOW()",
+          "COALESCE(?, ?, 0) > 0 AND ? + (COALESCE(?, ?, 0) * INTERVAL '1 day') < NOW()",
           source.retention_period_days,
           media_profile.retention_period_days,
           mi.media_downloaded_at,
@@ -125,7 +125,7 @@ defmodule Pinchflat.Media.MediaQuery do
       dynamic(
         [mi, source, media_profile],
         fragment(
-          "IFNULL(?, ?) > 0 AND DATETIME(?, '+' || IFNULL(?, ?) || ' day') < DATETIME('now')",
+          "COALESCE(?, ?, 0) > 0 AND DATETIME(?, '+' || COALESCE(?, ?, 0) || ' day') < DATETIME('now')",
           source.retention_period_days,
           media_profile.retention_period_days,
           mi.media_downloaded_at,
