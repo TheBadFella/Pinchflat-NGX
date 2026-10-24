@@ -89,6 +89,12 @@ defmodule PinchflatWeb.Schemas do
           example: :"1080p"
         },
         media_container: %Schema{type: :string, nullable: true, description: "Media container format", example: "mp4"},
+        retention_period_days: %Schema{
+          type: :integer,
+          nullable: true,
+          minimum: 1,
+          description: "Optional default retention for inheriting sources, counted from download time"
+        },
         redownload_delay_days: %Schema{
           type: :integer,
           nullable: true,
@@ -227,7 +233,13 @@ defmodule PinchflatWeb.Schemas do
         retention_period_days: %Schema{
           type: :integer,
           nullable: true,
-          description: "Delete media older than this many days"
+          minimum: 0,
+          description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
+        },
+        effective_retention_period_days: %Schema{
+          type: :integer,
+          nullable: true,
+          description: "Resolved source/profile age-based period (0 or null means no age-based cleanup)"
         },
         title_filter_regex: %Schema{type: :string, nullable: true, description: "Regex to filter media titles"},
         min_duration_seconds: %Schema{type: :integer, nullable: true, description: "Minimum media duration"},
@@ -469,7 +481,9 @@ defmodule PinchflatWeb.Schemas do
             },
             retention_period_days: %Schema{
               type: :integer,
-              description: "Delete media older than this many days"
+              nullable: true,
+              minimum: 0,
+              description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
             download_subdirectory: %Schema{
@@ -555,7 +569,12 @@ defmodule PinchflatWeb.Schemas do
               format: :date,
               description: "Only download media after this date"
             },
-            retention_period_days: %Schema{type: :integer, description: "Delete media older than this many days"},
+            retention_period_days: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 0,
+              description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
+            },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
             download_subdirectory: %Schema{
               type: :string,
@@ -675,7 +694,13 @@ defmodule PinchflatWeb.Schemas do
               default: :"1080p"
             },
             media_container: %Schema{type: :string, description: "Media container format", default: "mp4"},
-            redownload_delay_days: %Schema{type: :integer, description: "Delay before redownloading"}
+            redownload_delay_days: %Schema{type: :integer, description: "Delay before redownloading"},
+            retention_period_days: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Default age-based retention for inheriting sources; null disables default"
+            }
           },
           required: [:name, :output_path_template]
         }
@@ -743,7 +768,13 @@ defmodule PinchflatWeb.Schemas do
               description: "Preferred video resolution"
             },
             media_container: %Schema{type: :string, description: "Media container format"},
-            redownload_delay_days: %Schema{type: :integer, description: "Delay before redownloading"}
+            redownload_delay_days: %Schema{type: :integer, description: "Delay before redownloading"},
+            retention_period_days: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Default age-based retention for inheriting sources; null disables default"
+            }
           }
         }
       },

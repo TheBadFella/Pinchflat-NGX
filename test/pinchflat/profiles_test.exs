@@ -47,6 +47,20 @@ defmodule Pinchflat.ProfilesTest do
       assert media_profile.output_path_template == "output_template.{{ ext }}"
     end
 
+    test "retention defaults to null and only accepts positive days" do
+      assert media_profile_fixture().retention_period_days == nil
+      assert media_profile_fixture(%{retention_period_days: 4}).retention_period_days == 4
+
+      for days <- [0, -1] do
+        assert {:error, %Ecto.Changeset{}} =
+                 Profiles.create_media_profile(%{
+                   name: "invalid retention #{days}",
+                   output_path_template: "output.{{ ext }}",
+                   retention_period_days: days
+                 })
+      end
+    end
+
     test "creation with invalid data returns error changeset" do
       assert {:error, %Ecto.Changeset{}} = Profiles.create_media_profile(@invalid_attrs)
     end

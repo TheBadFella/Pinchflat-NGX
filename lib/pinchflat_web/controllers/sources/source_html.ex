@@ -802,8 +802,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       ),
       field(
         "Retention period",
-        retention_label(source.retention_period_days),
-        "Age is counted from download time. Cutoff cleanup can delete files sooner; protected media is excluded from both"
+        retention_label(Source.effective_retention_period_days(source), source.retention_period_days),
+        "Age is counted from download time. Blank inherits the profile; 0 disables age-based cleanup. Changing the profile can make older downloads eligible at next cleanup. Cutoff cleanup can delete files sooner based on publication date; protected media is excluded from both"
       )
     ]
   end
@@ -898,10 +898,12 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     end
   end
 
-  defp retention_label(nil), do: nil
-  defp retention_label(0), do: "No age-based deletion"
-  defp retention_label(1), do: "1 day"
-  defp retention_label(days), do: "#{days} days"
+  defp retention_label(nil, nil), do: nil
+  defp retention_label(0, _), do: "No age-based deletion"
+  defp retention_label(1, nil), do: "1 day (profile)"
+  defp retention_label(days, nil), do: "#{days} days (profile)"
+  defp retention_label(1, _), do: "1 day"
+  defp retention_label(days, _), do: "#{days} days"
 
   defp index_frequency_label(nil), do: nil
 

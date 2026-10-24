@@ -1013,6 +1013,27 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
 
+    test "inherited profile retention bounds indexing unless source sets zero or a positive override" do
+      profile = Pinchflat.ProfilesFixtures.media_profile_fixture(%{retention_period_days: 5})
+
+      for {source_days, expected_days} <- [{nil, 8}, {0, nil}, {12, 15}] do
+        source = source_fixture(%{media_profile_id: profile.id, retention_period_days: source_days})
+
+        expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+          if expected_days do
+            expected = Date.utc_today() |> Date.add(-expected_days) |> Date.to_iso8601(:basic)
+            assert Keyword.get(opts, :dateafter) == expected
+          else
+            refute Keyword.has_key?(opts, :dateafter)
+          end
+
+          {:ok, source_attributes_return_fixture()}
+        end)
+
+        SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      end
+    end
+
     test "uses retention-based date when retention_period_days is set and more recent than cutoff" do
       # Old cutoff date (30 days ago)
       old_cutoff = Date.utc_today() |> Date.add(-30)

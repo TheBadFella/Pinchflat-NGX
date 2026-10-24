@@ -2,6 +2,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
   use Pinchflat.DataCase
 
   import Pinchflat.MediaFixtures
+  import Pinchflat.ProfilesFixtures
   import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Media
@@ -44,6 +45,77 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
       end
     end
 
+    test "inherited age cleanup remains independent of publication cutoff and protection" do
+      profile = media_profile_fixture(%{retention_period_days: 2})
+      source = source_fixture(%{media_profile_id: profile.id, download_cutoff_date: Date.add(Date.utc_today(), -5)})
+
+      protected =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(7, :days),
+          media_downloaded_at: now_minus(4, :days),
+          prevent_culling: true
+        })
+
+      before_cutoff =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(7, :days),
+          media_downloaded_at: now_minus(1, :day)
+        })
+
+      expired =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(3, :days),
+          media_downloaded_at: now_minus(4, :days)
+        })
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+      assert File.exists?(protected.media_filepath)
+      refute File.exists?(before_cutoff.media_filepath)
+      refute Repo.reload!(before_cutoff).prevent_download
+      refute File.exists?(expired.media_filepath)
+      assert Repo.reload!(expired).prevent_download
+    end
+
+    test "existing and new inheriting sources follow profile edits and reassignment, unlike explicit overrides" do
+      profile = media_profile_fixture()
+      other_profile = media_profile_fixture(%{retention_period_days: 2})
+      existing = source_fixture(%{media_profile_id: profile.id, retention_period_days: nil})
+      inheriting = source_fixture(%{media_profile_id: profile.id})
+      disabled = source_fixture(%{media_profile_id: profile.id, retention_period_days: 0})
+      override = source_fixture(%{media_profile_id: profile.id, retention_period_days: 10})
+
+      items =
+        for source <- [existing, inheriting, disabled, override] do
+          media_item_with_attachments(%{source_id: source.id, media_downloaded_at: now_minus(4, :days)})
+        end
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+      assert Enum.all?(items, &File.exists?(&1.media_filepath))
+
+      {:ok, _} = Pinchflat.Profiles.update_media_profile(profile, %{retention_period_days: 2})
+      assert Enum.map(items, &Media.retention_cullable?/1) == [true, true, false, false]
+
+      # Moving one inheriting source to an unset profile restores the no-age-cleanup policy.
+      {:ok, _} =
+        Pinchflat.Sources.update_source(inheriting, %{media_profile_id: media_profile_fixture().id},
+          run_post_commit_tasks: false
+        )
+
+      assert Enum.map(items, &Media.retention_cullable?/1) == [true, false, false, false]
+
+      {:ok, _} =
+        Pinchflat.Sources.update_source(inheriting, %{media_profile_id: other_profile.id}, run_post_commit_tasks: false)
+
+      assert Enum.map(items, &Media.retention_cullable?/1) == [true, true, false, false]
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+      assert Enum.map(items, &File.exists?(&1.media_filepath)) == [false, false, true, true]
+      assert Enum.map(items, fn item -> Repo.reload!(item).prevent_download end) == [true, true, false, false]
+    end
+
     test "sets deleted media to not re-download" do
       {_source, old_media_item, new_media_item} = prepare_records_for_retention_date()
 
@@ -75,7 +147,9 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
         File.rm(test_state_file)
       end)
 
-      {_source, old_media_item, _new_media_item} = prepare_records_for_retention_date()
+      profile = media_profile_fixture(%{retention_period_days: 2})
+      source = source_fixture(%{media_profile_id: profile.id, retention_period_days: nil})
+      old_media_item = media_item_with_attachments(%{source_id: source.id, media_downloaded_at: now_minus(3, :days)})
 
       assert :ok = perform_job(MediaRetentionWorker, %{})
 

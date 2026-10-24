@@ -167,13 +167,13 @@ defmodule Pinchflat.Media do
   @doc """
   Checks the current database state to determine whether a media item is eligible
   for retention deletion. Respects the source's retention period and the item's
-  deletion protection.
+  deletion protection. A null source period inherits its profile's period.
 
   Returns boolean()
   """
   def retention_cullable?(%MediaItem{id: id}) do
     MediaQuery.new()
-    |> MediaQuery.require_assoc(:source)
+    |> MediaQuery.require_assoc(:media_profile)
     |> where([mi], mi.id == ^id)
     |> where(^MediaQuery.cullable())
     |> Repo.exists?()
