@@ -1,5 +1,7 @@
 # Development images
 
+Stable image publication runs when a GitHub Release is published, or through the manual **Docker Release** recovery path. Pushing a tag alone does not publish images. This avoids building the same release twice; published releases still include SQLite/PostgreSQL images for AMD64 and ARM64.
+
 Use **Actions > Build Dev Image > Run workflow** and select the branch to test.
 The workflow checks out the selected run's exact commit and builds the normal
 production Dockerfile. AMD64 is the default; select both platforms for AMD64 and
