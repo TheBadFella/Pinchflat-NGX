@@ -48,6 +48,22 @@ defmodule PinchflatWeb.SourceControllerTest do
      }}
   end
 
+  test "JSON source reports raw and effective retention after profile changes", %{conn: conn} do
+    profile = media_profile_fixture(%{retention_period_days: 3})
+    source = source_fixture(media_profile_id: profile.id, retention_period_days: nil)
+    url = ~p"/sources/#{source.id}"
+    conn = put_req_header(conn, "accept", "application/json")
+
+    body = conn |> get(url) |> json_response(200)
+    assert body["retention_period_days"] == nil
+    assert body["effective_retention_period_days"] == 3
+    assert body["media_profile"]["retention_period_days"] == 3
+
+    {:ok, _} = Pinchflat.Profiles.update_media_profile(profile, %{retention_period_days: 5})
+    updated = conn |> get(url) |> json_response(200)
+    assert updated["effective_retention_period_days"] == 5
+  end
+
   test "source with only cutoff-skipped media renders instead of returning 500", %{conn: conn} do
     source = source_fixture(download_cutoff_date: ~D[2025-11-22])
     media_item_fixture(source_id: source.id, uploaded_at: ~U[2025-11-21 23:59:59Z], media_filepath: nil)

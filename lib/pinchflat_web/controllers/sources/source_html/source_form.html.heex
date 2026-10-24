@@ -517,7 +517,7 @@
       type="number"
       label="Retention Period (days)"
       min="0"
-      help="Days from download until media is eligible for scheduled deletion. Leave blank or set 0 to disable age-based deletion. Cutoff cleanup can still delete media sooner. Prevent Automatic Deletion overrides both rules"
+      help="Days from download until scheduled deletion. Blank inherits the selected media profile; 0 disables age-based deletion for this source. Changing the profile or its retention can make previously downloaded files eligible at the next cleanup. A publication-date cutoff can still delete files sooner. Prevent Automatic Deletion overrides both rules"
       html_help={true}
     />
     <section x-show="advancedMode">

@@ -675,6 +675,27 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert File.exists?(item.media_filepath)
     end
 
+    test "rechecks inherited profile retention when an upgrade runs after a profile edit" do
+      profile = media_profile_fixture(%{redownload_delay_days: 2, retention_period_days: 10})
+      source = source_fixture(%{media_profile_id: profile.id, retention_period_days: nil})
+
+      item =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(4, :days),
+          media_downloaded_at: now_minus(3, :days)
+        })
+
+      perform_job(Pinchflat.Downloading.MediaQualityUpgradeWorker, %{})
+      assert [job] = all_enqueued(worker: MediaDownloadWorker, args: %{id: item.id})
+      {:ok, _} = Pinchflat.Profiles.update_media_profile(profile, %{retention_period_days: 2})
+      expect(YtDlpRunnerMock, :run, 0, fn _url, _action, _opts, _ot, _addl -> :ok end)
+
+      log = capture_log(fn -> assert :ok = perform_job(MediaDownloadWorker, job.args) end)
+      assert log =~ "reason=retention_expired"
+      assert File.exists?(item.media_filepath)
+    end
+
     test "allows protected and forced upgrades after the retention period" do
       for {prevent_culling, force} <- [{true, false}, {false, true}] do
         source = source_fixture(%{retention_period_days: 2})

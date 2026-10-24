@@ -27,7 +27,8 @@ defmodule PinchflatWeb.Api.ShareControllerTest do
         Pinchflat.Profiles.update_media_profile(profile, %{
           output_path_template: "{{ source_custom_name }}/{{ title }}.{{ ext }}",
           output_path_template_shorts: "{{ source_custom_name }}/Shorts/{{ title }}.{{ ext }}",
-          download_source_images: false
+          download_source_images: false,
+          retention_period_days: 2
         })
 
       response =
@@ -37,6 +38,8 @@ defmodule PinchflatWeb.Api.ShareControllerTest do
 
       assert json_response(response, 202)["status"] == "indexing"
       source = Repo.get_by!(Pinchflat.Sources.Source, collection_id: "dQw4w9WgXcQ", media_profile_id: profile.id)
+      assert source.retention_period_days == nil
+      assert Pinchflat.Sources.Source.effective_retention_period_days(Repo.preload(source, :media_profile)) == 2
 
       metadata = %{
         "id" => source.collection_id,

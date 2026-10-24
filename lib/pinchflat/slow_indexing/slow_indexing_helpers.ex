@@ -511,7 +511,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # Builds the --dateafter option for yt-dlp to skip videos older than a calculated
   # effective scan date. This is determined by taking the most recent of:
   # 1. The source's download_cutoff_date
-  # 2. Today minus retention_period_days minus a buffer (for sources with retention)
+  # 2. Today minus effective source/profile retention minus a buffer
   #
   # The buffer (3 days) accounts for upload delays and timezone differences.
   # This optimization dramatically reduces indexing time for sources with short
@@ -542,15 +542,13 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  # For sources with retention, calculate a date based on retention_period_days + buffer.
-  # Returns nil if retention is not set (nil or 0 means keep forever).
-  defp calculate_retention_based_date(%Source{retention_period_days: nil}), do: nil
-  defp calculate_retention_based_date(%Source{retention_period_days: 0}), do: nil
-
-  defp calculate_retention_based_date(%Source{retention_period_days: retention_days}) do
-    # Add buffer days to account for upload delays and ensure we don't miss edge cases
-    days_to_scan = retention_days + @dateafter_buffer_days
-    Date.utc_today() |> Date.add(-days_to_scan)
+  # Add a buffer for upload delays and timezone differences. A source's explicit
+  # zero disables this bound even if its profile has a retention period.
+  defp calculate_retention_based_date(%Source{} = source) do
+    case Source.effective_retention_period_days(source) do
+      days when is_integer(days) and days > 0 -> Date.add(Date.utc_today(), -(days + @dateafter_buffer_days))
+      _ -> nil
+    end
   end
 
   defp max_date(date1, date2) do

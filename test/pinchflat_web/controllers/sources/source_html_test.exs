@@ -112,6 +112,16 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
       assert retention.help =~ "Cutoff cleanup can delete files sooner"
     end
 
+    test "shows inherited effective retention in source details" do
+      profile = Pinchflat.ProfilesFixtures.media_profile_fixture(%{retention_period_days: 5})
+      source = Repo.preload(source_fixture(media_profile_id: profile.id), :media_profile)
+      storage = Enum.find(SourceHTML.info_groups(source), &(&1.title == "Storage"))
+      retention = Enum.find(storage.fields, &(&1.label == "Retention period"))
+
+      assert retention.value == "5 days (profile)"
+      assert retention.help =~ "Changing the profile"
+    end
+
     test "marks filter and storage groups unset when those fields are blank" do
       source = Repo.preload(source_fixture(), :media_profile)
       flags = Map.new(SourceHTML.info_groups(source), &{&1.title, &1.any_set?})

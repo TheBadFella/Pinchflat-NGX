@@ -194,9 +194,12 @@ Save this as `compose.yaml`, replace the timezone if needed, and run `docker com
 
 ### Retention schedule
 
-Set the retention period per source with **Retention Period (days)**. Files become eligible for deletion
-that many days after download and are removed on the next retention run. Leave the period blank or set
-it to `0` to keep media indefinitely.
+Set **Default retention period (days)** on a media profile to apply age-based cleanup to sources whose
+**Retention Period (days)** is blank. Set a positive period on a source to override the profile, or `0`
+to disable age-based cleanup for that source. Without either period, age-based cleanup is disabled.
+Files become eligible that many days after download and are removed on the next retention run. Changing
+a profile or a source's profile can make previously downloaded files eligible at the next run. Protected
+media is not deleted; a source's publication-date cutoff can still delete unprotected files sooner.
 
 `RETENTION_CRON` controls how often the retention worker runs. It defaults to `0 1 * * *` (daily at 01:00).
 `RETENTION_TIMEZONE` sets its timezone and defaults to `Etc/UTC`, independently of `TZ`.
