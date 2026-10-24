@@ -30,9 +30,11 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
       </:col>
 
       <:col :let={source} label="Retention">
-        <%= if source.retention_period_days && source.retention_period_days > 0 do %>
-          <.localized_number number={source.retention_period_days} />
-          <.pluralize count={source.retention_period_days} word="day" />
+        <% days = Source.effective_retention_period_days(source) %>
+        <%= if days && days > 0 do %>
+          <.localized_number number={days} />
+          <.pluralize count={days} word="day" />
+          <%= if is_nil(source.retention_period_days) do %>(profile)<% end %>
         <% else %>
           <span class="text-lg">∞</span>
         <% end %>

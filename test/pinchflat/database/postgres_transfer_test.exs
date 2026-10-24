@@ -112,6 +112,18 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert retained.index_cutoff_date == ~D[2026-10-07]
   end
 
+  test "transfers nullable profile retention and explicit source overrides", ctx do
+    edit_source(ctx.path, "UPDATE media_profiles SET retention_period_days = 3 WHERE id = #{ctx.source.media_profile_id}")
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert report["tables"]["media_profiles"]["validated"]
+    assert Repo.get!(Pinchflat.Profiles.MediaProfile, ctx.source.media_profile_id).retention_period_days == 3
+    assert Repo.get!(Source, ctx.source.id).retention_period_days == nil
+    protected = Repo.get!(MediaItem, ctx.item.id)
+    refute Pinchflat.Media.retention_cullable?(protected)
+    protected |> Ecto.Changeset.change(prevent_culling: false) |> Repo.update!()
+    assert Pinchflat.Media.retention_cullable?(protected)
+  end
+
   test "copies current sharing credentials and preserves revocation", ctx do
     edit_source(ctx.path, """
     CREATE TABLE IF NOT EXISTS share_tokens (

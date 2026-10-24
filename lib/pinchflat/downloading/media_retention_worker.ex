@@ -38,7 +38,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   defp cull_cullable_media_items do
     cullable_media =
       MediaQuery.new()
-      |> MediaQuery.require_assoc(:source)
+      |> MediaQuery.require_assoc(:media_profile)
       |> where(^MediaQuery.cullable())
       |> Repo.all()
 

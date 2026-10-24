@@ -111,19 +111,27 @@ defmodule Pinchflat.Media.MediaQuery do
   def past_retention_period do
     if Pinchflat.Database.postgres?() do
       dynamic(
-        [mi, source],
-        fragment("""
-          COALESCE(retention_period_days, 0) > 0 AND
-          media_downloaded_at + (retention_period_days * INTERVAL '1 day') < NOW()
-        """)
+        [mi, source, media_profile],
+        fragment(
+          "COALESCE(?, ?) > 0 AND ? + (COALESCE(?, ?) * INTERVAL '1 day') < NOW()",
+          source.retention_period_days,
+          media_profile.retention_period_days,
+          mi.media_downloaded_at,
+          source.retention_period_days,
+          media_profile.retention_period_days
+        )
       )
     else
       dynamic(
-        [mi, source],
-        fragment("""
-          IFNULL(retention_period_days, 0) > 0 AND
-          DATETIME(media_downloaded_at, '+' || retention_period_days || ' day') < DATETIME('now')
-        """)
+        [mi, source, media_profile],
+        fragment(
+          "IFNULL(?, ?) > 0 AND DATETIME(?, '+' || IFNULL(?, ?) || ' day') < DATETIME('now')",
+          source.retention_period_days,
+          media_profile.retention_period_days,
+          mi.media_downloaded_at,
+          source.retention_period_days,
+          media_profile.retention_period_days
+        )
       )
     end
   end

@@ -266,6 +266,14 @@
       />
     </section>
 
+    <.input
+      field={f[:retention_period_days]}
+      type="number"
+      label="Default retention period (days)"
+      min="1"
+      help="Optional age-based cleanup for sources with blank retention. Age is counted from download time. Changing this profile or assigning it to a source can make previously downloaded files eligible at the next cleanup. Source 0 disables age-based cleanup; protection still prevents deletion. A publication-date cutoff is separate and can delete files sooner."
+    />
+
     <section x-data="{ presets: { default: null, media_center: 1, audio: null, archiving: 1 } }">
       <.input
         field={f[:redownload_delay_days]}

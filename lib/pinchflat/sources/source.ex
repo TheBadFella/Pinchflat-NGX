@@ -135,6 +135,7 @@ defmodule Pinchflat.Sources.Source do
     # which is what makes an early abort on an old video safe. Playlists are
     # ordered arbitrarily so this is ignored for them (see SlowIndexingHelpers)
     field :index_cutoff_date, :date
+    # nil inherits the profile period; zero explicitly disables age-based cleanup.
     field :retention_period_days, :integer
     field :original_url, :string
     field :title_filter_regex, :string
@@ -163,6 +164,18 @@ defmodule Pinchflat.Sources.Source do
 
     timestamps(type: :utc_datetime)
   end
+
+  @doc """
+  Returns the effective age-based retention period for a source with a loaded media profile.
+  A nil source value inherits; zero disables age-based deletion.
+  """
+  def effective_retention_period_days(%__MODULE__{
+        retention_period_days: nil,
+        media_profile: %MediaProfile{} = profile
+      }),
+      do: profile.retention_period_days
+
+  def effective_retention_period_days(%__MODULE__{retention_period_days: days}), do: days
 
   @doc false
   def changeset(source, attrs, validation_stage \\ :initial) do
@@ -310,6 +323,13 @@ defmodule Pinchflat.Sources.Source do
       key in excluded_fields || match?(%Ecto.Association.NotLoaded{}, value)
     end)
     |> Enum.into(%{})
+    |> then(fn fields ->
+      if match?(%MediaProfile{}, source.media_profile) do
+        Map.put(fields, :effective_retention_period_days, effective_retention_period_days(source))
+      else
+        fields
+      end
+    end)
   end
 
   def youtube_video_url?(url) when is_binary(url) do
