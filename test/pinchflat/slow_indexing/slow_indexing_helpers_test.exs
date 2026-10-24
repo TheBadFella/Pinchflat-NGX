@@ -933,6 +933,19 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
         SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
       end
     end
+
+    test "does not mark a partial index complete when a tab has a real error" do
+      source = source_fixture(%{collection_type: :channel, last_indexed_at: nil})
+
+      expect(YtDlpRunnerMock, :run, 3, fn url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        if String.ends_with?(url, "/streams"),
+          do: {:error, "KeyError('INNERTUBE_CONTEXT')", 1},
+          else: {:ok, source_attributes_return_fixture()}
+      end)
+
+      assert_raise MatchError, fn -> SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source) end
+      assert Repo.reload!(source).last_indexed_at == nil
+    end
   end
 
   describe "index_and_enqueue_download_for_media_items/2 when logging tab failures" do
@@ -978,7 +991,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       log =
         ExUnit.CaptureLog.capture_log([level: :warning], fn ->
-          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+          assert_raise MatchError, fn -> SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source) end
         end)
 
       assert log =~ "Indexing failed"

@@ -268,8 +268,8 @@ config :pinchflat, Oban,
   plugins: [
     # Keep old jobs for 7 days for display in the UI
     {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
-    # Rescue orphaned jobs stuck in "executing" state after crash/restart
-    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
+    # PreJobStartupTasks recovers interrupted jobs before Oban starts. Time-based
+    # recovery can requeue healthy indexing/download jobs while they are still running.
     {Oban.Plugins.Cron, crontab: cron_jobs}
   ]
 

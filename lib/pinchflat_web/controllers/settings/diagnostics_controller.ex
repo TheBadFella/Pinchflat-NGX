@@ -6,8 +6,13 @@ defmodule PinchflatWeb.Settings.DiagnosticsController do
   alias Pinchflat.Settings
   alias Pinchflat.YtDlp.PoTokenProvider
 
-  def show(conn, _params) do
-    render(conn, "show.html")
+  def show(conn, params) do
+    active_tab = if params["tab"] in ~w(retryable discarded), do: params["tab"], else: "retryable"
+
+    render(conn, "show.html",
+      active_tab: active_tab,
+      tab_href: fn tab -> ~p"/diagnostics?#{[tab: tab]}" <> "#failed-jobs" end
+    )
   end
 
   def test_po_token_provider(conn, _params) do

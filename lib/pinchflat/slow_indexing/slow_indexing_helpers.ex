@@ -211,14 +211,17 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
         run_indexing_command(source, url, content_type, command_opts, should_use_cookies)
       end)
 
-    # A channel can legitimately lack a shorts or streams tab (yt-dlp errors out
-    # on those), so a failed URL only fails the index if no URL succeeded at all.
-    # Tabs shouldn't overlap in content, but dedupe across them just in case.
-    case Enum.split_with(results, &match?({:ok, _}, &1)) do
-      {[], [first_error | _]} ->
+    {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    # Missing channel tabs are normal; real errors must not mark a partial index complete.
+    case {successes, Enum.reject(errors, &missing_channel_tab?/1)} do
+      {_, [first_error | _]} ->
         first_error
 
-      {successes, _} ->
+      {[], []} ->
+        hd(errors)
+
+      {successes, []} ->
         media_attributes =
           successes
           |> Enum.flat_map(fn {:ok, media_attributes} -> media_attributes end)
@@ -311,7 +314,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # A channel not having a shorts/streams/live tab is a normal state of affairs,
   # not something to warn about on every scheduled index.
   defp log_indexing_failure(url, {:error, message, _status} = err) when is_binary(message) do
-    if message =~ ~r/does not have a \S+ tab/ do
+    if missing_channel_tab?(err) do
       Logger.debug("Indexing skipped for #{url}: #{String.trim(message)}")
     else
       Logger.warning("Indexing failed for #{url}: #{inspect(err)}")
@@ -321,6 +324,11 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   defp log_indexing_failure(url, err) do
     Logger.warning("Indexing failed for #{url}: #{inspect(err)}")
   end
+
+  defp missing_channel_tab?({:error, message, _status}) when is_binary(message),
+    do: message =~ ~r/does not have a \S+ tab/
+
+  defp missing_channel_tab?(_error), do: false
 
   # YouTube channels are indexed one content tab at a time because `--break-on-existing`
   # aborts the entire yt-dlp process, not just the current tab — indexing a bare channel
