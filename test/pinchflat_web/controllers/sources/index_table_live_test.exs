@@ -10,6 +10,24 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   alias PinchflatWeb.Sources.SourceLive.IndexTableLive
 
   describe "initial rendering" do
+    test "shows effective retention and its origin in table and grid views", %{conn: conn} do
+      profile = media_profile_fixture(%{retention_period_days: 30})
+      source_fixture(custom_name: "Inheriting source", media_profile_id: profile.id)
+      source_fixture(custom_name: "Disabled retention", media_profile_id: profile.id, retention_period_days: 0)
+      source_fixture(custom_name: "Explicit retention", media_profile_id: profile.id, retention_period_days: 1)
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert html =~ "30 days (profile default)"
+      assert html =~ "No age-based cleanup (source override)"
+      assert html =~ "1 day (source override)"
+
+      grid = render_click(view, "view_change", %{"view" => "grid"})
+      assert grid =~ "30 days (profile default)"
+      assert grid =~ "No age-based cleanup (source override)"
+      assert grid =~ "1 day (source override)"
+    end
+
     test "lists all sources", %{conn: conn} do
       source = source_fixture()
 

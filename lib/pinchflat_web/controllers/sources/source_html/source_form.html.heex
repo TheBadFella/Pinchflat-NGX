@@ -12,6 +12,22 @@
     """
     {
       mediaProfileId: null,
+      retentionOverride: #{Jason.encode!(to_string(f[:retention_period_days].value || ""))},
+      profileRetention: #{Jason.encode!(Map.new(@media_profiles, &{to_string(&1.id), &1.retention_period_days}))},
+      get retentionPolicySummary() {
+        const raw = String(this.retentionOverride ?? '').trim();
+        const inherited = raw === '';
+        if (!inherited && (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(Number(raw)))) {
+          return 'Enter 0 or a positive whole number, or leave blank to inherit.';
+        }
+        if (inherited && !Object.prototype.hasOwnProperty.call(this.profileRetention, this.mediaProfileId)) {
+          return 'Choose a media profile to see inherited retention';
+        }
+        const days = inherited ? (this.profileRetention[this.mediaProfileId] ?? 0) : Number(raw);
+        const origin = inherited ? 'profile default' : 'source override';
+        const policy = days === 0 ? 'No age-based cleanup' : days + (days === 1 ? ' day' : ' days');
+        return policy + ' (' + origin + ')';
+      },
       sourceUrl: '',
       sourceType: '#{Ecto.Changeset.get_field(@changeset, :source_type, :automatic)}',
       cutoffDate: '#{f[:download_cutoff_date].value}',
@@ -515,11 +531,29 @@
     <.input
       field={f[:retention_period_days]}
       type="number"
-      label="Retention Period (days)"
+      label="Retention override (days)"
+      placeholder="Inherit media profile"
+      x-model="retentionOverride"
       min="0"
-      help="Days from download until scheduled deletion. Blank inherits the selected media profile; 0 disables age-based deletion for this source. Changing the profile or its retention can make previously downloaded files eligible at the next cleanup. A publication-date cutoff can still delete files sooner. Prevent Automatic Deletion overrides both rules"
+      help="Leave blank to follow the selected media profile. Enter 0 to disable age-based cleanup for this source."
       html_help={true}
     />
+    <div class="theme-surface-accent rounded-m3-sm p-4">
+      <p class="text-sm font-medium text-theme-on-surface">Effective retention</p>
+      <p
+        id="source-retention-effective"
+        class="mt-1 text-sm text-theme-on-surface"
+        aria-live="polite"
+        x-text="retentionPolicySummary"
+      >
+        {retention_form_preview(@changeset, @media_profiles)}
+      </p>
+      <p class="mt-2 text-sm text-theme-on-surface-muted">
+        Age is counted from download time. Saving a shorter period or changing the profile can make existing
+        downloads eligible at the next cleanup. A publication-date cutoff can delete files sooner.
+        Prevent Automatic Deletion overrides both cleanup rules.
+      </p>
+    </div>
     <section x-show="advancedMode">
       <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
 

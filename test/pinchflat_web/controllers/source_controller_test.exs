@@ -48,6 +48,22 @@ defmodule PinchflatWeb.SourceControllerTest do
      }}
   end
 
+  test "source retention preview names the inherited policy without copying its value", %{conn: conn} do
+    profile = media_profile_fixture(%{retention_period_days: 30})
+    source = source_fixture(media_profile_id: profile.id, retention_period_days: nil)
+
+    html = conn |> get(~p"/sources/#{source.id}/edit") |> html_response(200)
+    preview = html |> LazyHTML.from_document() |> LazyHTML.query("#source-retention-effective") |> LazyHTML.text()
+
+    assert preview =~ "30 days (profile default)"
+    assert html =~ "Retention override (days)"
+    assert Repo.get!(Pinchflat.Sources.Source, source.id).retention_period_days == nil
+
+    {:ok, _} = Pinchflat.Profiles.update_media_profile(profile, %{retention_period_days: 7})
+    overview = conn |> get(~p"/sources/#{source.id}") |> html_response(200)
+    assert overview =~ "7 days (profile default)"
+  end
+
   test "JSON source reports raw and effective retention after profile changes", %{conn: conn} do
     profile = media_profile_fixture(%{retention_period_days: 3})
     source = source_fixture(media_profile_id: profile.id, retention_period_days: nil)
