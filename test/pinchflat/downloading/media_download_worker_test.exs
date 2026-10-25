@@ -17,6 +17,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
   import Pinchflat.ProfilesFixtures
   import Pinchflat.SourcesFixtures
 
+  alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Media
   alias Pinchflat.Sources
   alias Pinchflat.Settings
@@ -219,6 +220,55 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.last_error =~ "HTTP Error 429"
       refute media_item.prevent_download
       assert media_item.error_type == :transient
+    end
+
+    test "does not retry a download filtered out by yt-dlp", %{media_item: media_item} do
+      message = "yt-dlp skipped this media item: 2021-01-12 upload date is not in range 0001-01-01 to 2020-01-11"
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :download, _opts, _ot, _addl -> {:skipped, message}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert {:ok, :non_retry} = MediaDownloadWorker.perform(job)
+
+      task = Repo.reload!(task)
+      media_item = media_item |> Repo.reload!() |> Repo.preload(:source)
+
+      assert task.progress_status == "Skipped: does not match download filters"
+      assert media_item.last_error == message
+      assert media_item.error_type == :permanent
+      assert media_item.prevent_download
+      assert media_item.download_prevented_reason == :error
+      refute Media.pending_download?(media_item)
+
+      queued_before = all_enqueued(worker: MediaDownloadWorker)
+      assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(media_item.source)
+      assert all_enqueued(worker: MediaDownloadWorker) == queued_before
+      assert [] = DownloadingHelpers.retry_failed_download_tasks(media_item.source)
+    end
+
+    test "an explicit force retry still downloads a filtered item", %{media_item: media_item} do
+      message = "yt-dlp skipped this media item: 2021-01-12 upload date is not in range 0001-01-01 to 2020-01-11"
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :download, _opts, _ot, _addl -> {:skipped, message}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, _addl -> {:ok, render_metadata(:media_metadata)}
+        _url, :download_thumbnail, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id, force: true, reset_last_error: true})
+
+      media_item = Repo.reload!(media_item)
+      assert media_item.media_filepath
+      refute media_item.prevent_download
     end
 
     test "does not permanently block a download when local staging is unavailable", %{media_item: media_item} do

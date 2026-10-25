@@ -47,7 +47,9 @@ defmodule Pinchflat.YtDlp.Media do
   Downloads a single piece of media (and possibly its metadata) directly to its
   final destination. Returns the parsed JSON output from yt-dlp.
 
-  Returns {:ok, map()} | {:error, any, ...}.
+  Returns {:ok, map()} | {:skipped, binary()} | {:error, any, ...}. `{:skipped,
+  message}` means yt-dlp intentionally filtered the media out before downloading
+  it (for example `--datebefore` or `--match-filter`), so nothing was saved.
   """
   def download(url, command_opts \\ [], addl_opts \\ []) do
     all_command_opts = [:no_simulate] ++ command_opts

@@ -49,6 +49,57 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     end
   end
 
+  describe "run/4 when yt-dlp filters out the media" do
+    test "returns a skip for a video rejected by --datebefore" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/filter_skip.sh", fn ->
+        assert {:skipped, message} = Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j")
+        assert message =~ "upload date is not in range"
+      end)
+    end
+
+    test "returns a skip for a video rejected by --match-filter" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/match_filter_skip.sh", fn ->
+        assert {:skipped, message} = Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j")
+        assert message =~ "does not pass filter"
+      end)
+    end
+
+    test "returns the output for a video that passes the filters" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/successful_download.sh", fn ->
+        assert {:ok, output} = Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j")
+        assert output =~ "Old video"
+      end)
+    end
+
+    test "keeps an empty output as an error when the media failed after filtering" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/post_filter_failure.sh", fn ->
+        assert {:ok, ""} = Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j")
+      end)
+    end
+
+    test "keeps an empty output as an error when no filter stage ran" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/empty_output.sh", fn ->
+        assert {:ok, ""} = Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j")
+      end)
+    end
+
+    test "keeps a missing output file as an I/O error" do
+      output_filepath = Path.join(System.tmp_dir!(), "missing-yt-dlp-output-#{System.unique_integer([:positive])}.json")
+      File.rm(output_filepath)
+
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/empty_output.sh", fn ->
+        assert {:error, :enoent} =
+                 Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j", output_filepath: output_filepath)
+      end)
+    end
+
+    test "does not treat a 101 exit as a filter skip" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/101_exit_code.sh", fn ->
+        assert {:ok, ""} = Runner.run(@media_url, :download, [:no_simulate], "after_move:%()j")
+      end)
+    end
+  end
+
   describe "run/4 when testing external file options" do
     setup do
       base_dir = Application.get_env(:pinchflat, :extras_directory)
