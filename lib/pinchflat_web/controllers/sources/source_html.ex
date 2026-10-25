@@ -802,7 +802,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       ),
       field(
         "Retention period",
-        retention_label(Source.effective_retention_period_days(source), source.retention_period_days),
+        retention_policy_label(source),
         "Age is counted from download time. Blank inherits the profile; 0 disables age-based cleanup. Changing the profile can make older downloads eligible at next cleanup. Cutoff cleanup can delete files sooner based on publication date; protected media is excluded from both"
       )
     ]
@@ -898,12 +898,51 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     end
   end
 
-  defp retention_label(nil, nil), do: nil
-  defp retention_label(0, _), do: "No age-based deletion"
-  defp retention_label(1, nil), do: "1 day (profile)"
-  defp retention_label(days, nil), do: "#{days} days (profile)"
-  defp retention_label(1, _), do: "1 day"
-  defp retention_label(days, _), do: "#{days} days"
+  @doc "The effective age-based cleanup policy, including where the setting comes from."
+  def retention_policy_label(source) do
+    case source.retention_period_days do
+      nil ->
+        case source.media_profile do
+          %Pinchflat.Profiles.MediaProfile{retention_period_days: days} ->
+            retention_days_label(days, "profile default")
+
+          _ ->
+            "Profile default (unavailable)"
+        end
+
+      days ->
+        retention_days_label(days, "source override")
+    end
+  end
+
+  def retention_form_preview(changeset, media_profiles) do
+    profile_id = Ecto.Changeset.get_field(changeset, :media_profile_id)
+    profile = Enum.find(media_profiles, &(to_string(&1.id) == to_string(profile_id)))
+
+    retention_policy_label(%{
+      retention_period_days: Ecto.Changeset.get_field(changeset, :retention_period_days),
+      media_profile: profile
+    })
+  end
+
+  attr :source, :any, required: true
+
+  def retention_summary(assigns) do
+    ~H"""
+    <p
+      class="mt-1 max-w-xs whitespace-normal text-xs text-theme-on-surface-muted"
+      title="Age is counted from download time. Publication-date cutoff cleanup still applies; protected media is excluded."
+    >
+      Retention: {retention_policy_label(@source)}
+    </p>
+    """
+  end
+
+  defp retention_days_label(days, origin) when days in [nil, 0],
+    do: "No age-based cleanup (#{origin})"
+
+  defp retention_days_label(1, origin), do: "1 day (#{origin})"
+  defp retention_days_label(days, origin), do: "#{days} days (#{origin})"
 
   defp index_frequency_label(nil), do: nil
 
