@@ -213,87 +213,96 @@
                 <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
                   <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
                 </.subtle_link>
+                <SourceHTML.retention_summary source={source} />
               </div>
             </div>
           </div>
 
-          <div class="flex shrink-0 items-center gap-1.5">
-            <.form
-              for={%{}}
-              as={:start_source}
-              action={~p"/sources/#{source.id}/start_all"}
-              method="post"
-              x-data="{ submitting: false }"
-              x-on:submit="submitting = true"
-            >
-              <input type="hidden" name="return_to" value={~p"/sources"} />
-              <.icon_button
-                icon_name="hero-play-solid"
-                variant="primary"
-                type="submit"
-                class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                icon_class="h-4 w-4"
-                title="Start all"
-                aria-label="Start all"
-                data-confirm={"Start downloads for #{source.custom_name}?"}
-                x-bind:disabled="submitting"
-              />
-            </.form>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-1.5">
+              <.form
+                for={%{}}
+                as={:start_source}
+                action={~p"/sources/#{source.id}/start_all"}
+                method="post"
+                x-data="{ submitting: false }"
+                x-on:submit="submitting = true"
+              >
+                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <.icon_button
+                  icon_name="hero-play-solid"
+                  variant="primary"
+                  type="submit"
+                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                  icon_class="h-4 w-4"
+                  title="Start all"
+                  aria-label="Start all"
+                  data-confirm={"Start downloads for #{source.custom_name}?"}
+                  x-bind:disabled="submitting"
+                />
+              </.form>
 
-            <.form
-              for={%{}}
-              as={:pause_source}
-              action={~p"/sources/#{source.id}/pause_all"}
-              method="post"
-              x-data="{ submitting: false }"
-              x-on:submit="submitting = true"
-            >
-              <input type="hidden" name="return_to" value={~p"/sources"} />
-              <.icon_button
-                icon_name="hero-pause-solid"
-                variant="warning"
-                type="submit"
-                class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                icon_class="h-4 w-4"
-                title="Pause all"
-                aria-label="Pause all"
-                data-confirm={"Pause downloads for #{source.custom_name}?"}
-                x-bind:disabled="submitting"
-              />
-            </.form>
+              <.form
+                for={%{}}
+                as={:pause_source}
+                action={~p"/sources/#{source.id}/pause_all"}
+                method="post"
+                x-data="{ submitting: false }"
+                x-on:submit="submitting = true"
+              >
+                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <.icon_button
+                  icon_name="hero-pause-solid"
+                  variant="warning"
+                  type="submit"
+                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                  icon_class="h-4 w-4"
+                  title="Pause all"
+                  aria-label="Pause all"
+                  data-confirm={"Pause downloads for #{source.custom_name}?"}
+                  x-bind:disabled="submitting"
+                />
+              </.form>
 
-            <.form
-              for={%{}}
-              as={:stop_source}
-              action={~p"/sources/#{source.id}/stop_all"}
-              method="post"
-              x-data="{ submitting: false }"
-              x-on:submit="submitting = true"
-            >
-              <input type="hidden" name="return_to" value={~p"/sources"} />
-              <.icon_button
-                icon_name="hero-stop-solid"
-                variant="danger-solid"
-                type="submit"
-                class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                icon_class="h-4 w-4"
-                title="Stop all"
-                aria-label="Stop all"
-                data-confirm={"Stop downloads for #{source.custom_name}?"}
-                x-bind:disabled="submitting"
+              <.form
+                for={%{}}
+                as={:stop_source}
+                action={~p"/sources/#{source.id}/stop_all"}
+                method="post"
+                x-data="{ submitting: false }"
+                x-on:submit="submitting = true"
+              >
+                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <.icon_button
+                  icon_name="hero-stop-solid"
+                  variant="danger-solid"
+                  type="submit"
+                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                  icon_class="h-4 w-4"
+                  title="Stop all"
+                  aria-label="Stop all"
+                  data-confirm={"Stop downloads for #{source.custom_name}?"}
+                  x-bind:disabled="submitting"
+                />
+              </.form>
+            </div>
+            <div class="ml-auto flex items-center gap-1.5">
+              <.icon_link
+                href={~p"/sources/#{source.id}/edit"}
+                icon="hero-pencil-square"
+                aria-label="Edit"
+                class="mx-1"
               />
-            </.form>
-
-            <.icon_link href={~p"/sources/#{source.id}/edit"} icon="hero-pencil-square" aria-label="Edit" class="mx-1" />
-            <.icon_link
-              href={~p"/sources/#{source.id}"}
-              icon="hero-trash"
-              method="delete"
-              data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
-              aria-label={"Delete #{source.custom_name}"}
-              title="Delete source"
-              class="mx-1 hover:text-theme-error"
-            />
+              <.icon_link
+                href={~p"/sources/#{source.id}"}
+                icon="hero-trash"
+                method="delete"
+                data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
+                aria-label={"Delete #{source.custom_name}"}
+                title="Delete source"
+                class="mx-1 hover:text-theme-error"
+              />
+            </div>
           </div>
         </div>
 
@@ -377,6 +386,7 @@
 
                     <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
                       <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+                      <SourceHTML.retention_summary source={source} />
                     </div>
                   </div>
 
@@ -578,6 +588,7 @@
                 </h3>
 
                 <p class="mt-1 truncate text-sm text-theme-on-surface-muted">{source.media_profile.name}</p>
+                <SourceHTML.retention_summary source={source} />
               </div>
 
               <div class="pointer-events-auto shrink-0">
