@@ -1,69 +1,182 @@
-<div class="theme-surface-raised mx-auto max-w-3xl space-y-5 p-5 text-theme-on-surface">
-  <h1 class="text-title-lg font-bold">Migrate to Postgres</h1>
+<h2 class="mb-6 ml-4 text-title-md2 font-bold text-theme-on-surface">PostgreSQL Migration</h2>
+
+<section class="theme-surface-raised mb-6 px-5 py-5 sm:px-7.5">
+  <h3 class="text-lg font-semibold text-theme-on-surface mb-2">Database Migration</h3>
+  <p class="text-sm text-theme-on-surface-muted mb-6">
+    Migrate your library, download history, and configuration from SQLite to PostgreSQL.
+  </p>
+
   <%= if @record do %>
-    <p>Migration status: <strong>{@record.status}</strong></p>
-    <p class="text-theme-on-surface-muted">
+    <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-theme-outline/40 pb-4">
+      <div>
+        <span class="text-sm text-theme-on-surface-muted">Migration status:</span>
+        <span class="ml-2 inline-flex items-center rounded-full bg-theme-surface-accent px-2.5 py-0.5 text-xs font-semibold text-theme-primary uppercase tracking-wide">
+          {@record.status}
+        </span>
+      </div>
+      <.link
+        href={~p"/postgres_migration"}
+        class="inline-flex items-center text-sm font-medium text-theme-primary hover:underline"
+      >
+        <.icon name="hero-arrow-path" class="mr-1.5 h-4 w-4" /> Refresh Status
+      </.link>
+    </div>
+
+    <p class="text-sm text-theme-on-surface-muted mb-6">
       <%= if @processing_held do %>
         Normal processing is held until you review the copied library and restart. Media files stay at their existing paths.
       <% else %>
         Processing follows your saved queue choices. Media files stay at their existing paths.
       <% end %>
     </p>
+
     <%= if @record.status in ["pending", "failed"] do %>
-      <p :if={@record.status == "failed"} class="theme-status-error">
-        Migration stopped: {@record.report["error"]}. The target copy was rolled back. Keep the old instance stopped, correct the source or connection and retry.
-      </p>
-      <.form for={%{}} action={~p"/postgres_migration/start"} class="space-y-4">
-        <label class="flex items-start gap-3"><input type="checkbox" name="stopped" value="true" required />The old SQLite instance is stopped and will stay stopped.</label>
-        <label class="flex items-start gap-3"><input type="checkbox" name="backup" value="true" required />I have backed up config and downloads together. The target has no existing library; its default settings will be replaced.</label>
-        <.button type="submit">Migrate to Postgres</.button>
+      <%= if @record.status == "failed" do %>
+        <div class="theme-status-card theme-status-card-danger mb-6 text-sm">
+          Migration stopped: {@record.report["error"]}. The target copy was rolled back. Keep the old instance stopped, correct the source or connection and retry.
+        </div>
+      <% end %>
+      <.form for={%{}} action={~p"/postgres_migration/start"} class="space-y-4 max-w-2xl">
+        <label class="flex items-start gap-3 text-sm text-theme-on-surface cursor-pointer">
+          <input type="checkbox" name="stopped" value="true" required class="mt-0.5 rounded border-theme-outline" />
+          <span>The old SQLite instance is stopped and will stay stopped.</span>
+        </label>
+        <label class="flex items-start gap-3 text-sm text-theme-on-surface cursor-pointer">
+          <input type="checkbox" name="backup" value="true" required class="mt-0.5 rounded border-theme-outline" />
+          <span>I have backed up config and downloads together. The target has no existing library; its default settings will be replaced.</span>
+        </label>
+        <div>
+          <.button type="submit" variant="primary">Migrate to Postgres</.button>
+        </div>
       </.form>
     <% end %>
+
     <%= if @record.status == "running" do %>
-      <p>
+      <div class="theme-status-card theme-status-card-info mb-6 text-sm">
         Creating a retained SQLite snapshot, copying the library and validating every copied field. Refresh to check progress.
-      </p>
+      </div>
     <% end %>
+
     <%= if @record.status in ["pending_review", "completed"] do %>
-      <p>Retained SQLite backup: <code class="break-all">{@record.report["backup"]}</code></p>
-      <p :if={@record.report["library"]}>
-        Downloaded items: {@record.report["library"]["downloaded_items"]}; recorded bytes: {@record.report["library"][
-          "recorded_bytes"
-        ]}; missing media paths: {@record.report["library"]["missing_media_files"]}. Missing paths are preserved; verify your downloads mount before resuming jobs.
-      </p>
-      <ul class="space-y-1">
-        <li :for={{table, result} <- Enum.sort(@record.report["tables"] || %{})}>
-          {table}: {result["rows"]} rows, fields validated
-        </li>
-      </ul>
-      <%= if @record.status == "pending_review" do %>
-        <p>
-          Source pause choices and file paths were preserved. Queue pauses are not stored in the old SQLite database. Choose which queues should remain paused after restarting.
+      <div class="space-y-4 mb-6">
+        <p class="text-sm text-theme-on-surface">
+          <span class="font-medium text-theme-on-surface-muted">Retained SQLite backup:</span>
+          <code class="ml-2 font-mono text-xs bg-theme-surface-accent px-2 py-1 rounded break-all text-theme-on-surface">{@record.report[
+            "backup"
+          ]}</code>
         </p>
-        <.form for={%{}} action={~p"/postgres_migration/complete"} class="space-y-4">
-          <label :for={queue <- @queues} class="flex items-center gap-3"><input
-            type="checkbox"
-            name="paused_queues[]"
-            value={queue}
-            checked
-          />Keep {queue} paused</label>
-          <.button type="submit">Confirm Library and Queue Choices</.button>
-        </.form>
+        <p :if={@record.report["library"]} class="text-sm text-theme-on-surface-muted">
+          Downloaded items: {@record.report["library"]["downloaded_items"]}; recorded bytes: {@record.report["library"][
+            "recorded_bytes"
+          ]}; missing media paths: {@record.report["library"]["missing_media_files"]}. Missing paths are preserved; verify your downloads mount before resuming jobs.
+        </p>
+        <div class="overflow-x-auto rounded border border-theme-outline/40">
+          <table class="w-full text-sm">
+            <thead class="bg-theme-surface-accent border-b border-theme-outline/40">
+              <tr>
+                <th class="py-2.5 px-4 text-left font-medium text-theme-on-surface-muted">Table</th>
+                <th class="py-2.5 px-4 text-right font-medium text-theme-on-surface-muted">Rows</th>
+                <th class="py-2.5 px-4 text-left font-medium text-theme-on-surface-muted">Validation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for {table, result} <- Enum.sort(@record.report["tables"] || %{}) do %>
+                <tr class="border-b border-theme-outline/20">
+                  <td class="py-2 px-4 font-mono text-xs text-theme-on-surface">{table}</td>
+                  <td class="py-2 px-4 text-right text-theme-on-surface">{result["rows"]}</td>
+                  <td class="py-2 px-4 text-theme-primary">fields validated</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <%= if @record.status == "pending_review" do %>
+        <div class="mt-6 space-y-4">
+          <p class="text-sm text-theme-on-surface-muted">
+            Source pause choices and file paths were preserved. Queue pauses are not stored in the old SQLite database. Choose which queues should remain paused after restarting.
+          </p>
+          <.form for={%{}} action={~p"/postgres_migration/complete"} class="space-y-4 max-w-xl">
+            <div class="space-y-2">
+              <label
+                :for={queue <- @queues}
+                class="flex items-center gap-3 text-sm text-theme-on-surface cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  name="paused_queues[]"
+                  value={queue}
+                  checked
+                  class="rounded border-theme-outline"
+                />
+                <span>Keep {queue} paused</span>
+              </label>
+            </div>
+            <.button type="submit" variant="primary">Confirm Library and Queue Choices</.button>
+          </.form>
+        </div>
       <% else %>
-        <p>
+        <div class="theme-status-card theme-status-card-info text-sm mb-6">
           <%= if @processing_held do %>
             Restart the container to finish.
           <% else %>
             Migration is complete.
           <% end %>
           Keep your SQLite backup; later PostgreSQL writes will not appear in it.
-        </p>
+        </div>
       <% end %>
     <% end %>
-    <.link href={~p"/postgres_migration"} class="text-theme-primary underline">Refresh Status</.link>
   <% else %>
-    <p>
-      This build has no pending SQLite transfer. Configure the PostgreSQL image and SQLITE_MIGRATION_SOURCE to offer the migration.
-    </p>
+    <%= if Pinchflat.Database.postgres?() do %>
+      <div class="theme-status-card theme-status-card-info mb-4 text-sm">
+        This installation already uses PostgreSQL. No SQLite migration is configured.
+      </div>
+      <p class="text-sm text-theme-on-surface-muted mb-6">
+        To import an existing SQLite library, configure SQLITE_MIGRATION_SOURCE before starting the PostgreSQL image.
+      </p>
+    <% else %>
+      <div class="theme-status-card theme-status-card-info mb-6 text-sm">
+        This installation uses SQLite. Migration runs from the PostgreSQL image after the database connection and SQLite source are configured.
+      </div>
+      <div class="mb-6">
+        <h4 class="text-sm font-semibold text-theme-on-surface mb-3">Migration Steps</h4>
+        <ol class="list-decimal space-y-2.5 pl-5 text-sm text-theme-on-surface-muted">
+          <li>
+            <strong class="text-theme-on-surface">Back up configuration and media:</strong>
+            Back up your configuration and downloads together.
+          </li>
+          <li>
+            <strong class="text-theme-on-surface">Stop SQLite instance:</strong>
+            Stop the SQLite instance before starting the transfer. Keep it stopped during migration.
+          </li>
+          <li>
+            <strong class="text-theme-on-surface">Configure PostgreSQL environment:</strong>
+            Start the PostgreSQL image with <code>DATABASE_URL</code>
+            and <code>SQLITE_MIGRATION_SOURCE</code>
+            configured. Keep the same download paths.
+          </li>
+          <li>
+            <strong class="text-theme-on-surface">Review & Migrate:</strong>
+            Open this page on the PostgreSQL instance to review and start the migration.
+          </li>
+        </ol>
+      </div>
+    <% end %>
+
+    <div class="mb-6">
+      <.link
+        href="https://github.com/TheBadFella/Pinchflat-NGX/wiki/SQLite-to-PostgreSQL-migration"
+        class="inline-flex items-center text-sm font-medium text-theme-primary hover:underline"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <.icon name="hero-book-open" class="mr-1.5 h-4 w-4" /> Read the migration guide
+      </.link>
+    </div>
   <% end %>
-</div>
+
+  <div class="mt-8 pt-5 border-t border-theme-outline/40 flex items-center gap-3">
+    <.button href={~p"/settings"} variant="outline">Back to settings</.button>
+  </div>
+</section>
