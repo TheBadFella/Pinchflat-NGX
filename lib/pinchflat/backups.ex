@@ -100,7 +100,7 @@ defmodule Pinchflat.Backups do
   @doc "Returns a validated path for an authorized backup download."
   @spec download_path(String.t()) :: {:ok, String.t()} | {:error, atom()}
   def download_path(filename) when is_binary(filename) do
-    if available?() and backup_filename?(filename) do
+    if available?() and backup_filename?(filename) and Path.basename(filename) == filename do
       path = Path.join(backup_directory(), filename)
 
       case File.lstat(path) do

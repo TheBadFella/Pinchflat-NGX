@@ -15,14 +15,26 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ "Cookies"
       assert html =~ "Base yt-dlp Config"
       assert html =~ "PostgreSQL Backups"
-      assert html =~ "PostgreSQL Backup Files"
-      assert html =~ ~s(id="postgres-backups")
-      assert html =~ ~s(data-settings-group="backups")
-
-      if Pinchflat.Database.sqlite?() do
-        assert html =~ "PostgreSQL backups are unavailable in the SQLite image"
-      end
+      assert html =~ ~s(href="/backups")
+      refute html =~ ~s(data-settings-group="backups")
+      refute html =~ ~s(id="postgres-backups")
+      assert html =~ "Review PostgreSQL migration"
+      assert html =~ ~s(href="/postgres_migration")
     end
+  end
+
+  test "migration setup is discoverable without enabling a transfer", %{conn: conn} do
+    html = conn |> get(~p"/postgres_migration") |> html_response(200)
+
+    if Pinchflat.Database.sqlite?() do
+      assert html =~ "This installation uses SQLite"
+      assert html =~ "SQLITE_MIGRATION_SOURCE"
+      assert html =~ "DATABASE_URL"
+    else
+      assert html =~ "This installation already uses PostgreSQL"
+    end
+
+    refute html =~ ~s(action="/postgres_migration/start")
   end
 
   describe "update settings" do
@@ -189,7 +201,7 @@ defmodule PinchflatWeb.SettingControllerTest do
     test "reports that backup creation is unavailable for SQLite", %{conn: conn} do
       conn = post(conn, ~p"/settings/backups")
 
-      assert redirected_to(conn) == ~p"/settings"
+      assert redirected_to(conn) == ~p"/backups"
       assert conn.assigns[:flash]["error"] =~ "unavailable when Pinchflat-ngx uses SQLite"
     end
   end

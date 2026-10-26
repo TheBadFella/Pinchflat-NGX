@@ -275,7 +275,7 @@ procedure before reusing existing PostgreSQL data. Keep using `latest` for an ex
 you have migrated its data separately.
 
 > [!TIP]
-> The PostgreSQL image supports in-app `pg_dump` backups and retention policies via **Settings > PostgreSQL Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
+> The PostgreSQL image supports in-app `pg_dump` backups and retention policies. In the current release, open **Settings > PostgreSQL Backups**; the upcoming update moves the **PostgreSQL Backups** page to **Config > Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
 
 ### Optional PO-token provider
 

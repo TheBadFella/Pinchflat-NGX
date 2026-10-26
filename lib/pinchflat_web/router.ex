@@ -91,7 +91,11 @@ defmodule PinchflatWeb.Router do
     resources "/settings", Settings.SettingController, only: [:show, :update], singleton: true
     post "/settings/resume_downloads", Settings.SettingController, :resume_downloads
     post "/settings/backups", Settings.BackupController, :create
-    get "/settings/backups/:filename", Settings.BackupController, :download
+    get "/settings/backups/*filename", Settings.BackupController, :download
+    get "/backups", Settings.BackupController, :index
+    put "/backups/retention", Settings.BackupController, :update
+    post "/backups", Settings.BackupController, :create
+    get "/backups/*filename", Settings.BackupController, :download
     get "/settings/cookies", Settings.SettingController, :download_cookies
     get "/download_logs", Settings.SettingController, :download_logs
 

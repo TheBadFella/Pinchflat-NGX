@@ -1,7 +1,6 @@
 defmodule PinchflatWeb.Settings.SettingController do
   use PinchflatWeb, :controller
 
-  alias Pinchflat.Backups
   alias Pinchflat.CookieHealth.HealthCheckWorker
   alias Pinchflat.Settings
   alias Pinchflat.Reconciliation
@@ -18,8 +17,7 @@ defmodule PinchflatWeb.Settings.SettingController do
 
     render(conn, "show.html",
       changeset: changeset,
-      concurrency_fields: QueueConcurrency.field_states(setting),
-      backup_status: Backups.status()
+      concurrency_fields: QueueConcurrency.field_states(setting)
     )
   end
 
@@ -43,8 +41,7 @@ defmodule PinchflatWeb.Settings.SettingController do
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "show.html",
           changeset: changeset,
-          concurrency_fields: QueueConcurrency.field_states(setting),
-          backup_status: Backups.status()
+          concurrency_fields: QueueConcurrency.field_states(setting)
         )
     end
   end
