@@ -73,7 +73,7 @@ window.settingsPage = () => ({
     const hash = (window.location.hash || '').replace('#', '')
 
     if (hash === 'postgres-backups' || hash === 'backups') {
-      window.location.replace('/backups')
+      window.location.replace(window.location.pathname.replace(/\/settings\/?$/, '/backups'))
     }
   },
   selectGroup(id) {

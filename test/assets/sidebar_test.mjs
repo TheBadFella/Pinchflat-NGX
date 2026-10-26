@@ -62,16 +62,22 @@ test('blocked storage still allows the sidebar to open and close', () => {
 })
 
 test('old backup bookmarks open the standalone backups page', () => {
-  for (const hash of ['#postgres-backups', '#backups']) {
-    const { context } = browser()
-    let destination
-    context.location = {
-      hash,
-      replace: (url) => {
-        destination = url
+  for (const [pathname, expected] of [
+    ['/settings', '/backups'],
+    ['/custom_prefix/settings', '/custom_prefix/backups']
+  ]) {
+    for (const hash of ['#postgres-backups', '#backups']) {
+      const { context } = browser()
+      let destination
+      context.location = {
+        pathname,
+        hash,
+        replace: (url) => {
+          destination = url
+        }
       }
+      context.settingsPage().applyHash()
+      assert.equal(destination, expected)
     }
-    context.settingsPage().applyHash()
-    assert.equal(destination, '/backups')
   }
 })
