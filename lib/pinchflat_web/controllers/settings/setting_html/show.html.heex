@@ -67,15 +67,15 @@
     >
       Channel Discovery
     </button>
+
     <button
       type="button"
       class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('backups')"
-      data-settings-group="backups"
-      x-bind:class="selectedGroup === 'backups' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'backups'"
+      x-on:click="selectGroup('database')"
+      x-bind:class="selectedGroup === 'database' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
+      x-bind:aria-pressed="selectedGroup === 'database'"
     >
-      PostgreSQL Backups
+      Database
     </button>
     <button
       type="button"
@@ -131,6 +131,5 @@
     changeset={@changeset}
     action={~p"/settings"}
     concurrency_fields={@concurrency_fields}
-    backup_status={@backup_status}
   />
 </div>

@@ -55,7 +55,11 @@ defmodule PinchflatWeb.Layouts do
   end
 
   def sidebar_submenu(assigns) do
-    initially_selected = Enum.any?(assigns[:submenu], &(&1[:href] == assigns[:current_path]))
+    initially_selected =
+      Enum.any?(
+        assigns[:submenu],
+        &active_sidebar_path?(assigns[:current_path], to_string(&1[:href]))
+      )
 
     submenu_hrefs =
       assigns[:submenu]
@@ -115,6 +119,7 @@ defmodule PinchflatWeb.Layouts do
             text={menu[:text]}
             href={menu[:href]}
             target={menu[:target]}
+            current_path={@current_path}
             class="min-h-9 border-transparent pl-4 text-sm"
           />
         </li>

@@ -108,7 +108,7 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
       storage = Enum.find(SourceHTML.info_groups(source), &(&1.title == "Storage"))
       retention = Enum.find(storage.fields, &(&1.label == "Retention period"))
 
-      assert retention.value == "No age-based deletion"
+      assert retention.value == "No age-based cleanup (source override)"
       assert retention.help =~ "Cutoff cleanup can delete files sooner"
     end
 
@@ -118,18 +118,18 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
       storage = Enum.find(SourceHTML.info_groups(source), &(&1.title == "Storage"))
       retention = Enum.find(storage.fields, &(&1.label == "Retention period"))
 
-      assert retention.value == "5 days (profile)"
+      assert retention.value == "5 days (profile default)"
       assert retention.help =~ "Changing the profile"
     end
 
-    test "marks filter and storage groups unset when those fields are blank" do
+    test "shows the effective storage policy even without a source override" do
       source = Repo.preload(source_fixture(), :media_profile)
       flags = Map.new(SourceHTML.info_groups(source), &{&1.title, &1.any_set?})
 
       assert flags["Identity"]
       assert flags["Indexing"]
       refute flags["Filters"]
-      refute flags["Storage"]
+      assert flags["Storage"]
     end
   end
 end
