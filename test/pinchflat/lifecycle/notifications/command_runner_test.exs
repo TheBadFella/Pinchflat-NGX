@@ -144,6 +144,37 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
 
       assert args == ["--verbose", "--body", body, "json://receiver.invalid", "discord://123/abc?format=markdown"]
     end
+
+    test "installed Apprise CLI sends embeds only for Discord endpoints" do
+      endpoints = %{
+        "discord" => "discord://123/abc",
+        "discord_https" => "https://discord.com/api/webhooks/123/abc",
+        "discordapp_https" => "https://discordapp.com/api/webhooks/123/abc",
+        "plain" => "json://receiver.invalid",
+        "explicit_text" => "https://discord.com/api/webhooks/123/abc?format=text"
+      }
+
+      cases =
+        Map.new(endpoints, fn {name, endpoint} ->
+          argv =
+            record_arguments(fn ->
+              assert {:ok, ""} = Runner.run(endpoint, title: "New media found", body: "*unmatched _underscore")
+            end)
+
+          {name, argv}
+        end)
+
+      apprise = System.find_executable("apprise") || raise "Installed Apprise CLI is required"
+      [shebang | _] = apprise |> File.read!() |> String.split("\n", parts: 2)
+      python = String.trim_leading(shebang, "#!")
+
+      {output, 0} =
+        System.cmd(python, ["test/support/scripts/apprise_discord_payload.py", Jason.encode!(cases)],
+          stderr_to_stdout: true
+        )
+
+      assert output =~ "Installed Apprise CLI produced Discord embeds and plain text"
+    end
   end
 
   describe "version/0" do

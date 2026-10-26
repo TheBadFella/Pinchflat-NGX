@@ -1,12 +1,16 @@
-"""Exercise the installed Apprise plugins without contacting notification endpoints."""
+"""Exercise application-generated argv through the installed Apprise CLI without network I/O."""
+import contextlib
+import io
 import json
+import sys
 from unittest.mock import patch
 
-import apprise
+from apprise.cli import main
 import requests
 
 
-calls = []
+cases = json.loads(sys.argv[1])
+body = "*unmatched _underscore"
 
 
 def capture_request(session, method, url, **kwargs):
@@ -17,31 +21,34 @@ def capture_request(session, method, url, **kwargs):
     return response
 
 
-with patch.object(requests.Session, "request", capture_request):
-    discord = apprise.Apprise()
-    assert discord.add("discord://123/abc?format=markdown")
-    assert discord.notify(title="New media found", body="Found 1 new media item(s)\n\n- Example")
-
-    ordinary = apprise.Apprise()
-    assert ordinary.add("json://receiver.invalid")
-    assert ordinary.notify(title="Plain title", body="*unmatched _underscore")
-
-posts = [(url, kwargs) for method, url, kwargs in calls if method.upper() == "POST"]
-assert len(posts) == 2, [(method, url) for method, url, _ in calls]
-
-
 def payload(kwargs):
     data = kwargs.get("data") or kwargs.get("json")
     return json.loads(data) if isinstance(data, (str, bytes)) else data
 
 
-discord_post = next((url, kwargs) for url, kwargs in posts if "discord.com/api/webhooks/" in url)
-discord_payload = payload(discord_post[1])
-assert discord_post[0].startswith("https://discord.com/api/webhooks/123/abc"), discord_post[0]
-assert discord_payload["embeds"], discord_payload
-assert "Found 1 new media item(s)" in discord_payload["embeds"][0]["description"], discord_payload
+for name, argv in cases.items():
+    calls = []
+    with patch.object(requests.Session, "request", capture_request):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            main(args=argv, standalone_mode=False)
 
-ordinary_payload = payload(next(kwargs for url, kwargs in posts if "receiver.invalid" in url))
-assert "*unmatched _underscore" in json.dumps(ordinary_payload), ordinary_payload
-assert "embeds" not in ordinary_payload, ordinary_payload
-print("Installed Apprise produced a Discord embed and an independent plain-text JSON notification")
+    assert len(calls) == 1, (name, [(method, url) for method, url, _ in calls])
+    method, url, kwargs = calls[0]
+    assert method.upper() == "POST", (name, method)
+    data = payload(kwargs)
+    assert data is not None, name
+
+    if name == "plain":
+        assert "receiver.invalid" in url, (name, url)
+        assert body in json.dumps(data), (name, data)
+        assert "embeds" not in data, (name, data)
+    else:
+        assert url.startswith("https://discord.com/api/webhooks/123/abc"), (name, url)
+        if name == "explicit_text":
+            assert "embeds" not in data, (name, data)
+            assert body in data["content"], (name, data)
+        else:
+            assert data["embeds"][0]["description"] == r"\*unmatched \_underscore", (name, data)
+            assert data["embeds"][0]["title"] == "New media found", (name, data)
+
+print("Installed Apprise CLI produced Discord embeds and plain text")
