@@ -77,7 +77,8 @@
             current_path={current_path}
           >
             <:submenu text="Settings" href={~p"/settings"} />
-            <:submenu text="PostgreSQL Backups" href={"#{ ~p"/settings" }#postgres-backups"} />
+            <:submenu text="PostgreSQL Backups" href={~p"/backups"} />
+            <:submenu text="PostgreSQL Migration" href={~p"/postgres_migration"} />
             <:submenu text="File Reconciliation" href={~p"/reconciliation"} />
             <:submenu text="Diagnostics" href={~p"/diagnostics"} />
           </.sidebar_submenu>

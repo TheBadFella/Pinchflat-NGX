@@ -1,0 +1,75 @@
+<h2 class="mb-6 ml-4 text-title-md2 font-bold text-theme-on-surface">PostgreSQL Backups</h2>
+<%= if @backup_status.available do %>
+  <.simple_form :let={f} for={@changeset} as={:setting} action={~p"/backups/retention"} method="put" class="mb-6">
+    <section class="theme-surface-raised px-5 py-5 sm:px-7.5">
+      <h3 class="text-lg font-semibold text-theme-on-surface">Retention settings</h3>
+      <.input
+        field={f[:postgres_backup_retention_count]}
+        type="number"
+        min="1"
+        max="100"
+        required
+        label="Backups to Keep"
+        help="After each successful backup, Pinchflat-ngx keeps this many completed PostgreSQL dumps and removes older ones. Failed or partial dumps are never retained."
+      />
+      <.button type="submit">Save retention settings</.button>
+    </section>
+  </.simple_form>
+<% end %>
+<section id="postgres-backups" class="theme-surface-raised px-5 py-5 sm:px-7.5">
+  <h3 class="text-lg font-semibold text-theme-on-surface">Backup files</h3>
+  <%= if @backup_status.available do %>
+    <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-theme-on-surface-muted">
+        Dumps are stored in Pinchflat-ngx's persistent configuration volume and are available only through this authenticated UI.
+      </p>
+      <.button
+        href={~p"/backups"}
+        method="post"
+        variant="primary"
+        class="w-full shrink-0 sm:w-auto"
+      >
+        <.icon name="hero-circle-stack" class="mr-1 h-4 w-4" /> Create and Download Backup
+      </.button>
+    </div>
+
+    <%= if @backup_status.backups == [] do %>
+      <p class="mt-4 text-sm text-theme-on-surface-muted">No completed PostgreSQL backups are available yet.</p>
+    <% else %>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-theme-outline">
+              <th class="py-2 text-left text-theme-on-surface-muted">Backup</th>
+              <th class="py-2 text-left text-theme-on-surface-muted">Created</th>
+              <th class="py-2 text-left text-theme-on-surface-muted">Size</th>
+              <th class="py-2 text-left text-theme-on-surface-muted">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for backup <- @backup_status.backups do %>
+              <tr class="border-b border-theme-outline/50">
+                <td class="py-2 font-mono text-xs text-theme-on-surface">{backup.filename}</td>
+                <td class="py-2 text-theme-on-surface">{format_backup_datetime(backup.modified_at)}</td>
+                <td class="py-2 text-theme-on-surface">{format_backup_size(backup.size)}</td>
+                <td class="py-2">
+                  <.link
+                    href={~p"/backups/#{backup.filename}"}
+                    class="text-theme-primary hover:underline"
+                  >
+                    Download
+                  </.link>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  <% else %>
+    <p class="theme-status-card theme-status-card-info mt-3 text-sm">
+      PostgreSQL backup files are unavailable because this installation uses SQLite.
+    </p>
+    <.button href={~p"/postgres_migration"} variant="outline" class="mt-4">Review PostgreSQL migration</.button>
+  <% end %>
+</section>

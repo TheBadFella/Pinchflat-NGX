@@ -54,7 +54,7 @@ window.settingsPage = () => ({
       'extractor youtube api key sleep interval throughput download workers indexing metadata concurrency restrict filenames ascii ignore unavailable members-only private time format 12h 24h clock database compaction vacuum sqlite',
     discovery:
       'discovery channel suggestions scheduled scan mention mentions metadata featured subscribed',
-    backups: 'postgresql postgres backup backups database dump restore retention keep files',
+    database: 'database postgresql postgres migration migrate transfer sqlite setup connection',
     ytdlp:
       'yt-dlp ytdlp youtube-dl update nightly stable pinned version base config force-ipv4 retries fragment-retries socket-timeout ipv4',
     codec: 'codec video audio avc m4a remux preference mp4',
@@ -73,24 +73,13 @@ window.settingsPage = () => ({
     const hash = (window.location.hash || '').replace('#', '')
 
     if (hash === 'postgres-backups' || hash === 'backups') {
-      this.selectedGroup = 'backups'
-      this.$nextTick(() => {
-        document.getElementById('postgres-backups')?.scrollIntoView({ block: 'start' })
-      })
+      window.location.replace('/backups')
     }
   },
   selectGroup(id) {
     this.selectedGroup = this.selectedGroup === id ? '' : id
 
-    if (this.selectedGroup === 'backups') {
-      history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}${window.location.search}#postgres-backups`
-      )
-    } else {
-      history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
-    }
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
   },
   match(text) {
     const query = this.query.trim().toLowerCase()

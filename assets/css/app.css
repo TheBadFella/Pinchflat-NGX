@@ -7,8 +7,6 @@
 @source "../../lib/pinchflat_web";
 @source "../../lib/pinchflat_web.ex";
 
-@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;700&display=swap');
-
 /* This file is for your main application CSS */
 [x-cloak] {
   display: none !important;
@@ -180,9 +178,14 @@
     @apply min-h-11 rounded-m3-sm border-0 bg-theme-surface-2 text-sm leading-5 text-theme-on-surface placeholder:text-theme-on-surface-muted;
   }
 
-  .theme-input:focus,
-  .theme-input:focus-visible {
+  .theme-input:focus {
     @apply outline-none ring-0;
+  }
+
+  /* Bare inputs and selects are not always wrapped in a field shell, so keep a
+     keyboard focus indicator. Mouse focus stays ring-free to match the shell. */
+  .theme-input:focus-visible {
+    @apply outline-none ring-2 ring-theme-primary/70 ring-offset-2 ring-offset-theme-bg;
   }
 
   .theme-field-shell {
