@@ -278,6 +278,20 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       assert html =~ "Filtered Out"
     end
 
+    test "keeps existing tabs in list mode even when sent a grid event", %{conn: conn, source: source} do
+      media_item_fixture(source_id: source.id, media_filepath: nil)
+      media_item_fixture(source_id: source.id, media_filepath: nil, last_error: "Download failed")
+      media_item_fixture(source_id: source.id, media_filepath: nil, prevent_download: true)
+
+      for state <- ["pending", "failed", "other"] do
+        {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, state))
+        refute has_element?(view, "[aria-label='Media layout']")
+        render_click(view, "view_change", %{"view" => "grid"})
+        refute render(view) =~ "grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+        GenServer.stop(view.pid)
+      end
+    end
+
     test "toggles between list and grid views", %{conn: conn, source: source} do
       item = media_item_fixture(source_id: source.id, title: "GRID_ITEM", media_filepath: "/downloads/file.mp4")
       {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))

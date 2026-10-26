@@ -277,7 +277,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert opts[:body] ==
                  "Found 1 new media item(s) for #{source.custom_name}. Downloading them now\n\n- #{title}"
 
-        assert opts[:input_format] == "markdown"
+        refute Keyword.has_key?(opts, :input_format)
         assert opts[:notification_type] == "info"
         {:ok, ""}
       end)
@@ -346,7 +346,6 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert opts == [
                  title: "[Pinchflat-ngx] New media found",
                  body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now",
-                 input_format: "markdown",
                  notification_type: "info"
                ]
 
@@ -367,7 +366,6 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert opts == [
                  title: "[Pinchflat-ngx] New media found",
                  body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now",
-                 input_format: "markdown",
                  notification_type: "info"
                ]
 
@@ -425,7 +423,6 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
         assert opts == [
                  title: "[Pinchflat-ngx] New media found",
                  body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now",
-                 input_format: "markdown",
                  notification_type: "info"
                ]
 
@@ -447,7 +444,6 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
                  body:
                    "Found 2 new media item(s) for #{source.custom_name}. Downloading them now\n\n" <>
                      "https://pinchflat.example.com/sources/#{source.id}",
-                 input_format: "markdown",
                  notification_type: "info"
                ]
 

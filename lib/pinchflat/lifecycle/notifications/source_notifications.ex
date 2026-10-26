@@ -50,7 +50,6 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
       [
         title: "[Pinchflat-ngx] New media found",
         body: notification_body(source, changed_count, media_items),
-        input_format: "markdown",
         notification_type: "info"
       ]
 

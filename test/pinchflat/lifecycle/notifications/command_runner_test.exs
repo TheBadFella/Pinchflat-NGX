@@ -107,13 +107,42 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
                "https://discord.com/api/webhooks/123/abc?avatar=Yes&format=markdown"
     end
 
-    test "does not duplicate format param if already present" do
+    test "preserves explicit format options and query values that only resemble one" do
       url = "https://discord.com/api/webhooks/123/abc?format=text"
       assert Runner.normalize_endpoint(url) == url
+
+      url = "discord://123/abc?other_format=text&next=https://example.org/?format=text"
+      assert Runner.normalize_endpoint(url) == url <> "&format=markdown"
+
+      url = "https://discord.com/api/webhooks/123/abc?format=html#section"
+      assert Runner.normalize_endpoint(url) == url
+      assert Runner.normalize_endpoint("discord://123/abc#section") ==
+               "discord://123/abc?format=markdown#section"
     end
 
-    test "leaves non-discord URLs unchanged" do
+    test "leaves other endpoints unchanged even when they mention a Discord webhook" do
       assert Runner.normalize_endpoint("pover://user@token") == "pover://user@token"
+
+      for url <- [
+            "https://notify.example.com/send?next=https://discord.com/api/webhooks/123/abc",
+            "https://discord.com.evil.invalid/api/webhooks/123/abc",
+            "https://discord.com/other?path=/api/webhooks/123/abc",
+            "http://discord.com/api/webhooks/123/abc"
+          ] do
+        assert Runner.normalize_endpoint(url) == url
+      end
+    end
+
+    test "forwards literal plain-text bodies to unrelated providers while formatting only Discord URLs" do
+      body = "*unmatched _underscore [link]( `code <tag> & text"
+
+      args =
+        record_arguments(fn ->
+          assert {:ok, ""} =
+                   Runner.run(["json://receiver.invalid", "discord://123/abc"], body: body)
+        end)
+
+      assert args == ["--verbose", "--body", body, "json://receiver.invalid", "discord://123/abc?format=markdown"]
     end
   end
 

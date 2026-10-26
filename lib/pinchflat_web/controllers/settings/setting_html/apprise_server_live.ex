@@ -50,9 +50,7 @@ defmodule Pinchflat.Settings.AppriseServerLive do
       feedback =
         case backend_runner().run([assigns.value],
                title: "[Pinchflat-ngx] Test Notification",
-               body:
-                 "**Status**: Connected 🟢\n**Message**: This is a test message from Pinchflat-ngx. Your notification service is configured properly.",
-               input_format: "markdown",
+               body: "Connected 🟢. This is a test message from Pinchflat-ngx. Your notification service is configured properly.",
                notification_type: "success"
              ) do
           {:ok, _} ->

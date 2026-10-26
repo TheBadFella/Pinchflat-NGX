@@ -515,11 +515,11 @@ defmodule Pinchflat.CookieHealth do
         _ -> "A YouTube cookie health issue occurred"
       end
 
-    body = "**Status**: ⚠️ #{status_desc}."
+    body = "#{status_desc}."
 
     body =
       if result.error do
-        "#{body}\n**Details**: `#{result.error}`"
+        "#{body}\nDetails: #{result.error}"
       else
         body
       end
@@ -527,7 +527,7 @@ defmodule Pinchflat.CookieHealth do
     body =
       case setting.external_base_url do
         url when is_binary(url) and url != "" ->
-          "#{body}\n\n[Update cookies in Pinchflat Settings](#{String.trim_trailing(url, "/")}/settings)"
+          "#{body}\n\nPlease update your cookies in Pinchflat: #{String.trim_trailing(url, "/")}/settings"
 
         _ ->
           "#{body}\n\nPlease update your cookies file in Pinchflat Settings."
@@ -539,7 +539,6 @@ defmodule Pinchflat.CookieHealth do
     opts = [
       title: title,
       body: body,
-      input_format: "markdown",
       notification_type: "failure"
     ]
 

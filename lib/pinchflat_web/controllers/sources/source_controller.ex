@@ -920,11 +920,11 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp allowed_tabs_for(%Source{collection_type: :playlist, selection_mode: :manual}) do
-    ~w(source videos pending failed selection active-tasks downloaded job-queue other podcast)
+    ~w(source videos pending failed selection active-tasks job-queue other podcast)
   end
 
   defp allowed_tabs_for(_source) do
-    ~w(source videos pending failed active-tasks downloaded job-queue other podcast)
+    ~w(source videos pending failed active-tasks job-queue other podcast)
   end
 
   defp saved_source_folders do

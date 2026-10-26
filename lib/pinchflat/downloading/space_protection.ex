@@ -322,7 +322,6 @@ defmodule Pinchflat.Downloading.SpaceProtection do
       opts = [
         title: "[Pinchflat-ngx] Downloads paused: Low storage space",
         body: build_alert_body(reason, location, free_bytes, threshold_bytes),
-        input_format: "markdown",
         notification_type: "failure"
       ]
 
@@ -350,18 +349,18 @@ defmodule Pinchflat.Downloading.SpaceProtection do
 
     reason_desc =
       case reason do
-        :low_space -> "has low disk space (**#{free_str}** available, **#{req_str}** required)"
+        :low_space -> "has low disk space (#{free_str} available, #{req_str} required)"
         :missing_storage -> "directory is missing or inaccessible"
         :unknown_capacity -> "capacity cannot be determined"
         _ -> "is unable to accept downloads"
       end
 
-    base_msg = "Downloads have been paused because **#{location}** storage #{reason_desc}."
+    base_msg = "Downloads have been paused because #{location} storage #{reason_desc}."
 
     case Settings.get(:external_base_url) do
       {:ok, url} when is_binary(url) and url != "" ->
         settings_url = "#{String.trim_trailing(url, "/")}/settings"
-        "#{base_msg}\n\n[Open Pinchflat Settings](#{settings_url})"
+        "#{base_msg}\n\n#{settings_url}"
 
       _ ->
         base_msg

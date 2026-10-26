@@ -51,8 +51,11 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   so Apprise formats notifications as Discord embeds.
   """
   def normalize_endpoint(endpoint) when is_binary(endpoint) do
-    if discord_webhook?(endpoint) and not String.contains?(endpoint, "format=") do
-      append_query_param(endpoint, "format", "markdown")
+    uri = URI.parse(endpoint)
+
+    if discord_webhook?(uri) and not format_specified?(uri.query) do
+      query = Enum.join(Enum.reject([uri.query, "format=markdown"], &is_nil/1), "&")
+      URI.to_string(%{uri | query: query})
     else
       endpoint
     end
@@ -60,15 +63,19 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
 
   def normalize_endpoint(endpoint), do: endpoint
 
-  defp discord_webhook?(endpoint) do
-    String.starts_with?(endpoint, "discord://") or
-      String.contains?(endpoint, "discord.com/api/webhooks/") or
-      String.contains?(endpoint, "discordapp.com/api/webhooks/")
+  defp discord_webhook?(%URI{scheme: "discord"}), do: true
+
+  defp discord_webhook?(%URI{scheme: "https", host: host, path: path}) do
+    host in ["discord.com", "discordapp.com"] and is_binary(path) and
+      String.starts_with?(path, "/api/webhooks/")
   end
 
-  defp append_query_param(url, key, value) do
-    delimiter = if String.contains?(url, "?"), do: "&", else: "?"
-    "#{url}#{delimiter}#{key}=#{value}"
+  defp discord_webhook?(_), do: false
+
+  defp format_specified?(nil), do: false
+
+  defp format_specified?(query) do
+    Enum.any?(URI.query_decoder(query), fn {key, _value} -> key == "format" end)
   end
 
   @doc """

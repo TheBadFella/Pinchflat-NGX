@@ -80,7 +80,11 @@ defmodule PinchflatWeb.Settings.AppriseServerLiveTest do
     test "sends a test message to the specified server", %{conn: conn} do
       expect(AppriseRunnerMock, :run, fn servers, args ->
         assert servers == ["cool-value"]
-        assert args == [title: "Pinchflat-ngx Test", body: "This is a test message from Pinchflat"]
+        assert args == [
+                 title: "[Pinchflat-ngx] Test Notification",
+                 body: "Connected 🟢. This is a test message from Pinchflat-ngx. Your notification service is configured properly.",
+                 notification_type: "success"
+               ]
 
         {:ok, ""}
       end)
