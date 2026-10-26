@@ -1,7 +1,8 @@
 defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   @moduledoc """
   Runs apprise commands using the `System.cmd/3` function.
-  Notification bodies use Apprise's default plain-text input format.
+  Notification bodies use Apprise's default plain-text input format. Discord endpoints
+  without an explicit format option request embed presentation.
   """
 
   require Logger
@@ -47,8 +48,8 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   end
 
   @doc """
-  Normalizes an endpoint URL. Ensures Discord webhook URLs request markdown formatting
-  so Apprise formats notifications as Discord embeds.
+  Adds markdown formatting to Discord endpoints unless a format option is already set,
+  so Apprise presents those notifications as embeds.
   """
   def normalize_endpoint(endpoint) when is_binary(endpoint) do
     uri = URI.parse(endpoint)
