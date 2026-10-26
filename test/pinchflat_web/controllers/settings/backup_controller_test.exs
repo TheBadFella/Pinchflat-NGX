@@ -49,8 +49,10 @@ defmodule PinchflatWeb.Settings.BackupControllerTest do
 
     extensionless = String.trim_trailing(filename, ".dump")
     assert response(get(recycle(conn), "/backups/#{extensionless}"), 200) == "synthetic backup for route verification"
+
     assert response(get(recycle(conn), "/settings/backups/#{extensionless}"), 200) ==
              "synthetic backup for route verification"
+
     assert Backups.download_path(extensionless) == {:error, :invalid_filename}
     assert Backups.download_path("../#{filename}") == {:error, :invalid_filename}
     assert get(recycle(conn), "/backups/../#{filename}") |> redirected_to() == ~p"/backups"
