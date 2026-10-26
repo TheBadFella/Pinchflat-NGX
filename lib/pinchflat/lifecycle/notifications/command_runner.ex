@@ -26,7 +26,11 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   def run([], _), do: {:error, :no_servers}
 
   def run(endpoints, command_opts) do
-    endpoints = List.wrap(endpoints)
+    endpoints =
+      endpoints
+      |> List.wrap()
+      |> Enum.map(&normalize_endpoint/1)
+
     default_opts = [:verbose]
     parsed_opts = CliUtils.parse_options(default_opts ++ command_opts)
 
@@ -40,6 +44,31 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
       0 -> {:ok, String.trim(output)}
       _ -> {:error, "Apprise exited with status #{exit_code}. Check the notification server configuration."}
     end
+  end
+
+  @doc """
+  Normalizes an endpoint URL. Ensures Discord webhook URLs request markdown formatting
+  so Apprise formats notifications as Discord embeds.
+  """
+  def normalize_endpoint(endpoint) when is_binary(endpoint) do
+    if discord_webhook?(endpoint) and not String.contains?(endpoint, "format=") do
+      append_query_param(endpoint, "format", "markdown")
+    else
+      endpoint
+    end
+  end
+
+  def normalize_endpoint(endpoint), do: endpoint
+
+  defp discord_webhook?(endpoint) do
+    String.starts_with?(endpoint, "discord://") or
+      String.contains?(endpoint, "discord.com/api/webhooks/") or
+      String.contains?(endpoint, "discordapp.com/api/webhooks/")
+  end
+
+  defp append_query_param(url, key, value) do
+    delimiter = if String.contains?(url, "?"), do: "&", else: "?"
+    "#{url}#{delimiter}#{key}=#{value}"
   end
 
   @doc """

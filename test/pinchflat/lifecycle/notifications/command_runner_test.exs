@@ -93,6 +93,30 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
     end
   end
 
+  describe "normalize_endpoint/1" do
+    test "appends format=markdown to discord webhook URLs without query params" do
+      assert Runner.normalize_endpoint("https://discord.com/api/webhooks/123/abc") ==
+               "https://discord.com/api/webhooks/123/abc?format=markdown"
+
+      assert Runner.normalize_endpoint("discord://123/abc") ==
+               "discord://123/abc?format=markdown"
+    end
+
+    test "appends &format=markdown to discord webhook URLs with existing query params" do
+      assert Runner.normalize_endpoint("https://discord.com/api/webhooks/123/abc?avatar=Yes") ==
+               "https://discord.com/api/webhooks/123/abc?avatar=Yes&format=markdown"
+    end
+
+    test "does not duplicate format param if already present" do
+      url = "https://discord.com/api/webhooks/123/abc?format=text"
+      assert Runner.normalize_endpoint(url) == url
+    end
+
+    test "leaves non-discord URLs unchanged" do
+      assert Runner.normalize_endpoint("pover://user@token") == "pover://user@token"
+    end
+  end
+
   describe "version/0" do
     test "adds the version arg" do
       assert {:ok, output} = Runner.version()

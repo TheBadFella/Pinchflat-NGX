@@ -787,6 +787,19 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Stop downloads for Dropdown Source?"
     end
 
+    test "renders the videos tab label and normalizes downloaded alias", %{conn: conn} do
+      source = source_fixture()
+
+      conn_default = get(conn, ~p"/sources/#{source}")
+      assert html_response(conn_default, 200) =~ "Videos"
+
+      conn_videos = get(conn, ~p"/sources/#{source}?#{[tab: "videos"]}")
+      assert html_response(conn_videos, 200) =~ "Videos"
+
+      conn_alias = get(conn, ~p"/sources/#{source}?#{[tab: "downloaded"]}")
+      assert html_response(conn_alias, 200) =~ "Videos"
+    end
+
     test "renders the excluded tab label", %{conn: conn} do
       source = source_fixture()
 

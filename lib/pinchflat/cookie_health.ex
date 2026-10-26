@@ -505,7 +505,7 @@ defmodule Pinchflat.CookieHealth do
   end
 
   defp dispatch_apprise_alert(server, result, setting) do
-    title = "[Pinchflat] YouTube Cookie Issue Detected"
+    title = "[Pinchflat-ngx] YouTube Cookie Issue Detected"
 
     status_desc =
       case result.status do
@@ -515,11 +515,11 @@ defmodule Pinchflat.CookieHealth do
         _ -> "A YouTube cookie health issue occurred"
       end
 
-    body = "#{status_desc}."
+    body = "**Status**: ⚠️ #{status_desc}."
 
     body =
       if result.error do
-        "#{body}\nDetails: #{result.error}"
+        "#{body}\n**Details**: `#{result.error}`"
       else
         body
       end
@@ -527,7 +527,7 @@ defmodule Pinchflat.CookieHealth do
     body =
       case setting.external_base_url do
         url when is_binary(url) and url != "" ->
-          "#{body}\n\nPlease update your cookies in Pinchflat: #{String.trim_trailing(url, "/")}/settings"
+          "#{body}\n\n[Update cookies in Pinchflat Settings](#{String.trim_trailing(url, "/")}/settings)"
 
         _ ->
           "#{body}\n\nPlease update your cookies file in Pinchflat Settings."
@@ -536,7 +536,14 @@ defmodule Pinchflat.CookieHealth do
     apprise_runner =
       Application.get_env(:pinchflat, :apprise_runner, Pinchflat.Lifecycle.Notifications.CommandRunner)
 
-    case apprise_runner.run([server], title: title, body: body) do
+    opts = [
+      title: title,
+      body: body,
+      input_format: "markdown",
+      notification_type: "failure"
+    ]
+
+    case apprise_runner.run([server], opts) do
       {:ok, res} ->
         Logger.info("[CookieHealth] Sent Apprise cookie health alert")
         {:ok, res}
