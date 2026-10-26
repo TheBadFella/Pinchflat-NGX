@@ -109,13 +109,17 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
 
     test "preserves explicit format options and query values that only resemble one" do
       url = "https://discord.com/api/webhooks/123/abc?format=text"
+
       assert Runner.normalize_endpoint(url) == url
 
       url = "discord://123/abc?other_format=text&next=https://example.org/?format=text"
+
       assert Runner.normalize_endpoint(url) == url <> "&format=markdown"
 
       url = "https://discord.com/api/webhooks/123/abc?format=html#section"
+
       assert Runner.normalize_endpoint(url) == url
+
       assert Runner.normalize_endpoint("discord://123/abc#section") ==
                "discord://123/abc?format=markdown#section"
     end
