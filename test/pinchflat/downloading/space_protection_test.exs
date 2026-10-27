@@ -69,6 +69,8 @@ defmodule Pinchflat.Downloading.SpaceProtectionTest do
         assert server == "http://apprise.example.com"
         assert opts[:title] =~ "Downloads paused"
         assert opts[:body] =~ "destination"
+        refute Keyword.has_key?(opts, :input_format)
+        refute opts[:body] =~ "**"
         {:ok, "Alert sent"}
       end)
 

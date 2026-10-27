@@ -349,6 +349,8 @@ defmodule Pinchflat.CookieHealthTest do
       expect(AppriseRunnerMock, :run, 1, fn ["https://notify.example.com"], opts ->
         assert opts[:title] =~ "Cookie Issue"
         assert opts[:body] =~ "expired"
+        refute Keyword.has_key?(opts, :input_format)
+        refute opts[:body] =~ "**"
         {:ok, "sent"}
       end)
 

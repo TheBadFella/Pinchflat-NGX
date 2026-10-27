@@ -76,6 +76,14 @@
           <.source_info_panel source={@source} />
         </:tab>
 
+        <:tab title="Videos" id="videos">
+          {live_render(
+            @conn,
+            PinchflatWeb.Sources.MediaItemTableLive,
+            session: %{"source_id" => @source.id, "media_state" => "downloaded"}
+          )}
+        </:tab>
+
         <:tab title="Pending" id="pending">
           {live_render(
             @conn,
@@ -225,14 +233,6 @@
             @conn,
             Pinchflat.Pages.JobTableLive,
             session: %{"source_id" => @source.id}
-          )}
-        </:tab>
-
-        <:tab title="Downloaded" id="downloaded">
-          {live_render(
-            @conn,
-            PinchflatWeb.Sources.MediaItemTableLive,
-            session: %{"source_id" => @source.id, "media_state" => "downloaded"}
           )}
         </:tab>
 

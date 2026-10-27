@@ -278,6 +278,7 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
                  "Found 1 new media item(s) for #{source.custom_name}. Downloading them now\n\n- #{title}"
 
         refute Keyword.has_key?(opts, :input_format)
+        assert opts[:notification_type] == "info"
         {:ok, ""}
       end)
 
@@ -344,7 +345,8 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
 
         assert opts == [
                  title: "[Pinchflat-ngx] New media found",
-                 body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now"
+                 body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now",
+                 notification_type: "info"
                ]
 
         {:ok, ""}
@@ -363,7 +365,8 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
 
         assert opts == [
                  title: "[Pinchflat-ngx] New media found",
-                 body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now"
+                 body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now",
+                 notification_type: "info"
                ]
 
         {:ok, ""}
@@ -419,7 +422,8 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
 
         assert opts == [
                  title: "[Pinchflat-ngx] New media found",
-                 body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now"
+                 body: "Found 1 new media item(s) for #{source.custom_name}. Downloading them now",
+                 notification_type: "info"
                ]
 
         {:ok, ""}
@@ -439,7 +443,8 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotificationsTest do
                  title: "[Pinchflat-ngx] New media found",
                  body:
                    "Found 2 new media item(s) for #{source.custom_name}. Downloading them now\n\n" <>
-                     "https://pinchflat.example.com/sources/#{source.id}"
+                     "https://pinchflat.example.com/sources/#{source.id}",
+                 notification_type: "info"
                ]
 
         {:ok, ""}

@@ -49,8 +49,10 @@ defmodule Pinchflat.Settings.AppriseServerLive do
     else
       feedback =
         case backend_runner().run([assigns.value],
-               title: "Pinchflat-ngx Test",
-               body: "This is a test message from Pinchflat"
+               title: "[Pinchflat-ngx] Test Notification",
+               body:
+                 "Connected 🟢. This is a test message from Pinchflat-ngx. Your notification service is configured properly.",
+               notification_type: "success"
              ) do
           {:ok, _} ->
             %{icon_name: "hero-check", tooltip: "Sent!"}

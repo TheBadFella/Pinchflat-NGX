@@ -320,8 +320,9 @@ defmodule Pinchflat.Downloading.SpaceProtection do
 
     if is_binary(server) and String.trim(server) != "" do
       opts = [
-        title: "[Pinchflat] Downloads paused: Low storage space",
-        body: build_alert_body(reason, location, free_bytes, threshold_bytes)
+        title: "[Pinchflat-ngx] Downloads paused: Low storage space",
+        body: build_alert_body(reason, location, free_bytes, threshold_bytes),
+        notification_type: "failure"
       ]
 
       case apprise_runner().run(server, opts) do
@@ -358,7 +359,8 @@ defmodule Pinchflat.Downloading.SpaceProtection do
 
     case Settings.get(:external_base_url) do
       {:ok, url} when is_binary(url) and url != "" ->
-        "#{base_msg}\n\n#{String.trim_trailing(url, "/")}/settings"
+        settings_url = "#{String.trim_trailing(url, "/")}/settings"
+        "#{base_msg}\n\n#{settings_url}"
 
       _ ->
         base_msg
