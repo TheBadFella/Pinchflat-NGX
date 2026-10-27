@@ -85,8 +85,9 @@ defmodule Pinchflat.MediaWatch.Observation do
     current_duration = Map.get(watch, :confirmed_upstream_duration_seconds) || watch.baseline_upstream_duration_seconds
 
     cond do
-      current_visibility == nil and observation.availability == :unknown ->
-        {:unknown, observation.reason}
+      current_visibility == nil and observation.availability in [:public, :unlisted] and
+          is_nil(observation.duration_seconds) ->
+        {:unknown, :missing_duration}
 
       current_visibility == nil ->
         :unchanged
@@ -100,6 +101,9 @@ defmodule Pinchflat.MediaWatch.Observation do
 
       observation.availability == :public and current_visibility in ["unlisted", "unavailable", "private"] ->
         {:restored, current_visibility, "public"}
+
+      observation.availability in [:public, :unlisted] and is_nil(observation.duration_seconds) ->
+        {:unknown, :missing_duration}
 
       duration_changed?(current_duration, observation.duration_seconds) ->
         {:duration, current_duration, observation.duration_seconds}

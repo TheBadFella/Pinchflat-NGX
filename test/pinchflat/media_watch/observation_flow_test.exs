@@ -281,6 +281,63 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
     assert Repo.aggregate(Event, :count) == 1
   end
 
+  test "a missing public duration cannot refresh replacement eligibility or erase the last trusted value", %{
+    watch: watch,
+    item: item
+  } do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    {:ok, %{watch: trusted}} = MediaWatch.record_observation(watch, observation(now, 122), jitter_seconds: 0)
+    assert trusted.current_upstream_duration_seconds == 122
+    refute MediaWatch.replacement_blocked?(item.id)
+
+    {:ok, %{watch: unknown, event: nil}} =
+      MediaWatch.record_observation(watch, observation(DateTime.add(now, 60), nil), jitter_seconds: 0)
+
+    assert unknown.last_success_at == trusted.last_success_at
+    assert unknown.current_upstream_duration_seconds == 122
+    assert unknown.last_error_at
+    assert unknown.confirmed_state == "unchanged"
+    assert MediaWatch.replacement_blocked?(item.id)
+
+    {:ok, %{watch: unlisted, event: nil}} =
+      MediaWatch.record_observation(watch, %{observation(DateTime.add(now, 120), nil) | availability: :unlisted})
+
+    assert unlisted.confirmed_state == "suspected"
+    assert unlisted.suspected_kind == "visibility"
+    assert unlisted.last_success_at == trusted.last_success_at
+    assert unlisted.current_upstream_duration_seconds == 122
+    assert MediaWatch.replacement_blocked?(item.id)
+
+    {:ok, %{watch: repeated, event: nil}} =
+      MediaWatch.record_observation(watch, %{observation(DateTime.add(now, 180), nil) | availability: :unlisted})
+
+    assert repeated.current_upstream_duration_seconds == 122
+    assert repeated.last_error_at
+    assert MediaWatch.replacement_blocked?(item.id)
+
+    {:ok, %{watch: confirmed, event: event}} =
+      MediaWatch.record_observation(watch, %{observation(DateTime.add(now, 1320), nil) | availability: :unlisted})
+
+    assert event.kind == "visibility"
+    assert confirmed.last_error_at
+    assert confirmed.current_upstream_duration_seconds == 122
+    assert MediaWatch.replacement_blocked?(item.id)
+  end
+
+  test "the worker does not turn missing public duration into a successful check", %{watch: watch, item: item} do
+    {:ok, _} = Settings.update_setting(Settings.record(), %{youtube_api_key: nil, apprise_server: nil})
+
+    stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _output, _addl ->
+      {:ok, Jason.encode!(%{"id" => watch.media_id, "availability" => "public"})}
+    end)
+
+    assert :ok = ObservationWorker.perform(%Oban.Job{args: %{"id" => watch.id}})
+    updated = Repo.get!(Watch, watch.id)
+    assert updated.last_error_at
+    refute updated.last_success_at
+    assert MediaWatch.replacement_blocked?(item.id)
+  end
+
   test "missing duration and a livestream do not clear an existing suspicion", %{watch: watch} do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     {:ok, _} = MediaWatch.record_observation(watch, observation(now, 130))

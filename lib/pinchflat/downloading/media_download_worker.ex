@@ -380,9 +380,15 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   defp finish_pending_download(item) do
     case MediaWatch.complete_pending_download(item) do
       {:ok, completed} ->
-        MediaServers.dispatch_post_download_refresh(completed)
-        FirstArtifact.clear(completed)
-        :ok
+        case FirstArtifact.clear(completed) do
+          :ok ->
+            MediaServers.dispatch_post_download_refresh(completed)
+            :ok
+
+          {:error, reason} ->
+            Logger.error("first artifact verification failed for media item ##{item.id}: #{inspect(reason)}")
+            {:error, :enrollment_failed}
+        end
 
       {:error, reason} ->
         Logger.error("media_watch enrollment failed for media item ##{item.id}: #{inspect(reason)}")

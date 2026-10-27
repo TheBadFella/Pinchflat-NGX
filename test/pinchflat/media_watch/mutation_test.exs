@@ -211,6 +211,47 @@ defmodule Pinchflat.MediaWatch.MutationTest do
       assert Repo.get!(Watch, watch.id).archive_state == "published"
     end
 
+    test "recovers only the empty reserved archive after an interrupted publication" do
+      {item, watch} = watched_media_item()
+      root = OriginalArchive.root()
+      directory = OriginalArchive.archive_directory(watch.id)
+      temporary = Path.join(root, ".preparing-#{watch.id}-interrupted")
+      File.mkdir_p!(temporary)
+      File.write!(Path.join(temporary, "media.mkv"), "prepared original")
+      File.mkdir!(directory)
+
+      watch
+      |> Ecto.Changeset.change(archive_state: "preparing", operation_id: Ecto.UUID.generate())
+      |> Repo.update!()
+
+      assert [%{action: :unarchived}] = MediaWatch.recover_pending()
+      refute File.exists?(directory)
+      assert File.read!(Path.join(temporary, "media.mkv")) == "prepared original"
+      assert Repo.get!(Watch, watch.id).archive_state == "none"
+      assert {:ok, %{archive_state: "published"}} =
+               MediaWatch.archive_original(Repo.get!(Watch, watch.id), Repo.preload(item, :metadata))
+      assert File.read!(Path.join(temporary, "media.mkv")) == "prepared original"
+    end
+
+    test "populated or symlinked archive reservations remain held for manual recovery" do
+      {_item, watch} = watched_media_item()
+      directory = OriginalArchive.archive_directory(watch.id)
+      operation_id = Ecto.UUID.generate()
+      watch |> Ecto.Changeset.change(archive_state: "preparing", operation_id: operation_id) |> Repo.update!()
+      File.mkdir_p!(directory)
+      File.write!(Path.join(directory, "unexpected"), "keep")
+
+      assert [%{action: :needs_recovery}] = MediaWatch.recover_pending()
+      assert File.read!(Path.join(directory, "unexpected")) == "keep"
+      File.rm_rf!(directory)
+      File.ln_s!(OriginalArchive.root(), directory)
+      watch = Repo.get!(Watch, watch.id)
+      watch |> Ecto.Changeset.change(archive_state: "preparing") |> Repo.update!()
+
+      assert [%{action: :needs_recovery}] = MediaWatch.recover_pending()
+      assert File.lstat!(directory).type == :symlink
+    end
+
     test "drops an unvalidated publication attempt without deleting a published archive" do
       {_item, watch} = watched_media_item()
       root = OriginalArchive.root()

@@ -133,6 +133,22 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     end
   end
 
+  @doc "Verifies the files bound to the first successful postprocessing before enrollment."
+  def verify_completed(%MediaItem{} = item) do
+    with {:ok, entry} <- transferred_entry(item),
+         true <- item.media_filepath == entry["path"],
+         %DateTime{} <- completed_at(item),
+         {:ok, bytes} <- File.read(Path.join(directory(item), "completed.json")),
+         {:ok, %{"files" => files}} <- Jason.decode(bytes),
+         true <- is_map(files) and is_map(entry["files"]) and
+                   Enum.sort(Map.keys(files)) == Enum.sort(Map.keys(entry["files"])),
+         :ok <- verify_files(files) do
+      :ok
+    else
+      _ -> {:error, :first_artifact_completion_uncertain}
+    end
+  end
+
   @doc "Publishes the first completion record exclusively; concurrent successes cannot replace it."
   def mark_completed(%MediaItem{} = item, now) do
     dir = directory(item)
@@ -141,20 +157,21 @@ defmodule Pinchflat.Downloading.FirstArtifact do
 
     case transferred_entry(item) do
       {:ok, entry} ->
-        if completed_at(item) do
-          :ok
+        if File.lstat(destination) != {:error, :enoent} do
+          verify_completed(item)
         else
           try do
-            content = %{uuid: item.uuid, hash: entry["hash"], path: entry["path"], at: DateTime.to_iso8601(now)}
-
-            with {:ok, file} <- File.open(temporary, [:write, :exclusive, :binary]),
+            with true <- item.media_filepath == entry["path"],
+                 {:ok, files} <- fingerprint_files(Map.keys(entry["files"])),
+                 content = %{uuid: item.uuid, hash: entry["hash"], path: entry["path"], files: files, at: DateTime.to_iso8601(now)},
+                 {:ok, file} <- File.open(temporary, [:write, :exclusive, :binary]),
                  :ok <- IO.binwrite(file, Jason.encode!(content)),
                  :ok <- :file.sync(file),
                  :ok <- File.close(file),
                  result <- File.ln(temporary, destination),
                  true <- result in [:ok, {:error, :eexist}],
                  :ok <- sync_file(dir),
-                 %DateTime{} <- completed_at(item) do
+                 :ok <- verify_completed(item) do
               :ok
             else
               _ -> {:error, :first_artifact_completion_uncertain}
@@ -181,9 +198,10 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     with :ok <- safe_journal_directory(dir),
          {:ok, %{type: :regular}} <- File.lstat(Path.join(dir, "intent.json")),
          {:ok, bytes} <- File.read(Path.join(dir, "intent.json")),
-         {:ok, %{"uuid" => uuid, "phase" => "transferred", "hash" => hash, "path" => path} = entry} <-
+         {:ok, %{"uuid" => uuid, "phase" => "transferred", "hash" => hash, "path" => path, "files" => files} = entry} <-
            Jason.decode(bytes),
-         true <- uuid == item.uuid and is_binary(hash) and is_binary(path) do
+         true <- uuid == item.uuid and is_binary(hash) and is_binary(path) and is_map(files) and
+                   files[path] == hash do
       {:ok, entry}
     else
       _ -> {:error, :invalid_first_artifact_journal}
@@ -194,11 +212,16 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   def clear(%MediaItem{} = item) do
     dir = directory(item)
 
-    with :ok <- safe_journal_directory(dir) do
-      _ = File.rm(Path.join(dir, "intent.json"))
-      _ = File.rm(Path.join(dir, "completed.json"))
-      _ = File.rm(Path.join(dir, "media"))
-      _ = File.rmdir(dir)
+    if pending?(item) do
+      with :ok <- verify_completed(item),
+           :ok <- safe_journal_directory(dir) do
+        _ = File.rm(Path.join(dir, "intent.json"))
+        _ = File.rm(Path.join(dir, "completed.json"))
+        _ = File.rm(Path.join(dir, "media"))
+        _ = File.rmdir(dir)
+        :ok
+      end
+    else
       :ok
     end
   end
@@ -216,6 +239,17 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   end
 
   defp planned_files(_), do: {:error, :invalid_first_artifact}
+
+  defp fingerprint_files(paths) when is_list(paths) and paths != [] do
+    Enum.reduce_while(paths, {:ok, %{}}, fn path, {:ok, files} ->
+      with :ok <- valid_media_path(path),
+           {:ok, hash} <- hash_file(path) do
+        {:cont, {:ok, Map.put(files, path, hash)}}
+      else
+        _ -> {:halt, {:error, :first_artifact_completion_uncertain}}
+      end
+    end)
+  end
 
   defp verify_files(files) when is_map(files) and map_size(files) > 0 do
     Enum.reduce_while(files, :ok, fn {path, hash}, _ ->

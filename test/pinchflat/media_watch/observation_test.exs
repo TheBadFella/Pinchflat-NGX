@@ -57,6 +57,14 @@ defmodule Pinchflat.MediaWatch.ObservationTest do
     assert {:unknown, :timeout} = Observation.classify(watch, Observation.unknown(:yt_dlp, :timeout))
   end
 
+  test "public and unlisted observations without duration cannot verify content" do
+    watch = watch(%{baseline_upstream_duration_seconds: 120, baseline_visibility: "public"})
+
+    assert {:unknown, :missing_duration} = Observation.classify(watch, observation(nil, :public))
+    assert {:visibility, "public", "unlisted"} = Observation.classify(watch, observation(nil, :unlisted))
+    assert {:unavailable, "public", "private"} = Observation.classify(watch, observation(nil, :private))
+  end
+
   test "does not treat missing duration or active livestreams as a change" do
     watch = watch(%{baseline_upstream_duration_seconds: nil, baseline_visibility: "public"})
 

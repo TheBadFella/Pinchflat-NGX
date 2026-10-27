@@ -181,6 +181,22 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert File.ls!(root) == []
   end
 
+  test "successful postprocessing binds its changed media bytes before enrollment", %{item: item, path: path} do
+    stub(UserScriptRunnerMock, :run, fn
+      :media_downloaded, _ ->
+        File.write!(path, "script processed original")
+        {:ok, "", 0}
+
+      _, _ ->
+        {:ok, "", 0}
+    end)
+
+    assert :ok = run(item)
+    assert File.read!(path) == "script processed original"
+    assert Repo.reload!(item).media_downloaded_at
+    assert MediaWatch.get_watch_for_media_item(item.id)
+  end
+
   test "first local completion records one fixed window but not postprocessed duration or nil visibility", %{item: item} do
     assert :ok = run(item)
     completed = Repo.reload!(item)
@@ -320,6 +336,7 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert :ok = artifact.remember(started, Jason.decode!(metadata(path)), staged)
     File.rename!(staged, path)
     assert :ok = artifact.mark_transferred(started, Jason.decode!(metadata(path)))
+    {:ok, started} = Pinchflat.Media.update_media_item(started, %{media_filepath: path})
 
     early = ~U[2026-10-01 00:00:00Z]
     later = DateTime.add(early, 86_400)
@@ -512,7 +529,14 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
       "DROP TRIGGER watch_insert_failure" <> if(Pinchflat.Database.postgres?(), do: " ON media_watches", else: "")
     )
 
-    expect(YtDlpRunnerMock, :run, 0, fn _, :download, _, _, _ -> flunk("retry must not download") end)
+    stub(YtDlpRunnerMock, :run, fn _, :download, _, _, _ -> flunk("retry must not download") end)
+    File.write!(path, "manually edited artifact")
+    assert {:error, :enrollment_failed} = run(item)
+    refute Repo.reload!(item).media_downloaded_at
+    refute MediaWatch.get_watch_for_media_item(item.id)
+    assert Pinchflat.Downloading.FirstArtifact.pending?(item)
+
+    File.write!(path, "first artifact")
     assert :ok = run(item)
     assert Repo.reload!(item).media_downloaded_at == fixed_success
     assert File.read!(path) == "first artifact"
@@ -575,7 +599,13 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
       "DROP TRIGGER reject_watch_finalization" <> if(Pinchflat.Database.postgres?(), do: " ON media_items", else: "")
     )
 
-    expect(YtDlpRunnerMock, :run, 0, fn _, :download, _, _, _ -> flunk("retry must not download") end)
+    stub(YtDlpRunnerMock, :run, fn _, :download, _, _, _ -> flunk("retry must not download") end)
+    File.write!(path, "edited after postprocessing")
+    assert {:error, :finalization_failed} = run(item)
+    refute Repo.reload!(item).media_downloaded_at
+    refute MediaWatch.get_watch_for_media_item(item.id)
+
+    File.write!(path, "first artifact")
     assert :ok = run(item)
     assert Repo.reload!(item).media_downloaded_at == first_success
     assert MediaWatch.get_watch_for_media_item(item.id).started_at == first_success

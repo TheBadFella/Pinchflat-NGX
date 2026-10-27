@@ -10,6 +10,7 @@ defmodule Pinchflat.MediaWatch do
   import Ecto.Query, warn: false
   require Logger
 
+  alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Metadata.MetadataFileHelpers
@@ -68,26 +69,40 @@ defmodule Pinchflat.MediaWatch do
           Repo.rollback(:not_prospective)
 
         true ->
-          case enroll_on_first_completion(item, item.source,
-                 first_completion: true,
-                 completed_at: item.watch_enrollment_pending_at
-               ) do
-            {:ok, _} ->
-              case Media.update_media_item(item, %{
-                     media_downloaded_at: item.watch_enrollment_pending_at,
-                     watch_enrollment_pending_at: nil,
-                     watch_postprocessing_pending: false,
-                     watch_download_started_at: nil
-                   }) do
-                {:ok, completed} -> completed
-                {:error, reason} -> Repo.rollback(reason)
-              end
+          with :ok <- verify_pending_artifact(item) do
+            case enroll_on_first_completion(item, item.source,
+                   first_completion: true,
+                   completed_at: item.watch_enrollment_pending_at
+                 ) do
+              {:ok, _} ->
+                case Media.update_media_item(item, %{
+                       media_downloaded_at: item.watch_enrollment_pending_at,
+                       watch_enrollment_pending_at: nil,
+                       watch_postprocessing_pending: false,
+                       watch_download_started_at: nil
+                     }) do
+                  {:ok, completed} -> completed
+                  {:error, reason} -> Repo.rollback(reason)
+                end
 
-            {:error, reason} ->
-              Repo.rollback(reason)
+              {:error, reason} ->
+                Repo.rollback(reason)
+            end
+          else
+            {:error, reason} -> Repo.rollback(reason)
           end
       end
     end)
+  end
+
+  defp verify_pending_artifact(item) do
+    if FirstArtifact.pending?(item) do
+      FirstArtifact.verify_completed(item)
+    else
+      if effective_watch_window_days(item.source) == 0,
+        do: :ok,
+        else: {:error, :invalid_first_artifact_journal}
+    end
   end
 
   @doc """
@@ -160,16 +175,6 @@ defmodule Pinchflat.MediaWatch do
     {:ok, %{last_observed_at: now, next_check_at: DateTime.add(now, @observation_success_seconds + jitter)}, nil}
   end
 
-  defp decide_observation(
-         %Watch{suspected_kind: "duration"} = watch,
-         %Observation{duration_seconds: nil, availability: availability} = observation,
-         now,
-         jitter
-       )
-       when availability in [:public, :unlisted] do
-    decide_observation(watch, %{observation | availability: :unknown, reason: :missing_duration}, now, jitter)
-  end
-
   defp decide_observation(watch, observation, now, jitter) do
     case Observation.classify(watch, observation) do
       {:unknown, _reason} ->
@@ -237,30 +242,39 @@ defmodule Pinchflat.MediaWatch do
 
       {:ok, attrs, build_event_attributes(to_string(kind), old_value, new_value, now)}
     else
-      {:ok,
-       %{
-         last_observed_at: now,
-         last_error_at: nil,
-         error_count: 0,
-         current_upstream_duration_seconds: observation.duration_seconds,
-         observed_visibility: Observation.current_visibility(observation),
-         suspected_kind: watch.suspected_kind,
-         suspected_value: to_string(new_value),
-         suspected_first_seen_at: first_seen,
-         suspected_count: watch.suspected_count + 1,
-         next_check_at: next_confirmation_at(first_seen, now, jitter)
-       }, nil}
+      attrs = %{
+        last_observed_at: now,
+        last_error_at: Map.get(success, :last_error_at),
+        error_count: 0,
+        observed_visibility: Observation.current_visibility(observation),
+        suspected_kind: watch.suspected_kind,
+        suspected_value: to_string(new_value),
+        suspected_first_seen_at: first_seen,
+        suspected_count: watch.suspected_count + 1,
+        next_check_at: next_confirmation_at(first_seen, now, jitter)
+      }
+
+      {:ok, maybe_update_current_duration(attrs, watch, observation), nil}
     end
   end
 
   defp success_attributes(watch, observation, now, jitter) do
-    attrs = %{
-      last_observed_at: now,
-      last_success_at: now,
-      last_error_at: nil,
-      error_count: 0,
-      next_check_at: DateTime.add(now, @observation_success_seconds + jitter, :second)
-    }
+    attrs =
+      if observation.availability in [:public, :unlisted] and is_nil(observation.duration_seconds) do
+        %{
+          last_observed_at: now,
+          last_error_at: now,
+          next_check_at: DateTime.add(now, @observation_min_backoff_seconds + jitter, :second)
+        }
+      else
+        %{
+          last_observed_at: now,
+          last_success_at: now,
+          last_error_at: nil,
+          error_count: 0,
+          next_check_at: DateTime.add(now, @observation_success_seconds + jitter, :second)
+        }
+      end
 
     attrs =
       case Observation.current_visibility(observation) do
@@ -419,7 +433,7 @@ defmodule Pinchflat.MediaWatch do
           operation_id: nil
         }
       else
-        state = if File.exists?(OriginalArchive.archive_directory(watch.id)), do: "needs_recovery", else: "none"
+        state = if File.lstat(OriginalArchive.archive_directory(watch.id)) == {:error, :enoent}, do: "none", else: "preparing"
         %{archive_state: state}
       end
     end)
@@ -528,13 +542,21 @@ defmodule Pinchflat.MediaWatch do
         :published
 
       {:error, _reason} ->
-        if File.exists?(OriginalArchive.archive_directory(watch.id)) do
-          {:ok, _} = update_watch(watch, %{archive_state: "needs_recovery"})
-          :needs_recovery
-        else
-          _ = OriginalArchive.cleanup_temporary(watch.id)
-          {:ok, _} = update_watch(watch, %{archive_state: "none"})
-          :unarchived
+        directory = OriginalArchive.archive_directory(watch.id)
+
+        cond do
+          File.lstat(directory) == {:error, :enoent} ->
+            _ = OriginalArchive.cleanup_temporary(watch.id)
+            {:ok, _} = update_watch(watch, %{archive_state: "none", operation_id: nil})
+            :unarchived
+
+          watch.operation_id && OriginalArchive.clear_empty_reservation(watch.id) == :ok ->
+            {:ok, _} = update_watch(watch, %{archive_state: "none", operation_id: nil})
+            :unarchived
+
+          true ->
+            {:ok, _} = update_watch(watch, %{archive_state: "needs_recovery"})
+            :needs_recovery
         end
     end
   end
@@ -1734,8 +1756,7 @@ defmodule Pinchflat.MediaWatch do
   Reconciles a bounded set of expired leases and interrupted archive
   publications, and resumes explicitly approved saved-original deletions.
   An archive without a durable release intent is never deleted. If no validated
-  original was published, temporary archive copies are removed and the watch
-  stays unarchived instead of claiming success.
+  original was published, the watch stays unarchived instead of claiming success.
 
   Returns [%{watch_id: integer(), action: term()}].
   """

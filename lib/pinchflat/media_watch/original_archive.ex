@@ -334,6 +334,22 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
     end
   end
 
+  @doc "Removes only an empty managed reservation while its preparing operation is held by recovery."
+  def clear_empty_reservation(watch_id) when is_integer(watch_id) and watch_id > 0 do
+    directory = archive_directory(watch_id)
+
+    with :ok <- validate_no_symlink_path(root()),
+         :ok <- validate_no_symlink_path(directory),
+         {:ok, %{type: :directory}} <- File.lstat(directory),
+         {:ok, []} <- File.ls(directory),
+         :ok <- File.rmdir(directory),
+         :ok <- fsync_directory(root()) do
+      :ok
+    else
+      _ -> {:error, :archive_conflict}
+    end
+  end
+
   defp existing_archive(final_directory, final_manifest, watch_id) do
     cond do
       File.dir?(final_directory) ->
