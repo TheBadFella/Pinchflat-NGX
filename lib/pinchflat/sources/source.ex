@@ -77,6 +77,7 @@ defmodule Pinchflat.Sources.Source do
     marked_for_deletion_at
     min_duration_seconds
     max_duration_seconds
+    watch_window_days
   )a
 
   # Expensive API calls are made when a source is inserted/updated so
@@ -137,6 +138,8 @@ defmodule Pinchflat.Sources.Source do
     field :index_cutoff_date, :date
     # nil inherits the profile period; zero explicitly disables age-based cleanup.
     field :retention_period_days, :integer
+    # nil inherits the profile value; zero explicitly disables watch window.
+    field :watch_window_days, :integer
     field :original_url, :string
     field :title_filter_regex, :string
     field :download_subdirectory, :string
@@ -177,6 +180,18 @@ defmodule Pinchflat.Sources.Source do
 
   def effective_retention_period_days(%__MODULE__{retention_period_days: days}), do: days
 
+  @doc """
+  Returns the effective watch window (days) for a source with a loaded media profile.
+  A nil source value inherits; zero disables the watch window.
+  """
+  def effective_watch_window_days(%__MODULE__{
+        watch_window_days: nil,
+        media_profile: %MediaProfile{} = profile
+      }),
+      do: profile.watch_window_days
+
+  def effective_watch_window_days(%__MODULE__{watch_window_days: days}), do: days
+
   @doc false
   def changeset(source, attrs, validation_stage \\ :initial) do
     # See above for rationale
@@ -203,6 +218,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_player_client_fallbacks()
     |> validate_player_client_cookie_compatibility()
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
+    |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
+    |> check_constraint(:watch_window_days, name: :sources_watch_window_days_check)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),

@@ -3,8 +3,13 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
 
   import Mox
   import Pinchflat.MediaFixtures
+  import Pinchflat.ProfilesFixtures
   import Pinchflat.SourcesFixtures
   import PinchflatWeb.ApiSpecHelper
+
+  alias Pinchflat.MediaWatch
+  alias Pinchflat.MediaWatch.OriginalArchive
+  alias Pinchflat.Repo
 
   describe "GET /api/media" do
     test "returns list of media items", %{conn: conn} do
@@ -65,6 +70,89 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
 
       # Validate response matches OpenAPI schema
       assert_response_schema(conn, "Api.MediaController.show")
+    end
+
+    test "returns watch state for an enrolled item", %{conn: conn} do
+      profile =
+        media_profile_fixture()
+        |> Ecto.Changeset.change(watch_window_days: 14)
+        |> Repo.update!()
+
+      source = source_fixture(%{media_profile_id: profile.id})
+
+      path =
+        Path.join(
+          Application.fetch_env!(:pinchflat, :media_directory),
+          "api-watch-#{System.unique_integer([:positive])}.mp4"
+        )
+
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "first artifact")
+      item = media_item_fixture(%{source_id: source.id, media_filepath: path})
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
+      watch
+      |> Ecto.Changeset.change(
+        current_upstream_duration_seconds: 122,
+        current_visibility: "public",
+        observed_visibility: "private"
+      )
+      |> Repo.update!()
+
+      conn = get(conn, "/api/media/#{item.id}")
+      response = json_response(conn, 200)
+
+      assert response["watch"]["confirmed_state"] == "unchanged"
+      assert response["watch"]["saved_original_available"] == false
+      assert response["watch"]["ends_at"] =~ "T"
+      assert response["watch"]["current_upstream_duration_seconds"] == 122
+      assert response["watch"]["current_visibility"] == "private"
+      assert_response_schema(conn, "Api.MediaController.show")
+    end
+
+    test "reports a verified original, but not an edited archive and manifest", %{conn: conn} do
+      {item, watch} = published_watch()
+      assert json_response(get(conn, "/api/media/#{item.id}"), 200)["watch"]["saved_original_available"]
+
+      manifest_path = OriginalArchive.manifest_path(watch.id)
+      manifest = Jason.decode!(File.read!(manifest_path))
+      media = Enum.find(manifest["files"], &(&1["role"] == "media"))
+      File.write!(Path.join(OriginalArchive.archive_directory(watch.id), media["path"]), "edited original")
+
+      files =
+        Enum.map(manifest["files"], fn
+          %{"role" => "media"} = entry ->
+            %{
+              entry
+              | "sha256" => Base.encode16(:crypto.hash(:sha256, "edited original"), case: :lower),
+                "size" => byte_size("edited original")
+            }
+
+          entry ->
+            entry
+        end)
+
+      File.write!(manifest_path, Jason.encode!(%{manifest | "files" => files}))
+      assert {:error, :active_file_unverifiable} = OriginalArchive.summary(watch)
+      refute json_response(get(conn, "/api/media/#{item.id}"), 200)["watch"]["saved_original_available"]
+
+      for query <- ["", "?download=true"] do
+        assert get(conn, "/sources/#{item.source_id}/media/#{item.id}/original/files/media" <> query).status == 404
+      end
+    end
+
+    test "does not advertise an original after release while cleanup is pending", %{conn: conn} do
+      {item, watch} = published_watch()
+      {:ok, token} = MediaWatch.release_confirmation(watch)
+      File.write!(Path.join(OriginalArchive.archive_directory(watch.id), "unexpected"), "retain")
+      assert {:error, {:original_deletion_pending, _}} = MediaWatch.release_watch(item, token)
+      assert Repo.reload!(watch).released_at
+      assert File.exists?(OriginalArchive.manifest_path(watch.id))
+      refute json_response(get(conn, "/api/media/#{item.id}"), 200)["watch"]["saved_original_available"]
+
+      for query <- ["", "?download=true"] do
+        assert get(conn, "/sources/#{item.source_id}/media/#{item.id}/original/files/media" <> query).status == 404
+      end
     end
 
     test "returns 404 when item does not exist", %{conn: conn} do
@@ -237,5 +325,16 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
 
       assert response["data"] == []
     end
+  end
+
+  defp published_watch do
+    profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()
+    source = source_fixture(media_profile_id: profile.id)
+    item = media_item_with_attachments(%{source_id: source.id})
+    File.write!(item.media_filepath, "first artifact")
+    {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
+    {:ok, watch} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
+    on_exit(fn -> File.rm_rf(OriginalArchive.root()) end)
+    {item, watch}
   end
 end

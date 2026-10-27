@@ -37,6 +37,14 @@ defmodule PinchflatWeb.Schemas do
       properties: %{
         id: %Schema{type: :integer, description: "Internal database ID", example: 1},
         name: %Schema{type: :string, description: "Profile name", example: "HD Videos"},
+        watch_window_days: %Schema{
+          type: :integer,
+          minimum: 0,
+          maximum: 365,
+          description:
+            "Watch window in days, counted from an item's first completed local download. 0 disables watching. 1-365 watches the remote item for that many days, keeps a saved original before any replacement, and blocks replacement after a suspected remote change until a second matching check.",
+          example: 0
+        },
         output_path_template_shorts: %Schema{
           type: :string,
           nullable: true,
@@ -244,6 +252,14 @@ defmodule PinchflatWeb.Schemas do
         title_filter_regex: %Schema{type: :string, nullable: true, description: "Regex to filter media titles"},
         min_duration_seconds: %Schema{type: :integer, nullable: true, description: "Minimum media duration"},
         max_duration_seconds: %Schema{type: :integer, nullable: true, description: "Maximum media duration"},
+        watch_window_days: %Schema{
+          type: :integer,
+          nullable: true,
+          minimum: 0,
+          maximum: 365,
+          description:
+            "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
+        },
         series_directory: %Schema{type: :string, nullable: true, description: "Directory for series organization"},
         nfo_filepath: %Schema{type: :string, nullable: true, description: "Path to NFO file"},
         poster_filepath: %Schema{type: :string, nullable: true, description: "Path to poster image"},
@@ -350,6 +366,29 @@ defmodule PinchflatWeb.Schemas do
           description: "Paths to subtitle files",
           example: ["/downloads/subtitle_en.srt", "/downloads/subtitle_de.srt"]
         },
+        watch: %Schema{
+          type: :object,
+          nullable: true,
+          description: "Watch state for this item, present only when a watch is enrolled",
+          properties: %{
+            started_at: %Schema{type: :string, format: :date_time, nullable: true},
+            ends_at: %Schema{type: :string, format: :date_time, nullable: true},
+            confirmed_state: %Schema{type: :string, enum: ~w(unchanged suspected confirmed)},
+            current_visibility: %Schema{type: :string, nullable: true},
+            suspected_kind: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Type of unconfirmed remote difference, if any"
+            },
+            baseline_upstream_duration_seconds: %Schema{type: :integer, nullable: true},
+            current_upstream_duration_seconds: %Schema{type: :integer, nullable: true},
+            last_success_at: %Schema{type: :string, format: :date_time, nullable: true},
+            last_error_at: %Schema{type: :string, format: :date_time, nullable: true},
+            hold_reason: %Schema{type: :string, nullable: true},
+            archive_state: %Schema{type: :string, enum: ~w(none preparing published needs_recovery)},
+            saved_original_available: %Schema{type: :boolean}
+          }
+        },
         inserted_at: %Schema{type: :string, format: :date_time, description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :date_time, description: "Last update timestamp"}
       },
@@ -431,6 +470,14 @@ defmodule PinchflatWeb.Schemas do
               description: "Custom display name (optional, defaults to collection name)"
             },
             description: %Schema{type: :string, description: "Source description"},
+            watch_window_days: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 0,
+              maximum: 365,
+              description:
+                "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
+            },
             enabled: %Schema{type: :boolean, description: "Whether the source is active", default: true},
             download_media: %Schema{type: :boolean, description: "Download media items", default: true},
             download_public_media: %Schema{
@@ -531,6 +578,14 @@ defmodule PinchflatWeb.Schemas do
               description: "Prevent automated metadata refreshes from changing the display name"
             },
             description: %Schema{type: :string, description: "Source description"},
+            watch_window_days: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 0,
+              maximum: 365,
+              description:
+                "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
+            },
             description_locked: %Schema{
               type: :boolean,
               description: "Prevent automated metadata refreshes from changing the description"
@@ -638,6 +693,14 @@ defmodule PinchflatWeb.Schemas do
           type: :object,
           properties: %{
             name: %Schema{type: :string, description: "Profile name (required)", example: "HD Videos"},
+            watch_window_days: %Schema{
+              type: :integer,
+              minimum: 0,
+              maximum: 365,
+              description:
+                "Watch window in days, counted from an item's first completed local download. 0 disables watching. 1-365 watches the remote item for that many days, keeps a saved original before any replacement, and blocks replacement after a suspected remote change until a second matching check.",
+              example: 0
+            },
             output_path_template_shorts: %Schema{
               type: :string,
               nullable: true,
@@ -725,6 +788,13 @@ defmodule PinchflatWeb.Schemas do
           type: :object,
           properties: %{
             name: %Schema{type: :string, description: "Profile name"},
+            watch_window_days: %Schema{
+              type: :integer,
+              minimum: 0,
+              maximum: 365,
+              description:
+                "Watch window in days, counted from an item's first completed local download. 0 disables watching. 1-365 watches the remote item for that many days, keeps a saved original before any replacement, and blocks replacement after a suspected remote change until a second matching check."
+            },
             output_path_template_shorts: %Schema{
               type: :string,
               nullable: true,

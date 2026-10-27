@@ -383,7 +383,8 @@ defmodule PinchflatWeb.Sources.SourceController do
           properties: %{message: %Schema{type: :string}}
         }
       },
-      not_found: {"Source not found", "application/json", Schemas.NotFoundResponse}
+      not_found: {"Source not found", "application/json", Schemas.NotFoundResponse},
+      conflict: {"Watch protection blocks deletion", "application/json", Schemas.ActionErrorResponse}
     ]
   )
 
@@ -392,19 +393,29 @@ defmodule PinchflatWeb.Sources.SourceController do
     delete_files = Map.get(params, "delete_files", "") == "true"
     source = Sources.get_source!(id)
 
-    {:ok, source} = Sources.update_source(source, %{marked_for_deletion_at: DateTime.utc_now()})
-    SourceDeletionWorker.kickoff(source, %{delete_files: delete_files})
+    if Pinchflat.MediaWatch.deletion_blocked?(source) do
+      message =
+        "End watch protection for this source's watched videos before deleting the source. Download any saved originals you want to keep first."
 
-    case get_format(conn) do
-      "json" ->
-        conn
-        |> put_status(:ok)
-        |> json(%{message: "Source deletion started. This may take a while to complete."})
+      case get_format(conn) do
+        "json" -> conn |> put_status(:conflict) |> json(%{error: message})
+        _ -> conn |> put_flash(:error, message) |> redirect(to: ~p"/sources/#{source}")
+      end
+    else
+      {:ok, source} = Sources.update_source(source, %{marked_for_deletion_at: DateTime.utc_now()})
+      SourceDeletionWorker.kickoff(source, %{delete_files: delete_files})
 
-      _ ->
-        conn
-        |> put_flash(:info, "Source deletion started. This may take a while to complete.")
-        |> redirect(to: ~p"/sources")
+      case get_format(conn) do
+        "json" ->
+          conn
+          |> put_status(:ok)
+          |> json(%{message: "Source deletion started. This may take a while to complete."})
+
+        _ ->
+          conn
+          |> put_flash(:info, "Source deletion started. This may take a while to complete.")
+          |> redirect(to: ~p"/sources")
+      end
     end
   end
 

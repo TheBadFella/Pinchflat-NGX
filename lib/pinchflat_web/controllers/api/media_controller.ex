@@ -8,6 +8,7 @@ defmodule PinchflatWeb.Api.MediaController do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.MediaWatch
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias PinchflatWeb.Schemas
   alias PinchflatWeb.Helpers.JobActionHelpers
@@ -80,9 +81,15 @@ defmodule PinchflatWeb.Api.MediaController do
       |> Media.get_media_item!()
       |> Media.preload_api_assocs()
 
+    payload =
+      case MediaWatch.get_watch_for_media_item(media_item.id) do
+        nil -> media_item
+        watch -> Map.put(media_item, :watch, MediaWatch.to_api_map(watch))
+      end
+
     conn
     |> put_status(:ok)
-    |> json(media_item)
+    |> json(payload)
   end
 
   operation(:delete,
@@ -99,7 +106,9 @@ defmodule PinchflatWeb.Api.MediaController do
     ],
     responses: [
       ok: {"Media files deleted successfully", "application/json", Schemas.ActionResponse},
-      not_found: {"Media item not found", "application/json", Schemas.NotFoundResponse}
+      not_found: {"Media item not found", "application/json", Schemas.NotFoundResponse},
+      conflict: {"Watched item is protected", "application/json", Schemas.ActionResponse},
+      internal_server_error: {"Files could not all be deleted", "application/json", Schemas.ActionResponse}
     ]
   )
 
@@ -107,8 +116,29 @@ defmodule PinchflatWeb.Api.MediaController do
     media_item = Media.get_media_item!(id)
     prevent_download = params["prevent_download"] == "true" || params["prevent_download"] == true
 
-    {:ok, _} = Media.delete_media_files(media_item, %{prevent_download: prevent_download})
+    case Media.delete_media_files(media_item, %{prevent_download: prevent_download}) do
+      {:ok, _} ->
+        delete_success(conn)
 
+      {:error, :watch_hold} ->
+        conn
+        |> put_status(:conflict)
+        |> json(%{
+          message:
+            "Watch protection prevents deletion of the current files. Review the saved original and watch protection settings before trying again."
+        })
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{
+          message:
+            "Some files could not be deleted. Check filesystem permissions and storage, then retry. The media record was kept."
+        })
+    end
+  end
+
+  defp delete_success(conn) do
     conn
     |> put_status(:ok)
     |> json(%{message: "Media files deleted successfully"})

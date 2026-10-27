@@ -20,7 +20,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
   This worker is scheduled via the Oban Cron plugin, daily at 01:00 by default.
   RETENTION_CRON overrides the schedule; RETENTION_TIMEZONE sets its timezone (UTC if unset).
 
-  Returns :ok
+  Returns :ok, or an error so failed filesystem deletions are retried.
   """
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
@@ -28,10 +28,8 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       Logger.info("Legacy migration review is pending; skipping media retention culling")
       :ok
     else
-      cull_cullable_media_items()
-      delete_media_items_from_before_cutoff()
-
-      :ok
+      failures = cull_cullable_media_items() + delete_media_items_from_before_cutoff()
+      if failures == 0, do: :ok, else: {:error, {:file_deletions_failed, failures}}
     end
   end
 
@@ -44,11 +42,11 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
 
     Logger.info("Culling #{length(cullable_media)} media items past their retention date")
 
-    Enum.each(cullable_media, fn media_item ->
+    Enum.count(cullable_media, fn media_item ->
       # Setting `prevent_download` does what it says on the tin, but `culled_at` is purely informational.
       # We don't actually do anything with that in terms of queries and it gets set to nil if the media item
       # gets re-downloaded.
-      Media.delete_media_files(media_item, %{
+      failed_deletion?(media_item, %{
         prevent_download: true,
         download_prevented_reason: nil,
         culled_at: DateTime.utc_now()
@@ -67,16 +65,27 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
 
     Logger.info("Deleting #{length(deletable_media)} media items that are from before the source cutoff")
 
-    Enum.each(deletable_media, fn media_item ->
+    Enum.count(deletable_media, fn media_item ->
       # Note that I'm not setting `prevent_download` on the media_item here.
       # That's because cutoff_date can easily change and it's a valid behavior to re-download older
       # media items if the cutoff_date changes.
       # Download is ultimately prevented because `MediaQuery.pending()` only returns media items
       # from after the cutoff date (among other things), so it's not like the media will just immediately
       # be re-downloaded.
-      Media.delete_media_files(media_item, %{
+      failed_deletion?(media_item, %{
         culled_at: DateTime.utc_now()
       })
     end)
+  end
+
+  defp failed_deletion?(media_item, attrs) do
+    case Media.delete_media_files(media_item, attrs) do
+      {:ok, _} ->
+        false
+
+      {:error, reason} ->
+        Logger.warning("Retention did not delete item ##{media_item.id}: #{inspect(reason)}")
+        true
+    end
   end
 end
