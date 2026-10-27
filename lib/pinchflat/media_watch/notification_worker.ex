@@ -105,7 +105,6 @@ defmodule Pinchflat.MediaWatch.NotificationWorker do
       case event.kind do
         "restored" -> "Watched video availability restored"
         "duration" -> "Watched video edited"
-        "unlisted" -> "Watched video made unlisted"
         "visibility" -> "Watched video visibility changed"
         "unavailable" -> "Watched video unavailable"
         _ -> "Watched video changed"

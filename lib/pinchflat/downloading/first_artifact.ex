@@ -13,7 +13,7 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   end
 
   @doc "Stores an identity-bound copy and a small durable journal before the first database write."
-  def remember(%MediaItem{} = item, parsed_json, staged_path, source_map \\ %{}) do
+  def remember(%MediaItem{} = item, parsed_json, staged_path, source_map \\ %{}, staging_directory \\ nil) do
     path = parsed_json["filepath"]
     dir = directory(item)
     copy = Path.join(dir, "media")
@@ -31,7 +31,15 @@ defmodule Pinchflat.Downloading.FirstArtifact do
          metadata = MetadataFileHelpers.compress_and_store_metadata_for(item, parsed_json),
          :ok <- sync_file(metadata),
          :ok <-
-           write_journal(journal, %{uuid: item.uuid, path: path, hash: hash, files: files, metadata: metadata, phase: "prepared"}) do
+           write_journal(journal, %{
+             uuid: item.uuid,
+             path: path,
+             hash: hash,
+             files: files,
+             metadata: metadata,
+             staging: staging_directory,
+             phase: "prepared"
+           }) do
       :ok
     else
       error -> {:error, error}
@@ -61,6 +69,30 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     # An incomplete or swapped intent directory is uncertain, not permission
     # to run yt-dlp a second time over the first artifact.
     File.lstat(directory(item)) != {:error, :enoent}
+  end
+
+  @doc "Returns the owned staging directory of a pending prepared transfer, if still configured."
+  def pending_staging_directory(%MediaItem{} = item) do
+    with :ok <- safe_journal_directory(directory(item)),
+         {:ok, %{type: :regular}} <- File.lstat(Path.join(directory(item), "intent.json")),
+         {:ok, bytes} <- File.read(Path.join(directory(item), "intent.json")),
+         {:ok, %{"uuid" => uuid, "phase" => "prepared", "staging" => stage}} <- Jason.decode(bytes),
+         true <- uuid == item.uuid and is_binary(stage),
+         root when is_binary(root) <- Path.dirname(stage),
+         true <- Path.expand(stage) == stage,
+         true <-
+           root in
+             Enum.map(
+               List.wrap(DownloadStaging.configured_directory()) ++ [DownloadStaging.replacement_directory()],
+               &Path.expand/1
+             ),
+         true <- String.starts_with?(Path.basename(stage), "media-#{item.id}-"),
+         :ok <- no_symlink_ancestors(root, stage),
+         {:ok, %{type: :directory}} <- File.lstat(stage) do
+      stage
+    else
+      _ -> nil
+    end
   end
 
   @doc "Restores only the same verified first artifact; a changed or missing path must be repaired manually."

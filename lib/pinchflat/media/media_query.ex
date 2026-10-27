@@ -45,14 +45,16 @@ defmodule Pinchflat.Media.MediaQuery do
 
     dynamic(
       [media_item],
-      exists(
-        from watch in "media_watches",
-          where:
-            watch.media_item_id == parent_as(:media_item).id and
-              ((is_nil(watch.released_at) and (watch.ends_at > ^now or not is_nil(watch.hold_reason))) or
-                 watch.archive_state == "needs_recovery" or watch.operation_kind == "delete_original"),
-          select: 1
-      )
+      (not is_nil(media_item.watch_download_started_at) and is_nil(media_item.media_downloaded_at)) or
+        media_item.watch_postprocessing_pending or not is_nil(media_item.watch_enrollment_pending_at) or
+        exists(
+          from watch in "media_watches",
+            where:
+              watch.media_item_id == parent_as(:media_item).id and
+                ((is_nil(watch.released_at) and (watch.ends_at > ^now or not is_nil(watch.hold_reason))) or
+                   watch.archive_state == "needs_recovery" or watch.operation_kind == "delete_original"),
+            select: 1
+        )
     )
   end
 

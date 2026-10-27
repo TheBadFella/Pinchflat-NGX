@@ -87,7 +87,6 @@ defmodule PinchflatWeb.MediaItems.MediaItemHTML do
   """
   def watch_event_label("duration"), do: "Duration edited"
   def watch_event_label("restored"), do: "Visibility restored to public"
-  def watch_event_label("unlisted"), do: "Made unlisted"
   def watch_event_label("visibility"), do: "Visibility changed"
   def watch_event_label("unavailable"), do: "Video unavailable or private"
   def watch_event_label(kind), do: "Event: #{kind}"

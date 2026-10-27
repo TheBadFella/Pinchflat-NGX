@@ -142,12 +142,17 @@ defmodule Pinchflat.MediaWatch.MutationTest do
       {item, watch} = watched_media_item()
       source = Sources.get_source!(item.source_id)
       profile = Profiles.get_media_profile!(source.media_profile_id)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      source |> Ecto.Changeset.change(marked_for_deletion_at: now) |> Repo.update!()
+      profile |> Ecto.Changeset.change(marked_for_deletion_at: now) |> Repo.update!()
 
       assert {:error, :watch_tombstone_required} = Media.delete_media_item(item, delete_files: false)
       assert {:error, :watch_tombstone_required} = Sources.delete_source(source, delete_files: false)
       assert {:error, :watch_tombstone_required} = Sources.delete_source(source, delete_files: true)
       assert {:error, :watch_tombstone_required} = Profiles.delete_media_profile(profile, delete_files: false)
       assert {:error, :watch_tombstone_required} = Profiles.delete_media_profile(profile, delete_files: true)
+      assert is_nil(Repo.reload!(source).marked_for_deletion_at)
+      assert is_nil(Repo.reload!(profile).marked_for_deletion_at)
       assert Repo.get!(Watch, watch.id).media_item_id == item.id
       assert File.read!(item.media_filepath) == "first artifact"
       assert Repo.get!(Pinchflat.Sources.Source, source.id)

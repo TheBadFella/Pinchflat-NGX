@@ -16,6 +16,8 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
   alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.DownloadStaging
+  alias Pinchflat.Downloading.FirstArtifact
+  alias Pinchflat.Media.MediaItem
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -78,10 +80,20 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
         _ -> []
       end)
 
-    DownloadStaging.cleanup_stale(active_media_item_ids)
+    protected_directories =
+      MediaItem
+      |> where([item], is_nil(item.media_downloaded_at) and not is_nil(item.watch_download_started_at))
+      |> Repo.all()
+      |> Enum.map(&FirstArtifact.pending_staging_directory/1)
+      |> Enum.reject(&is_nil/1)
+
+    DownloadStaging.cleanup_stale(active_media_item_ids, protected_directories: protected_directories)
 
     if File.dir?(DownloadStaging.replacement_directory()) do
-      DownloadStaging.cleanup_stale(active_media_item_ids, root: DownloadStaging.replacement_directory())
+      DownloadStaging.cleanup_stale(active_media_item_ids,
+        root: DownloadStaging.replacement_directory(),
+        protected_directories: protected_directories
+      )
     end
   end
 

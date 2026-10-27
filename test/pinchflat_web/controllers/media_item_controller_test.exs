@@ -123,7 +123,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       assert html =~ "suspected change"
       assert html =~ "Change type"
       assert html =~ "duration"
-      assert html =~ "Protected from replacement and automatic retention"
+      assert html =~ "Saved original retained separately from the current file"
       assert html =~ ".pinchflat-originals/#{watch.id}/manifest.json"
       assert html =~ "Size"
       assert html =~ "Automatic replacement is blocked"
@@ -136,6 +136,17 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       assert html =~ "duration"
       refute html =~ "The suspected difference"
       refute html =~ "replacement stays blocked until a later check matches it"
+
+      watch
+      |> Ecto.Changeset.change(
+        ends_at: DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.truncate(:second),
+        hold_reason: nil
+      )
+      |> Repo.update!()
+      expired_html = conn |> recycle() |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+      assert expired_html =~ "Saved original retained separately from the current file"
+      assert expired_html =~ "The watch has ended; automatic retention may remove the current file."
+      refute expired_html =~ "Protected from replacement and automatic retention"
     end
 
     test "does not show watch details for an unenrolled item", %{conn: conn} do

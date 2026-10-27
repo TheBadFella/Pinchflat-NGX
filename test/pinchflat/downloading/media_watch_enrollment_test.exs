@@ -121,6 +121,47 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert Process.get(:default_off_downloads) == 2
   end
 
+  test "unfinished first postprocessing cannot lose its artifact to deletion or cutoff cleanup", %{
+    item: item,
+    path: path,
+    profile: profile
+  } do
+    stub(UserScriptRunnerMock, :run, fn
+      :media_downloaded, _ -> {:ok, "failed", 1}
+      _, _ -> {:ok, "", 0}
+    end)
+
+    assert {:error, :postprocessing_failed} = run(item)
+    pending = Repo.reload!(item)
+    assert pending.watch_postprocessing_pending
+    assert is_nil(pending.media_downloaded_at)
+    assert is_nil(MediaWatch.get_watch_for_media_item(item.id))
+
+    alias_source = Pinchflat.Sources.get_source!(item.source_id)
+    future_cutoff = Date.add(Date.utc_today(), 1)
+    {:ok, source} = Pinchflat.Sources.update_source(alias_source, %{download_cutoff_date: future_cutoff}, run_post_commit_tasks: false)
+    assert {:error, :watch_hold} = Pinchflat.Media.delete_media_files(pending)
+    assert {:error, :watch_tombstone_required} = Pinchflat.Media.delete_media_item(pending, delete_files: true)
+    assert {:error, :watch_tombstone_required} = Pinchflat.Media.delete_media_item(pending)
+    assert :ok = Pinchflat.Downloading.MediaRetentionWorker.perform(%Oban.Job{})
+    assert File.read!(path) == "first artifact"
+    assert Repo.get!(Pinchflat.Media.MediaItem, item.id)
+    assert is_nil(Repo.reload!(item).culled_at)
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    source |> Ecto.Changeset.change(marked_for_deletion_at: now) |> Repo.update!()
+    profile |> Ecto.Changeset.change(marked_for_deletion_at: now) |> Repo.update!()
+    assert {:error, :watch_tombstone_required} = Pinchflat.Profiles.delete_media_profile(profile, delete_files: true)
+    assert is_nil(Repo.reload!(source).marked_for_deletion_at)
+    assert is_nil(Repo.reload!(profile).marked_for_deletion_at)
+    assert File.read!(path) == "first artifact"
+
+    stub(UserScriptRunnerMock, :run, fn _, _ -> {:ok, "", 0} end)
+    assert :ok = run(item)
+    assert Repo.reload!(item).media_downloaded_at
+    assert MediaWatch.get_watch_for_media_item(item.id)
+  end
+
   test "first watched download enrolls through configured external staging", %{item: item} do
     root = Path.join(Application.fetch_env!(:pinchflat, :tmpfile_directory), "configured-watch-#{item.uuid}")
     File.mkdir_p!(root)

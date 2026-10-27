@@ -243,7 +243,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp prepare_first_artifact(true, item, parsed_json, stage) when is_binary(stage) do
     with {:ok, destinations} <- DownloadStaging.destination_json(parsed_json, stage),
          {:ok, plan} <- DownloadStaging.transfer_plan(parsed_json, stage, root: Path.dirname(stage)) do
-      FirstArtifact.remember(item, destinations, parsed_json["filepath"], plan.source_map)
+      FirstArtifact.remember(item, destinations, parsed_json["filepath"], plan.source_map, stage)
     end
   end
 

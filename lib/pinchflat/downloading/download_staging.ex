@@ -208,6 +208,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
 
       {:ok, root} ->
         active_ids = MapSet.new(active_media_item_ids)
+        protected_directories = MapSet.new(Keyword.get(opts, :protected_directories, []))
         stale_after_seconds = Keyword.get(opts, :stale_after_seconds, @stale_after_seconds)
 
         case File.ls(root) do
@@ -215,7 +216,8 @@ defmodule Pinchflat.Downloading.DownloadStaging do
             Enum.each(entries, fn entry ->
               directory = Path.join(root, entry)
 
-              if stale_directory?(directory, entry, active_ids, stale_after_seconds) do
+              if not MapSet.member?(protected_directories, directory) and
+                   stale_directory?(directory, entry, active_ids, stale_after_seconds) do
                 cleanup(directory, opts)
               end
             end)

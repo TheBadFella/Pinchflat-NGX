@@ -2,7 +2,11 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
   use Pinchflat.DataCase
 
   import Pinchflat.JobFixtures
+  import Pinchflat.MediaFixtures
 
+  alias Pinchflat.Downloading.DownloadStaging
+  alias Pinchflat.Downloading.FirstArtifact
+  alias Pinchflat.Media
   alias Pinchflat.Settings
   alias Pinchflat.Boot.PreJobStartupTasks
 
@@ -24,6 +28,41 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
       PreJobStartupTasks.init(%{})
 
       assert File.exists?(tmpfile_dir)
+    end
+  end
+
+  test "startup retains only pending journal-owned staging in both roots" do
+    original_root = Application.get_env(:pinchflat, :download_staging_directory)
+    configured = Path.join(Application.fetch_env!(:pinchflat, :tmpfile_directory), "pending-first-stage")
+    File.mkdir_p!(configured)
+    Application.put_env(:pinchflat, :download_staging_directory, configured)
+    on_exit(fn -> Application.put_env(:pinchflat, :download_staging_directory, original_root) end)
+    stub(DiskSpaceCheckerMock, :available_bytes, fn _ -> {:ok, 1_000_000_000_000} end)
+
+    for root <- [configured, DownloadStaging.replacement_directory()] do
+      item = media_item_fixture(%{media_filepath: nil})
+      {:ok, started} = Media.update_media_item(item, %{watch_download_started_at: DateTime.utc_now()})
+      {:ok, stage} = DownloadStaging.prepare(item.id, root: root)
+      {:ok, unowned} = DownloadStaging.prepare(item.id, root: root)
+      staged_media = Path.join(stage, "video-#{item.uuid}.mp4")
+      staged_sidecar = Path.join(stage, "video-#{item.uuid}.json")
+      active_media = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "video-#{item.uuid}.mp4")
+      active_sidecar = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "video-#{item.uuid}.json")
+      File.write!(staged_media, "first artifact")
+      File.write!(staged_sidecar, "recoverable sidecar")
+      assert :ok = FirstArtifact.remember(started, %{"filepath" => active_media}, staged_media,
+        %{staged_media => active_media, staged_sidecar => active_sidecar}, stage)
+      File.rename!(staged_media, active_media)
+      assert :ok = File.touch(stage, {{2020, 1, 1}, {0, 0, 0}})
+      assert :ok = File.touch(unowned, {{2020, 1, 1}, {0, 0, 0}})
+    end
+
+    assert {:ok, _} = PreJobStartupTasks.init(%{})
+
+    for root <- [configured, DownloadStaging.replacement_directory()] do
+      assert [stage] = File.ls!(root)
+      assert String.starts_with?(stage, "media-")
+      assert File.ls!(Path.join(root, stage)) |> Enum.any?(&String.ends_with?(&1, ".json"))
     end
   end
 

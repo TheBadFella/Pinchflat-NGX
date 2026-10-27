@@ -7,6 +7,7 @@ defmodule Pinchflat.Media do
   require Logger
   use Pinchflat.Media.MediaQuery
 
+  alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Repo
   alias Pinchflat.Tasks
   alias Pinchflat.Sources.Source
@@ -449,10 +450,17 @@ defmodule Pinchflat.Media do
   defp direct_status_key("prevented"), do: :prevented
   defp direct_status_key("skipped"), do: :skipped
 
+  @doc "Returns whether the first downloaded artifact is still awaiting verified completion."
+  def pending_first_artifact?(%MediaItem{} = item) do
+    is_nil(item.media_downloaded_at) and
+      (item.watch_postprocessing_pending or not is_nil(item.watch_enrollment_pending_at) or
+         (not is_nil(item.watch_download_started_at) and FirstArtifact.pending?(item)))
+  end
+
   defp maybe_protect_watched_record(%MediaItem{} = media_item) do
-    case MediaWatch.get_watch_for_media_item(media_item.id) do
-      nil -> :ok
-      %{released_at: nil} -> {:error, :watch_tombstone_required}
+    case {pending_first_artifact?(media_item), MediaWatch.get_watch_for_media_item(media_item.id)} do
+      {true, _} -> {:error, :watch_tombstone_required}
+      {_, %{released_at: nil}} -> {:error, :watch_tombstone_required}
       _ -> :ok
     end
   end
@@ -461,18 +469,23 @@ defmodule Pinchflat.Media do
   # unenclosed watched original. The tombstone/kept-path workflow is not yet
   # approved, so fail closed instead of silently orphaning those bytes.
   defp maybe_protect_watched_active_files(%MediaItem{} = media_item, false) do
-    if MediaWatch.watched?(media_item.id), do: {:error, :watch_tombstone_required}, else: :ok
+    if MediaWatch.watched?(media_item.id) or pending_first_artifact?(media_item),
+      do: {:error, :watch_tombstone_required},
+      else: :ok
   end
 
   defp maybe_protect_watched_active_files(%MediaItem{} = media_item, true) do
-    case MediaWatch.allow_active_file_deletion(media_item) do
-      :ok ->
-        :ok
+    if pending_first_artifact?(media_item) do
+      {:error, :watch_hold}
+    else
+      case MediaWatch.allow_active_file_deletion(media_item) do
+        :ok ->
+          :ok
 
-      {:error, reason} ->
-        Logger.warning("Refusing to delete watched active files for media item ##{media_item.id}: #{inspect(reason)}")
-
-        {:error, :watch_hold}
+        {:error, reason} ->
+          Logger.warning("Refusing to delete watched active files for media item ##{media_item.id}: #{inspect(reason)}")
+          {:error, :watch_hold}
+      end
     end
   end
 

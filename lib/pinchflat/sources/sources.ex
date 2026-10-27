@@ -758,24 +758,31 @@ defmodule Pinchflat.Sources do
 
     # A per-item error must not be followed by the source FK cascade, and a
     # keep-files delete must not strand a watched artifact without a tombstone.
-    with false <- Enum.any?(items, &MediaWatch.watched?(&1.id)),
-         :ok <- delete_source_items(items, delete_files) do
-      Tasks.delete_tasks_for(source)
-      if delete_files, do: delete_source_files(source)
-      delete_internal_metadata_files(source)
+    result =
+      with false <- Enum.any?(items, &(MediaWatch.watched?(&1.id) or Media.pending_first_artifact?(&1))),
+           :ok <- delete_source_items(items, delete_files) do
+        Tasks.delete_tasks_for(source)
+        if delete_files, do: delete_source_files(source)
+        delete_internal_metadata_files(source)
 
-      case Repo.delete(source) do
-        {:ok, _deleted_source} = result ->
-          CustomPoster.delete_owned_file(source)
-          result
+        case Repo.delete(source) do
+          {:ok, _deleted_source} = result ->
+            CustomPoster.delete_owned_file(source)
+            result
 
-        error ->
-          error
+          error ->
+            error
+        end
+      else
+        true -> {:error, :watch_tombstone_required}
+        {:error, reason} -> {:error, reason}
       end
-    else
-      true -> {:error, :watch_tombstone_required}
-      {:error, reason} -> {:error, reason}
+
+    if match?({:error, reason} when reason in [:watch_hold, :watch_tombstone_required], result) do
+      Repo.update_all(from(s in Source, where: s.id == ^source.id), set: [marked_for_deletion_at: nil])
     end
+
+    result
   end
 
   defp delete_source_items(items, delete_files) do
