@@ -204,6 +204,64 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       assert File.read!(backup) == "damaged pre-image!!"
     end
 
+    test "missing backup recovery preserves newer active bytes beside the restored original" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:error, :transfer_failed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   refute File.exists?(pre_images[item.media_filepath])
+                   File.write!(item.media_filepath, "recoverable newer bytes")
+                   {:error, :transfer_failed}
+                 end,
+                 fn _ -> flunk("failed transfers must not update the item") end
+               )
+
+      assert File.read!(item.media_filepath) == "first artifact"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
+      assert {:ok, directories} = File.ls(quarantine_root())
+      assert [directory] = Enum.filter(directories, &String.starts_with?(&1, "quarantine-"))
+      assert {:ok, files} = File.ls(Path.join(quarantine_root(), directory))
+      assert Enum.map(files, &File.read!(Path.join([quarantine_root(), directory, &1]))) == ["recoverable newer bytes"]
+    end
+
+    test "a quarantine collision retains the newer file and the recovery journal" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+      parent = self()
+
+      assert {:error, {:replacement_recovery_failed, :transfer_failed, {"media", :quarantine_destination_exists}}} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   refute File.exists?(pre_images[item.media_filepath])
+                   {:ok, intent} = ReplacementIntent.read(watch.id)
+                   assert {:ok, [saved]} =
+                            ReplacementIntent.quarantine(watch.id, intent["operation_id"], [item.media_filepath])
+
+                   send(parent, {:saved_file, saved})
+                   File.write!(item.media_filepath, "recoverable newer bytes")
+                   {:error, :transfer_failed}
+                 end,
+                 fn _ -> flunk("failed transfers must not update the item") end
+               )
+
+      assert_received {:saved_file, saved}
+      assert File.read!(saved) == "first artifact"
+      assert File.read!(item.media_filepath) == "recoverable newer bytes"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      assert ReplacementIntent.pending?(watch.id)
+    end
+
     test "a second replacement accepts only the last approved bytes, not a later manual edit" do
       {item, watch} = watched_item()
       original = watch.approved_active_files["first"]

@@ -1716,7 +1716,9 @@ defmodule Pinchflat.MediaWatch do
       hold_reason: watch.hold_reason,
       archive_state: watch.archive_state,
       released_at: iso8601(watch.released_at),
-      saved_original_available: watch.archive_state == "published"
+      saved_original_available:
+        watch.archive_state == "published" and is_nil(watch.released_at) and
+          match?({:ok, _summary}, OriginalArchive.summary(watch))
     }
   end
 

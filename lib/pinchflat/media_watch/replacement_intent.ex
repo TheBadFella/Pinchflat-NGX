@@ -318,7 +318,7 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
         :ok
 
       is_map(manifest_entry) and manifest_entry["sha256"] == expected ->
-        restore_from_archive(path, manifest_entry, intent["watch_id"])
+        restore_from_archive(path, manifest_entry, intent)
 
       true ->
         {:error, :pre_image_unavailable}
@@ -354,7 +354,8 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
     end
   end
 
-  defp restore_from_archive(path, manifest_entry, watch_id) do
+  defp restore_from_archive(path, manifest_entry, intent) do
+    watch_id = intent["watch_id"]
     expected = manifest_entry["sha256"]
     archive_file = manifest_entry["path"]
 
@@ -367,6 +368,7 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
          temporary = path <> ".pinchflat-restore-#{Ecto.UUID.generate()}",
          :ok <- copy_exclusive(archive_source, temporary),
          {:ok, ^expected} <- hash_file(temporary),
+         :ok <- quarantine_current(path, intent),
          :ok <- File.rename(temporary, path),
          {:ok, ^expected} <- hash_file(path),
          :ok <- sync_directory(Path.dirname(path)) do
