@@ -69,30 +69,31 @@ defmodule Pinchflat.MediaWatch do
           Repo.rollback(:not_prospective)
 
         true ->
-          with {:ok, approved} <- pending_artifact_approval(item) do
-            case enroll_on_first_completion(item, item.source,
-                   first_completion: true,
-                   completed_at: item.watch_enrollment_pending_at
-                 ) do
-              {:ok, %Watch{} = watch} ->
-                case update_watch(watch, %{approved_active_files: Map.put(approved, "first", approved)}) do
-                  {:ok, _} -> :ok
-                  {:error, reason} -> Repo.rollback(reason)
-                end
-
-                complete_first_item(item)
-
-              {:ok, _} ->
-                complete_first_item(item)
-
-              {:error, reason} ->
-                Repo.rollback(reason)
-            end
-          else
+          case pending_artifact_approval(item) do
+            {:ok, approved} -> complete_approved_download(item, approved)
             {:error, reason} -> Repo.rollback(reason)
           end
       end
     end)
+  end
+
+  defp complete_approved_download(item, approved) do
+    case enroll_on_first_completion(item, item.source,
+           first_completion: true,
+           completed_at: item.watch_enrollment_pending_at
+         ) do
+      {:ok, %Watch{} = watch} ->
+        case update_watch(watch, %{approved_active_files: Map.put(approved, "first", approved)}) do
+          {:ok, _} -> complete_first_item(item)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      {:ok, _} ->
+        complete_first_item(item)
+
+      {:error, reason} ->
+        Repo.rollback(reason)
+    end
   end
 
   defp complete_first_item(item) do

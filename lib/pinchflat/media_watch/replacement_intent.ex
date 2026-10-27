@@ -364,19 +364,17 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
          :ok <- safe_active_path(path),
          {:ok, %{type: :regular, size: size}} <- File.lstat(archive_source),
          true <- size == manifest_entry["size"],
-         :ok <- File.mkdir_p(Path.dirname(path)),
-         temporary = path <> ".pinchflat-restore-#{Ecto.UUID.generate()}",
-         :ok <-
-           copy_exclusive(archive_source, temporary, fn ->
-             with {:ok, ^expected} <- hash_file(temporary),
-                  :ok <- quarantine_current(path, intent),
-                  :ok <- File.rename(temporary, path),
-                  {:ok, ^expected} <- hash_file(path),
-                  :ok <- sync_directory(Path.dirname(path)) do
-               :ok
-             end
-           end) do
-      :ok
+         :ok <- File.mkdir_p(Path.dirname(path)) do
+      temporary = path <> ".pinchflat-restore-#{Ecto.UUID.generate()}"
+
+      copy_exclusive(archive_source, temporary, fn ->
+        with {:ok, ^expected} <- hash_file(temporary),
+             :ok <- quarantine_current(path, intent),
+             :ok <- File.rename(temporary, path),
+             {:ok, ^expected} <- hash_file(path) do
+          sync_directory(Path.dirname(path))
+        end
+      end)
     else
       {:ok, %{type: :symlink}} -> {:error, :active_is_symlink}
       {:error, :enoent} -> {:error, :missing_archive_file}

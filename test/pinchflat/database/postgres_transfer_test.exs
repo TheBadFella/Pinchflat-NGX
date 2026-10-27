@@ -17,19 +17,20 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     directory = Path.join(System.tmp_dir!(), "sqlite-transfer-template-#{System.unique_integer([:positive])}")
     File.mkdir_p!(directory)
     path = Path.join(directory, "migrated.db")
+    sqlite_build = Path.join(directory, "build")
 
     {output, status} =
       System.cmd("mix", ["run", "--no-start", "test/support/scripts/sqlite_transfer_fixture.exs", "--", path],
         env: [
           {"DATABASE_ADAPTER", "sqlite"},
-          {"MIX_BUILD_PATH", Path.join(directory, "build")}
+          {"MIX_BUILD_PATH", sqlite_build}
         ],
         stderr_to_stdout: true
       )
 
     assert status == 0, "SQLite source migration failed: #{String.slice(output, -2000, 2000)}"
     on_exit(fn -> File.rm_rf!(directory) end)
-    %{sqlite_template: path}
+    %{sqlite_template: path, sqlite_build: sqlite_build}
   end
 
   setup %{sqlite_template: template} do
@@ -239,7 +240,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         ["run", "--no-start", "test/support/scripts/sqlite_transfer_fixture.exs", "--", "--native", ctx.path],
         env: [
           {"DATABASE_ADAPTER", "sqlite"},
-          {"MIX_BUILD_PATH", Path.join(ctx.directory, "native-build")}
+          {"MIX_BUILD_PATH", ctx.sqlite_build}
         ],
         stderr_to_stdout: true
       )
