@@ -95,17 +95,17 @@ defmodule Pinchflat.Media.MediaQuery do
           dynamic(
             [watch],
             watch.confirmed_state != "unchanged" or not is_nil(watch.hold_reason) or
-              watch.current_visibility in ["unlisted", "private", "unavailable"]
+              coalesce(watch.observed_visibility, watch.current_visibility) in ["unlisted", "private", "unavailable"]
           )
 
         :changed ->
           dynamic([watch], watch.confirmed_state == "confirmed" or not is_nil(watch.hold_reason))
 
         :unlisted ->
-          dynamic([watch], watch.current_visibility == "unlisted")
+          dynamic([watch], coalesce(watch.observed_visibility, watch.current_visibility) == "unlisted")
 
         :unavailable ->
-          dynamic([watch], watch.current_visibility in ["private", "unavailable"])
+          dynamic([watch], coalesce(watch.observed_visibility, watch.current_visibility) in ["private", "unavailable"])
 
         :check_failed ->
           dynamic([watch], not is_nil(watch.last_error_at))

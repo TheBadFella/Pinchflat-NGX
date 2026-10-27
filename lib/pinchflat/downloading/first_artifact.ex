@@ -4,6 +4,7 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   metadata/marker write fails. This is not a completed watch or an M2 archive.
   """
 
+  alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Metadata.MetadataFileHelpers
 
@@ -18,7 +19,7 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     copy = Path.join(dir, "media")
     journal = Path.join(dir, "intent.json")
 
-    with :ok <- valid_media_path(staged_path),
+    with :ok <- valid_media_path(staged_path, :staged),
          :ok <- safe_destination(path),
          {:error, :enoent} <- File.lstat(journal),
          :ok <- private_directory(dir),
@@ -168,20 +169,29 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     end
   end
 
-  defp valid_media_path(path) when is_binary(path) do
+  defp valid_media_path(path, mode \\ :transferred)
+
+  defp valid_media_path(path, mode) when is_binary(path) do
     root = Application.fetch_env!(:pinchflat, :media_directory) |> Path.expand()
     expanded = Path.expand(path)
 
-    if Path.type(path) == :absolute and String.starts_with?(expanded, root <> "/") and
-         :ok == no_symlink_ancestors(root, expanded) and
-         match?({:ok, %{type: :regular}}, File.lstat(expanded)) do
+    roots =
+      if mode == :staged,
+        do: [root, DownloadStaging.configured_directory(), DownloadStaging.replacement_directory()],
+        else: [root]
+
+    if Path.type(path) == :absolute and
+         Enum.any?(roots, fn candidate ->
+           is_binary(candidate) and String.starts_with?(expanded, Path.expand(candidate) <> "/") and
+             :ok == no_symlink_ancestors(Path.expand(candidate), expanded)
+         end) and match?({:ok, %{type: :regular}}, File.lstat(expanded)) do
       :ok
     else
       {:error, :invalid_first_artifact}
     end
   end
 
-  defp valid_media_path(_), do: {:error, :invalid_first_artifact}
+  defp valid_media_path(_, _), do: {:error, :invalid_first_artifact}
 
   defp safe_destination(path) when is_binary(path) do
     root = Application.fetch_env!(:pinchflat, :media_directory) |> Path.expand()

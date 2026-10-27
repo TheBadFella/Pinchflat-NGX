@@ -166,6 +166,44 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                Enum.filter(manifest["files"], &(&1["role"] == "media"))
     end
 
+    test "a corrupt second-replacement backup cannot displace the intact approved active file" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:ok, _} = MediaWatch.commit_replacement(
+               lease,
+               item,
+               %{source_map: %{staged => item.media_filepath}},
+               fn _ ->
+                 File.rename!(staged, item.media_filepath)
+                 {:ok, %{"filepath" => item.media_filepath}}
+               end,
+               fn _ -> Media.update_media_item(item, %{title: "replacement"}) end
+             )
+
+      operation = Ecto.UUID.generate()
+      backup = ReplacementIntent.backup_path(item.media_filepath, operation)
+      File.write!(backup, "damaged pre-image!!")
+      approved = File.read!(item.media_filepath)
+      hash = Base.encode16(:crypto.hash(:sha256, approved), case: :lower)
+      intent = %{
+        "watch_id" => watch.id,
+        "operation_id" => operation,
+        "active" => [%{"role" => "media", "path" => item.media_filepath, "backup" => backup, "sha256" => hash}],
+        "staged" => []
+      }
+
+      assert :ok = ReplacementIntent.restore(intent)
+      assert File.read!(item.media_filepath) == approved
+      assert File.read!(backup) == "damaged pre-image!!"
+
+      File.write!(item.media_filepath, "unapproved changes")
+      assert {:error, {"media", :pre_image_unavailable}} = ReplacementIntent.restore(intent)
+      assert File.read!(item.media_filepath) == "unapproved changes"
+      assert File.read!(backup) == "damaged pre-image!!"
+    end
+
     test "a second replacement accepts only the last approved bytes, not a later manual edit" do
       {item, watch} = watched_item()
 

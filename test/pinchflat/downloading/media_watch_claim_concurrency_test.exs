@@ -118,6 +118,52 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
     end)
   end
 
+  test "concurrent archive renewal leaves its temporary copy and live lease intact" do
+    Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+      profile = media_profile_fixture()
+      profile |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()
+      source = source_fixture(%{media_profile_id: profile.id})
+      path = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "recover-#{Ecto.UUID.generate()}.mkv")
+      item = media_item_fixture(%{source_id: source.id, media_filepath: path})
+      File.write!(path, "first artifact")
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      Repo.update!(Ecto.Changeset.change(watch, archive_state: "preparing"))
+      temp = Path.join(OriginalArchive.root(), ".preparing-#{watch.id}-active")
+      File.mkdir_p!(temp)
+      File.write!(Path.join(temp, "media.mkv"), "in progress")
+      parent = self()
+
+      try do
+        writer = Task.async(fn ->
+          Repo.transaction(fn ->
+            Repo.update_all(from(w in Watch, where: w.id == ^watch.id), set: [updated_at: DateTime.utc_now()])
+            send(parent, :writer_reserved)
+            receive do: (:finish -> :ok)
+            {:ok, _} = MediaWatch.claim_lease(item.id, "archive")
+          end)
+        end)
+
+        assert_receive :writer_reserved
+        recovery = Task.async(fn -> MediaWatch.recover_pending() end)
+        send(writer.pid, :finish)
+        assert {:ok, _} = Task.await(writer, 10_000)
+        assert Enum.all?(Enum.filter(Task.await(recovery, 10_000), &(&1.watch_id == watch.id)),
+                 &(&1.action == :lease_busy)
+               )
+        assert File.exists?(Path.join(temp, "media.mkv"))
+        assert Repo.get!(Watch, watch.id).lease_owner
+        assert Repo.get!(Watch, watch.id).archive_state == "preparing"
+      after
+        Repo.delete!(Repo.get!(Watch, watch.id))
+        Repo.delete!(item)
+        Repo.delete!(source)
+        Repo.delete!(profile)
+        File.rm(path)
+        File.rm_rf(OriginalArchive.root())
+      end
+    end)
+  end
+
   defp concurrent(fun) do
     parent = self()
 

@@ -243,6 +243,7 @@ defmodule Pinchflat.MediaWatch do
          last_error_at: nil,
          error_count: 0,
          current_upstream_duration_seconds: observation.duration_seconds,
+         observed_visibility: Observation.current_visibility(observation),
          suspected_kind: watch.suspected_kind,
          suspected_value: to_string(new_value),
          suspected_first_seen_at: first_seen,
@@ -264,7 +265,7 @@ defmodule Pinchflat.MediaWatch do
     attrs =
       case Observation.current_visibility(observation) do
         nil -> attrs
-        visibility -> Map.put(attrs, :current_visibility, visibility)
+        visibility -> Map.merge(attrs, %{current_visibility: visibility, observed_visibility: visibility})
       end
 
     attrs
@@ -449,10 +450,35 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp recover_watch(%Watch{} = watch) do
-    action = recover_watch_action(watch)
-    clear_expired_lease(watch)
-    %{watch_id: watch.id, action: action}
+  defp recover_watch(%Watch{} = snapshot) do
+    action =
+      Repo.transaction(fn ->
+        now = utc_now()
+
+        query =
+          from w in Watch,
+            where: w.id == ^snapshot.id and w.lease_generation == ^snapshot.lease_generation and
+              (is_nil(w.lease_expires_at) or w.lease_expires_at <= ^now)
+
+        case Repo.update_all(query, set: [updated_at: now]) do
+          {1, _} ->
+            {:ok, watch} = locked_watch(snapshot.id)
+            action = recover_watch_action(watch)
+            clear_expired_lease(watch)
+            action
+
+          _ ->
+            :lease_busy
+        end
+      end)
+
+    result =
+      case action do
+        {:ok, result} -> result
+        {:error, _} -> :needs_recovery
+      end
+
+    %{watch_id: snapshot.id, action: result}
   end
 
   defp recover_watch_action(%Watch{archive_state: "preparing"} = watch) do
@@ -486,7 +512,10 @@ defmodule Pinchflat.MediaWatch do
     if watch.lease_owner do
       query =
         from w in Watch,
-          where: w.id == ^watch.id and w.lease_owner == ^watch.lease_owner
+          where:
+            w.id == ^watch.id and w.lease_owner == ^watch.lease_owner and
+              w.lease_generation == ^watch.lease_generation and
+              (is_nil(w.lease_expires_at) or w.lease_expires_at <= ^utc_now())
 
       Repo.update_all(query, set: [lease_owner: nil, lease_expires_at: nil, operation_kind: nil])
     end
@@ -1504,7 +1533,7 @@ defmodule Pinchflat.MediaWatch do
       started_at: iso8601(watch.started_at),
       ends_at: iso8601(watch.ends_at),
       confirmed_state: watch.confirmed_state,
-      current_visibility: watch.current_visibility,
+      current_visibility: watch.observed_visibility || watch.current_visibility,
       current_upstream_duration_seconds: watch.current_upstream_duration_seconds,
       suspected_kind: watch.suspected_kind,
       baseline_upstream_duration_seconds: watch.baseline_upstream_duration_seconds,

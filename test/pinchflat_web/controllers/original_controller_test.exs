@@ -53,6 +53,18 @@ defmodule PinchflatWeb.OriginalControllerTest do
     assert response(missing, 404)
   end
 
+  test "same-size archive tampering cannot be played or downloaded", %{conn: conn, item: item, watch: watch} do
+    {:ok, files} = File.ls(OriginalArchive.archive_directory(watch.id))
+    saved = Path.join(OriginalArchive.archive_directory(watch.id), Enum.find(files, &String.starts_with?(&1, "media.")))
+    File.write!(saved, "changed bytes!")
+    assert byte_size(File.read!(saved)) == byte_size("first artifact")
+
+    for query <- ["", "?download=true"] do
+      response = get(conn, "/sources/#{item.source_id}/media/#{item.id}/original/files/media" <> query)
+      assert response.status == 404
+    end
+  end
+
   test "archive routes reject another source and unauthenticated access", %{conn: conn, item: item} do
     other = source_fixture()
     assert_error_sent 404, fn -> get(conn, ~p"/sources/#{other.id}/media/#{item}/original/files/media") end

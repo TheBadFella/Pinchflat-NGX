@@ -90,6 +90,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         ends_at: ~U[2026-01-16 03:04:05Z],
         baseline_upstream_duration_seconds: 582,
         baseline_visibility: "public",
+        observed_visibility: "private",
         current_upstream_duration_seconds: 600,
         confirmed_upstream_duration_seconds: 598,
         approved_active_files: %{
@@ -176,6 +177,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     transferred_watch = Repo.get_by!(Pinchflat.MediaWatch.MediaWatch, media_item_id: ctx.item.id)
     assert transferred_watch.baseline_upstream_duration_seconds == 582
     assert transferred_watch.baseline_visibility == "public"
+    assert transferred_watch.observed_visibility == "private"
     assert transferred_watch.current_upstream_duration_seconds == 600
     assert transferred_watch.confirmed_upstream_duration_seconds == 598
     assert transferred_watch.approved_active_files == %{
@@ -186,7 +188,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
                "size" => 77
              }
            }
-    assert transferred_watch.confirmed_change_at: == ~U[2026-01-03 03:04:05Z]
+    assert transferred_watch.confirmed_change_at == ~U[2026-01-03 03:04:05Z]
     assert transferred_watch.released_at == ~U[2026-01-04 03:04:05Z]
     assert transferred_watch.release_manifest_sha256 == "approved-manifest-digest"
     assert transferred_watch.original_manifest_path == ".pinchflat-originals/first-watch/manifest.json"

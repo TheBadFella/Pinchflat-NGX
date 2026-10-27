@@ -49,6 +49,21 @@ defmodule Pinchflat.Database.WatchTransitionMigrationTest do
                "SELECT confirmed_upstream_duration_seconds, approved_active_files FROM media_watches"
              ).rows
 
+    FixtureRepo.query!("ALTER TABLE media_watches ADD COLUMN current_visibility TEXT")
+    FixtureRepo.query!("ALTER TABLE media_watches ADD COLUMN current_reason TEXT")
+    FixtureRepo.query!("UPDATE media_watches SET current_visibility='public', current_reason='unused', suspected_kind='unavailable', suspected_value='private', confirmed_state='suspected'")
+
+    visibility_migration = Pinchflat.Repo.Migrations.TrackObservedWatchVisibility
+
+    unless Code.ensure_loaded?(visibility_migration),
+      do: Code.require_file("priv/repo/migrations/20261027130000_track_observed_watch_visibility.exs")
+
+    visibility_version = 20_261_027_130_000
+    assert [^visibility_version] = Ecto.Migrator.run(FixtureRepo, [{visibility_version, visibility_migration}], :up, step: 1)
+    assert [["public", "private"]] =
+             FixtureRepo.query!("SELECT current_visibility, observed_visibility FROM media_watches").rows
+    refute "current_reason" in Enum.map(FixtureRepo.query!("PRAGMA table_info(media_watches)").rows, &Enum.at(&1, 1))
+
     assert_raise RuntimeError, ~r/refusing rollback/, fn ->
       Ecto.Migrator.run(FixtureRepo, [{version, migration}], :down, step: 1)
     end

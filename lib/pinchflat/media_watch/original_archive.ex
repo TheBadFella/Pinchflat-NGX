@@ -161,12 +161,14 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
   @doc "Resolves one manifest role inside this watch's archive; never accepts a filesystem path."
   def file(watch, role) do
     with {:ok, manifest, path} <- read_watch_manifest(watch),
-         %{"path" => name, "size" => size} <- Enum.find(manifest["files"], &(&1["role"] == role)),
+         %{"path" => name, "size" => size, "sha256" => expected} <-
+           Enum.find(manifest["files"], &(&1["role"] == role)),
          :ok <- validate_archive_file_path(name),
          absolute = Path.join(Path.dirname(path), name),
          :ok <- validate_no_symlink_path(absolute),
          {:ok, stat} <- File.lstat(absolute),
          :ok <- validate_regular_file(stat),
+         {:ok, ^expected, ^size} <- hash_file(absolute),
          true <- stat.size == size do
       {:ok, absolute}
     else

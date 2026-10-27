@@ -55,6 +55,24 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     MediaDownloadWorker.perform(%Oban.Job{args: Map.merge(%{"id" => item.id}, args)})
   end
 
+  test "first watched download enrolls through configured external staging", %{item: item} do
+    root = Path.join(Application.fetch_env!(:pinchflat, :tmpfile_directory), "configured-watch-#{item.uuid}")
+    File.mkdir_p!(root)
+    prior = Application.get_env(:pinchflat, :download_staging_directory)
+    Application.put_env(:pinchflat, :download_staging_directory, root)
+
+    on_exit(fn ->
+      Application.put_env(:pinchflat, :download_staging_directory, prior)
+      File.rm_rf(root)
+    end)
+
+    assert :ok = run(item)
+    completed = Repo.reload!(item)
+    assert completed.media_downloaded_at
+    assert File.read!(completed.media_filepath) == "first artifact"
+    assert MediaWatch.get_watch_for_media_item(item.id)
+  end
+
   test "first local completion records one fixed window but not postprocessed duration or nil visibility", %{item: item} do
     assert :ok = run(item)
     completed = Repo.reload!(item)

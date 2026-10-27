@@ -113,6 +113,23 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
     assert Repo.aggregate(Event, :count) == 1
   end
 
+  test "a suspected private visibility is displayed and filtered without changing confirmed comparison", %{watch: watch, item: item} do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    private = %{observation(now, 120) | availability: :private}
+    assert {:ok, %{watch: suspected, event: nil}} = MediaWatch.record_observation(watch, private)
+    assert suspected.current_visibility == "public"
+    assert suspected.observed_visibility == "private"
+    assert MediaWatch.to_api_map(suspected).current_visibility == "private"
+    assert Enum.any?(
+             Repo.all(where(Pinchflat.Media.MediaQuery.new(), ^Pinchflat.Media.MediaQuery.watch_filter(:unavailable))),
+             &(&1.id == item.id)
+           )
+    assert {:ok, %{watch: confirmed, event: %Event{}}} =
+             MediaWatch.record_observation(watch, %{private | observed_at: DateTime.add(now, 1200)})
+    assert confirmed.current_visibility == "private"
+    assert confirmed.observed_visibility == "private"
+  end
+
   test "repeated private and public transitions produce distinct events after confirmation", %{watch: watch} do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 

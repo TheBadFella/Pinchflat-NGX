@@ -311,7 +311,7 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
     backup = entry["backup"]
 
     cond do
-      is_binary(backup) and regular_file?(backup) ->
+      is_binary(backup) and existing_hash(backup) == {:ok, expected} ->
         restore_from_backup(path, backup, expected, intent)
 
       existing_hash(path) == {:ok, expected} ->
@@ -330,6 +330,7 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
   # replacement or partial write and is moved to quarantine first.
   defp restore_from_backup(path, backup, expected, intent) do
     with :ok <- safe_active_path(path),
+         {:ok, ^expected} <- hash_file(backup),
          :ok <- quarantine_current(path, intent),
          :ok <- File.rename(backup, path),
          {:ok, ^expected} <- hash_file(path),

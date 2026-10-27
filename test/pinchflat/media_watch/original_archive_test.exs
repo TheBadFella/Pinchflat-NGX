@@ -128,6 +128,17 @@ defmodule Pinchflat.MediaWatch.OriginalArchiveTest do
     assert {:error, :manifest_verification_failed} = OriginalArchive.verify_relative(manifest_path)
   end
 
+  test "serving rejects a same-size changed saved original", %{watch: watch, directory: directory} do
+    main = write!(Path.join(directory, "talk.mkv"), "original")
+    item = media_item(%{media_filepath: main})
+    assert {:ok, %{manifest_path: relative}} = OriginalArchive.publish(watch, item)
+    saved = %{watch | original_manifest_path: relative, media_item_uuid: item.uuid}
+    archive = Path.join(OriginalArchive.archive_directory(watch.id), "media.mkv")
+    File.write!(archive, "tampered")
+
+    assert {:error, :archive_file_unavailable} = OriginalArchive.file(saved, "media")
+  end
+
   test "resolves only managed relative manifest paths" do
     assert {:ok, absolute} = OriginalArchive.resolve_manifest_path(".pinchflat-originals/7/manifest.json")
     assert String.ends_with?(absolute, ".pinchflat-originals/7/manifest.json")

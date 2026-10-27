@@ -33,13 +33,13 @@ defmodule Pinchflat.MediaWatch.MediaWatch do
     field :error_count, :integer, default: 0
 
     field :current_visibility, :string
+    field :observed_visibility, :string
     field :current_upstream_duration_seconds, :integer
     field :confirmed_upstream_duration_seconds, :integer
     field :approved_active_files, :map
     field :confirmed_change_at, :utc_datetime
     field :released_at, :utc_datetime
     field :release_manifest_sha256, :string
-    field :current_reason, :string
 
     field :suspected_kind, :string
     field :suspected_value, :string
@@ -69,7 +69,7 @@ defmodule Pinchflat.MediaWatch.MediaWatch do
     media_item_id media_item_uuid media_id source_id source_uuid
     started_at ends_at baseline_upstream_duration_seconds baseline_visibility
     next_check_at last_observed_at last_success_at last_error_at error_count
-    current_visibility current_reason current_upstream_duration_seconds confirmed_upstream_duration_seconds
+    current_visibility observed_visibility current_upstream_duration_seconds confirmed_upstream_duration_seconds
     approved_active_files confirmed_change_at released_at release_manifest_sha256
     suspected_kind suspected_value suspected_first_seen_at suspected_count
     confirmed_state observation_version

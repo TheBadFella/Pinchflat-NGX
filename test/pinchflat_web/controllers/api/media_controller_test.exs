@@ -89,7 +89,9 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       File.write!(path, "first artifact")
       item = media_item_fixture(%{source_id: source.id, media_filepath: path})
       {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
-      watch |> Ecto.Changeset.change(current_upstream_duration_seconds: 122) |> Repo.update!()
+      watch
+      |> Ecto.Changeset.change(current_upstream_duration_seconds: 122, current_visibility: "public", observed_visibility: "private")
+      |> Repo.update!()
 
       conn = get(conn, "/api/media/#{item.id}")
       response = json_response(conn, 200)
@@ -98,6 +100,7 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       assert response["watch"]["saved_original_available"] == false
       assert response["watch"]["ends_at"] =~ "T"
       assert response["watch"]["current_upstream_duration_seconds"] == 122
+      assert response["watch"]["current_visibility"] == "private"
       assert_response_schema(conn, "Api.MediaController.show")
     end
 
