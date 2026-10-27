@@ -7,6 +7,9 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Metadata.MetadataFileHelpers
+  alias Pinchflat.MediaWatch.OriginalArchive
+  alias Pinchflat.MediaWatch.ReplacementIntent
+  alias Pinchflat.Repo
 
   defp directory(%MediaItem{} = item) do
     Path.join(MetadataFileHelpers.metadata_directory_for(item), "first-artifact-#{item.uuid}")
@@ -135,6 +138,14 @@ defmodule Pinchflat.Downloading.FirstArtifact do
 
   @doc "Verifies the files bound to the first successful postprocessing before enrollment."
   def verify_completed(%MediaItem{} = item) do
+    case completed_approval(item) do
+      {:ok, _approved} -> :ok
+      error -> error
+    end
+  end
+
+  @doc "Returns the approved files bound to successful first postprocessing."
+  def completed_approval(%MediaItem{} = item) do
     with {:ok, entry} <- transferred_entry(item),
          true <- item.media_filepath == entry["path"],
          %DateTime{} <- completed_at(item),
@@ -142,8 +153,10 @@ defmodule Pinchflat.Downloading.FirstArtifact do
          {:ok, %{"files" => files}} <- Jason.decode(bytes),
          true <- is_map(files) and is_map(entry["files"]) and
                    Enum.sort(Map.keys(files)) == Enum.sort(Map.keys(entry["files"])),
-         :ok <- verify_files(files) do
-      :ok
+         :ok <- verify_files(files),
+         {:ok, approved} <- snapshot_approval(item),
+         true <- approved == entry_approval(bytes) do
+      {:ok, approved}
     else
       _ -> {:error, :first_artifact_completion_uncertain}
     end
@@ -163,7 +176,11 @@ defmodule Pinchflat.Downloading.FirstArtifact do
           try do
             with true <- item.media_filepath == entry["path"],
                  {:ok, files} <- fingerprint_files(Map.keys(entry["files"])),
-                 content = %{uuid: item.uuid, hash: entry["hash"], path: entry["path"], files: files, at: DateTime.to_iso8601(now)},
+                 {:ok, approved} <- snapshot_approval(item),
+                 content = %{
+                   uuid: item.uuid, hash: entry["hash"], path: entry["path"],
+                   files: files, approved: approved, at: DateTime.to_iso8601(now)
+                 },
                  {:ok, file} <- File.open(temporary, [:write, :exclusive, :binary]),
                  :ok <- IO.binwrite(file, Jason.encode!(content)),
                  :ok <- :file.sync(file),
@@ -239,6 +256,30 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   end
 
   defp planned_files(_), do: {:error, :invalid_first_artifact}
+
+  defp entry_approval(bytes) do
+    case Jason.decode(bytes) do
+      {:ok, %{"approved" => approved}} when is_map(approved) and map_size(approved) > 0 -> approved
+      _ -> nil
+    end
+  end
+
+  defp snapshot_approval(item) do
+    with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(Repo.preload(item, :metadata)) do
+      entries
+      |> Enum.with_index()
+      |> Enum.reduce_while({:ok, %{}}, fn {entry, index}, {:ok, approved} ->
+        case ReplacementIntent.fingerprint(entry.source) do
+          {:ok, %{sha256: hash, size: size}} ->
+            value = %{"role" => entry.role, "path" => Path.expand(entry.source), "sha256" => hash, "size" => size}
+            {:cont, {:ok, Map.put(approved, Integer.to_string(index), value)}}
+
+          error ->
+            {:halt, error}
+        end
+      end)
+    end
+  end
 
   defp fingerprint_files(paths) when is_list(paths) and paths != [] do
     Enum.reduce_while(paths, {:ok, %{}}, fn path, {:ok, files} ->

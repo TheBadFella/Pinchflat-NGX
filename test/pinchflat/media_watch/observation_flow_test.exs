@@ -338,6 +338,54 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
     assert MediaWatch.replacement_blocked?(item.id)
   end
 
+  test "livestream and private observations without duration revoke a previous trusted replacement check", %{
+    watch: watch,
+    item: item
+  } do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    {:ok, %{watch: trusted}} = MediaWatch.record_observation(watch, observation(now, 120), jitter_seconds: 0)
+    refute MediaWatch.replacement_blocked?(item.id)
+
+    live = %{observation(DateTime.add(now, 60), nil) | livestream: true}
+    {:ok, %{watch: unverified, event: nil}} = MediaWatch.record_observation(watch, live, jitter_seconds: 0)
+    assert unverified.last_success_at == trusted.last_success_at
+    assert unverified.last_error_at
+    assert unverified.current_upstream_duration_seconds == 120
+    assert unverified.observed_visibility == "public"
+    assert MediaWatch.replacement_blocked?(item.id)
+
+    {:ok, %{watch: trusted_again}} =
+      MediaWatch.record_observation(watch, observation(DateTime.add(now, 120), 120), jitter_seconds: 0)
+
+    assert is_nil(trusted_again.last_error_at)
+    refute MediaWatch.replacement_blocked?(item.id)
+
+    private = %{observation(DateTime.add(now, 180), nil) | availability: :private}
+    {:ok, %{watch: suspected}} = MediaWatch.record_observation(watch, private, jitter_seconds: 0)
+    assert suspected.observed_visibility == "private"
+    assert suspected.current_upstream_duration_seconds == 120
+    assert suspected.last_success_at == trusted_again.last_success_at
+    assert suspected.last_error_at
+    assert MediaWatch.replacement_blocked?(item.id)
+  end
+
+  test "initial private or unavailable checks without duration preserve visibility but cannot permit replacement", %{
+    source: source
+  } do
+    for availability <- [:private, :unavailable] do
+      item = media_item_with_attachments(%{source_id: source.id})
+      {:ok, fresh} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      observed = %{observation(now, nil) | availability: availability}
+
+      assert {:ok, %{watch: unverified, event: nil}} = MediaWatch.record_observation(fresh, observed)
+      assert unverified.observed_visibility == to_string(availability)
+      refute unverified.last_success_at
+      assert unverified.last_error_at
+      assert MediaWatch.replacement_blocked?(item.id)
+    end
+  end
+
   test "missing duration and a livestream do not clear an existing suspicion", %{watch: watch} do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     {:ok, _} = MediaWatch.record_observation(watch, observation(now, 130))

@@ -158,6 +158,17 @@ defmodule Pinchflat.MediaWatch.MutationTest do
       assert Repo.get!(Pinchflat.Sources.Source, source.id)
     end
 
+    test "an older watch without first-original approval cannot publish or delete active files" do
+      profile = media_profile_fixture(%{watch_window_days: 14})
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_with_attachments(%{source_id: source.id})
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
+      assert {:error, :active_file_unverifiable} = MediaWatch.archive_original(watch, item)
+      assert {:error, :watch_archive_required} = MediaWatch.allow_active_file_deletion(item)
+      assert File.exists?(item.media_filepath)
+    end
+
     test "watched media is allowed once a verified original is published" do
       Application.put_env(:pinchflat, :media_watch_destructive_enabled, true)
       {item, watch} = watched_media_item()
@@ -282,7 +293,7 @@ defmodule Pinchflat.MediaWatch.MutationTest do
 
     File.write!(item.media_filepath, "first artifact")
 
-    {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+    {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
     {:ok, item} = Media.update_media_item(item, %{media_downloaded_at: now_minus(4, :days)})
 
     {Repo.reload(item), watch}

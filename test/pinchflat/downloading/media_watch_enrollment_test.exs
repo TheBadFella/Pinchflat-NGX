@@ -197,6 +197,39 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert MediaWatch.get_watch_for_media_item(item.id)
   end
 
+  test "cleared completion journal cannot bless a manually edited first original or sidecar", %{item: item, path: path} do
+    on_exit(fn -> File.rm_rf(Pinchflat.MediaWatch.OriginalArchive.root()) end)
+    assert :ok = run(item)
+    completed = Repo.reload!(item) |> Repo.preload(:metadata)
+    watch = MediaWatch.get_watch_for_media_item(item.id)
+    refute Pinchflat.Downloading.FirstArtifact.pending?(completed)
+    assert is_map(watch.approved_active_files)
+    assert Enum.any?(Map.values(watch.approved_active_files), fn file ->
+             file["role"] == "media" and file["sha256"] == Base.encode16(:crypto.hash(:sha256, "first artifact"), case: :lower)
+           end)
+
+    File.write!(path, "edited first artifact")
+    assert {:error, :active_file_changed} = MediaWatch.archive_original(watch, completed)
+    assert {:error, :watch_archive_required} = MediaWatch.allow_active_file_deletion(completed)
+    refute File.exists?(Pinchflat.MediaWatch.OriginalArchive.archive_directory(watch.id))
+
+    File.write!(path, "first artifact")
+    assert {:ok, published} = MediaWatch.archive_original(watch, completed)
+    File.write!(path, "edited after publication")
+    assert {:error, :active_file_changed} = MediaWatch.allow_active_file_deletion(completed)
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    Repo.update!(Ecto.Changeset.change(published, last_success_at: now))
+    assert {:error, :active_file_changed} = MediaWatch.prepare_replacement(completed)
+    assert File.read!(path) == "edited after publication"
+
+    File.write!(path, "first artifact")
+    File.write!(completed.metadata.metadata_filepath, "edited sidecar")
+    assert {:error, :active_file_changed} = MediaWatch.allow_active_file_deletion(completed)
+    assert {:ok, manifest} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+    assert Enum.any?(manifest["files"], &(&1["role"] == "media"))
+  end
+
   test "first local completion records one fixed window but not postprocessed duration or nil visibility", %{item: item} do
     assert :ok = run(item)
     completed = Repo.reload!(item)

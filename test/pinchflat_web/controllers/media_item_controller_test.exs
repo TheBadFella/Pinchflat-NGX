@@ -89,7 +89,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       item = media_item_with_attachments(%{source_id: source.id})
       File.write!(item.media_filepath, "first artifact")
 
-      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
       {:ok, _published} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
 
       {:ok, watch} =

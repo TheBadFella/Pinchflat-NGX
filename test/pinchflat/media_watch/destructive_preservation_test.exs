@@ -43,7 +43,7 @@ defmodule Pinchflat.MediaWatch.DestructivePreservationTest do
     item = media_item_with_attachments(%{source_id: source.id})
     File.write!(item.media_filepath, "first artifact")
 
-    {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+    {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
     {:ok, item} = Media.update_media_item(item, %{media_downloaded_at: now_minus(1, :day)})
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)

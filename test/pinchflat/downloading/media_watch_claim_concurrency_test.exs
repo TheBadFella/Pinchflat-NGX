@@ -23,13 +23,14 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
       source = source_fixture(%{media_profile_id: profile.id})
       path = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "claim-#{Ecto.UUID.generate()}.mkv")
       item = media_item_fixture(%{source_id: source.id, media_filepath: path})
-      File.write!(path, "first artifact")
       first = ~U[2026-10-01 00:00:00Z]
 
       item =
         item
         |> Ecto.Changeset.change(watch_download_started_at: first, watch_enrollment_pending_at: first)
         |> Repo.update!()
+
+      :ok = Pinchflat.MediaWatchFixtures.completed_first_artifact(item, path, first)
 
       try do
         results = concurrent(fn -> MediaWatch.complete_pending_download(item) end)
@@ -38,6 +39,7 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
         assert watch.started_at == first
         assert Repo.aggregate(Watch, :count, :id) == 1
         assert Repo.reload!(item).media_downloaded_at == first
+        assert :ok = Pinchflat.Downloading.FirstArtifact.clear(item)
 
         events = concurrent(fn -> MediaWatch.record_event(watch, "duration", "same-fingerprint") end)
         assert Enum.count(events, &match?({:ok, %Event{}}, &1)) == 1
@@ -65,7 +67,7 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
       path = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "race-#{Ecto.UUID.generate()}.mkv")
       item = media_item_fixture(%{source_id: source.id, media_filepath: path})
       File.write!(path, "first artifact")
-      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
       {:ok, _} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
       operation_id = Ecto.UUID.generate()
@@ -128,7 +130,7 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
       item = media_item_fixture(%{source_id: source.id, media_filepath: path})
       File.write!(path, "first artifact")
       File.write!(staged, "new artifact")
-      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
       {:ok, _} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
       Repo.update!(Ecto.Changeset.change(watch, last_success_at: DateTime.utc_now() |> DateTime.truncate(:second)))
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")

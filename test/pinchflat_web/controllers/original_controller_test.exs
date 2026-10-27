@@ -15,7 +15,7 @@ defmodule PinchflatWeb.OriginalControllerTest do
     source = source_fixture(media_profile_id: profile.id)
     item = media_item_with_attachments(%{source_id: source.id, prevent_download: true, prevent_culling: true})
     File.write!(item.media_filepath, "first artifact")
-    {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+    {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
     {:ok, watch} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
     on_exit(fn -> File.rm_rf(OriginalArchive.root()) end)
     %{item: item, watch: watch, source: source}
@@ -157,12 +157,12 @@ defmodule PinchflatWeb.OriginalControllerTest do
     assert Repo.reload!(watch).released_at == nil
   end
 
-  test "a failed active-file deletion also invalidates older archive consent", %{item: item, watch: watch} do
+  test "a refused active-file deletion also invalidates older archive consent", %{item: item, watch: watch} do
     {:ok, token} = MediaWatch.release_confirmation(watch)
     File.rm!(item.media_filepath)
     File.mkdir!(item.media_filepath)
     File.write!(Path.join(item.media_filepath, "keep"), "not removable as a media file")
-    assert {:error, {:file_delete_failed, _, _}} = Pinchflat.Media.delete_media_files(item)
+    assert {:error, :watch_hold} = Pinchflat.Media.delete_media_files(item)
     assert {:error, :stale_confirmation} = MediaWatch.release_watch(item, token)
     assert Repo.reload!(item).media_filepath == item.media_filepath
     assert File.exists?(OriginalArchive.manifest_path(watch.id))

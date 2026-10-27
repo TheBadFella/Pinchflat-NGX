@@ -206,6 +206,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
 
     test "a second replacement accepts only the last approved bytes, not a later manual edit" do
       {item, watch} = watched_item()
+      original = watch.approved_active_files["first"]
 
       for {content, title} <- [{"second artifact", "second"}, {"third artifact", "third"}] do
         {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
@@ -224,6 +225,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                  )
 
         assert File.read!(item.media_filepath) == content
+        assert Repo.get!(Watch, watch.id).approved_active_files["first"] == original
         assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
       end
 
@@ -245,6 +247,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
 
     test "an unverifiable older replacement refuses adoption" do
       {item, watch} = watched_item()
+      watch |> Ecto.Changeset.change(approved_active_files: nil) |> Repo.update!()
       commit_watch(watch, Ecto.UUID.generate())
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
       staged = staged_file("replacement artifact")
@@ -521,7 +524,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
 
     File.write!(item.media_filepath, "first artifact")
 
-    {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+    {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
     {:ok, item} = Media.update_media_item(item, %{media_downloaded_at: now_minus(1, :day)})
 
     item = Repo.preload(Repo.reload(item), [:metadata, source: :media_profile])

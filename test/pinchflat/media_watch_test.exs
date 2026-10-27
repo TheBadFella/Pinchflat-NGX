@@ -58,14 +58,16 @@ defmodule Pinchflat.MediaWatchTest do
   test "two completion claims keep one immutable watch and one first-success timestamp" do
     {item, _source} = enabled_item(14)
     path = Path.join(Application.get_env(:pinchflat, :media_directory), "watch-race-#{item.id}.mkv")
-    File.write!(path, "original")
+    first = ~U[2026-01-01 00:00:00Z]
 
     {:ok, item} =
       Pinchflat.Media.update_media_item(item, %{
         media_filepath: path,
-        watch_download_started_at: ~U[2026-01-01 00:00:00Z],
-        watch_enrollment_pending_at: ~U[2026-01-01 00:00:00Z]
+        watch_download_started_at: first,
+        watch_enrollment_pending_at: first
       })
+
+    :ok = Pinchflat.MediaWatchFixtures.completed_first_artifact(item, path, first)
 
     tasks = for _ <- 1..2, do: Task.async(fn -> MediaWatch.complete_pending_download(item) end)
     assert [{:ok, first}, {:ok, second}] = Enum.map(tasks, &Task.await(&1, 5_000))
@@ -73,6 +75,7 @@ defmodule Pinchflat.MediaWatchTest do
     assert Repo.aggregate(Watch, :count) == 1
     assert Repo.reload!(item).watch_enrollment_pending_at == nil
     assert Repo.reload!(item).watch_download_started_at == nil
+    assert :ok = Pinchflat.Downloading.FirstArtifact.clear(item)
   end
 
   test "SQLite migrated constraints reject invalid raw policy and watch state on insert and update" do

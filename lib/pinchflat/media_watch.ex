@@ -69,21 +69,21 @@ defmodule Pinchflat.MediaWatch do
           Repo.rollback(:not_prospective)
 
         true ->
-          with :ok <- verify_pending_artifact(item) do
+          with {:ok, approved} <- pending_artifact_approval(item) do
             case enroll_on_first_completion(item, item.source,
                    first_completion: true,
                    completed_at: item.watch_enrollment_pending_at
                  ) do
-              {:ok, _} ->
-                case Media.update_media_item(item, %{
-                       media_downloaded_at: item.watch_enrollment_pending_at,
-                       watch_enrollment_pending_at: nil,
-                       watch_postprocessing_pending: false,
-                       watch_download_started_at: nil
-                     }) do
-                  {:ok, completed} -> completed
+              {:ok, %Watch{} = watch} ->
+                case update_watch(watch, %{approved_active_files: Map.put(approved, "first", approved)}) do
+                  {:ok, _} -> :ok
                   {:error, reason} -> Repo.rollback(reason)
                 end
+
+                complete_first_item(item)
+
+              {:ok, _} ->
+                complete_first_item(item)
 
               {:error, reason} ->
                 Repo.rollback(reason)
@@ -95,12 +95,24 @@ defmodule Pinchflat.MediaWatch do
     end)
   end
 
-  defp verify_pending_artifact(item) do
+  defp complete_first_item(item) do
+    case Media.update_media_item(item, %{
+                       media_downloaded_at: item.watch_enrollment_pending_at,
+                       watch_enrollment_pending_at: nil,
+                       watch_postprocessing_pending: false,
+                       watch_download_started_at: nil
+                   }) do
+      {:ok, completed} -> completed
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp pending_artifact_approval(item) do
     if FirstArtifact.pending?(item) do
-      FirstArtifact.verify_completed(item)
+      FirstArtifact.completed_approval(item)
     else
       if effective_watch_window_days(item.source) == 0,
-        do: :ok,
+        do: {:ok, nil},
         else: {:error, :invalid_first_artifact_journal}
     end
   end
@@ -171,8 +183,14 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp decide_observation(_watch, %Observation{livestream: true}, now, jitter) do
-    {:ok, %{last_observed_at: now, next_check_at: DateTime.add(now, @observation_success_seconds + jitter)}, nil}
+  defp decide_observation(_watch, %Observation{livestream: true} = observation, now, jitter) do
+    {:ok,
+     %{
+       last_observed_at: now,
+       last_error_at: now,
+       observed_visibility: Observation.current_visibility(observation),
+       next_check_at: DateTime.add(now, @observation_min_backoff_seconds + jitter, :second)
+     }, nil}
   end
 
   defp decide_observation(watch, observation, now, jitter) do
@@ -260,7 +278,7 @@ defmodule Pinchflat.MediaWatch do
 
   defp success_attributes(watch, observation, now, jitter) do
     attrs =
-      if observation.availability in [:public, :unlisted] and is_nil(observation.duration_seconds) do
+      if is_nil(observation.duration_seconds) or observation.livestream do
         %{
           last_observed_at: now,
           last_error_at: now,
@@ -426,15 +444,21 @@ defmodule Pinchflat.MediaWatch do
 
   defp recover_failed_publication(%Watch{} = watch) do
     update_archive_state(watch, fn _current ->
-      if File.regular?(OriginalArchive.manifest_path(watch.id)) do
-        %{
-          archive_state: "published",
-          original_manifest_path: OriginalArchive.relative_manifest_path(watch.id),
-          operation_id: nil
-        }
-      else
-        state = if File.lstat(OriginalArchive.archive_directory(watch.id)) == {:error, :enoent}, do: "none", else: "preparing"
-        %{archive_state: state}
+      case OriginalArchive.verify_relative(OriginalArchive.relative_manifest_path(watch.id), watch_id: watch.id) do
+        {:ok, manifest} ->
+          if first_archive_matches_approved?(watch, manifest) do
+            %{
+              archive_state: "published",
+              original_manifest_path: OriginalArchive.relative_manifest_path(watch.id),
+              operation_id: nil
+            }
+          else
+            %{archive_state: "needs_recovery"}
+          end
+
+        _ ->
+          state = if File.lstat(OriginalArchive.archive_directory(watch.id)) == {:error, :enoent}, do: "none", else: "preparing"
+          %{archive_state: state}
       end
     end)
   end
@@ -532,14 +556,19 @@ defmodule Pinchflat.MediaWatch do
     manifest_path = watch.original_manifest_path || OriginalArchive.relative_manifest_path(watch.id)
 
     case OriginalArchive.verify_relative(manifest_path, watch_id: watch.id) do
-      {:ok, _manifest} ->
-        {:ok, _} =
-          update_watch(watch, %{
-            archive_state: "published",
-            original_manifest_path: manifest_path,
-            operation_id: nil
-          })
-        :published
+      {:ok, manifest} ->
+        if first_archive_matches_approved?(watch, manifest) do
+          {:ok, _} =
+            update_watch(watch, %{
+              archive_state: "published",
+              original_manifest_path: manifest_path,
+              operation_id: nil
+            })
+          :published
+        else
+          {:ok, _} = update_watch(watch, %{archive_state: "needs_recovery"})
+          :needs_recovery
+        end
 
       {:error, _reason} ->
         directory = OriginalArchive.archive_directory(watch.id)
@@ -628,11 +657,11 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp publish_intent(%Lease{} = lease, %Watch{} = watch, %MediaItem{} = media_item, source_map, operation_id, manifest) do
+  defp publish_intent(%Lease{} = lease, %Watch{} = watch, %MediaItem{} = media_item, source_map, operation_id) do
     with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(media_item),
          {:ok, active} <- fingerprint_entries(entries, operation_id),
          :ok <- stash_stale_backups(active, watch.id, operation_id),
-         :ok <- ensure_active_matches_approved(active, watch, manifest),
+         :ok <- ensure_active_matches_approved(active, watch),
          {:ok, staged} <- fingerprint_staged(source_map) do
       ReplacementIntent.publish(watch.id, %{
         "operation_id" => operation_id,
@@ -738,37 +767,61 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp ensure_active_matches_approved(_active, %{operation_id: id, approved_active_files: nil}, _manifest)
-       when not is_nil(id),
+  defp ensure_active_matches_approved(_active, %{approved_active_files: %{"first" => first}})
+       when not is_map(first),
        do: {:error, :active_file_unverifiable}
 
-  defp ensure_active_matches_approved(active, watch, manifest) do
-    expected =
-      if watch.approved_active_files do
-        watch.approved_active_files
-      else
-        (manifest["files"] || [])
-        |> Enum.with_index()
-        |> Map.new(fn {file, index} ->
-          {Integer.to_string(index), Map.take(file, ["role", "sha256", "size"])}
-        end)
-      end
+  defp ensure_active_matches_approved(_active, %{approved_active_files: %{"first" => first}})
+       when map_size(first) == 0,
+       do: {:error, :active_file_unverifiable}
 
+  defp ensure_active_matches_approved(_active, %{approved_active_files: nil}),
+    do: {:error, :active_file_unverifiable}
+
+  defp ensure_active_matches_approved(_active, %{approved_active_files: approved})
+       when not is_map_key(approved, "first"),
+       do: {:error, :active_file_unverifiable}
+
+  defp ensure_active_matches_approved(active, watch) do
     actual =
       active
       |> Enum.with_index()
       |> Map.new(fn {entry, index} ->
-        fields =
-          if watch.approved_active_files,
-            do: ["role", "path", "sha256", "size"],
-            else: ["role", "sha256", "size"]
-        {Integer.to_string(index), Map.take(entry, fields)}
+        {Integer.to_string(index), Map.take(entry, ["role", "path", "sha256", "size"])}
       end)
 
-    if map_size(actual) == length(active) and actual == expected,
+    if map_size(actual) == length(active) and actual == Map.delete(watch.approved_active_files, "first"),
       do: :ok,
       else: {:error, :active_file_changed}
   end
+
+  defp ensure_item_matches_approved(watch, item) do
+    with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(Repo.preload(item, :metadata)),
+         {:ok, active} <- fingerprint_entries(entries, watch.operation_id || Ecto.UUID.generate()) do
+      ensure_active_matches_approved(active, watch)
+    end
+  end
+
+  defp first_archive_matches_approved?(%{approved_active_files: %{"first" => approved}}, manifest)
+       when is_map(approved) and map_size(approved) > 0 do
+    files = manifest["files"] || []
+
+    if Enum.all?(approved, fn {index, file} -> is_binary(index) and is_map(file) end) do
+      actual =
+        files
+        |> Enum.with_index()
+        |> Map.new(fn {file, index} ->
+          {Integer.to_string(index), Map.take(file, ["role", "sha256", "size"])}
+        end)
+
+      expected = Map.new(approved, fn {index, file} -> {index, Map.take(file, ["role", "sha256", "size"])} end)
+      map_size(actual) == length(files) and actual == expected
+    else
+      false
+    end
+  end
+
+  defp first_archive_matches_approved?(_watch, _manifest), do: false
 
   defp invoke_transfer(transfer_fun, pre_images) do
     case transfer_fun.(pre_images) do
@@ -895,7 +948,7 @@ defmodule Pinchflat.MediaWatch do
 
   defp generated_postprocessing_file?(_entry, _updated, _json), do: false
 
-  defp mark_committed(%Lease{} = lease, operation_id, approved) do
+  defp mark_committed(%Lease{} = lease, operation_id, approved, watch) do
     query =
       from w in Watch,
         where: w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and w.lease_generation == ^lease.generation
@@ -903,7 +956,7 @@ defmodule Pinchflat.MediaWatch do
     case Repo.update_all(query,
            set: [
              operation_id: operation_id,
-             approved_active_files: approved,
+             approved_active_files: Map.put(approved, "first", watch.approved_active_files["first"]),
              lease_owner: nil,
              lease_expires_at: nil,
              operation_kind: nil
@@ -1417,13 +1470,14 @@ defmodule Pinchflat.MediaWatch do
         {:error, :watch_released}
 
       watch.archive_state == "published" ->
-        case verify_archive(watch) do
-          {:ok, _manifest} -> {:ok, watch}
-          {:error, reason} -> {:error, reason}
+        with :ok <- ensure_item_matches_approved(watch, media_item),
+             {:ok, _manifest} <- verify_archive(watch) do
+          {:ok, watch}
         end
 
       true ->
         with true <- watch.archive_state in ["none", "needs_recovery"],
+             :ok <- ensure_item_matches_approved(watch, media_item),
              {:ok, preparing} <-
                update_archive_state(watch, fn _current ->
                  %{archive_state: "preparing", operation_id: Ecto.UUID.generate()}
@@ -1438,10 +1492,18 @@ defmodule Pinchflat.MediaWatch do
 
   defp publish_original(preparing, media_item, opts) do
     case OriginalArchive.publish(preparing, media_item, opts) do
-      {:ok, %{manifest_path: manifest_path}} ->
-        update_archive_state(preparing, fn _current ->
-          %{archive_state: "published", original_manifest_path: manifest_path, operation_id: nil}
-        end)
+      {:ok, %{manifest_path: manifest_path, manifest: manifest}} ->
+        if first_archive_matches_approved?(preparing, manifest) and
+             ensure_item_matches_approved(preparing, media_item) == :ok do
+          update_archive_state(preparing, fn _current ->
+            %{archive_state: "published", original_manifest_path: manifest_path, operation_id: nil}
+          end)
+        else
+          case recover_failed_publication(preparing) do
+            {:ok, _} -> {:error, :active_file_changed}
+            {:error, reason} -> {:error, {:archive_recovery_failed, :active_file_changed, reason}}
+          end
+        end
 
       {:error, reason} ->
         case recover_failed_publication(preparing) do
@@ -1456,12 +1518,16 @@ defmodule Pinchflat.MediaWatch do
 
   Returns {:ok, map()} | {:error, term()}.
   """
-  def verify_archive(%Watch{original_manifest_path: path, id: watch_id}) when is_binary(path) do
-    OriginalArchive.verify_relative(path, watch_id: watch_id)
-  end
+  def verify_archive(%Watch{} = watch) do
+    path = watch.original_manifest_path || OriginalArchive.relative_manifest_path(watch.id)
 
-  def verify_archive(%Watch{id: watch_id}) do
-    OriginalArchive.verify_relative(OriginalArchive.relative_manifest_path(watch_id), watch_id: watch_id)
+    with {:ok, manifest} <- OriginalArchive.verify_relative(path, watch_id: watch.id),
+         true <- first_archive_matches_approved?(watch, manifest) do
+      {:ok, manifest}
+    else
+      false -> {:error, :active_file_unverifiable}
+      error -> error
+    end
   end
 
   @doc """
@@ -1542,8 +1608,8 @@ defmodule Pinchflat.MediaWatch do
         Repo.transaction(fn ->
           with :ok <- reserve_for_commit(lease),
                {:ok, watch} <- locked_watch(lease.watch_id),
-               {:ok, manifest} <- verify_fence(lease),
-               {:ok, intent} <- publish_intent(lease, watch, media_item, source_map, operation_id, manifest),
+               {:ok, _manifest} <- verify_fence(lease),
+               {:ok, intent} <- publish_intent(lease, watch, media_item, source_map, operation_id),
                :ok <- ReplacementIntent.advance(intent, "transferring"),
                {:ok, transferred_json} <- invoke_transfer(transfer_fun, pre_images(intent)),
                :ok <- verify_transferred(intent, transferred_json),
@@ -1552,7 +1618,7 @@ defmodule Pinchflat.MediaWatch do
                :ok <- backup_postprocessing_files(intent),
                {:ok, updated} <- invoke_update(update_fun, transferred_json),
                {:ok, approved} <- approved_active_files(updated, intent, transferred_json),
-               :ok <- mark_committed(lease, operation_id, approved) do
+               :ok <- mark_committed(lease, operation_id, approved, watch) do
             {updated, intent}
           else
             {:error, reason} -> Repo.rollback(reason)
@@ -1621,9 +1687,9 @@ defmodule Pinchflat.MediaWatch do
             {:error, :watch_archive_required}
 
           true ->
-            case verify_archive(watch) do
-              {:ok, _manifest} -> :ok
-              {:error, reason} -> {:error, reason}
+            with :ok <- ensure_item_matches_approved(watch, media_item),
+                 {:ok, _manifest} <- verify_archive(watch) do
+              :ok
             end
         end
     end
