@@ -50,8 +50,16 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
       active_sidecar = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "video-#{item.uuid}.json")
       File.write!(staged_media, "first artifact")
       File.write!(staged_sidecar, "recoverable sidecar")
-      assert :ok = FirstArtifact.remember(started, %{"filepath" => active_media}, staged_media,
-        %{staged_media => active_media, staged_sidecar => active_sidecar}, stage)
+
+      assert :ok =
+               FirstArtifact.remember(
+                 started,
+                 %{"filepath" => active_media},
+                 staged_media,
+                 %{staged_media => active_media, staged_sidecar => active_sidecar},
+                 stage
+               )
+
       File.rename!(staged_media, active_media)
       assert :ok = File.touch(stage, {{2020, 1, 1}, {0, 0, 0}})
       assert :ok = File.touch(unowned, {{2020, 1, 1}, {0, 0, 0}})

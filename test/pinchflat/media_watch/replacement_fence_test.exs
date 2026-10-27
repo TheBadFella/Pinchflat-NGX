@@ -171,22 +171,24 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
       staged = staged_file("replacement artifact")
 
-      assert {:ok, _} = MediaWatch.commit_replacement(
-               lease,
-               item,
-               %{source_map: %{staged => item.media_filepath}},
-               fn _ ->
-                 File.rename!(staged, item.media_filepath)
-                 {:ok, %{"filepath" => item.media_filepath}}
-               end,
-               fn _ -> Media.update_media_item(item, %{title: "replacement"}) end
-             )
+      assert {:ok, _} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn _ ->
+                   File.rename!(staged, item.media_filepath)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _ -> Media.update_media_item(item, %{title: "replacement"}) end
+               )
 
       operation = Ecto.UUID.generate()
       backup = ReplacementIntent.backup_path(item.media_filepath, operation)
       File.write!(backup, "damaged pre-image!!")
       approved = File.read!(item.media_filepath)
       hash = Base.encode16(:crypto.hash(:sha256, approved), case: :lower)
+
       intent = %{
         "watch_id" => watch.id,
         "operation_id" => operation,
@@ -246,6 +248,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                  fn pre_images ->
                    refute File.exists?(pre_images[item.media_filepath])
                    {:ok, intent} = ReplacementIntent.read(watch.id)
+
                    assert {:ok, [saved]} =
                             ReplacementIntent.quarantine(watch.id, intent["operation_id"], [item.media_filepath])
 
@@ -536,6 +539,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       refute ReplacementIntent.pending?(watch.id)
 
       [directory] = Enum.filter(File.ls!(quarantine_root()), &String.starts_with?(&1, "quarantine-#{watch.id}-"))
+
       recovered =
         quarantine_root()
         |> Path.join(directory)

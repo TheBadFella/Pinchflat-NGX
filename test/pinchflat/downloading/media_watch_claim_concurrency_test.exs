@@ -74,12 +74,13 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
       hash = Base.encode16(:crypto.hash(:sha256, "first artifact"), case: :lower)
 
       try do
-        {:ok, _} = ReplacementIntent.publish(watch.id, %{
-          "operation_id" => operation_id,
-          "phase" => "transferring",
-          "active" => [%{"role" => "media", "path" => path, "sha256" => hash, "size" => 14}],
-          "staged" => []
-        })
+        {:ok, _} =
+          ReplacementIntent.publish(watch.id, %{
+            "operation_id" => operation_id,
+            "phase" => "transferring",
+            "active" => [%{"role" => "media", "path" => path, "sha256" => hash, "size" => 14}],
+            "staged" => []
+          })
 
         assert [%{action: :needs_recovery}] = Enum.filter(MediaWatch.recover_pending(), &(&1.watch_id == watch.id))
         assert ReplacementIntent.pending?(watch.id)
@@ -87,24 +88,28 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
 
         parent = self()
 
-        writer = Task.async(fn ->
-          Repo.transaction(fn ->
-            Repo.update_all(from(w in Watch, where: w.id == ^watch.id), set: [updated_at: DateTime.utc_now()])
-            File.write!(path, "replacement artifact")
-            send(parent, :writer_reserved)
-            receive do: (:finish -> :ok)
-            Repo.update_all(from(w in Watch, where: w.id == ^watch.id),
-              set: [operation_id: operation_id, lease_owner: nil, lease_expires_at: nil]
-            )
+        writer =
+          Task.async(fn ->
+            Repo.transaction(fn ->
+              Repo.update_all(from(w in Watch, where: w.id == ^watch.id), set: [updated_at: DateTime.utc_now()])
+              File.write!(path, "replacement artifact")
+              send(parent, :writer_reserved)
+              receive do: (:finish -> :ok)
+
+              Repo.update_all(from(w in Watch, where: w.id == ^watch.id),
+                set: [operation_id: operation_id, lease_owner: nil, lease_expires_at: nil]
+              )
+            end)
           end)
-        end)
 
         assert_receive :writer_reserved
         recovery = Task.async(fn -> MediaWatch.recover_pending() end)
         send(writer.pid, :finish)
         assert {:ok, _} = Task.await(writer, 10_000)
+
         assert [%{action: :commit_confirmed}] =
                  Enum.filter(Task.await(recovery, 10_000), &(&1.watch_id == watch.id))
+
         assert File.read!(path) == "replacement artifact"
         refute ReplacementIntent.pending?(watch.id)
       after
@@ -144,12 +149,13 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
             fn _ ->
               File.write!(path, "partial transfer")
 
-              successor = Task.async(fn ->
-                MediaWatch.release_lease(lease)
-                {:ok, next} = MediaWatch.claim_lease(item.id, "replace")
-                File.write!(path, "successor bytes")
-                next
-              end)
+              successor =
+                Task.async(fn ->
+                  MediaWatch.release_lease(lease)
+                  {:ok, next} = MediaWatch.claim_lease(item.id, "replace")
+                  File.write!(path, "successor bytes")
+                  next
+                end)
 
               Process.put(:successor, successor)
               {:error, :transfer_failed}
@@ -161,14 +167,17 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
         assert successor.generation > lease.generation
         assert File.read!(path) == "successor bytes"
         assert MediaWatch.lease_current?(successor)
+
         assert match?({:error, :transfer_failed}, result) or
                  match?({:error, {:replacement_recovery_failed, :transfer_failed, :lost_lease}}, result)
       after
         if successor = Process.delete(:successor), do: Task.await(successor, 10_000)
+
         if ReplacementIntent.pending?(watch.id) do
           {:ok, intent} = ReplacementIntent.read(watch.id)
           ReplacementIntent.clear(watch.id, intent["operation_id"])
         end
+
         Repo.delete!(Repo.get!(Watch, watch.id))
         Repo.delete!(item)
         Repo.delete!(source)
@@ -196,22 +205,26 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
       parent = self()
 
       try do
-        writer = Task.async(fn ->
-          Repo.transaction(fn ->
-            Repo.update_all(from(w in Watch, where: w.id == ^watch.id), set: [updated_at: DateTime.utc_now()])
-            send(parent, :writer_reserved)
-            receive do: (:finish -> :ok)
-            {:ok, _} = MediaWatch.claim_lease(item.id, "archive")
+        writer =
+          Task.async(fn ->
+            Repo.transaction(fn ->
+              Repo.update_all(from(w in Watch, where: w.id == ^watch.id), set: [updated_at: DateTime.utc_now()])
+              send(parent, :writer_reserved)
+              receive do: (:finish -> :ok)
+              {:ok, _} = MediaWatch.claim_lease(item.id, "archive")
+            end)
           end)
-        end)
 
         assert_receive :writer_reserved
         recovery = Task.async(fn -> MediaWatch.recover_pending() end)
         send(writer.pid, :finish)
         assert {:ok, _} = Task.await(writer, 10_000)
-        assert Enum.all?(Enum.filter(Task.await(recovery, 10_000), &(&1.watch_id == watch.id)),
+
+        assert Enum.all?(
+                 Enum.filter(Task.await(recovery, 10_000), &(&1.watch_id == watch.id)),
                  &(&1.action == :lease_busy)
                )
+
         assert File.exists?(Path.join(temp, "media.mkv"))
         assert Repo.get!(Watch, watch.id).lease_owner
         assert Repo.get!(Watch, watch.id).archive_state == "preparing"

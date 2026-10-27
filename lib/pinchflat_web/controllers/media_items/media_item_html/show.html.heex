@@ -102,7 +102,10 @@
                 Remote checks end on {format_watch_timestamp(@watch.ends_at, "%Y-%m-%d %H:%M")}.
             <% end %>
           </p>
-          <p :if={@watch.archive_state == "published" && !@watch.released_at && watch_archive_summary(@archive_summary)} class="mt-1 theme-status-success">
+          <p
+            :if={@watch.archive_state == "published" && !@watch.released_at && watch_archive_summary(@archive_summary)}
+            class="mt-1 theme-status-success"
+          >
             Saved original protected.
           </p>
         </div>
@@ -203,8 +206,12 @@
             <dl class="space-y-3">
               <div>
                 <dt class="text-xs text-theme-on-surface-muted">Status</dt>
-                <dd :if={watch_archive_summary(@archive_summary)} class="mt-1">Saved original retained separately from the current file</dd>
-                <dd :if={!watch_archive_summary(@archive_summary)} class="mt-1">Saved original could not be verified. Playback and download are unavailable.</dd>
+                <dd :if={watch_archive_summary(@archive_summary)} class="mt-1">
+                  Saved original retained separately from the current file
+                </dd>
+                <dd :if={!watch_archive_summary(@archive_summary)} class="mt-1">
+                  Saved original could not be verified. Playback and download are unavailable.
+                </dd>
               </div>
               <div :if={watch_archive_summary(@archive_summary)}>
                 <dt class="text-xs text-theme-on-surface-muted">Size</dt>

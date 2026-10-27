@@ -366,15 +366,16 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
          true <- size == manifest_entry["size"],
          :ok <- File.mkdir_p(Path.dirname(path)),
          temporary = path <> ".pinchflat-restore-#{Ecto.UUID.generate()}",
-         :ok <- copy_exclusive(archive_source, temporary, fn ->
-           with {:ok, ^expected} <- hash_file(temporary),
-                :ok <- quarantine_current(path, intent),
-                :ok <- File.rename(temporary, path),
-                {:ok, ^expected} <- hash_file(path),
-                :ok <- sync_directory(Path.dirname(path)) do
-             :ok
-           end
-         end) do
+         :ok <-
+           copy_exclusive(archive_source, temporary, fn ->
+             with {:ok, ^expected} <- hash_file(temporary),
+                  :ok <- quarantine_current(path, intent),
+                  :ok <- File.rename(temporary, path),
+                  {:ok, ^expected} <- hash_file(path),
+                  :ok <- sync_directory(Path.dirname(path)) do
+               :ok
+             end
+           end) do
       :ok
     else
       {:ok, %{type: :symlink}} -> {:error, :active_is_symlink}

@@ -84,7 +84,15 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       item = media_item_with_attachments(%{source_id: source.id})
       {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
       now = DateTime.utc_now() |> DateTime.truncate(:second)
-      public = %Observation{backend: :test, observed_at: now, availability: :public, duration_seconds: 120, livestream: false}
+
+      public = %Observation{
+        backend: :test,
+        observed_at: now,
+        availability: :public,
+        duration_seconds: 120,
+        livestream: false
+      }
+
       {:ok, _} = MediaWatch.record_observation(watch, public)
       incomplete = %{public | availability: :private, duration_seconds: nil, observed_at: DateTime.add(now, 60)}
       {:ok, %{watch: held}} = MediaWatch.record_observation(watch, incomplete)
@@ -175,6 +183,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
         hold_reason: nil
       )
       |> Repo.update!()
+
       expired_html = conn |> recycle() |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
       assert expired_html =~ "Saved original retained separately from the current file"
       assert expired_html =~ "The watch has ended; automatic retention may remove the current file."

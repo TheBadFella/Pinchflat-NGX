@@ -139,7 +139,12 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
 
     alias_source = Pinchflat.Sources.get_source!(item.source_id)
     future_cutoff = Date.add(Date.utc_today(), 1)
-    {:ok, source} = Pinchflat.Sources.update_source(alias_source, %{download_cutoff_date: future_cutoff}, run_post_commit_tasks: false)
+
+    {:ok, source} =
+      Pinchflat.Sources.update_source(alias_source, %{download_cutoff_date: future_cutoff},
+        run_post_commit_tasks: false
+      )
+
     assert {:error, :watch_hold} = Pinchflat.Media.delete_media_files(pending)
     assert {:error, :watch_tombstone_required} = Pinchflat.Media.delete_media_item(pending, delete_files: true)
     assert {:error, :watch_tombstone_required} = Pinchflat.Media.delete_media_item(pending)
@@ -204,8 +209,10 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     watch = MediaWatch.get_watch_for_media_item(item.id)
     refute Pinchflat.Downloading.FirstArtifact.pending?(completed)
     assert is_map(watch.approved_active_files)
+
     assert Enum.any?(Map.values(watch.approved_active_files), fn file ->
-             file["role"] == "media" and file["sha256"] == Base.encode16(:crypto.hash(:sha256, "first artifact"), case: :lower)
+             file["role"] == "media" and
+               file["sha256"] == Base.encode16(:crypto.hash(:sha256, "first artifact"), case: :lower)
            end)
 
     File.write!(path, "edited first artifact")
@@ -494,10 +501,12 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     artifact = Pinchflat.Downloading.FirstArtifact
     assert :ok = artifact.remember(started, json, staged, %{staged => path, sidecar => destination_sidecar})
     File.rename!(staged, path)
+
     stub(YtDlpRunnerMock, :run, fn
       _, :download, _, _, _ -> flunk("recovery must not download")
       _, :download_thumbnail, _, _, _ -> {:ok, ""}
     end)
+
     assert {:error, :first_artifact_needs_recovery} = run(item)
     assert File.read!(path) == "first artifact"
     assert File.read!(sidecar) == "sidecar bytes"

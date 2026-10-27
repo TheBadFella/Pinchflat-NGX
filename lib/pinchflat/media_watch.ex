@@ -97,11 +97,11 @@ defmodule Pinchflat.MediaWatch do
 
   defp complete_first_item(item) do
     case Media.update_media_item(item, %{
-                       media_downloaded_at: item.watch_enrollment_pending_at,
-                       watch_enrollment_pending_at: nil,
-                       watch_postprocessing_pending: false,
-                       watch_download_started_at: nil
-                   }) do
+           media_downloaded_at: item.watch_enrollment_pending_at,
+           watch_enrollment_pending_at: nil,
+           watch_postprocessing_pending: false,
+           watch_download_started_at: nil
+         }) do
       {:ok, completed} -> completed
       {:error, reason} -> Repo.rollback(reason)
     end
@@ -395,14 +395,17 @@ defmodule Pinchflat.MediaWatch do
                      attrs.fingerprint <> ":transition:#{watch.observation_version + 1}",
                      Map.take(attrs, [:observed_at, :old_value, :new_value])
                    ) do
-                {:ok, :duplicate} -> nil
+                {:ok, :duplicate} ->
+                  nil
+
                 {:ok, event} ->
                   case Oban.insert(NotificationWorker.new(%{"id" => event.id})) do
                     {:ok, _job} -> event
                     {:error, reason} -> Repo.rollback(reason)
                   end
 
-                {:error, reason} -> Repo.rollback(reason)
+                {:error, reason} ->
+                  Repo.rollback(reason)
               end
           end
 
@@ -457,7 +460,11 @@ defmodule Pinchflat.MediaWatch do
           end
 
         _ ->
-          state = if File.lstat(OriginalArchive.archive_directory(watch.id)) == {:error, :enoent}, do: "none", else: "preparing"
+          state =
+            if File.lstat(OriginalArchive.archive_directory(watch.id)) == {:error, :enoent},
+              do: "none",
+              else: "preparing"
+
           %{archive_state: state}
       end
     end)
@@ -528,8 +535,9 @@ defmodule Pinchflat.MediaWatch do
 
         query =
           from w in Watch,
-            where: w.id == ^snapshot.id and w.lease_generation == ^snapshot.lease_generation and
-              (is_nil(w.lease_expires_at) or w.lease_expires_at <= ^now)
+            where:
+              w.id == ^snapshot.id and w.lease_generation == ^snapshot.lease_generation and
+                (is_nil(w.lease_expires_at) or w.lease_expires_at <= ^now)
 
         case Repo.update_all(query, set: [updated_at: now]) do
           {1, _} ->
@@ -564,6 +572,7 @@ defmodule Pinchflat.MediaWatch do
               original_manifest_path: manifest_path,
               operation_id: nil
             })
+
           :published
         else
           {:ok, _} = update_watch(watch, %{archive_state: "needs_recovery"})
@@ -1011,7 +1020,9 @@ defmodule Pinchflat.MediaWatch do
       end)
 
     case result do
-      {:ok, :ok} -> :ok
+      {:ok, :ok} ->
+        :ok
+
       {:error, reason} ->
         Logger.error("watched replacement recovery failed for watch ##{lease.watch_id}: #{inspect(reason)}")
         {:error, reason}
@@ -1064,7 +1075,8 @@ defmodule Pinchflat.MediaWatch do
                 clear_expired_lease(watch)
                 :restored
 
-              {:error, reason} -> Repo.rollback(reason)
+              {:error, reason} ->
+                Repo.rollback(reason)
             end
         end
       else

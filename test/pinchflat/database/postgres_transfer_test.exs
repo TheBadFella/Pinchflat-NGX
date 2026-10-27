@@ -180,6 +180,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert transferred_watch.observed_visibility == "private"
     assert transferred_watch.current_upstream_duration_seconds == 600
     assert transferred_watch.confirmed_upstream_duration_seconds == 598
+
     assert transferred_watch.approved_active_files == %{
              "0" => %{
                "role" => "media",
@@ -188,6 +189,7 @@ defmodule Pinchflat.Database.PostgresTransferTest do
                "size" => 77
              }
            }
+
     assert transferred_watch.confirmed_change_at == ~U[2026-01-03 03:04:05Z]
     assert transferred_watch.released_at == ~U[2026-01-04 03:04:05Z]
     assert transferred_watch.release_manifest_sha256 == "approved-manifest-digest"

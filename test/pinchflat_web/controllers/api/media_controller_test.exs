@@ -90,8 +90,13 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       File.write!(path, "first artifact")
       item = media_item_fixture(%{source_id: source.id, media_filepath: path})
       {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
       watch
-      |> Ecto.Changeset.change(current_upstream_duration_seconds: 122, current_visibility: "public", observed_visibility: "private")
+      |> Ecto.Changeset.change(
+        current_upstream_duration_seconds: 122,
+        current_visibility: "public",
+        observed_visibility: "private"
+      )
       |> Repo.update!()
 
       conn = get(conn, "/api/media/#{item.id}")
@@ -117,8 +122,11 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       files =
         Enum.map(manifest["files"], fn
           %{"role" => "media"} = entry ->
-            %{entry | "sha256" => Base.encode16(:crypto.hash(:sha256, "edited original"), case: :lower),
-                      "size" => byte_size("edited original")}
+            %{
+              entry
+              | "sha256" => Base.encode16(:crypto.hash(:sha256, "edited original"), case: :lower),
+                "size" => byte_size("edited original")
+            }
 
           entry ->
             entry

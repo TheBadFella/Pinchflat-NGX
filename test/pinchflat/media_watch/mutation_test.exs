@@ -239,8 +239,10 @@ defmodule Pinchflat.MediaWatch.MutationTest do
       refute File.exists?(directory)
       assert File.read!(Path.join(temporary, "media.mkv")) == "prepared original"
       assert Repo.get!(Watch, watch.id).archive_state == "none"
+
       assert {:ok, %{archive_state: "published"}} =
                MediaWatch.archive_original(Repo.get!(Watch, watch.id), Repo.preload(item, :metadata))
+
       assert File.read!(Path.join(temporary, "media.mkv")) == "prepared original"
     end
 

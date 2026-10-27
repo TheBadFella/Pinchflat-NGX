@@ -80,15 +80,21 @@ defmodule PinchflatWeb.OriginalControllerTest do
     files =
       Enum.map(manifest["files"], fn
         %{"role" => "media"} = entry ->
-          %{entry | "sha256" => Base.encode16(:crypto.hash(:sha256, "changed original"), case: :lower),
-                    "size" => byte_size("changed original")}
+          %{
+            entry
+            | "sha256" => Base.encode16(:crypto.hash(:sha256, "changed original"), case: :lower),
+              "size" => byte_size("changed original")
+          }
 
         entry ->
           entry
       end)
 
     File.write!(manifest_path, Jason.encode!(%{manifest | "files" => files}))
-    assert {:ok, _} = OriginalArchive.verify_relative(OriginalArchive.relative_manifest_path(watch.id), watch_id: watch.id)
+
+    assert {:ok, _} =
+             OriginalArchive.verify_relative(OriginalArchive.relative_manifest_path(watch.id), watch_id: watch.id)
+
     assert {:error, :active_file_unverifiable} = MediaWatch.verify_archive(watch)
     assert {:error, :active_file_unverifiable} = OriginalArchive.summary(watch)
     assert {:error, :active_file_unverifiable} = OriginalArchive.files(watch)

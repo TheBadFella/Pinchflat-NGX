@@ -198,7 +198,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
     with :ok <- prepare_first_artifact(first?, media_with_preloads, parsed_json, staging_directory),
          {:ok, transferred_json} <-
-           DownloadStaging.transfer(parsed_json, staging_directory, Keyword.put(staging_opts, :preserve_on_failure, first?)),
+           DownloadStaging.transfer(
+             parsed_json,
+             staging_directory,
+             Keyword.put(staging_opts, :preserve_on_failure, first?)
+           ),
          :ok <- complete_first_transfer(first?, media_with_preloads, transferred_json) do
       update_media_item_from_parsed_json(media_with_preloads, transferred_json, first_artifact: true)
     else

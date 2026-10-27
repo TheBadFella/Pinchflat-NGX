@@ -84,11 +84,10 @@ defmodule Pinchflat.Downloading.FirstArtifact do
          root when is_binary(root) <- Path.dirname(stage),
          true <- Path.expand(stage) == stage,
          true <-
-           root in
-             Enum.map(
-               List.wrap(DownloadStaging.configured_directory()) ++ [DownloadStaging.replacement_directory()],
-               &Path.expand/1
-             ),
+           root in Enum.map(
+             List.wrap(DownloadStaging.configured_directory()) ++ [DownloadStaging.replacement_directory()],
+             &Path.expand/1
+           ),
          true <- String.starts_with?(Path.basename(stage), "media-#{item.id}-"),
          :ok <- no_symlink_ancestors(root, stage),
          {:ok, %{type: :directory}} <- File.lstat(stage) do
@@ -106,10 +105,13 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     with :ok <- safe_journal_directory(dir),
          {:ok, %{type: :regular}} <- File.lstat(journal),
          {:ok, bytes} <- File.read(journal),
-         {:ok, %{"uuid" => uuid, "path" => path, "hash" => hash, "files" => files, "metadata" => metadata, "phase" => phase} = entry} <-
+         {:ok,
+          %{"uuid" => uuid, "path" => path, "hash" => hash, "files" => files, "metadata" => metadata, "phase" => phase} =
+            entry} <-
            Jason.decode(bytes),
-         true <- phase in ["prepared", "transferred"] and uuid == item.uuid and files[path] == hash and
-                   metadata == Path.join(Path.dirname(dir), "metadata.json.gz"),
+         true <-
+           phase in ["prepared", "transferred"] and uuid == item.uuid and files[path] == hash and
+             metadata == Path.join(Path.dirname(dir), "metadata.json.gz"),
          {:ok, ^hash} <- hash_file(Path.join(dir, "media")),
          :ok <- verify_files(files),
          {:ok, parsed_json} <- MetadataFileHelpers.read_compressed_metadata(metadata),
@@ -151,8 +153,9 @@ defmodule Pinchflat.Downloading.FirstArtifact do
          %DateTime{} <- completed_at(item),
          {:ok, bytes} <- File.read(Path.join(directory(item), "completed.json")),
          {:ok, %{"files" => files}} <- Jason.decode(bytes),
-         true <- is_map(files) and is_map(entry["files"]) and
-                   Enum.sort(Map.keys(files)) == Enum.sort(Map.keys(entry["files"])),
+         true <-
+           is_map(files) and is_map(entry["files"]) and
+             Enum.sort(Map.keys(files)) == Enum.sort(Map.keys(entry["files"])),
          :ok <- verify_files(files),
          {:ok, approved} <- snapshot_approval(item),
          true <- approved == entry_approval(bytes) do
@@ -178,8 +181,12 @@ defmodule Pinchflat.Downloading.FirstArtifact do
                  {:ok, files} <- fingerprint_files(Map.keys(entry["files"])),
                  {:ok, approved} <- snapshot_approval(item),
                  content = %{
-                   uuid: item.uuid, hash: entry["hash"], path: entry["path"],
-                   files: files, approved: approved, at: DateTime.to_iso8601(now)
+                   uuid: item.uuid,
+                   hash: entry["hash"],
+                   path: entry["path"],
+                   files: files,
+                   approved: approved,
+                   at: DateTime.to_iso8601(now)
                  },
                  {:ok, file} <- File.open(temporary, [:write, :exclusive, :binary]),
                  :ok <- IO.binwrite(file, Jason.encode!(content)),
@@ -217,8 +224,9 @@ defmodule Pinchflat.Downloading.FirstArtifact do
          {:ok, bytes} <- File.read(Path.join(dir, "intent.json")),
          {:ok, %{"uuid" => uuid, "phase" => "transferred", "hash" => hash, "path" => path, "files" => files} = entry} <-
            Jason.decode(bytes),
-         true <- uuid == item.uuid and is_binary(hash) and is_binary(path) and is_map(files) and
-                   files[path] == hash do
+         true <-
+           uuid == item.uuid and is_binary(hash) and is_binary(path) and is_map(files) and
+             files[path] == hash do
       {:ok, entry}
     else
       _ -> {:error, :invalid_first_artifact_journal}
