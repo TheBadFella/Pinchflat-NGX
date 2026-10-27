@@ -3,8 +3,12 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
 
   import Mox
   import Pinchflat.MediaFixtures
+  import Pinchflat.ProfilesFixtures
   import Pinchflat.SourcesFixtures
   import PinchflatWeb.ApiSpecHelper
+
+  alias Pinchflat.MediaWatch
+  alias Pinchflat.Repo
 
   describe "GET /api/media" do
     test "returns list of media items", %{conn: conn} do
@@ -64,6 +68,34 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       assert response["title"] == item.title
 
       # Validate response matches OpenAPI schema
+      assert_response_schema(conn, "Api.MediaController.show")
+    end
+
+    test "returns watch state for an enrolled item", %{conn: conn} do
+      profile =
+        media_profile_fixture()
+        |> Ecto.Changeset.change(watch_window_days: 14)
+        |> Repo.update!()
+
+      source = source_fixture(%{media_profile_id: profile.id})
+
+      path =
+        Path.join(
+          Application.fetch_env!(:pinchflat, :media_directory),
+          "api-watch-#{System.unique_integer([:positive])}.mp4"
+        )
+
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "first artifact")
+      item = media_item_fixture(%{source_id: source.id, media_filepath: path})
+      {:ok, _watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
+      conn = get(conn, "/api/media/#{item.id}")
+      response = json_response(conn, 200)
+
+      assert response["watch"]["confirmed_state"] == "unchanged"
+      assert response["watch"]["saved_original_available"] == false
+      assert response["watch"]["ends_at"] =~ "T"
       assert_response_schema(conn, "Api.MediaController.show")
     end
 

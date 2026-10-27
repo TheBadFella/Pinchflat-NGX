@@ -33,6 +33,7 @@ defmodule Pinchflat.Profiles.MediaProfile do
     media_container
     redownload_delay_days
     retention_period_days
+    watch_window_days
     marked_for_deletion_at
   )a
 
@@ -44,6 +45,7 @@ defmodule Pinchflat.Profiles.MediaProfile do
     field :name, :string
     field :redownload_delay_days, :integer
     field :retention_period_days, :integer
+    field :watch_window_days, :integer, default: 0
 
     field :output_path_template, :string,
       default: "/{{ source_custom_name }}/{{ upload_yyyy_mm_dd }} {{ title }}/{{ title }} [{{ id }}].{{ ext }}"
@@ -96,6 +98,8 @@ defmodule Pinchflat.Profiles.MediaProfile do
     |> validate_format(:output_path_template_shorts, ext_regex(), message: "must end with .{{ ext }}")
     |> validate_number(:redownload_delay_days, greater_than_or_equal_to: 0)
     |> validate_number(:retention_period_days, greater_than: 0)
+    |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
+    |> check_constraint(:watch_window_days, name: :media_profiles_watch_window_days_check)
     |> validate_subset(:sponsorblock_mark_categories, @sponsorblock_categories)
     |> validate_subset(:sponsorblock_remove_categories, @sponsorblock_categories)
     |> validate_sponsorblock_categories_do_not_overlap()

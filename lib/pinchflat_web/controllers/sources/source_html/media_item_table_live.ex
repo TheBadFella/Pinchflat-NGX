@@ -16,13 +16,46 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
   @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
+  @watch_filters %{
+    "all" => :all,
+    "changed_or_unavailable" => :changed_or_unavailable,
+    "changed" => :changed,
+    "unlisted" => :unlisted,
+    "unavailable" => :unavailable,
+    "check_failed" => :check_failed
+  }
+
+  attr :watch_filter, :string, required: true
+
+  def watch_filter(assigns) do
+    ~H"""
+    <form id="source-watch-filter" phx-change="filter_watch_state" class="w-full min-w-0 sm:w-auto">
+      <label class="sr-only" for="source-watch-filter-select">Watch state</label>
+      <select
+        id="source-watch-filter-select"
+        name="watch_filter"
+        class="theme-input w-full min-w-0 rounded-m3-sm text-sm sm:w-auto"
+      >
+        <option value="all" selected={@watch_filter == "all"}>All downloaded</option>
+        <option value="changed_or_unavailable" selected={@watch_filter == "changed_or_unavailable"}>
+          Changed or unavailable
+        </option>
+        <option value="changed" selected={@watch_filter == "changed"}>Changed or suspected</option>
+        <option value="unlisted" selected={@watch_filter == "unlisted"}>Unlisted now</option>
+        <option value="unavailable" selected={@watch_filter == "unavailable"}>Private or unavailable</option>
+        <option value="check_failed" selected={@watch_filter == "check_failed"}>Remote check failed</option>
+      </select>
+    </form>
+    """
+  end
 
   def render(%{total_record_count: 0} = assigns) do
     ~H"""
     <.action_feedback feedback={@action_feedback} />
-    <div class="mb-4 flex items-center">
+    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
       <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
       <p class="ml-2">Nothing Here!</p>
+      <.watch_filter :if={@media_state == "downloaded" and @watch_filter != "all"} watch_filter={@watch_filter} />
     </div>
     """
   end
@@ -78,6 +111,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
           </.button>
 
+          <.watch_filter :if={@media_state == "downloaded"} watch_filter={@watch_filter} />
+
           <form :if={@media_state == "failed"} id="source-error-type-filter" phx-change="filter_error_type">
             <label class="sr-only" for="source-error-type">Failure type</label>
             <select
@@ -113,6 +148,10 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </div>
         </div>
       </header>
+
+      <div :if={@filtered_record_count == 0} class="theme-surface-accent space-y-3 rounded-m3-sm p-4">
+        <p>No media matches your search. Try another search or change the filter.</p>
+      </div>
 
       <div :for={group <- @grouped_records} class="space-y-4">
         <section
@@ -241,32 +280,34 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   task={Map.get(@tasks_by_media_item_id, media_item.id)}
                 />
                 <dl class="grid grid-cols-1 gap-3 text-sm">
-                  <div class="flex items-start justify-between gap-3">
-                    <dt class="text-theme-on-surface-muted">Upload Date</dt>
+                  <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <dt class="shrink-0 text-theme-on-surface-muted">Upload Date</dt>
 
-                    <dd class="min-w-0 break-words text-right text-theme-on-surface">
+                    <dd class="ml-auto min-w-0 max-w-full shrink-0 break-words text-right text-theme-on-surface">
                       {upload_date_label(media_item.uploaded_at)}
                     </dd>
                   </div>
 
-                  <div class="flex items-start justify-between gap-3">
-                    <dt class="text-theme-on-surface-muted">Availability</dt>
+                  <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <dt class="shrink-0 text-theme-on-surface-muted">Availability</dt>
 
-                    <dd class="text-right"><.availability_badge availability={media_item.availability} /></dd>
+                    <dd class="ml-auto shrink-0 text-right">
+                      <.availability_badge availability={media_item.availability} />
+                    </dd>
                   </div>
 
-                  <div class="flex items-start justify-between gap-3">
-                    <dt class="text-theme-on-surface-muted">Size / Progress</dt>
+                  <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <dt class="shrink-0 text-theme-on-surface-muted">Size / Progress</dt>
 
-                    <dd class="min-w-0 max-w-[65%] break-words text-right text-theme-on-surface">
+                    <dd class="ml-auto min-w-0 max-w-full shrink-0 break-words text-right text-theme-on-surface">
                       <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
                     </dd>
                   </div>
 
-                  <div :if={@media_state == "other"} class="flex items-start justify-between gap-3">
-                    <dt class="text-theme-on-surface-muted">Status</dt>
+                  <div :if={@media_state == "other"} class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <dt class="shrink-0 text-theme-on-surface-muted">Status</dt>
 
-                    <dd class="min-w-0 break-words text-right text-theme-on-surface">
+                    <dd class="ml-auto min-w-0 max-w-full shrink-0 break-words text-right text-theme-on-surface">
                       <% status = media_status(media_item) %>
                       <.tooltip tooltip={status.tooltip} position="bottom-right" tooltip_class="w-64">
                         <span class={["flex items-center gap-1.5", status.class]}>
@@ -416,7 +457,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       |> Repo.preload(:media_profile)
 
     error_type_filter = "all"
-    base_query = generate_base_query(source, media_state, error_type_filter)
+    watch_filter = "all"
+    base_query = generate_base_query(source, media_state, error_type_filter, watch_filter)
     pagination_attrs = fetch_pagination_attributes(base_query, page, nil, media_state)
 
     new_assigns =
@@ -427,7 +469,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           source: source,
           media_state: media_state,
           error_type_filter: error_type_filter,
-          view_mode: "list"
+          view_mode: "list",
+          watch_filter: watch_filter
         }
       )
 
@@ -460,7 +503,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_event("filter_error_type", %{"error_type" => error_type}, socket) do
     error_type_filter = if Map.has_key?(@error_type_filters, error_type), do: error_type, else: "all"
-    base_query = generate_base_query(socket.assigns.source, socket.assigns.media_state, error_type_filter)
+
+    base_query =
+      generate_base_query(
+        socket.assigns.source,
+        socket.assigns.media_state,
+        error_type_filter,
+        socket.assigns.watch_filter
+      )
 
     pagination_attrs =
       fetch_pagination_attributes(base_query, 1, socket.assigns.search_term, socket.assigns.media_state)
@@ -469,6 +519,27 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
      assign(
        socket,
        Map.put(pagination_attrs, :base_query, base_query) |> Map.put(:error_type_filter, error_type_filter)
+     )}
+  end
+
+  def handle_event("filter_watch_state", %{"watch_filter" => watch_filter}, socket) do
+    watch_filter = if Map.has_key?(@watch_filters, watch_filter), do: watch_filter, else: "all"
+
+    base_query =
+      generate_base_query(
+        socket.assigns.source,
+        socket.assigns.media_state,
+        socket.assigns.error_type_filter,
+        watch_filter
+      )
+
+    pagination_attrs =
+      fetch_pagination_attributes(base_query, 1, socket.assigns.search_term, socket.assigns.media_state)
+
+    {:noreply,
+     assign(
+       socket,
+       Map.put(pagination_attrs, :base_query, base_query) |> Map.put(:watch_filter, watch_filter)
      )}
   end
 
@@ -629,7 +700,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     else
       records =
         fetch_records(filtered_base_query, page)
-        |> order_by(desc: fragment("rank"), desc: :uploaded_at, desc: :id)
+        |> MediaQuery.order_by_search_relevance(search_term)
+        |> order_by(desc: :uploaded_at, desc: :id)
         |> Repo.all()
 
       build_pagination_attrs(
@@ -655,15 +727,17 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> offset(^offset)
   end
 
-  defp generate_base_query(source, media_state, error_type_filter) do
+  defp generate_base_query(source, media_state, error_type_filter, watch_filter) do
     query = generate_base_query_for_state(source, media_state)
 
-    if media_state == "failed" do
-      where(query, ^error_type_condition(error_type_filter))
-    else
-      query
+    cond do
+      media_state == "failed" -> where(query, ^error_type_condition(error_type_filter))
+      media_state == "downloaded" -> where(query, ^MediaQuery.watch_filter(watch_filter_atom(watch_filter)))
+      true -> query
     end
   end
+
+  defp watch_filter_atom(filter), do: Map.fetch!(@watch_filters, filter)
 
   defp generate_base_query_for_state(source, "pending") do
     MediaQuery.new()

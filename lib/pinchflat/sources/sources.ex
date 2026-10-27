@@ -9,6 +9,7 @@ defmodule Pinchflat.Sources do
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.MediaWatch
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources.Source
@@ -749,29 +750,41 @@ defmodule Pinchflat.Sources do
   """
   def delete_source(%Source{} = source, opts \\ []) do
     delete_files = Keyword.get(opts, :delete_files, false)
-    Tasks.delete_tasks_for(source)
 
-    MediaQuery.new()
-    |> where(^MediaQuery.for_source(source))
-    |> Repo.all()
-    |> Enum.each(fn media_item ->
-      Media.delete_media_item(media_item, delete_files: delete_files)
+    items =
+      MediaQuery.new()
+      |> where(^MediaQuery.for_source(source))
+      |> Repo.all()
+
+    # A per-item error must not be followed by the source FK cascade, and a
+    # keep-files delete must not strand a watched artifact without a tombstone.
+    with false <- Enum.any?(items, &MediaWatch.watched?(&1.id)),
+         :ok <- delete_source_items(items, delete_files) do
+      Tasks.delete_tasks_for(source)
+      if delete_files, do: delete_source_files(source)
+      delete_internal_metadata_files(source)
+
+      case Repo.delete(source) do
+        {:ok, _deleted_source} = result ->
+          CustomPoster.delete_owned_file(source)
+          result
+
+        error ->
+          error
+      end
+    else
+      true -> {:error, :watch_tombstone_required}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp delete_source_items(items, delete_files) do
+    Enum.reduce_while(items, :ok, fn item, :ok ->
+      case Media.delete_media_item(item, delete_files: delete_files) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
     end)
-
-    if delete_files do
-      delete_source_files(source)
-    end
-
-    delete_internal_metadata_files(source)
-
-    case Repo.delete(source) do
-      {:ok, _deleted_source} = result ->
-        CustomPoster.delete_owned_file(source)
-        result
-
-      error ->
-        error
-    end
   end
 
   @doc """

@@ -1209,6 +1209,21 @@ defmodule Pinchflat.MediaTest do
       assert Repo.reload!(media_item)
     end
 
+    test "keeps paths and tasks when a media file cannot be deleted" do
+      item = media_item_with_attachments()
+      task = task_fixture(%{media_item_id: item.id})
+      File.rm!(item.media_filepath)
+      File.mkdir!(item.media_filepath)
+      File.write!(Path.join(item.media_filepath, "keep"), "not a removable media file")
+
+      assert {:error, {:file_delete_failed, path, reason}} = Media.delete_media_files(item, %{culled_at: now()})
+      assert path == item.media_filepath
+      assert reason in [:eisdir, :eperm]
+      assert Repo.reload!(item).media_filepath == item.media_filepath
+      assert Repo.reload!(item).culled_at == nil
+      assert Repo.reload!(task).id == task.id
+    end
+
     test "deletes attached tasks" do
       media_item = media_item_fixture()
       task = task_fixture(%{media_item_id: media_item.id})

@@ -392,19 +392,28 @@ defmodule PinchflatWeb.Sources.SourceController do
     delete_files = Map.get(params, "delete_files", "") == "true"
     source = Sources.get_source!(id)
 
-    {:ok, source} = Sources.update_source(source, %{marked_for_deletion_at: DateTime.utc_now()})
-    SourceDeletionWorker.kickoff(source, %{delete_files: delete_files})
+    if Pinchflat.MediaWatch.deletion_blocked?(source) do
+      conn
+      |> put_flash(
+        :error,
+        "End watch protection for this source's watched videos before deleting the source. Download any saved originals you want to keep first."
+      )
+      |> redirect(to: ~p"/sources/#{source}")
+    else
+      {:ok, source} = Sources.update_source(source, %{marked_for_deletion_at: DateTime.utc_now()})
+      SourceDeletionWorker.kickoff(source, %{delete_files: delete_files})
 
-    case get_format(conn) do
-      "json" ->
-        conn
-        |> put_status(:ok)
-        |> json(%{message: "Source deletion started. This may take a while to complete."})
+      case get_format(conn) do
+        "json" ->
+          conn
+          |> put_status(:ok)
+          |> json(%{message: "Source deletion started. This may take a while to complete."})
 
-      _ ->
-        conn
-        |> put_flash(:info, "Source deletion started. This may take a while to complete.")
-        |> redirect(to: ~p"/sources")
+        _ ->
+          conn
+          |> put_flash(:info, "Source deletion started. This may take a while to complete.")
+          |> redirect(to: ~p"/sources")
+      end
     end
   end
 

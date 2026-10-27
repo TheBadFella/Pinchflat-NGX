@@ -4,6 +4,7 @@ defmodule Pinchflat.Media do
   """
 
   import Ecto.Query, warn: false
+  require Logger
   use Pinchflat.Media.MediaQuery
 
   alias Pinchflat.Repo
@@ -12,6 +13,7 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Sources.AvailabilityPolicy
   alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.MediaWatch
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Metadata.MediaMetadata
 
@@ -311,16 +313,18 @@ defmodule Pinchflat.Media do
   def delete_media_item(%MediaItem{} = media_item, opts \\ []) do
     delete_files = Keyword.get(opts, :delete_files, false)
 
-    Tasks.delete_tasks_for(media_item)
+    result =
+      MediaWatch.with_deletion_fence(media_item, fn media_item ->
+        with :ok <- maybe_protect_watched_active_files(media_item, delete_files),
+             {:ok, _} <- if(delete_files, do: do_delete_media_files(media_item), else: {:ok, media_item}),
+             :ok <- delete_internal_metadata_files(media_item) do
+          Tasks.delete_tasks_for(media_item)
+          Repo.delete(media_item)
+        end
+      end)
 
-    if delete_files do
-      {:ok, _} = do_delete_media_files(media_item)
-      run_user_script(:media_deleted, media_item)
-    end
-
-    # Should delete these no matter what
-    delete_internal_metadata_files(media_item)
-    Repo.delete(media_item)
+    if match?({:ok, _}, result) and delete_files, do: run_user_script(:media_deleted, media_item)
+    result
   end
 
   @doc """
@@ -337,11 +341,18 @@ defmodule Pinchflat.Media do
     filepath_attrs = MediaItem.filepath_attribute_defaults()
     addl_attrs = maybe_add_manual_prevention_reason(media_item, addl_attrs)
 
-    Tasks.delete_tasks_for(media_item)
-    {:ok, _} = do_delete_media_files(media_item)
-    run_user_script(:media_deleted, media_item)
+    result =
+      MediaWatch.with_deletion_fence(media_item, fn media_item ->
+        with :ok <- maybe_protect_watched_active_files(media_item, true),
+             {:ok, _} <- do_delete_media_files(media_item),
+             {:ok, updated} <- update_media_item(media_item, Map.merge(filepath_attrs, addl_attrs)) do
+          Tasks.delete_tasks_for(media_item)
+          {:ok, updated}
+        end
+      end)
 
-    update_media_item(media_item, Map.merge(filepath_attrs, addl_attrs))
+    if match?({:ok, _}, result), do: run_user_script(:media_deleted, media_item)
+    result
   end
 
   @doc """
@@ -437,19 +448,42 @@ defmodule Pinchflat.Media do
   defp direct_status_key("prevented"), do: :prevented
   defp direct_status_key("skipped"), do: :skipped
 
+  # A keep-files delete must not detach the last discoverable path from an
+  # unenclosed watched original. The tombstone/kept-path workflow is not yet
+  # approved, so fail closed instead of silently orphaning those bytes.
+  defp maybe_protect_watched_active_files(%MediaItem{} = media_item, false) do
+    if MediaWatch.watched?(media_item.id), do: {:error, :watch_tombstone_required}, else: :ok
+  end
+
+  defp maybe_protect_watched_active_files(%MediaItem{} = media_item, true) do
+    case MediaWatch.allow_active_file_deletion(media_item) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Refusing to delete watched active files for media item ##{media_item.id}: #{inspect(reason)}")
+
+        {:error, :watch_hold}
+    end
+  end
+
   defp do_delete_media_files(media_item) do
     mapped_struct = Map.from_struct(media_item)
 
-    MediaItem.filepath_attributes()
-    |> Enum.map(fn
-      :subtitle_filepaths = field -> Enum.map(mapped_struct[field], fn [_, filepath] -> filepath end)
-      field -> List.wrap(mapped_struct[field])
-    end)
-    |> List.flatten()
-    |> Enum.filter(&is_binary/1)
-    |> Enum.each(&FilesystemUtils.delete_file_and_remove_empty_directories/1)
+    result =
+      MediaItem.filepath_attributes()
+      |> Enum.map(fn
+        :subtitle_filepaths = field -> Enum.map(mapped_struct[field], fn [_, filepath] -> filepath end)
+        field -> List.wrap(mapped_struct[field])
+      end)
+      |> List.flatten()
+      |> Enum.filter(&is_binary/1)
+      |> delete_paths()
 
-    {:ok, media_item}
+    case result do
+      :ok -> {:ok, media_item}
+      error -> error
+    end
   end
 
   defp delete_internal_metadata_files(media_item) do
@@ -459,7 +493,19 @@ defmodule Pinchflat.Media do
     MediaMetadata.filepath_attributes()
     |> Enum.map(fn field -> mapped_struct[field] end)
     |> Enum.filter(&is_binary/1)
-    |> Enum.each(&FilesystemUtils.delete_file_and_remove_empty_directories/1)
+    |> delete_paths()
+  end
+
+  defp delete_paths(paths) do
+    paths
+    |> Enum.uniq()
+    |> Enum.reduce_while(:ok, fn path, :ok ->
+      case FilesystemUtils.delete_file_and_remove_empty_directories(path) do
+        :ok -> {:cont, :ok}
+        {:error, :enoent} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:file_delete_failed, path, reason}}}
+      end
+    end)
   end
 
   defp run_user_script(event, media_item) do

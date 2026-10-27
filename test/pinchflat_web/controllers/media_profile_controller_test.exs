@@ -3,6 +3,7 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
 
   import Pinchflat.ProfilesFixtures
 
+  alias Pinchflat.Profiles
   alias Pinchflat.Repo
   alias Pinchflat.Settings
   alias Pinchflat.Profiles.MediaProfileDeletionWorker
@@ -44,6 +45,8 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       assert html =~ "New Media Profile"
       assert html =~ "Ignore YouTube Super Resolution"
       assert html =~ ~s(name="media_profile[ignore_youtube_super_resolution]")
+      assert html =~ ~s(name="media_profile[watch_window_days]")
+      assert html =~ "Watch window (days)"
     end
 
     test "renders correct layout when onboarding", %{conn: conn} do
@@ -63,6 +66,13 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
 
       conn = get(conn, ~p"/media_profiles/#{id}")
       assert html_response(conn, 200) =~ "Media Profile"
+    end
+
+    test "persists a positive watch window from the form", %{conn: conn} do
+      conn = post(conn, ~p"/media_profiles", media_profile: Map.put(@create_attrs, :watch_window_days, 14))
+
+      assert %{id: id} = redirected_params(conn)
+      assert Profiles.get_media_profile!(id).watch_window_days == 14
     end
 
     test "renders errors when data is invalid", %{conn: conn} do

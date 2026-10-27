@@ -9,6 +9,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
   alias PinchflatWeb.Sources.MediaItemTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.MediaWatch.MediaWatch, as: Watch
+  alias Pinchflat.Repo
   alias Pinchflat.Tasks
 
   setup do
@@ -37,6 +39,19 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
       assert html =~ "Nothing Here!"
       refute html =~ "Showing"
+    end
+
+    test "an empty search explains the result and can be cleared", %{conn: conn, source: source} do
+      item = downloaded_item(source, "SEARCHABLE_WATCH_ITEM")
+      {:ok, view, _} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      render_change(view, "search_term", %{"q" => "no-such-title"})
+      assert has_element?(view, "p", "No media matches your search.")
+      refute has_element?(view, "a", item.title)
+
+      render_change(view, "search_term", %{"q" => ""})
+      assert has_element?(view, "a", item.title)
+      refute has_element?(view, "p", "No media matches your search.")
     end
 
     test "shows records when present", %{conn: conn, source: source} do
@@ -103,6 +118,46 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
       assert html =~ downloaded_media_item.title
       refute html =~ pending_media_item.title
+    end
+
+    test "filters downloaded media by watch state and keeps check failures distinct", %{
+      conn: conn,
+      source: source
+    } do
+      changed = downloaded_item(source, "CHANGED_WATCH_ITEM")
+      unlisted = downloaded_item(source, "UNLISTED_WATCH_ITEM")
+      unchanged = downloaded_item(source, "UNCHANGED_WATCH_ITEM")
+      check_failed = downloaded_item(source, "CHECK_FAILED_WATCH_ITEM")
+
+      watch_for(changed, %{confirmed_state: "confirmed", current_visibility: "public"})
+      watch_for(unlisted, %{current_visibility: "unlisted"})
+      watch_for(unchanged, %{current_visibility: "public"})
+      watch_for(check_failed, %{last_error_at: now()})
+
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      assert html =~ changed.title
+      assert html =~ unchanged.title
+      assert html =~ "Changed or unavailable"
+
+      render_change(view, "filter_watch_state", %{"watch_filter" => "changed_or_unavailable"})
+      html = render(view)
+
+      assert html =~ changed.title
+      assert html =~ unlisted.title
+      refute html =~ unchanged.title
+      refute html =~ check_failed.title
+
+      render_change(view, "filter_watch_state", %{"watch_filter" => "check_failed"})
+      html = render(view)
+
+      assert html =~ check_failed.title
+      refute html =~ changed.title
+
+      render_change(view, "filter_watch_state", %{"watch_filter" => "all"})
+      html = render(view)
+
+      assert html =~ unchanged.title
     end
 
     test "shows records that aren't pending or downloaded when other", %{conn: conn} do
@@ -314,6 +369,25 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       assert has_element?(view, "button[title='Grid'][aria-pressed='false']")
       assert html =~ "space-y-4 md:hidden"
     end
+  end
+
+  defp downloaded_item(source, title) do
+    media_item_fixture(%{source_id: source.id, title: title, media_filepath: "/media/#{title}.mp4"})
+  end
+
+  defp watch_for(item, attrs) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    base = %{
+      media_item_id: item.id,
+      media_item_uuid: item.uuid,
+      media_id: item.media_id,
+      source_id: item.source_id,
+      started_at: now,
+      ends_at: DateTime.add(now, 86_400, :second)
+    }
+
+    Repo.insert!(%Watch{} |> Watch.changeset(Map.merge(base, attrs)))
   end
 
   defp create_session(source, media_state \\ "pending") do

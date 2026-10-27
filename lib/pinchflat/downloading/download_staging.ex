@@ -121,6 +121,46 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   end
 
   @doc """
+  Computes the final paths without moving files, so a first-artifact intent
+  can be durable before the staged bytes become active.
+  """
+  def destination_json(parsed_json, staging_directory) when is_map(parsed_json) do
+    with {:ok, paths} <- artifact_paths(parsed_json),
+         {:ok, path_map} <- destination_map(paths, staging_directory) do
+      {:ok, rewrite_paths(parsed_json, path_map)}
+    end
+  end
+
+  @doc """
+  Computes the staged-to-destination mapping without moving files. A watched
+  replacement records these destinations and their SHA-256 hashes in its
+  durable intent before any active file is touched.
+
+  Returns {:ok, %{source_map: %{binary() => binary()}}} | {:error, atom()}.
+  """
+  def transfer_plan(parsed_json, staging_directory, opts \\ []) when is_map(parsed_json) do
+    with :ok <- validate_staging_directory(staging_directory, opts),
+         {:ok, paths} <- artifact_paths(parsed_json),
+         {:ok, path_map} <- destination_map(paths, staging_directory) do
+      {:ok, %{source_map: path_map}}
+    end
+  end
+
+  defp destination_map(paths, staging_directory) do
+    Enum.reduce_while(paths, {:ok, %{}}, fn {source, required?}, {:ok, acc} ->
+      if required? or File.regular?(source) do
+        case destination_for(source, staging_directory) do
+          {:ok, path} -> {:cont, {:ok, Map.put(acc, source, path)}}
+          error -> {:halt, error}
+        end
+      else
+        # Optional sidecars that were never written are nulled by transfer/3.
+        {:cont, {:ok, acc}}
+      end
+    end)
+  end
+
+  @doc """
   Removes one download's staging directory. Invalid paths are ignored rather
   than recursively deleting outside the configured root.
 
@@ -365,6 +405,39 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   defp move_file(source, destination, opts) do
     :ok = File.mkdir_p(Path.dirname(destination))
 
+    with :ok <- stash_pre_image(destination, pre_image_for(destination, opts)) do
+      do_move_file(source, destination, opts)
+    end
+  end
+
+  # A watched replacement keeps the pre-image bytes next to the destination
+  # until the database commit is durable. Restoring is then a rename that needs
+  # no free space, even when the replacement filled the disk.
+  defp stash_pre_image(_destination, nil), do: :ok
+
+  defp stash_pre_image(destination, backup) do
+    case File.lstat(destination) do
+      {:ok, %{type: :regular}} ->
+        case File.rename(destination, backup) do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:pre_image_backup_failed, reason}}
+        end
+
+      {:error, :enoent} ->
+        :ok
+
+      {:ok, _other} ->
+        {:error, :pre_image_not_regular}
+    end
+  end
+
+  defp pre_image_for(destination, opts) do
+    opts
+    |> Keyword.get(:pre_images, %{})
+    |> Map.get(destination)
+  end
+
+  defp do_move_file(source, destination, opts) do
     if Keyword.get(opts, :transfer_mode) == :copy do
       copy_then_rename(source, destination)
     else

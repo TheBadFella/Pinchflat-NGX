@@ -55,14 +55,24 @@ defmodule Pinchflat.Profiles do
   """
   def delete_media_profile(%MediaProfile{} = media_profile, opts \\ []) do
     delete_files = Keyword.get(opts, :delete_files, false)
+    sources = Sources.list_sources_for(media_profile)
 
-    media_profile
-    |> Sources.list_sources_for()
-    |> Enum.each(fn source ->
-      Sources.delete_source(source, delete_files: delete_files)
-    end)
+    watched? = Pinchflat.MediaWatch.deletion_blocked?(media_profile)
 
-    Repo.delete(media_profile)
+    if watched? do
+      {:error, :watch_tombstone_required}
+    else
+      Enum.reduce_while(sources, :ok, fn source, :ok ->
+        case Sources.delete_source(source, delete_files: delete_files) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+      |> case do
+        :ok -> Repo.delete(media_profile)
+        error -> error
+      end
+    end
   end
 
   @doc """

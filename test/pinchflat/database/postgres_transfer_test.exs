@@ -9,12 +9,45 @@ defmodule Pinchflat.Database.PostgresTransferTest do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Sources.Source
 
-  setup do
+  defmodule SqliteFixtureRepo do
+    use Ecto.Repo, otp_app: :pinchflat, adapter: Ecto.Adapters.SQLite3
+  end
+
+  setup_all do
+    directory = Path.join(System.tmp_dir!(), "sqlite-transfer-template-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(directory)
+    path = Path.join(directory, "migrated.db")
+
+    {output, status} =
+      System.cmd("mix", ["run", "--no-start", "test/support/scripts/sqlite_transfer_fixture.exs", "--", path],
+        env: [
+          {"DATABASE_ADAPTER", "sqlite"},
+          {"MIX_BUILD_PATH", Path.join(directory, "build")}
+        ],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, "SQLite source migration failed: #{String.slice(output, -2000, 2000)}"
+    on_exit(fn -> File.rm_rf!(directory) end)
+    %{sqlite_template: path}
+  end
+
+  setup %{sqlite_template: template} do
     directory = Path.join(System.tmp_dir!(), "postgres-transfer-#{System.unique_integer([:positive])}")
     File.mkdir_p!(directory)
 
     source =
       Pinchflat.SourcesFixtures.source_fixture(%{enabled: false, custom_name: "Preserved 台", custom_name_locked: true})
+
+    Repo.get!(Pinchflat.Profiles.MediaProfile, source.media_profile_id)
+    |> Ecto.Changeset.change(watch_window_days: 14)
+    |> Repo.update!()
+
+    disabled_source = Pinchflat.SourcesFixtures.source_fixture(%{media_profile_id: source.media_profile_id})
+    disabled_source |> Ecto.Changeset.change(watch_window_days: 0) |> Repo.update!()
+    positive_source = Pinchflat.SourcesFixtures.source_fixture(%{media_profile_id: source.media_profile_id})
+    positive_source |> Ecto.Changeset.change(watch_window_days: 7) |> Repo.update!()
+    default_profile = Pinchflat.ProfilesFixtures.media_profile_fixture()
 
     item =
       %MediaItem{}
@@ -45,8 +78,40 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         job
       end
 
+    watch =
+      %Pinchflat.MediaWatch.MediaWatch{}
+      |> Pinchflat.MediaWatch.MediaWatch.changeset(%{
+        media_item_id: item.id,
+        media_item_uuid: item.uuid,
+        media_id: item.media_id,
+        source_id: source.id,
+        source_uuid: source.uuid,
+        started_at: ~U[2026-01-02 03:04:05Z],
+        ends_at: ~U[2026-01-16 03:04:05Z],
+        baseline_upstream_duration_seconds: 582,
+        baseline_visibility: "public",
+        current_upstream_duration_seconds: 600,
+        confirmed_change_at: ~U[2026-01-03 03:04:05Z],
+        released_at: ~U[2026-01-04 03:04:05Z],
+        release_manifest_sha256: "approved-manifest-digest",
+        next_check_at: ~U[2026-01-02 03:04:05Z],
+        archive_state: "none",
+        original_manifest_path: ".pinchflat-originals/first-watch/manifest.json",
+        confirmed_state: "unchanged",
+        observation_version: 0
+      })
+      |> Repo.insert!()
+
+    Repo.insert!(%Pinchflat.MediaWatch.MediaWatchEvent{
+      media_watch_id: watch.id,
+      kind: "edited",
+      fingerprint: "fp-1",
+      observed_at: ~U[2026-01-02 04:00:00Z],
+      delivery_state: "pending"
+    })
+
     path = Path.join(directory, "source.db")
-    build_sqlite_fixture(path)
+    build_sqlite_fixture(template, path)
     Enum.each(Enum.reverse(Snapshot.tables()), &Repo.query!("DELETE FROM " <> &1))
     Repo.insert!(%Record{id: 1, status: "running"})
     old_hold = Application.get_env(:pinchflat, :postgres_migration_boot_held)
@@ -60,6 +125,9 @@ defmodule Pinchflat.Database.PostgresTransferTest do
       path: path,
       directory: directory,
       source: source,
+      disabled_source: disabled_source,
+      positive_source: positive_source,
+      default_profile: default_profile,
       item: item,
       interrupted_job: Enum.find(jobs, &(&1.state == "executing"))
     }
@@ -96,11 +164,93 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert interrupted.attempted_by == nil
     assert Repo.aggregate(Pinchflat.Tasks.Task, :count) == 7
 
+    transferred_watch = Repo.get_by!(Pinchflat.MediaWatch.MediaWatch, media_item_id: ctx.item.id)
+    assert transferred_watch.baseline_upstream_duration_seconds == 582
+    assert transferred_watch.baseline_visibility == "public"
+    assert transferred_watch.current_upstream_duration_seconds == 600
+    assert transferred_watch.confirmed_change_at == ~U[2026-01-03 03:04:05Z]
+    assert transferred_watch.released_at == ~U[2026-01-04 03:04:05Z]
+    assert transferred_watch.release_manifest_sha256 == "approved-manifest-digest"
+    assert transferred_watch.original_manifest_path == ".pinchflat-originals/first-watch/manifest.json"
+    assert Repo.get!(Pinchflat.Profiles.MediaProfile, ctx.default_profile.id).watch_window_days == 0
+    assert Repo.get!(Pinchflat.Profiles.MediaProfile, ctx.source.media_profile_id).watch_window_days == 14
+    assert Repo.get!(Source, ctx.source.id).watch_window_days == nil
+    assert Repo.get!(Source, ctx.disabled_source.id).watch_window_days == 0
+    assert Repo.get!(Source, ctx.positive_source.id).watch_window_days == 7
+    assert Repo.aggregate(Pinchflat.MediaWatch.MediaWatchEvent, :count) == 1
+
+    assert Repo.get_by!(Pinchflat.MediaWatch.MediaWatchEvent, media_watch_id: transferred_watch.id).fingerprint ==
+             "fp-1"
+
+    next_watch =
+      %Pinchflat.MediaWatch.MediaWatch{}
+      |> Pinchflat.MediaWatch.MediaWatch.changeset(%{
+        media_item_uuid: Ecto.UUID.generate(),
+        media_id: "next-watch",
+        started_at: ~U[2026-01-03 00:00:00Z],
+        ends_at: ~U[2026-01-17 00:00:00Z]
+      })
+      |> Repo.insert!()
+
+    assert next_watch.id > transferred_watch.id
+
+    assert Repo.insert!(%Pinchflat.MediaWatch.MediaWatchEvent{
+             media_watch_id: transferred_watch.id,
+             kind: "edited",
+             fingerprint: "next",
+             observed_at: ~U[2026-01-03 00:00:00Z]
+           }).id > 1
+
     assert Migration.record().status == "pending_review"
     new = Pinchflat.SourcesFixtures.source_fixture()
     assert new.id > ctx.source.id
     assert {:error, :target_not_empty} = Transfer.run(ctx.path, ctx.directory)
     assert Repo.get!(MediaItem, ctx.item.id).title == ctx.item.title
+  end
+
+  test "transfers native pre-watch SQLite library through historical migrations with watch IDs and sequences", ctx do
+    File.rm!(ctx.path)
+
+    {output, status} =
+      System.cmd(
+        "mix",
+        ["run", "--no-start", "test/support/scripts/sqlite_transfer_fixture.exs", "--", "--native", ctx.path],
+        env: [
+          {"DATABASE_ADAPTER", "sqlite"},
+          {"MIX_BUILD_PATH", Path.join(ctx.directory, "native-build")}
+        ],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, "Native SQLite fixture failed: #{String.slice(output, -2000, 2000)}"
+    assert {:ok, _report} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.get!(Pinchflat.Profiles.MediaProfile, 40).watch_window_days == 14
+    assert Repo.get!(Pinchflat.Profiles.MediaProfile, 41).watch_window_days == 0
+    assert Source.effective_watch_window_days(Repo.get!(Source, 83) |> Repo.preload(:media_profile)) == 14
+    assert Source.effective_watch_window_days(Repo.get!(Source, 84) |> Repo.preload(:media_profile)) == 0
+    assert Source.effective_watch_window_days(Repo.get!(Source, 85) |> Repo.preload(:media_profile)) == 7
+    assert Repo.get!(MediaItem, 111).media_downloaded_at == ~U[2026-01-02 03:04:05Z]
+    watch = Repo.get!(Pinchflat.MediaWatch.MediaWatch, 120)
+    assert watch.media_item_id == 111
+    assert watch.started_at == ~U[2026-01-02 03:04:05Z]
+    assert watch.original_manifest_path == ".pinchflat-originals/120/manifest.json"
+    assert Repo.get!(Pinchflat.MediaWatch.MediaWatchEvent, 135).fingerprint == "native-fingerprint"
+
+    assert Pinchflat.SourcesFixtures.source_fixture().id > 300
+
+    assert Repo.insert!(%Pinchflat.MediaWatch.MediaWatch{
+             media_item_uuid: Ecto.UUID.generate(),
+             media_id: "native-next-watch",
+             started_at: ~U[2026-01-04 00:00:00Z],
+             ends_at: ~U[2026-01-18 00:00:00Z]
+           }).id > 400
+
+    assert Repo.insert!(%Pinchflat.MediaWatch.MediaWatchEvent{
+             media_watch_id: 120,
+             kind: "edited",
+             fingerprint: "native-next-event",
+             observed_at: ~U[2026-01-04 00:00:00Z]
+           }).id > 500
   end
 
   test "preserves populated cutoff dates and validates their field digests", ctx do
@@ -339,53 +489,54 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     end
   end
 
-  defp build_sqlite_fixture(path) do
-    {:ok, db} = Sqlite3.open(path)
+  defp build_sqlite_fixture(template, path) do
+    File.cp!(template, path)
+    {:ok, db} = Sqlite3.open(path, mode: :readwrite)
 
     try do
-      for table <- Snapshot.tables() do
-        columns =
-          Repo.query!(
-            "SELECT column_name, udt_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
-            [table]
-          ).rows
-          |> Enum.reject(&(hd(&1) == "search_vector"))
+      Snapshot.query!(db, "PRAGMA foreign_keys = OFF")
 
-        names = Enum.map_join(columns, ",", fn [name, _] -> "\"" <> name <> "\"" end)
-
-        definitions =
-          Enum.map_join(columns, ",", fn
-            ["id", _] -> "id INTEGER PRIMARY KEY AUTOINCREMENT"
-            [name, _] -> "\"" <> name <> "\""
-          end)
-
-        foreign_key = if table == "media_items", do: ", FOREIGN KEY(source_id) REFERENCES sources(id)", else: ""
-        :ok = Sqlite3.execute(db, "CREATE TABLE " <> table <> " (" <> definitions <> foreign_key <> ")")
-        rows = Repo.query!("SELECT " <> names <> " FROM " <> table <> " ORDER BY id").rows
-
-        Enum.each(rows, fn row ->
-          params = Enum.zip(row, columns) |> Enum.map(fn {value, [name, type]} -> sqlite_value(value, name, type) end)
-
-          Snapshot.query!(
-            db,
-            "INSERT INTO " <> table <> " VALUES (" <> Enum.map_join(params, ",", fn _ -> "?" end) <> ")",
-            params
-          )
-        end)
+      for table <- Enum.reverse(Snapshot.tables()) do
+        Snapshot.query!(db, "DELETE FROM " <> table)
       end
 
-      :ok = Sqlite3.execute(db, "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)")
+      for table <- Snapshot.tables() do
+        copy_pg_rows(db, table, pg_columns(table))
+      end
 
-      Application.app_dir(:pinchflat, "priv/repo/migrations")
-      |> Path.join("*.exs")
-      |> Path.wildcard()
-      |> Enum.each(fn path ->
-        version = Path.basename(path) |> String.split("_") |> hd() |> String.to_integer()
-        if version != 20_261_007_120_000, do: Snapshot.query!(db, "INSERT INTO schema_migrations VALUES (?)", [version])
-      end)
+      Snapshot.query!(db, "PRAGMA foreign_keys = ON")
+      assert Snapshot.query!(db, "PRAGMA foreign_key_check") == []
     after
       Sqlite3.close(db)
     end
+  end
+
+  defp pg_columns(table) do
+    Repo.query!(
+      "SELECT column_name, udt_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
+      [table]
+    ).rows
+    |> Enum.reject(&(hd(&1) == "search_vector"))
+  end
+
+  defp copy_pg_rows(db, table, columns) do
+    names = Enum.map_join(columns, ",", fn [name, _] -> "\"" <> name <> "\"" end)
+    rows = Repo.query!("SELECT " <> names <> " FROM " <> table <> " ORDER BY id").rows
+
+    Enum.each(rows, fn row ->
+      params = Enum.zip(row, columns) |> Enum.map(fn {value, [name, type]} -> sqlite_value(value, name, type) end)
+
+      Snapshot.query!(
+        db,
+        "INSERT INTO " <>
+          table <>
+          " (" <>
+          names <>
+          ") VALUES (" <>
+          Enum.map_join(params, ",", fn _ -> "?" end) <> ")",
+        params
+      )
+    end)
   end
 
   defp sqlite_value(value, "subtitle_filepaths", _type),

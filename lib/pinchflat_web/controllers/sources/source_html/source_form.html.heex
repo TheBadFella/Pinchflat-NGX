@@ -554,6 +554,16 @@
         Prevent Automatic Deletion overrides both cleanup rules.
       </p>
     </div>
+
+    <.input
+      field={f[:watch_window_days]}
+      type="number"
+      label="Watch window (days)"
+      min="0"
+      max="365"
+      help="Leave blank to use the media profile setting. Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain."
+      html_help={true}
+    />
     <section x-show="advancedMode">
       <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
 

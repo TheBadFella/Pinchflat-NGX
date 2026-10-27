@@ -114,6 +114,24 @@ defmodule PinchflatWeb.Api.MediaProfileControllerTest do
       end
     end
 
+    test "accepts a positive watch window now that guarded replacements are approved", %{conn: conn} do
+      profile = media_profile_fixture()
+      conn = put(conn, "/api/media_profiles/#{profile.id}", %{media_profile: %{watch_window_days: 7}})
+      response = json_response(conn, 200)
+
+      assert response["watch_window_days"] == 7
+      assert Profiles.get_media_profile!(profile.id).watch_window_days == 7
+      assert_response_schema(conn, "Api.MediaProfileController.update")
+    end
+
+    test "rejects a watch window outside 0..365", %{conn: conn} do
+      profile = media_profile_fixture()
+      conn = put(conn, "/api/media_profiles/#{profile.id}", %{media_profile: %{watch_window_days: 366}})
+
+      assert json_response(conn, 422)["errors"]["watch_window_days"]
+      assert Profiles.get_media_profile!(profile.id).watch_window_days == 0
+    end
+
     test "returns 422 with invalid params", %{conn: conn} do
       profile = media_profile_fixture()
 

@@ -2,9 +2,12 @@ defmodule PinchflatWeb.MediaItemControllerTest do
   use PinchflatWeb.ConnCase
 
   import Pinchflat.MediaFixtures
+  import Pinchflat.ProfilesFixtures
+  import Pinchflat.SourcesFixtures
 
-  alias Pinchflat.Repo
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.MediaWatch
+  alias Pinchflat.Repo
 
   describe "automatic deletion guidance" do
     test "warns before downloading an unprotected video before cutoff", %{conn: conn} do
@@ -70,6 +73,160 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       conn = get(conn, ~p"/sources/#{media_item.source_id}/media/#{media_item}")
 
       assert html_response(conn, 200) =~ "#{media_item.title}"
+    end
+  end
+
+  describe "watch window" do
+    test "shows the fixed window, remote baseline and saved-original state", %{conn: conn} do
+      on_exit(fn -> File.rm_rf(Pinchflat.MediaWatch.OriginalArchive.root()) end)
+
+      profile =
+        media_profile_fixture()
+        |> Ecto.Changeset.change(watch_window_days: 14)
+        |> Repo.update!()
+
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_with_attachments(%{source_id: source.id})
+      File.write!(item.media_filepath, "first artifact")
+
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      {:ok, _published} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
+
+      {:ok, watch} =
+        watch
+        |> Ecto.Changeset.change(
+          baseline_upstream_duration_seconds: 120,
+          hold_reason: "watch change: duration",
+          current_visibility: "unlisted",
+          confirmed_state: "suspected",
+          suspected_kind: "duration",
+          last_success_at: ~U[2026-10-25 12:00:00Z]
+        )
+        |> Repo.update()
+
+      html = conn |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+
+      assert html =~ "Watch window"
+      document = LazyHTML.from_document(html)
+      banner = LazyHTML.query(document, "#watch-window.theme-status-card-warning")
+      assert LazyHTML.attribute(banner, "id") == ["watch-window"]
+      details = LazyHTML.query(document, "#watch-details")
+      assert LazyHTML.attribute(details, "id") == ["watch-details"]
+      assert LazyHTML.attribute(details, "open") == []
+      assert html =~ Calendar.strftime(watch.started_at, "%Y-%m-%d %H:%M")
+      assert html =~ Calendar.strftime(watch.ends_at, "%Y-%m-%d %H:%M")
+      assert html =~ "Remote duration baseline"
+      assert html =~ "120 seconds"
+      assert html =~ "Local playback duration"
+      assert html =~ "Remote visibility"
+      assert html =~ "unlisted"
+      assert html =~ "suspected change"
+      assert html =~ "Change type"
+      assert html =~ "duration"
+      assert html =~ "Protected from replacement and automatic retention"
+      assert html =~ ".pinchflat-originals/#{watch.id}/manifest.json"
+      assert html =~ "Size"
+      assert html =~ "Automatic replacement is blocked"
+
+      watch |> Ecto.Changeset.change(confirmed_state: "confirmed") |> Repo.update!()
+      html = conn |> recycle() |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+
+      assert html =~ "confirmed change"
+      assert html =~ "Change type"
+      assert html =~ "duration"
+      refute html =~ "The suspected difference"
+      refute html =~ "replacement stays blocked until a later check matches it"
+    end
+
+    test "does not show watch details for an unenrolled item", %{conn: conn} do
+      item = media_item_fixture()
+
+      html = conn |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+
+      refute html =~ ~s(id="watch-window")
+    end
+
+    test "renders watch history timeline and current duration with delta", %{conn: conn} do
+      profile =
+        media_profile_fixture()
+        |> Ecto.Changeset.change(watch_window_days: 14)
+        |> Repo.update!()
+
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_with_attachments(%{source_id: source.id, duration_seconds: 9})
+
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
+      {:ok, watch} =
+        watch
+        |> Ecto.Changeset.change(
+          baseline_upstream_duration_seconds: 9,
+          current_upstream_duration_seconds: 4,
+          hold_reason: "watch change: duration",
+          confirmed_state: "confirmed",
+          suspected_kind: "duration"
+        )
+        |> Repo.update()
+
+      {:ok, _event} =
+        MediaWatch.record_event(watch, "duration", "duration:9->4:transition:1", %{
+          old_value: "9",
+          new_value: "4"
+        })
+
+      html = conn |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+
+      assert html =~ "Remote duration baseline"
+      assert html =~ "9 seconds"
+      assert html =~ "Current remote duration"
+      assert html =~ "4 seconds"
+      assert html =~ "-5s"
+      assert html =~ "Upstream video duration changed from 9s to 4s"
+      assert html =~ "Automatic replacement is blocked so the modified video does not overwrite your original file"
+      assert html =~ "Watch history"
+      assert html =~ "Timestamp"
+      refute html =~ "Timestamp (UTC)"
+      assert html =~ "Duration edited"
+      assert html =~ "9s → 4s"
+      assert html =~ "pending"
+    end
+
+    test "renders watch details and history in compose-defined timezone", %{conn: conn} do
+      profile =
+        media_profile_fixture()
+        |> Ecto.Changeset.change(watch_window_days: 14)
+        |> Repo.update!()
+
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_with_attachments(%{source_id: source.id, duration_seconds: 9})
+
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
+      observed = ~U[2026-10-26 17:58:58Z]
+
+      {:ok, _event} =
+        MediaWatch.record_event(watch, "duration", "duration:9->4:transition:1", %{
+          old_value: "9",
+          new_value: "4",
+          observed_at: observed
+        })
+
+      original_timezone = Application.get_env(:pinchflat, :timezone)
+      on_exit(fn -> Application.put_env(:pinchflat, :timezone, original_timezone) end)
+
+      for {timezone, expected} <- [
+            {"America/Regina", "2026-10-26 11:58:58"},
+            {"UTC", "2026-10-26 17:58:58"},
+            {nil, "2026-10-26 17:58:58"},
+            {"Invalid/Timezone", "2026-10-26 17:58:58"}
+          ] do
+        Application.put_env(:pinchflat, :timezone, timezone)
+        html = conn |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+
+        assert html =~ "Timestamp"
+        refute html =~ "Timestamp (UTC)"
+        assert html =~ expected
+      end
     end
   end
 
@@ -228,7 +385,9 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       assert conn.status == 206
       assert {"content-range", "bytes 0-100/#{filesize}"} in conn.resp_headers
       assert {"content-length", "101"} in conn.resp_headers
-      assert {"content-disposition", "inline; filename=\"#{media_item.title}\""} in conn.resp_headers
+
+      assert {"content-disposition",
+              "inline; filename*=UTF-8''#{URI.encode(media_item.title, &URI.char_unreserved?/1)}"} in conn.resp_headers
     end
 
     test "streams the specified range", %{conn: conn, media_item: media_item} do
@@ -305,7 +464,9 @@ defmodule PinchflatWeb.MediaItemControllerTest do
       assert conn.status == 200
       assert {"content-length", to_string(filesize)} in conn.resp_headers
       assert get_resp_header(conn, "content-range") == []
-      assert {"content-disposition", "inline; filename=\"#{media_item.title}\""} in conn.resp_headers
+
+      assert {"content-disposition",
+              "inline; filename*=UTF-8''#{URI.encode(media_item.title, &URI.char_unreserved?/1)}"} in conn.resp_headers
     end
 
     test "streams the entire file", %{conn: conn, media_item: media_item} do

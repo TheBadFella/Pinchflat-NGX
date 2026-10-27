@@ -8,10 +8,12 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   require Logger
 
   alias Pinchflat.Downloading.DownloadOptionBuilder
+  alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.Media
   alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.MediaWatch
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Metadata.MetadataParser
   alias Pinchflat.Metadata.NfoBuilder
@@ -50,6 +52,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         })
 
         {:error, error_atom, message}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:error, :artifact_persistence_failed, "The downloaded artifact could not be recorded; retry safely"}
 
       {:recovered, media_item, message} ->
         {:ok, updated_media_item} =
@@ -102,12 +107,22 @@ defmodule Pinchflat.Downloading.MediaDownloader do
                  download_override_opts
                ) do
             {:ok, parsed_json} ->
-              case DownloadStaging.transfer(parsed_json, staging_directory, staging_opts) do
-                {:ok, transferred_json} ->
-                  update_media_item_from_parsed_json(media_with_preloads, transferred_json)
+              case MediaWatch.prepare_replacement(media_with_preloads) do
+                {:ok, replacement_lease} ->
+                  result =
+                    transfer_and_update(
+                      parsed_json,
+                      staging_directory,
+                      staging_opts,
+                      media_with_preloads,
+                      replacement_lease
+                    )
+
+                  finish_replacement_lease(replacement_lease)
+                  result
 
                 {:error, reason} ->
-                  {:error, :staging_unavailable, staging_error_message(reason)}
+                  {:error, :watch_hold, watch_hold_message(reason)}
               end
 
             {:error, :unsuitable_for_download} ->
@@ -154,12 +169,93 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   end
 
   defp replacement_staging_options(media_item, override_opts) do
-    if override_opts[:overwrite_behaviour] == :force_overwrites &&
-         is_binary(media_item.media_filepath) && File.regular?(media_item.media_filepath) do
+    watched? = MediaWatch.watched?(media_item.id)
+
+    overwriting? =
+      override_opts[:overwrite_behaviour] == :force_overwrites &&
+        is_binary(media_item.media_filepath) && File.regular?(media_item.media_filepath)
+
+    first_watched_artifact? =
+      not is_nil(media_item.watch_download_started_at) and is_nil(media_item.media_downloaded_at) and
+        MediaWatch.effective_watch_window_days(media_item.source) > 0
+
+    if watched? or overwriting? or first_watched_artifact? do
+      # A watched original must never be replaced from an in-place download.
       [root: DownloadStaging.configured_directory() || DownloadStaging.replacement_directory()]
     else
       []
     end
+  end
+
+  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, :unwatched) do
+    first? =
+      not is_nil(media_with_preloads.watch_download_started_at) and
+        is_nil(media_with_preloads.media_downloaded_at) and
+        MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0
+
+    with :ok <- prepare_first_artifact(first?, media_with_preloads, parsed_json, staging_directory),
+         {:ok, transferred_json} <- DownloadStaging.transfer(parsed_json, staging_directory, staging_opts),
+         :ok <- complete_first_transfer(first?, media_with_preloads, transferred_json) do
+      update_media_item_from_parsed_json(media_with_preloads, transferred_json, first_artifact: true)
+    else
+      {:error, reason} ->
+        if first? do
+          Logger.error("first artifact staging/transfer failed for item ##{media_with_preloads.id}: #{inspect(reason)}")
+          {:error, :artifact_persistence_failed, staging_error_message(reason)}
+        else
+          {:error, :staging_unavailable, staging_error_message(reason)}
+        end
+    end
+  end
+
+  # A watched replacement moves active files only inside MediaWatch's write
+  # reservation and durable intent, so a failure restores the verified original.
+  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, lease) do
+    with {:ok, plan} <- DownloadStaging.transfer_plan(parsed_json, staging_directory, staging_opts),
+         {:ok, updated} <-
+           MediaWatch.commit_replacement(
+             lease,
+             media_with_preloads,
+             plan,
+             fn pre_images ->
+               DownloadStaging.transfer(
+                 parsed_json,
+                 staging_directory,
+                 Keyword.put(staging_opts, :pre_images, pre_images)
+               )
+             end,
+             fn transferred_json -> update_media_item_from_parsed_json(media_with_preloads, transferred_json) end
+           ) do
+      {:ok, updated}
+    else
+      {:error, reason} ->
+        Logger.error("watched replacement refused for item ##{media_with_preloads.id}: #{inspect(reason)}")
+        {:error, :watch_hold, watch_replacement_message(reason)}
+    end
+  end
+
+  defp prepare_first_artifact(false, _item, _parsed_json, _stage), do: :ok
+
+  defp prepare_first_artifact(true, item, parsed_json, stage) when is_binary(stage) do
+    with {:ok, destinations} <- DownloadStaging.destination_json(parsed_json, stage) do
+      FirstArtifact.remember(item, destinations, parsed_json["filepath"])
+    end
+  end
+
+  defp prepare_first_artifact(true, _item, _parsed_json, _stage), do: {:error, :first_artifact_staging_required}
+  defp complete_first_transfer(false, _item, _json), do: :ok
+  defp complete_first_transfer(true, item, json), do: FirstArtifact.mark_transferred(item, json)
+
+  defp finish_replacement_lease(:unwatched), do: :ok
+  defp finish_replacement_lease(lease), do: MediaWatch.finish_replacement(lease)
+
+  defp watch_hold_message(:watch_guard_unapproved),
+    do: "watched originals cannot be replaced until preservation is approved"
+
+  defp watch_hold_message(reason), do: "watched original is protected: #{inspect(reason)}"
+
+  defp watch_replacement_message(reason) do
+    "watched replacement stopped and the original was restored: #{inspect(reason)}"
   end
 
   defp attempt_recovery_from_error(media_with_preloads, output_filepath, error_message) do
@@ -181,14 +277,21 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     end
   end
 
-  defp update_media_item_from_parsed_json(media_with_preloads, parsed_json) do
+  @doc false
+  def restore_first_artifact(%MediaItem{} = item, parsed_json) do
+    update_media_item_from_parsed_json(Repo.preload(item, [:metadata, source: :media_profile]), parsed_json,
+      first_artifact: true
+    )
+  end
+
+  defp update_media_item_from_parsed_json(media_with_preloads, parsed_json, opts \\ []) do
     parsed_attrs =
       parsed_json
       |> MetadataParser.parse_for_media_item()
       # Keep the indexed type that selected this download's path; indexing owns classification.
       |> Map.put(:short_form_content, media_with_preloads.short_form_content)
       |> Map.merge(%{
-        media_downloaded_at: DateTime.utc_now(),
+        # The worker owns the successful completion marker, not metadata or partial recovery.
         culled_at: nil,
         nfo_filepath: determine_nfo_filepath(media_with_preloads, parsed_json),
         metadata: %{
@@ -199,9 +302,45 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         }
       })
 
-    # Don't forgor to use preloaded associations or updates to
-    # associations won't work!
-    Media.update_media_item(media_with_preloads, parsed_attrs)
+    # Bytes have arrived, but the artifact is not complete until application
+    # postprocessing succeeds. Never start the watch from the transfer time.
+    parsed_attrs =
+      if opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
+           is_nil(media_with_preloads.media_downloaded_at) do
+        Map.merge(parsed_attrs, %{
+          watch_postprocessing_pending: true
+        })
+      else
+        parsed_attrs
+      end
+
+    first? =
+      opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
+        is_nil(media_with_preloads.media_downloaded_at)
+
+    if first? and
+         (FirstArtifact.pending?(media_with_preloads) or
+            MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0) do
+      persist_first_artifact(media_with_preloads, parsed_attrs)
+    else
+      Media.update_media_item(media_with_preloads, parsed_attrs)
+    end
+  end
+
+  defp persist_first_artifact(item, attrs) do
+    case Repo.transaction(fn ->
+           case Media.update_media_item(item, attrs) do
+             {:ok, updated} -> updated
+             {:error, reason} -> Repo.rollback(reason)
+           end
+         end) do
+      {:ok, updated} -> {:ok, updated}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    error in [Exqlite.Error, Postgrex.Error, DBConnection.ConnectionError] ->
+      Logger.error("first artifact metadata write failed for item ##{item.id}: #{inspect(error)}")
+      {:error, :artifact_persistence_failed, "First artifact write failed; retry from protected copy"}
   end
 
   defp determine_nfo_filepath(media_item, parsed_json) do

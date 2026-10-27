@@ -8,6 +8,8 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.MediaWatch
+  alias Pinchflat.MediaWatch.OriginalArchive
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias PinchflatWeb.Schemas
 
@@ -20,13 +22,29 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
       |> Repo.preload([:source, tasks: [:job]])
 
     active_tab = tab_param(conn.params, ~w(media tasks), "media")
+    watch = MediaWatch.get_watch_for_media_item(media_item.id)
+    watch_events = (watch && MediaWatch.list_events(watch.id)) || []
 
     render(conn, :show,
       media_item: media_item,
+      watch: watch,
+      watch_events: watch_events,
+      archive_summary: watch && OriginalArchive.summary(watch),
+      archive_files: archive_files(watch),
+      watch_policy_enabled: MediaWatch.effective_watch_window_days(Repo.preload(media_item.source, :media_profile)) > 0,
       active_tab: active_tab,
       tab_href: fn tab -> ~p"/sources/#{media_item.source_id}/media/#{media_item}?#{[tab: tab]}" end
     )
   end
+
+  defp archive_files(%{archive_state: "published"} = watch) do
+    case OriginalArchive.files(watch) do
+      {:ok, files} -> files
+      _ -> []
+    end
+  end
+
+  defp archive_files(_watch), do: []
 
   def edit(conn, %{"id" => id}) do
     media_item = Media.get_media_item!(id)
@@ -52,11 +70,31 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   def delete(conn, %{"id" => id} = params) do
     prevent_download = Map.get(params, "prevent_download", false)
     media_item = Media.get_media_item!(id)
-    {:ok, _} = Media.delete_media_files(media_item, %{prevent_download: prevent_download})
 
-    conn
-    |> put_flash(:info, "Files deleted successfully.")
-    |> redirect(to: ~p"/sources/#{media_item.source_id}")
+    case Media.delete_media_files(media_item, %{prevent_download: prevent_download}) do
+      {:ok, _} ->
+        conn
+        |> put_flash(:info, "Files deleted successfully.")
+        |> redirect(to: ~p"/sources/#{media_item.source_id}")
+
+      {:error, :watch_hold} ->
+        conn
+        |> put_flash(
+          :error,
+          "Watch protection prevents deletion of the current files. Review the saved original and watch protection settings before trying again."
+        )
+        |> redirect(to: ~p"/sources/#{media_item.source_id}/media/#{media_item}")
+
+      {:error, reason} ->
+        Logger.warning("Media file deletion failed for item ##{media_item.id}: #{inspect(reason)}")
+
+        conn
+        |> put_flash(
+          :error,
+          "Some files could not be deleted. Check filesystem permissions and storage, then retry. The media record was kept."
+        )
+        |> redirect(to: ~p"/sources/#{media_item.source_id}/media/#{media_item}")
+    end
   end
 
   def force_download(conn, %{"media_item_id" => id}) do
@@ -112,14 +150,17 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
 
   def stream(conn, %{"uuid" => uuid}) do
     media_item = Repo.get_by!(MediaItem, uuid: uuid)
+    serve_file(conn, media_item.media_filepath, media_item.title)
+  end
 
-    if File.exists?(media_item.media_filepath) do
-      file_size = File.stat!(media_item.media_filepath).size
-      mime_type = MIME.from_path(media_item.media_filepath)
+  @doc false
+  def serve_file(conn, path, filename) do
+    if is_binary(path) and File.regular?(path) do
+      file_size = File.stat!(path).size
+      mime_type = MIME.from_path(path)
 
       case parse_range(conn, file_size) do
         {:ok, {start_pos, end_pos}} ->
-          Logger.debug("Streaming media item: #{media_item.uuid} from #{start_pos} to #{end_pos}")
           length = end_pos - start_pos + 1
 
           conn
@@ -127,18 +168,22 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
           |> put_resp_header("accept-ranges", "bytes")
           |> put_resp_header("content-range", "bytes #{start_pos}-#{end_pos}/#{file_size}")
           |> put_resp_header("content-length", to_string(length))
-          |> put_resp_header("content-disposition", "inline; filename=\"#{media_item.title}\"")
-          |> send_file(206, media_item.media_filepath, start_pos, length)
+          |> put_resp_header(
+            "content-disposition",
+            "inline; filename*=UTF-8''#{URI.encode(filename, &URI.char_unreserved?/1)}"
+          )
+          |> send_file(206, path, start_pos, length)
 
         {:error, :invalid_range} ->
-          Logger.debug("Invalid range request for media item: #{media_item.uuid} - serving full file")
-
           conn
           |> put_resp_content_type(mime_type)
           |> put_resp_header("accept-ranges", "bytes")
           |> put_resp_header("content-length", to_string(file_size))
-          |> put_resp_header("content-disposition", "inline; filename=\"#{media_item.title}\"")
-          |> send_file(200, media_item.media_filepath)
+          |> put_resp_header(
+            "content-disposition",
+            "inline; filename*=UTF-8''#{URI.encode(filename, &URI.char_unreserved?/1)}"
+          )
+          |> send_file(200, path)
 
         {:error, :unsatisfiable_range} ->
           conn
