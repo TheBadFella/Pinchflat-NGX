@@ -229,6 +229,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       assert [directory] = Enum.filter(directories, &String.starts_with?(&1, "quarantine-"))
       assert {:ok, files} = File.ls(Path.join(quarantine_root(), directory))
       assert Enum.map(files, &File.read!(Path.join([quarantine_root(), directory, &1]))) == ["recoverable newer bytes"]
+      assert no_restore_copies?(item.media_filepath)
     end
 
     test "a quarantine collision retains the newer file and the recovery journal" do
@@ -260,6 +261,17 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       assert File.read!(item.media_filepath) == "recoverable newer bytes"
       assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
       assert ReplacementIntent.pending?(watch.id)
+      assert no_restore_copies?(item.media_filepath)
+
+      Repo.update_all(from(w in Watch, where: w.id == ^watch.id), set: [lease_expires_at: now_minus(1, :minute)])
+
+      for _ <- 1..2 do
+        assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id and &1.action == :needs_recovery))
+        assert File.read!(saved) == "first artifact"
+        assert File.read!(item.media_filepath) == "recoverable newer bytes"
+        assert ReplacementIntent.pending?(watch.id)
+        assert no_restore_copies?(item.media_filepath)
+      end
     end
 
     test "a second replacement accepts only the last approved bytes, not a later manual edit" do
@@ -693,6 +705,13 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
     [item.media_filepath, item.thumbnail_filepath | subtitle_paths]
     |> Enum.reject(&is_nil/1)
     |> Map.new(fn path -> {path, :sha256 |> :crypto.hash(File.read!(path)) |> Base.encode16(case: :lower)} end)
+  end
+
+  defp no_restore_copies?(path) do
+    path
+    |> Path.dirname()
+    |> File.ls!()
+    |> Enum.all?(&(not String.starts_with?(&1, Path.basename(path) <> ".pinchflat-restore-")))
   end
 
   defp quarantine_root do

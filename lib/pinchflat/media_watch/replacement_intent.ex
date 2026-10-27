@@ -366,12 +366,15 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
          true <- size == manifest_entry["size"],
          :ok <- File.mkdir_p(Path.dirname(path)),
          temporary = path <> ".pinchflat-restore-#{Ecto.UUID.generate()}",
-         :ok <- copy_exclusive(archive_source, temporary),
-         {:ok, ^expected} <- hash_file(temporary),
-         :ok <- quarantine_current(path, intent),
-         :ok <- File.rename(temporary, path),
-         {:ok, ^expected} <- hash_file(path),
-         :ok <- sync_directory(Path.dirname(path)) do
+         :ok <- copy_exclusive(archive_source, temporary, fn ->
+           with {:ok, ^expected} <- hash_file(temporary),
+                :ok <- quarantine_current(path, intent),
+                :ok <- File.rename(temporary, path),
+                {:ok, ^expected} <- hash_file(path),
+                :ok <- sync_directory(Path.dirname(path)) do
+             :ok
+           end
+         end) do
       :ok
     else
       {:ok, %{type: :symlink}} -> {:error, :active_is_symlink}
@@ -520,14 +523,38 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
     end
   end
 
-  defp copy_exclusive(source, destination) do
+  defp copy_exclusive(source, destination, after_copy) do
     with {:ok, output} <- File.open(destination, [:write, :exclusive, :binary]) do
       try do
-        source |> File.stream!([], 1024 * 1024) |> Enum.each(&IO.binwrite(output, &1))
-        :file.sync(output)
+        case File.lstat(destination) do
+          {:ok, owned} ->
+            try do
+              copied =
+                try do
+                  source |> File.stream!([], 1024 * 1024) |> Enum.each(&IO.binwrite(output, &1))
+                  :file.sync(output)
+                after
+                  File.close(output)
+                end
+
+              with :ok <- copied, do: after_copy.()
+            after
+              remove_owned_temporary(destination, owned)
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
       after
         File.close(output)
       end
+    end
+  end
+
+  defp remove_owned_temporary(path, %{inode: inode, major_device: major, minor_device: minor}) do
+    case File.lstat(path) do
+      {:ok, %{type: :regular, inode: ^inode, major_device: ^major, minor_device: ^minor}} -> File.rm(path)
+      _ -> :ok
     end
   end
 
