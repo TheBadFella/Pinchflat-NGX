@@ -505,7 +505,7 @@ defmodule Pinchflat.CookieHealth do
   end
 
   defp dispatch_apprise_alert(server, result, setting) do
-    title = "[Pinchflat] YouTube Cookie Issue Detected"
+    title = "[Pinchflat-ngx] YouTube Cookie Issue Detected"
 
     status_desc =
       case result.status do
@@ -536,7 +536,13 @@ defmodule Pinchflat.CookieHealth do
     apprise_runner =
       Application.get_env(:pinchflat, :apprise_runner, Pinchflat.Lifecycle.Notifications.CommandRunner)
 
-    case apprise_runner.run([server], title: title, body: body) do
+    opts = [
+      title: title,
+      body: body,
+      notification_type: "failure"
+    ]
+
+    case apprise_runner.run([server], opts) do
       {:ok, res} ->
         Logger.info("[CookieHealth] Sent Apprise cookie health alert")
         {:ok, res}

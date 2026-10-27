@@ -40,6 +40,33 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         </span>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div
+            :if={@media_state == "downloaded"}
+            class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
+            role="group"
+            aria-label="Media layout"
+          >
+            <button
+              :for={{value, label, icon} <- [{"list", "List", "hero-list-bullet"}, {"grid", "Grid", "hero-squares-2x2"}]}
+              type="button"
+              class={[
+                "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-m3-xs px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 lg:px-2 2xl:px-3",
+                if(value == @view_mode,
+                  do: "bg-theme-primary text-theme-on-primary",
+                  else: "text-theme-on-surface-muted hover:bg-theme-surface-2 hover:text-theme-on-surface"
+                )
+              ]}
+              phx-click="view_change"
+              phx-value-view={value}
+              aria-pressed={to_string(value == @view_mode)}
+              aria-label={label}
+              title={label}
+            >
+              <.icon name={icon} class="h-4 w-4" aria-hidden="true" />
+              <span class="lg:hidden 2xl:inline">{label}</span>
+            </button>
+          </div>
+
           <.button
             :if={@media_state == "failed"}
             type="button"
@@ -118,7 +145,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             x-cloak
             x-show="open"
           >
-            <div class="space-y-4 md:hidden">
+            <div class={
+              if @view_mode == "grid",
+                do: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3",
+                else: "space-y-4 md:hidden"
+            }>
               <article :for={media_item <- group.records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
                 <div class="flex flex-col gap-3">
                   <div class="min-w-0 flex-1 space-y-2">
@@ -248,7 +279,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
               </article>
             </div>
 
-            <div class="hidden md:block">
+            <div :if={@view_mode == "list"} class="hidden md:block">
               <.table rows={group.records}>
                 <:col :let={media_item} :if={@media_state == "pending"} label="#" class="w-16 text-center">
                   {Map.get(@queue_positions, media_item.id, "-")}
@@ -395,12 +426,20 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           base_query: base_query,
           source: source,
           media_state: media_state,
-          error_type_filter: error_type_filter
+          error_type_filter: error_type_filter,
+          view_mode: "list"
         }
       )
 
     {:ok, socket |> assign(new_assigns) |> assign(:action_feedback, nil)}
   end
+
+  def handle_event("view_change", %{"view" => view}, %{assigns: %{media_state: "downloaded"}} = socket)
+      when view in ~w(list grid) do
+    {:noreply, assign(socket, :view_mode, view)}
+  end
+
+  def handle_event("view_change", _params, socket), do: {:noreply, socket}
 
   def handle_event("page_change", %{"direction" => direction}, %{assigns: assigns} = socket) do
     direction = if direction == "inc", do: 1, else: -1

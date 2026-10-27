@@ -822,7 +822,11 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp maybe_put_source_type_prefill(attrs, _source_type), do: attrs
 
   defp tab_param(params, allowed_tabs, default_tab) do
-    tab = params["tab"]
+    tab =
+      case params["tab"] do
+        "downloaded" -> "videos"
+        other -> other
+      end
 
     if tab in allowed_tabs do
       tab
@@ -916,11 +920,11 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp allowed_tabs_for(%Source{collection_type: :playlist, selection_mode: :manual}) do
-    ~w(source pending failed selection active-tasks downloaded job-queue other podcast)
+    ~w(source videos pending failed selection active-tasks job-queue other podcast)
   end
 
   defp allowed_tabs_for(_source) do
-    ~w(source pending failed active-tasks downloaded job-queue other podcast)
+    ~w(source videos pending failed active-tasks job-queue other podcast)
   end
 
   defp saved_source_folders do

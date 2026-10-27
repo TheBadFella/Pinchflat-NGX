@@ -93,6 +93,94 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunnerTest do
     end
   end
 
+  describe "normalize_endpoint/1" do
+    test "appends format=markdown to discord webhook URLs without query params" do
+      assert Runner.normalize_endpoint("https://discord.com/api/webhooks/123/abc") ==
+               "https://discord.com/api/webhooks/123/abc?format=markdown"
+
+      assert Runner.normalize_endpoint("discord://123/abc") ==
+               "discord://123/abc?format=markdown"
+    end
+
+    test "appends &format=markdown to discord webhook URLs with existing query params" do
+      assert Runner.normalize_endpoint("https://discord.com/api/webhooks/123/abc?avatar=Yes") ==
+               "https://discord.com/api/webhooks/123/abc?avatar=Yes&format=markdown"
+    end
+
+    test "preserves explicit format options and query values that only resemble one" do
+      url = "https://discord.com/api/webhooks/123/abc?format=text"
+
+      assert Runner.normalize_endpoint(url) == url
+
+      url = "discord://123/abc?other_format=text&next=https://example.org/?format=text"
+
+      assert Runner.normalize_endpoint(url) == url <> "&format=markdown"
+
+      url = "https://discord.com/api/webhooks/123/abc?format=html#section"
+
+      assert Runner.normalize_endpoint(url) == url
+
+      assert Runner.normalize_endpoint("discord://123/abc#section") ==
+               "discord://123/abc?format=markdown#section"
+    end
+
+    test "leaves other endpoints unchanged even when they mention a Discord webhook" do
+      assert Runner.normalize_endpoint("pover://user@token") == "pover://user@token"
+
+      for url <- [
+            "https://notify.example.com/send?next=https://discord.com/api/webhooks/123/abc",
+            "https://discord.com.evil.invalid/api/webhooks/123/abc",
+            "https://discord.com/other?path=/api/webhooks/123/abc",
+            "http://discord.com/api/webhooks/123/abc"
+          ] do
+        assert Runner.normalize_endpoint(url) == url
+      end
+    end
+
+    test "forwards literal plain-text bodies to unrelated providers while formatting only Discord URLs" do
+      body = "*unmatched _underscore [link]( `code <tag> & text"
+
+      args =
+        record_arguments(fn ->
+          assert {:ok, ""} =
+                   Runner.run(["json://receiver.invalid", "discord://123/abc"], body: body)
+        end)
+
+      assert args == ["--verbose", "--body", body, "json://receiver.invalid", "discord://123/abc?format=markdown"]
+    end
+
+    test "installed Apprise CLI sends embeds only for Discord endpoints" do
+      endpoints = %{
+        "discord" => "discord://123/abc",
+        "discord_https" => "https://discord.com/api/webhooks/123/abc",
+        "discordapp_https" => "https://discordapp.com/api/webhooks/123/abc",
+        "plain" => "json://receiver.invalid",
+        "explicit_text" => "https://discord.com/api/webhooks/123/abc?format=text"
+      }
+
+      cases =
+        Map.new(endpoints, fn {name, endpoint} ->
+          argv =
+            record_arguments(fn ->
+              assert {:ok, ""} = Runner.run(endpoint, title: "New media found", body: "*unmatched _underscore")
+            end)
+
+          {name, argv}
+        end)
+
+      apprise = System.find_executable("apprise") || raise "Installed Apprise CLI is required"
+      [shebang | _] = apprise |> File.read!() |> String.split("\n", parts: 2)
+      python = String.trim_leading(shebang, "#!")
+
+      {output, 0} =
+        System.cmd(python, ["test/support/scripts/apprise_discord_payload.py", Jason.encode!(cases)],
+          stderr_to_stdout: true
+        )
+
+      assert output =~ "Installed Apprise CLI produced Discord embeds and plain text"
+    end
+  end
+
   describe "version/0" do
     test "adds the version arg" do
       assert {:ok, output} = Runner.version()
