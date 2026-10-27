@@ -1156,7 +1156,20 @@ defmodule Pinchflat.MediaWatch do
   def with_deletion_fence(%MediaItem{} = item, fun) do
     case get_watch_for_media_item(item.id) do
       nil ->
-        fun.(item)
+        Repo.transaction(fn ->
+          Repo.update_all(from(m in MediaItem, where: m.id == ^item.id), set: [updated_at: utc_now()])
+
+          case {Repo.get(MediaItem, item.id), get_watch_for_media_item(item.id)} do
+            {%MediaItem{} = fresh, nil} ->
+              case fun.(fresh) do
+                {:ok, result} -> result
+                {:error, reason} -> Repo.rollback(reason)
+              end
+
+            _ ->
+              Repo.rollback(:watch_hold)
+          end
+        end)
 
       %Watch{released_at: released, archive_state: "none"} when not is_nil(released) ->
         fun.(item)

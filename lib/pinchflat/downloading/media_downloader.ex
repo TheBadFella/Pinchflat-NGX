@@ -160,7 +160,10 @@ defmodule Pinchflat.Downloading.MediaDownloader do
               {:error, :unknown, "Unknown error: #{inspect(err)}"}
           end
         after
-          DownloadStaging.cleanup(staging_directory, staging_opts)
+          if not FirstArtifact.pending?(media_with_preloads) or
+               match?({:ok, _}, FirstArtifact.recover(media_with_preloads)) do
+            DownloadStaging.cleanup(staging_directory, staging_opts)
+          end
         end
 
       {:error, reason} ->
@@ -194,7 +197,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0
 
     with :ok <- prepare_first_artifact(first?, media_with_preloads, parsed_json, staging_directory),
-         {:ok, transferred_json} <- DownloadStaging.transfer(parsed_json, staging_directory, staging_opts),
+         {:ok, transferred_json} <-
+           DownloadStaging.transfer(parsed_json, staging_directory, Keyword.put(staging_opts, :preserve_on_failure, first?)),
          :ok <- complete_first_transfer(first?, media_with_preloads, transferred_json) do
       update_media_item_from_parsed_json(media_with_preloads, transferred_json, first_artifact: true)
     else
@@ -237,8 +241,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp prepare_first_artifact(false, _item, _parsed_json, _stage), do: :ok
 
   defp prepare_first_artifact(true, item, parsed_json, stage) when is_binary(stage) do
-    with {:ok, destinations} <- DownloadStaging.destination_json(parsed_json, stage) do
-      FirstArtifact.remember(item, destinations, parsed_json["filepath"])
+    with {:ok, destinations} <- DownloadStaging.destination_json(parsed_json, stage),
+         {:ok, plan} <- DownloadStaging.transfer_plan(parsed_json, stage, root: Path.dirname(stage)) do
+      FirstArtifact.remember(item, destinations, parsed_json["filepath"], plan.source_map)
     end
   end
 

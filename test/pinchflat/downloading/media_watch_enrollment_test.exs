@@ -137,6 +137,7 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert completed.media_downloaded_at
     assert File.read!(completed.media_filepath) == "first artifact"
     assert MediaWatch.get_watch_for_media_item(item.id)
+    assert File.ls!(root) == []
   end
 
   test "first local completion records one fixed window but not postprocessed duration or nil visibility", %{item: item} do
@@ -382,6 +383,41 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert File.read!(staged) == "first artifact"
     assert Repo.reload!(item).media_downloaded_at == nil
     assert Repo.aggregate(Watch, :count) == 0
+  end
+
+  test "prepared transfer resumes only when the media and sidecar have both arrived", %{item: item, path: path} do
+    stage = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "staged-#{item.uuid}")
+    File.mkdir_p!(stage)
+    staged = Path.join(stage, Path.basename(path))
+    sidecar = Path.join(stage, "sidecar.info.json")
+    destination_sidecar = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "sidecar-#{item.uuid}.json")
+    File.write!(staged, "first artifact")
+    File.write!(sidecar, "sidecar bytes")
+    json = Jason.decode!(metadata(path)) |> Map.put("infojson_filename", destination_sidecar)
+
+    {:ok, started} =
+      Pinchflat.Media.update_media_item(item, %{
+        watch_download_started_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+    artifact = Pinchflat.Downloading.FirstArtifact
+    assert :ok = artifact.remember(started, json, staged, %{staged => path, sidecar => destination_sidecar})
+    File.rename!(staged, path)
+    stub(YtDlpRunnerMock, :run, fn
+      _, :download, _, _, _ -> flunk("recovery must not download")
+      _, :download_thumbnail, _, _, _ -> {:ok, ""}
+    end)
+    assert {:error, :first_artifact_needs_recovery} = run(item)
+    assert File.read!(path) == "first artifact"
+    assert File.read!(sidecar) == "sidecar bytes"
+    refute Repo.reload!(item).media_downloaded_at
+
+    File.rename!(sidecar, destination_sidecar)
+    assert :ok = run(item)
+    assert File.read!(path) == "first artifact"
+    assert File.read!(destination_sidecar) == "sidecar bytes"
+    assert Repo.reload!(item).media_downloaded_at
+    assert MediaWatch.get_watch_for_media_item(item.id)
   end
 
   test "failed enrollment retains the first artifact and retries without yt-dlp", %{item: item, path: path} do

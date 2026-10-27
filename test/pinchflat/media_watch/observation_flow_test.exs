@@ -144,6 +144,23 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
     assert Repo.get!(Watch, watch.id).hold_reason
   end
 
+  test "private and unavailable to unlisted each require confirmation and emit events", %{watch: watch} do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    for {availability, index} <- Enum.with_index([:private, :unlisted, :unavailable, :unlisted]) do
+      first = %{observation(DateTime.add(now, index * 2400), 120) | availability: availability}
+      second = %{first | observed_at: DateTime.add(first.observed_at, 1200)}
+      assert {:ok, %{watch: suspected, event: nil}} = MediaWatch.record_observation(watch, first)
+      assert suspected.confirmed_state == "suspected"
+      assert {:ok, %{event: %Event{} = event}} = MediaWatch.record_observation(watch, second)
+      assert event.new_value == to_string(availability)
+      assert Repo.get!(Watch, watch.id).current_visibility == to_string(availability)
+      assert {:ok, %{event: nil}} = MediaWatch.record_observation(watch, second)
+    end
+
+    assert Repo.aggregate(Event, :count) == 4
+  end
+
   test "a trusted first observation fills the immutable remote baseline once", %{source: source} do
     item = media_item_with_attachments(%{source_id: source.id})
     {:ok, fresh} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
@@ -239,6 +256,29 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
 
     assert Repo.aggregate(Event, :count) == 0
     assert Repo.get!(Watch, watch.id).confirmed_state == "suspected"
+  end
+
+  @tag :sqlite_only
+  test "worker retries when a notification insert rolls back the observation", %{watch: watch} do
+    {:ok, _} = Settings.update_setting(Settings.record(), %{youtube_api_key: nil, apprise_server: nil})
+    previous = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.add(-1200)
+    assert {:ok, _} = MediaWatch.record_observation(watch, observation(previous, 130))
+
+    stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _output, _addl ->
+      {:ok, Jason.encode!(%{"id" => watch.media_id, "duration" => 130, "availability" => "public"})}
+    end)
+
+    Repo.query!("""
+    CREATE TRIGGER reject_watch_notification_worker BEFORE INSERT ON oban_jobs
+    BEGIN SELECT RAISE(FAIL, 'notification unavailable'); END
+    """)
+
+    assert {:error, _} = ObservationWorker.perform(%Oban.Job{args: %{"id" => watch.id}})
+    assert Repo.aggregate(Event, :count) == 0
+    assert Repo.get!(Watch, watch.id).confirmed_state == "suspected"
+    Repo.query!("DROP TRIGGER reject_watch_notification_worker")
+    assert :ok = ObservationWorker.perform(%Oban.Job{args: %{"id" => watch.id}})
+    assert Repo.aggregate(Event, :count) == 1
   end
 
   test "missing duration and a livestream do not clear an existing suspicion", %{watch: watch} do

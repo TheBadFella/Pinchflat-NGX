@@ -13,7 +13,7 @@ defmodule Pinchflat.Downloading.FirstArtifact do
   end
 
   @doc "Stores an identity-bound copy and a small durable journal before the first database write."
-  def remember(%MediaItem{} = item, parsed_json, staged_path) do
+  def remember(%MediaItem{} = item, parsed_json, staged_path, source_map \\ %{}) do
     path = parsed_json["filepath"]
     dir = directory(item)
     copy = Path.join(dir, "media")
@@ -27,10 +27,11 @@ defmodule Pinchflat.Downloading.FirstArtifact do
          :ok <- sync_file(copy),
          {:ok, hash} <- hash_file(copy),
          {:ok, ^hash} <- hash_file(staged_path),
+         {:ok, files} <- planned_files(Map.put(source_map, staged_path, path)),
          metadata = MetadataFileHelpers.compress_and_store_metadata_for(item, parsed_json),
          :ok <- sync_file(metadata),
          :ok <-
-           write_journal(journal, %{uuid: item.uuid, path: path, hash: hash, metadata: metadata, phase: "prepared"}) do
+           write_journal(journal, %{uuid: item.uuid, path: path, hash: hash, files: files, metadata: metadata, phase: "prepared"}) do
       :ok
     else
       error -> {:error, error}
@@ -43,10 +44,10 @@ defmodule Pinchflat.Downloading.FirstArtifact do
 
     with :ok <- safe_journal_directory(directory(item)),
          {:ok, bytes} <- File.read(path),
-         {:ok, %{"uuid" => uuid, "path" => active, "hash" => hash, "metadata" => expected} = entry} <-
+         {:ok, %{"uuid" => uuid, "path" => active, "hash" => hash, "files" => files, "metadata" => expected} = entry} <-
            Jason.decode(bytes),
-         true <- uuid == item.uuid and transferred_json["filepath"] == active,
-         {:ok, ^hash} <- hash_file(active),
+         true <- uuid == item.uuid and transferred_json["filepath"] == active and files[active] == hash,
+         :ok <- verify_files(files),
          ^expected <- MetadataFileHelpers.compress_and_store_metadata_for(item, transferred_json),
          :ok <- sync_file(expected) do
       write_journal(path, Map.put(entry, "phase", "transferred"))
@@ -70,14 +71,15 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     with :ok <- safe_journal_directory(dir),
          {:ok, %{type: :regular}} <- File.lstat(journal),
          {:ok, bytes} <- File.read(journal),
-         {:ok, %{"uuid" => uuid, "path" => path, "hash" => hash, "metadata" => metadata, "phase" => "transferred"}} <-
+         {:ok, %{"uuid" => uuid, "path" => path, "hash" => hash, "files" => files, "metadata" => metadata, "phase" => phase} = entry} <-
            Jason.decode(bytes),
-         true <- uuid == item.uuid and metadata == Path.join(Path.dirname(dir), "metadata.json.gz"),
-         :ok <- valid_media_path(path),
+         true <- phase in ["prepared", "transferred"] and uuid == item.uuid and files[path] == hash and
+                   metadata == Path.join(Path.dirname(dir), "metadata.json.gz"),
          {:ok, ^hash} <- hash_file(Path.join(dir, "media")),
-         {:ok, ^hash} <- hash_file(path),
+         :ok <- verify_files(files),
          {:ok, parsed_json} <- MetadataFileHelpers.read_compressed_metadata(metadata),
-         true <- parsed_json["filepath"] == path do
+         true <- parsed_json["filepath"] == path,
+         :ok <- if(phase == "prepared", do: write_journal(journal, Map.put(entry, "phase", "transferred")), else: :ok) do
       {:ok, parsed_json}
     else
       _ -> {:error, :first_artifact_needs_recovery}
@@ -168,6 +170,34 @@ defmodule Pinchflat.Downloading.FirstArtifact do
       :ok
     end
   end
+
+  defp planned_files(source_map) when is_map(source_map) and map_size(source_map) > 0 do
+    Enum.reduce_while(source_map, {:ok, %{}}, fn {source, destination}, {:ok, files} ->
+      with :ok <- valid_media_path(source, :staged),
+           :ok <- safe_destination(destination),
+           {:ok, hash} <- hash_file(source) do
+        {:cont, {:ok, Map.put(files, destination, hash)}}
+      else
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp planned_files(_), do: {:error, :invalid_first_artifact}
+
+  defp verify_files(files) when is_map(files) and map_size(files) > 0 do
+    Enum.reduce_while(files, :ok, fn {path, hash}, _ ->
+      with true <- is_binary(hash),
+           :ok <- valid_media_path(path),
+           {:ok, ^hash} <- hash_file(path) do
+        {:cont, :ok}
+      else
+        _ -> {:halt, {:error, :first_artifact_transfer_uncertain}}
+      end
+    end)
+  end
+
+  defp verify_files(_), do: {:error, :first_artifact_transfer_uncertain}
 
   defp valid_media_path(path, mode \\ :transferred)
 

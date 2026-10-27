@@ -95,7 +95,7 @@ defmodule Pinchflat.MediaWatch.Observation do
           current_visibility != to_string(observation.availability) ->
         {:unavailable, current_visibility, to_string(observation.availability)}
 
-      observation.availability == :unlisted and current_visibility not in ["unlisted", "unavailable", "private"] ->
+      observation.availability == :unlisted and current_visibility != "unlisted" ->
         {:visibility, current_visibility, "unlisted"}
 
       observation.availability == :public and current_visibility in ["unlisted", "unavailable", "private"] ->

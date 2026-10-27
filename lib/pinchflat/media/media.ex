@@ -315,7 +315,8 @@ defmodule Pinchflat.Media do
 
     result =
       MediaWatch.with_deletion_fence(media_item, fn media_item ->
-        with :ok <- maybe_protect_watched_active_files(media_item, delete_files),
+        with :ok <- maybe_protect_watched_record(media_item),
+             :ok <- maybe_protect_watched_active_files(media_item, delete_files),
              {:ok, _} <- if(delete_files, do: do_delete_media_files(media_item), else: {:ok, media_item}),
              :ok <- delete_internal_metadata_files(media_item) do
           Tasks.delete_tasks_for(media_item)
@@ -447,6 +448,14 @@ defmodule Pinchflat.Media do
   defp direct_status_key("failed"), do: :failed
   defp direct_status_key("prevented"), do: :prevented
   defp direct_status_key("skipped"), do: :skipped
+
+  defp maybe_protect_watched_record(%MediaItem{} = media_item) do
+    case MediaWatch.get_watch_for_media_item(media_item.id) do
+      nil -> :ok
+      %{released_at: nil} -> {:error, :watch_tombstone_required}
+      _ -> :ok
+    end
+  end
 
   # A keep-files delete must not detach the last discoverable path from an
   # unenclosed watched original. The tombstone/kept-path workflow is not yet

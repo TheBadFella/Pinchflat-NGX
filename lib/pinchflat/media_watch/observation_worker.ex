@@ -34,9 +34,12 @@ defmodule Pinchflat.MediaWatch.ObservationWorker do
               {:ok, _result} ->
                 :ok
 
+              {:error, reason} when reason in [:not_found, :stale_observation] ->
+                :ok
+
               {:error, reason} ->
                 Logger.warning("Watch observation for ##{id} was not recorded: #{inspect(reason)}")
-                :ok
+                {:error, reason}
             end
 
           {:skip, reason} ->
@@ -44,5 +47,8 @@ defmodule Pinchflat.MediaWatch.ObservationWorker do
             :ok
         end
     end
+  rescue
+    error in [Exqlite.Error, Postgrex.Error, DBConnection.ConnectionError] ->
+      {:error, error}
   end
 end

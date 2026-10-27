@@ -345,7 +345,7 @@ defmodule Pinchflat.Downloading.DownloadStaging do
           {:cont, {:ok, Map.put(path_map, source, nil), transferred}}
 
         {:error, reason} ->
-          rollback_transfers(transferred)
+          unless Keyword.get(opts, :preserve_on_failure, false), do: rollback_transfers(transferred)
           {:halt, {:error, reason}}
       end
     end)

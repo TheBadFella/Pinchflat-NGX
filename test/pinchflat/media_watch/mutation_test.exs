@@ -159,6 +159,11 @@ defmodule Pinchflat.MediaWatch.MutationTest do
 
       assert {:ok, %{archive_state: "published"}} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
       assert :ok = MediaWatch.allow_active_file_deletion(item)
+      assert {:error, :watch_tombstone_required} = Media.delete_media_item(item, delete_files: true)
+      assert {:error, :watch_tombstone_required} = Media.delete_media_item(item)
+      assert Repo.get!(Watch, watch.id).media_item_id == item.id
+      assert File.read!(item.media_filepath) == "first artifact"
+      assert {:ok, _} = OriginalArchive.verify_relative(Repo.get!(Watch, watch.id).original_manifest_path)
     end
   end
 
