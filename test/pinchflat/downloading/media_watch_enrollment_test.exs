@@ -33,7 +33,7 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     stub(DiskSpaceCheckerMock, :available_bytes, fn _ -> {:ok, 1_000_000_000_000} end)
     stub(UserScriptRunnerMock, :run, fn _event, _item -> {:ok, "", 0} end)
     stub(HTTPClientMock, :get, fn _url, _headers, _opts -> {:ok, ""} end)
-    %{item: item, path: path}
+    %{item: item, path: path, profile: profile}
   end
 
   defp metadata(path) do
@@ -53,6 +53,72 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
 
   defp run(item, args \\ %{}) do
     MediaDownloadWorker.perform(%Oban.Job{args: Map.merge(%{"id" => item.id}, args)})
+  end
+
+  test "default-off first download completes without a watch or a repeat pending download", %{
+    item: item,
+    profile: profile
+  } do
+    profile |> Repo.reload!() |> Ecto.Changeset.change(watch_window_days: 0) |> Repo.update!()
+
+    assert :ok = run(item)
+    completed = Repo.reload!(item)
+    assert completed.media_downloaded_at
+    assert completed.media_filepath && File.regular?(completed.media_filepath)
+    assert is_nil(completed.watch_download_started_at)
+    refute completed.watch_postprocessing_pending
+    refute MediaWatch.get_watch_for_media_item(item.id)
+    refute Pinchflat.Media.pending_download?(completed)
+
+    assert :ok = run(item)
+    assert Repo.reload!(item).media_downloaded_at == completed.media_downloaded_at
+  end
+
+  test "default-off transient retry completes after advisory postprocessing", %{
+    item: item,
+    path: path,
+    profile: profile
+  } do
+    profile |> Repo.reload!() |> Ecto.Changeset.change(watch_window_days: 0) |> Repo.update!()
+
+    stub(YtDlpRunnerMock, :run, fn
+      _url, :get_downloadable_status, _, _, _ ->
+        {:ok, "{}"}
+
+      _url, :download_thumbnail, _, _, _ ->
+        {:ok, ""}
+
+      _url, :download, opts, _, _ ->
+        count = Process.get(:default_off_downloads, 0) + 1
+        Process.put(:default_off_downloads, count)
+
+        if count == 1 do
+          {:error, "temporary download failure", 1}
+        else
+          staged = Path.join(Path.dirname(Keyword.fetch!(opts, :output)), Path.basename(path))
+          File.mkdir_p!(Path.dirname(staged))
+          File.write!(staged, "first artifact")
+          {:ok, metadata(staged)}
+        end
+    end)
+
+    stub(UserScriptRunnerMock, :run, fn
+      :media_downloaded, _ -> {:ok, "advisory failure", 1}
+      _event, _ -> {:ok, "", 0}
+    end)
+
+    assert {:error, :download_failed} = run(item)
+    assert is_nil(Repo.reload!(item).media_downloaded_at)
+    assert :ok = run(item)
+    completed = Repo.reload!(item)
+    assert completed.media_downloaded_at
+    assert File.read!(completed.media_filepath) == "first artifact"
+    assert is_nil(completed.watch_download_started_at)
+    refute completed.watch_postprocessing_pending
+    refute MediaWatch.get_watch_for_media_item(item.id)
+    refute Pinchflat.Media.pending_download?(completed)
+    assert :ok = run(item)
+    assert Process.get(:default_off_downloads) == 2
   end
 
   test "first watched download enrolls through configured external staging", %{item: item} do

@@ -309,7 +309,13 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
             {:error, reason}
         end
       else
-        attrs
+        if is_nil(downloaded_item.media_downloaded_at) and not is_nil(downloaded_item.watch_download_started_at) do
+          attrs
+          |> Map.put(:media_downloaded_at, DateTime.utc_now() |> DateTime.truncate(:second))
+          |> Map.put(:watch_download_started_at, nil)
+        else
+          attrs
+        end
       end
 
     case attrs do

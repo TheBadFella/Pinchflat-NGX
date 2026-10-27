@@ -302,26 +302,14 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         }
       })
 
-    # Bytes have arrived, but the artifact is not complete until application
-    # postprocessing succeeds. Never start the watch from the transfer time.
-    parsed_attrs =
-      if opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
-           is_nil(media_with_preloads.media_downloaded_at) do
-        Map.merge(parsed_attrs, %{
-          watch_postprocessing_pending: true
-        })
-      else
-        parsed_attrs
-      end
-
-    first? =
+    first_watched_artifact? =
       opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
-        is_nil(media_with_preloads.media_downloaded_at)
+        is_nil(media_with_preloads.media_downloaded_at) and
+        (FirstArtifact.pending?(media_with_preloads) or
+           MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0)
 
-    if first? and
-         (FirstArtifact.pending?(media_with_preloads) or
-            MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0) do
-      persist_first_artifact(media_with_preloads, parsed_attrs)
+    if first_watched_artifact? do
+      persist_first_artifact(media_with_preloads, Map.put(parsed_attrs, :watch_postprocessing_pending, true))
     else
       Media.update_media_item(media_with_preloads, parsed_attrs)
     end
