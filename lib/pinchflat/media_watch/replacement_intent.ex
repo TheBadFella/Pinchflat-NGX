@@ -417,15 +417,20 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
          :ok <- reject_symlink(expanded) do
       case File.lstat(expanded) do
         {:ok, %{type: :regular}} ->
-          destination = Path.join(directory, Path.basename(expanded))
+          name = :crypto.hash(:sha256, expanded) |> Base.encode16(case: :lower)
+          destination = Path.join(directory, name)
 
-          case File.rename(expanded, destination) do
-            :ok ->
-              _ = sync_directory(directory)
-              {:ok, destination}
+          if File.lstat(destination) == {:error, :enoent} do
+            case File.rename(expanded, destination) do
+              :ok ->
+                _ = sync_directory(directory)
+                {:ok, destination}
 
-            {:error, reason} ->
-              {:error, reason}
+              {:error, reason} ->
+                {:error, reason}
+            end
+          else
+            {:error, :quarantine_destination_exists}
           end
 
         {:ok, _other} ->

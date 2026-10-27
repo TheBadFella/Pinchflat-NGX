@@ -86,7 +86,7 @@ defmodule Pinchflat.Media.MediaQuery do
   def redownloaded, do: dynamic([mi], not is_nil(mi.media_redownloaded_at))
 
   # Media-catalog filters for watched items. The labels stay distinct so a
-  # remote metadata check failure is never shown as a download failure, and an
+  # inconclusive remote check is never shown as a download failure, and an
   # unlisted or private video is never called deleted.
   def watch_filter(:all), do: dynamic([media_item], true)
 

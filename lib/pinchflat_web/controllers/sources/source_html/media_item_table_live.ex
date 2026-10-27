@@ -43,7 +43,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
         <option value="changed" selected={@watch_filter == "changed"}>Changed or suspected</option>
         <option value="unlisted" selected={@watch_filter == "unlisted"}>Unlisted now</option>
         <option value="unavailable" selected={@watch_filter == "unavailable"}>Private or unavailable</option>
-        <option value="check_failed" selected={@watch_filter == "check_failed"}>Remote check failed</option>
+        <option value="check_failed" selected={@watch_filter == "check_failed"}>Inconclusive remote check</option>
       </select>
     </form>
     """

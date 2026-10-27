@@ -65,6 +65,48 @@ defmodule PinchflatWeb.OriginalControllerTest do
     end
   end
 
+  test "coordinated archive and manifest edits cannot be listed, displayed or served", %{
+    conn: conn,
+    item: item,
+    watch: watch
+  } do
+    manifest_path = OriginalArchive.manifest_path(watch.id)
+    manifest = Jason.decode!(File.read!(manifest_path))
+    file = Enum.find(manifest["files"], &(&1["role"] == "media"))
+    saved = Path.join(OriginalArchive.archive_directory(watch.id), file["path"])
+    {:ok, consent} = MediaWatch.release_confirmation(watch)
+    File.write!(saved, "changed original")
+
+    files =
+      Enum.map(manifest["files"], fn
+        %{"role" => "media"} = entry ->
+          %{entry | "sha256" => Base.encode16(:crypto.hash(:sha256, "changed original"), case: :lower),
+                    "size" => byte_size("changed original")}
+
+        entry ->
+          entry
+      end)
+
+    File.write!(manifest_path, Jason.encode!(%{manifest | "files" => files}))
+    assert {:ok, _} = OriginalArchive.verify_relative(OriginalArchive.relative_manifest_path(watch.id), watch_id: watch.id)
+    assert {:error, :active_file_unverifiable} = MediaWatch.verify_archive(watch)
+    assert {:error, :active_file_unverifiable} = OriginalArchive.summary(watch)
+    assert {:error, :active_file_unverifiable} = OriginalArchive.files(watch)
+    assert {:error, :archive_file_unavailable} = OriginalArchive.file(watch, "media")
+
+    for query <- ["", "?download=true"] do
+      result = get(conn, "/sources/#{item.source_id}/media/#{item.id}/original/files/media" <> query)
+      assert result.status == 404
+    end
+
+    html = conn |> get(~p"/sources/#{item.source_id}/media/#{item}") |> html_response(200)
+    assert html =~ "Saved original could not be verified"
+    refute html =~ "Saved original protected."
+    refute html =~ "Play saved original"
+    assert {:error, :stale_confirmation} = MediaWatch.release_watch(item, consent)
+    assert File.exists?(saved)
+  end
+
   test "archive routes reject another source and unauthenticated access", %{conn: conn, item: item} do
     other = source_fixture()
     assert_error_sent 404, fn -> get(conn, ~p"/sources/#{other.id}/media/#{item}/original/files/media") end

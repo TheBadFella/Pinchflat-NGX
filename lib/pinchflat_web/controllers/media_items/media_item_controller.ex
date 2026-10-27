@@ -24,27 +24,22 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
     active_tab = tab_param(conn.params, ~w(media tasks), "media")
     watch = MediaWatch.get_watch_for_media_item(media_item.id)
     watch_events = (watch && MediaWatch.list_events(watch.id)) || []
+    archive_summary = watch && OriginalArchive.summary(watch)
 
     render(conn, :show,
       media_item: media_item,
       watch: watch,
       watch_events: watch_events,
-      archive_summary: watch && OriginalArchive.summary(watch),
-      archive_files: archive_files(watch),
+      archive_summary: archive_summary,
+      archive_files: archive_files(watch, archive_summary),
       watch_policy_enabled: MediaWatch.effective_watch_window_days(Repo.preload(media_item.source, :media_profile)) > 0,
       active_tab: active_tab,
       tab_href: fn tab -> ~p"/sources/#{media_item.source_id}/media/#{media_item}?#{[tab: tab]}" end
     )
   end
 
-  defp archive_files(%{archive_state: "published"} = watch) do
-    case OriginalArchive.files(watch) do
-      {:ok, files} -> files
-      _ -> []
-    end
-  end
-
-  defp archive_files(_watch), do: []
+  defp archive_files(%{archive_state: "published"}, {:ok, %{entries: entries}}), do: entries
+  defp archive_files(_watch, _summary), do: []
 
   def edit(conn, %{"id" => id}) do
     media_item = Media.get_media_item!(id)

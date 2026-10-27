@@ -85,7 +85,7 @@
               <% @watch.archive_state == "needs_recovery" -> %>
                 The saved original requires recovery. Automatic replacement is blocked.
               <% @watch.last_error_at -> %>
-                The latest remote check failed. Automatic replacement is blocked.
+                The latest remote check was inconclusive. Automatic replacement is blocked.
               <% @watch.hold_reason -> %>
                 <span :if={@watch.confirmed_state in ["suspected", "confirmed"]}>
                   {watch_hold_explanation(@watch)}
@@ -102,7 +102,7 @@
                 Remote checks end on {format_watch_timestamp(@watch.ends_at, "%Y-%m-%d %H:%M")}.
             <% end %>
           </p>
-          <p :if={@watch.archive_state == "published" && !@watch.released_at} class="mt-1 theme-status-success">
+          <p :if={@watch.archive_state == "published" && !@watch.released_at && watch_archive_summary(@archive_summary)} class="mt-1 theme-status-success">
             Saved original protected.
           </p>
         </div>
@@ -134,11 +134,11 @@
                 <dd class="mt-1">{@watch.suspected_kind}</dd>
               </div>
               <div :if={@watch.last_success_at}>
-                <dt class="text-xs text-theme-on-surface-muted">Last successful check</dt>
+                <dt class="text-xs text-theme-on-surface-muted">Last verified check</dt>
                 <dd class="mt-1">{format_watch_timestamp(@watch.last_success_at, "%Y-%m-%d %H:%M")}</dd>
               </div>
               <div :if={@watch.last_error_at}>
-                <dt class="text-xs text-theme-on-surface-muted">Last failed check</dt>
+                <dt class="text-xs text-theme-on-surface-muted">Last inconclusive check</dt>
                 <dd class="mt-1">{format_watch_timestamp(@watch.last_error_at, "%Y-%m-%d %H:%M")}</dd>
               </div>
             </dl>
@@ -203,7 +203,8 @@
             <dl class="space-y-3">
               <div>
                 <dt class="text-xs text-theme-on-surface-muted">Status</dt>
-                <dd class="mt-1">Saved original retained separately from the current file</dd>
+                <dd :if={watch_archive_summary(@archive_summary)} class="mt-1">Saved original retained separately from the current file</dd>
+                <dd :if={!watch_archive_summary(@archive_summary)} class="mt-1">Saved original could not be verified. Playback and download are unavailable.</dd>
               </div>
               <div :if={watch_archive_summary(@archive_summary)}>
                 <dt class="text-xs text-theme-on-surface-muted">Size</dt>
@@ -212,7 +213,7 @@
                 </dd>
               </div>
             </dl>
-            <p class="mt-3 text-xs text-theme-on-surface-muted">
+            <p :if={watch_archive_summary(@archive_summary)} class="mt-3 text-xs text-theme-on-surface-muted">
               The saved original is retained until you choose to delete it.
               <%= if DateTime.compare(@watch.ends_at, DateTime.utc_now()) != :gt && is_nil(@watch.hold_reason) do %>
                 The watch has ended; automatic retention may remove the current file.

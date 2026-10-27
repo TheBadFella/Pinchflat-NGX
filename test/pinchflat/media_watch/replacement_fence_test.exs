@@ -438,6 +438,43 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       refute ReplacementIntent.pending?(watch.id)
     end
 
+    test "failed replacement quarantines both new files with the same basename" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      en = Path.join([Path.dirname(item.media_filepath), "en", "video.vtt"])
+      es = Path.join([Path.dirname(item.media_filepath), "es", "video.vtt"])
+      staged = %{staged_sidecar(en) => en, staged_sidecar(es) => es}
+
+      assert {:error, :simulated_sidecar_failure} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: staged},
+                 fn _ ->
+                   File.mkdir_p!(Path.dirname(en))
+                   File.mkdir_p!(Path.dirname(es))
+                   File.write!(en, "English subtitle")
+                   File.write!(es, "Spanish subtitle")
+                   {:error, :simulated_sidecar_failure}
+                 end,
+                 fn _ -> flunk("a partial transfer must not update metadata") end
+               )
+
+      refute File.exists?(en)
+      refute File.exists?(es)
+      assert File.read!(item.media_filepath) == "first artifact"
+      refute ReplacementIntent.pending?(watch.id)
+
+      [directory] = Enum.filter(File.ls!(quarantine_root()), &String.starts_with?(&1, "quarantine-#{watch.id}-"))
+      recovered =
+        quarantine_root()
+        |> Path.join(directory)
+        |> File.ls!()
+        |> Enum.map(&File.read!(Path.join([quarantine_root(), directory, &1])))
+
+      assert Enum.sort(recovered) == ["English subtitle", "Spanish subtitle"]
+    end
+
     test "recovery keeps replacement bytes when the database already committed the operation" do
       {item, watch} = watched_item()
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")

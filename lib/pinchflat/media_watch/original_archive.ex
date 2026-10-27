@@ -94,36 +94,27 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
   end
 
   @doc """
-  Describes a published archive without re-hashing its files.
+  Describes a published archive after verifying its files and first-original approval.
 
-  Use this for display only. Anything that authorizes deletion or replacement
-  must use `verify/2` or `verify_relative/2`, which re-hash every file.
-
-  Returns {:ok, %{bytes: non_neg_integer(), files: non_neg_integer(), manifest_path: binary()}}
+  Returns {:ok, %{bytes: non_neg_integer(), files: non_neg_integer(), entries: list(), manifest_path: binary()}}
           | {:error, term()}.
   """
-  def summary(%{original_manifest_path: path, id: watch_id}) when is_binary(path) do
-    summary_relative(path, watch_id)
-  end
+  def summary(%{id: watch_id} = watch) do
+    with {:ok, manifest, _path} <- access_watch_manifest(watch) do
+      files = manifest["files"]
+      bytes = Enum.reduce(files, 0, fn file, total -> total + file["size"] end)
 
-  def summary(%{id: watch_id}) do
-    summary_relative(relative_manifest_path(watch_id), watch_id)
+      {:ok,
+       %{
+         bytes: bytes,
+         files: length(files),
+         entries: Enum.map(files, &Map.take(&1, ["role", "size"])),
+         manifest_path: watch.original_manifest_path || relative_manifest_path(watch_id)
+       }}
+    end
   end
 
   def summary(_watch), do: {:error, :invalid_watch}
-
-  defp summary_relative(relative_path, watch_id) do
-    with {:ok, absolute_manifest} <- resolve_manifest_path(relative_path),
-         :ok <- validate_managed_manifest(absolute_manifest),
-         {:ok, contents} <- File.read(absolute_manifest),
-         {:ok, manifest} <- decode_manifest(contents),
-         :ok <- verify_watch_identity(manifest, watch_id: watch_id) do
-      files = manifest["files"] || []
-      bytes = Enum.reduce(files, 0, fn file, total -> total + (file["size"] || 0) end)
-
-      {:ok, %{bytes: bytes, files: length(files), manifest_path: relative_path}}
-    end
-  end
 
   @doc """
   Verifies every file recorded in a published manifest.
@@ -153,14 +144,14 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
 
   @doc "Lists role-based archive downloads without exposing host paths."
   def files(watch) do
-    with {:ok, manifest, _path} <- read_watch_manifest(watch) do
+    with {:ok, manifest, _path} <- access_watch_manifest(watch) do
       {:ok, Enum.map(manifest["files"], &Map.take(&1, ["role", "size"]))}
     end
   end
 
   @doc "Resolves one manifest role inside this watch's archive; never accepts a filesystem path."
   def file(watch, role) do
-    with {:ok, manifest, path} <- read_watch_manifest(watch),
+    with {:ok, manifest, path} <- access_watch_manifest(watch),
          %{"path" => name, "size" => size, "sha256" => expected} <-
            Enum.find(manifest["files"], &(&1["role"] == role)),
          :ok <- validate_archive_file_path(name),
@@ -184,8 +175,15 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
     end
   end
 
+  defp access_watch_manifest(watch) do
+    with {:ok, manifest, path} <- read_watch_manifest(watch),
+         {:ok, ^manifest} <- Pinchflat.MediaWatch.verify_archive(watch) do
+      {:ok, manifest, path}
+    end
+  end
+
   defp read_watch_manifest(watch) do
-    with {:ok, path} <- resolve_manifest_path(watch.original_manifest_path),
+    with {:ok, path} <- resolve_manifest_path(watch.original_manifest_path || relative_manifest_path(watch.id)),
          :ok <- ensure_watch_directory(path, watch.id),
          :ok <- validate_managed_manifest(path),
          {:ok, contents} <- File.read(path),

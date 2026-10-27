@@ -9,7 +9,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
   alias PinchflatWeb.Sources.MediaItemTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.MediaWatch
   alias Pinchflat.MediaWatch.MediaWatch, as: Watch
+  alias Pinchflat.MediaWatch.Observation
   alias Pinchflat.Repo
   alias Pinchflat.Tasks
 
@@ -158,6 +160,34 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       html = render(view)
 
       assert html =~ unchanged.title
+    end
+
+    test "inconclusive filter includes incomplete and failed remote observations", %{conn: conn, source: source} do
+      private_item = downloaded_item(source, "INCOMPLETE_CHECK_ITEM")
+      failed_item = downloaded_item(source, "FAILED_CHECK_ITEM")
+      verified_item = downloaded_item(source, "VERIFIED_CHECK_ITEM")
+      private_watch = watch_for(private_item, %{baseline_visibility: "public", current_visibility: "public"})
+      failed_watch = watch_for(failed_item, %{baseline_visibility: "public", current_visibility: "public"})
+      watch_for(verified_item, %{baseline_visibility: "public", current_visibility: "public"})
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      assert {:ok, _} =
+               MediaWatch.record_observation(private_watch, %Observation{
+                 backend: :test,
+                 observed_at: now,
+                 availability: :private,
+                 duration_seconds: nil,
+                 livestream: false
+               })
+
+      assert {:ok, _} = MediaWatch.record_observation(failed_watch, Observation.unknown(:yt_dlp, :timeout, now))
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+      assert html =~ "Inconclusive remote check"
+      render_change(view, "filter_watch_state", %{"watch_filter" => "check_failed"})
+      html = render(view)
+      assert html =~ private_item.title
+      assert html =~ failed_item.title
+      refute html =~ verified_item.title
     end
 
     test "shows records that aren't pending or downloaded when other", %{conn: conn} do

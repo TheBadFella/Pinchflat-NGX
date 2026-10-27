@@ -7,6 +7,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.MediaWatch
+  alias Pinchflat.MediaWatch.Observation
   alias Pinchflat.Repo
 
   describe "automatic deletion guidance" do
@@ -77,6 +78,37 @@ defmodule PinchflatWeb.MediaItemControllerTest do
   end
 
   describe "watch window" do
+    test "incomplete and failed checks both explain why replacement is blocked", %{conn: conn} do
+      profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_with_attachments(%{source_id: source.id})
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      public = %Observation{backend: :test, observed_at: now, availability: :public, duration_seconds: 120, livestream: false}
+      {:ok, _} = MediaWatch.record_observation(watch, public)
+      incomplete = %{public | availability: :private, duration_seconds: nil, observed_at: DateTime.add(now, 60)}
+      {:ok, %{watch: held}} = MediaWatch.record_observation(watch, incomplete)
+      assert held.last_error_at
+      assert MediaWatch.replacement_blocked?(item.id)
+
+      html = conn |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
+      assert html =~ "The latest remote check was inconclusive. Automatic replacement is blocked."
+      assert html =~ "Last verified check"
+      assert html =~ "Last inconclusive check"
+      assert html =~ "private"
+      assert html =~ "120 seconds"
+      refute html =~ "The latest remote check failed"
+
+      {:ok, %{watch: failed}} =
+        MediaWatch.record_observation(watch, Observation.unknown(:yt_dlp, :timeout, DateTime.add(now, 120)))
+
+      assert failed.last_error_at
+      assert MediaWatch.replacement_blocked?(item.id)
+      failed_html = conn |> recycle() |> get(~p"/sources/#{source.id}/media/#{item}") |> html_response(200)
+      assert failed_html =~ "The latest remote check was inconclusive. Automatic replacement is blocked."
+      assert failed_html =~ "Last inconclusive check"
+    end
+
     test "shows the fixed window, remote baseline and saved-original state", %{conn: conn} do
       on_exit(fn -> File.rm_rf(Pinchflat.MediaWatch.OriginalArchive.root()) end)
 
