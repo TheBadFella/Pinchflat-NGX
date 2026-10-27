@@ -64,7 +64,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     ~H"""
     <div>
       <.action_feedback feedback={@action_feedback} />
-      <header class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <header class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
           <span class="mx-2">
@@ -72,7 +72,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           </span>
         </span>
 
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div
             :if={@media_state == "downloaded"}
             class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
