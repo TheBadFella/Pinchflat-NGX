@@ -411,18 +411,51 @@ defmodule Pinchflat.MediaWatch do
   end
 
   defp recover_failed_publication(%Watch{} = watch) do
-    if File.regular?(OriginalArchive.manifest_path(watch.id)) do
-      update_watch(watch, %{
-        archive_state: "published",
-        original_manifest_path: OriginalArchive.relative_manifest_path(watch.id),
-        operation_id: nil
-      })
-    else
-      state = if File.exists?(OriginalArchive.archive_directory(watch.id)), do: "needs_recovery", else: "none"
-      update_watch(watch, %{archive_state: state})
-    end
+    update_archive_state(watch, fn _current ->
+      if File.regular?(OriginalArchive.manifest_path(watch.id)) do
+        %{
+          archive_state: "published",
+          original_manifest_path: OriginalArchive.relative_manifest_path(watch.id),
+          operation_id: nil
+        }
+      else
+        state = if File.exists?(OriginalArchive.archive_directory(watch.id)), do: "needs_recovery", else: "none"
+        %{archive_state: state}
+      end
+    end)
+  end
 
-    :ok
+  defp update_archive_state(%Watch{} = watch, attrs) do
+    Repo.transaction(fn ->
+      query =
+        from w in Watch,
+          where:
+            w.id == ^watch.id and w.lease_generation == ^watch.lease_generation and
+              w.archive_state == ^watch.archive_state and is_nil(w.released_at)
+
+      query =
+        if watch.operation_id,
+          do: where(query, [w], w.operation_id == ^watch.operation_id),
+          else: where(query, [w], is_nil(w.operation_id))
+
+      query =
+        if watch.lease_owner,
+          do: where(query, [w], w.lease_owner == ^watch.lease_owner),
+          else: where(query, [w], is_nil(w.lease_owner))
+
+      case Repo.update_all(query, set: [updated_at: utc_now()]) do
+        {1, _} ->
+          {:ok, current} = locked_watch(watch.id)
+
+          case update_watch(current, attrs.(current)) do
+            {:ok, updated} -> updated
+            {:error, reason} -> Repo.rollback(reason)
+          end
+
+        _ ->
+          Repo.rollback(:lost_lease)
+      end
+    end)
   end
 
   defp ensure_observation_unchanged(%Lease{} = lease) do
@@ -859,21 +892,54 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp recover_failed_replacement(watch_id, operation_id) do
-    case ReplacementIntent.read(watch_id) do
-      {:ok, %{"operation_id" => ^operation_id} = intent} ->
-        case ReplacementIntent.restore(intent) do
-          :ok ->
-            _ = ReplacementIntent.clear(watch_id, operation_id)
-            :ok
+  defp recover_failed_replacement(%Lease{} = lease, operation_id) do
+    result =
+      Repo.transaction(fn ->
+        query =
+          from w in Watch,
+            where:
+              w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and
+                w.lease_generation == ^lease.generation and w.operation_kind == "replace" and
+                is_nil(w.released_at)
 
-          {:error, reason} ->
-            Logger.error("watched replacement recovery failed for watch ##{watch_id}: #{inspect(reason)}")
-            {:error, reason}
+        case Repo.update_all(query, set: [updated_at: utc_now()]) do
+          {1, _} ->
+            {:ok, _watch} = locked_watch(lease.watch_id)
+
+            case ReplacementIntent.read(lease.watch_id) do
+              {:ok,
+               %{
+                 "operation_id" => ^operation_id,
+                 "lease" => %{"owner" => owner, "generation" => generation}
+               } = intent}
+              when owner == lease.owner and generation == lease.generation ->
+                with :ok <- ReplacementIntent.restore(intent),
+                     :ok <- ReplacementIntent.clear(lease.watch_id, operation_id) do
+                  :ok
+                else
+                  {:error, reason} -> Repo.rollback(reason)
+                end
+
+              {:error, :not_pending} ->
+                :ok
+
+              _ ->
+                Repo.rollback(:operation_mismatch)
+            end
+
+          _ ->
+            case ReplacementIntent.read(lease.watch_id) do
+              {:error, :not_pending} -> :ok
+              _ -> Repo.rollback(:lost_lease)
+            end
         end
+      end)
 
-      _other ->
-        :ok
+    case result do
+      {:ok, :ok} -> :ok
+      {:error, reason} ->
+        Logger.error("watched replacement recovery failed for watch ##{lease.watch_id}: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -1322,23 +1388,30 @@ defmodule Pinchflat.MediaWatch do
         end
 
       true ->
-        {:ok, preparing} =
-          update_watch(watch, %{
-            archive_state: "preparing",
-            operation_id: Ecto.UUID.generate()
-          })
+        with true <- watch.archive_state in ["none", "needs_recovery"],
+             {:ok, preparing} <-
+               update_archive_state(watch, fn _current ->
+                 %{archive_state: "preparing", operation_id: Ecto.UUID.generate()}
+               end) do
+          publish_original(preparing, media_item, opts)
+        else
+          false -> {:error, :archive_preparing}
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
 
-        case OriginalArchive.publish(preparing, media_item, opts) do
-          {:ok, %{manifest_path: manifest_path}} ->
-            update_watch(preparing, %{
-              archive_state: "published",
-              original_manifest_path: manifest_path,
-              operation_id: nil
-            })
+  defp publish_original(preparing, media_item, opts) do
+    case OriginalArchive.publish(preparing, media_item, opts) do
+      {:ok, %{manifest_path: manifest_path}} ->
+        update_archive_state(preparing, fn _current ->
+          %{archive_state: "published", original_manifest_path: manifest_path, operation_id: nil}
+        end)
 
-          {:error, reason} ->
-            recover_failed_publication(preparing)
-            {:error, reason}
+      {:error, reason} ->
+        case recover_failed_publication(preparing) do
+          {:ok, _} -> {:error, reason}
+          {:error, recovery_reason} -> {:error, {:archive_recovery_failed, reason, recovery_reason}}
         end
     end
   end
@@ -1464,7 +1537,7 @@ defmodule Pinchflat.MediaWatch do
         {:ok, updated}
 
       {:error, reason} ->
-        case recover_failed_replacement(lease.watch_id, operation_id) do
+        case recover_failed_replacement(lease, operation_id) do
           :ok -> {:error, reason}
           {:error, recovery_reason} -> {:error, {:replacement_recovery_failed, reason, recovery_reason}}
         end

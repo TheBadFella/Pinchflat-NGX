@@ -3,6 +3,7 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
 
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
+  import Pinchflat.MediaFixtures
   import Mox
 
   alias Pinchflat.Sources
@@ -103,6 +104,22 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
   end
 
   describe "delete/2 JSON API" do
+    test "a protected source returns JSON conflict without scheduling deletion", %{conn: conn} do
+      profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()
+      source = source_fixture(media_profile_id: profile.id)
+      path = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "blocked-#{Ecto.UUID.generate()}.mp4")
+      File.write!(path, "original")
+      item = media_item_fixture(source_id: source.id, media_filepath: path)
+      {:ok, _watch} = Pinchflat.MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+
+      for delete_files <- ["false", "true"] do
+        response = delete(conn, "/sources/#{source.id}?delete_files=#{delete_files}&_format=json")
+        assert json_response(response, 409)["error"] =~ "End watch protection"
+        refute Repo.reload!(source).marked_for_deletion_at
+        refute_enqueued(worker: Pinchflat.Sources.SourceDeletionWorker)
+      end
+    end
+
     test "deletes source and returns JSON", %{conn: conn} do
       source = source_fixture()
 

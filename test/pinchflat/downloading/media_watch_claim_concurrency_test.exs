@@ -118,6 +118,66 @@ defmodule Pinchflat.Downloading.MediaWatchClaimConcurrencyTest do
     end)
   end
 
+  test "failed replacement and a successor lease cannot restore over successor bytes" do
+    Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+      profile = media_profile_fixture()
+      profile |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()
+      source = source_fixture(%{media_profile_id: profile.id})
+      path = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "failed-#{Ecto.UUID.generate()}.mkv")
+      staged = path <> ".staged"
+      item = media_item_fixture(%{source_id: source.id, media_filepath: path})
+      File.write!(path, "first artifact")
+      File.write!(staged, "new artifact")
+      {:ok, watch} = MediaWatch.enroll_on_first_completion(item, Repo.preload(source, :media_profile))
+      {:ok, _} = MediaWatch.archive_original(watch, Repo.preload(item, :metadata))
+      Repo.update!(Ecto.Changeset.change(watch, last_success_at: DateTime.utc_now() |> DateTime.truncate(:second)))
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+
+      try do
+        result =
+          MediaWatch.commit_replacement(
+            lease,
+            item,
+            %{source_map: %{staged => path}},
+            fn _ ->
+              File.write!(path, "partial transfer")
+
+              successor = Task.async(fn ->
+                MediaWatch.release_lease(lease)
+                {:ok, next} = MediaWatch.claim_lease(item.id, "replace")
+                File.write!(path, "successor bytes")
+                next
+              end)
+
+              Process.put(:successor, successor)
+              {:error, :transfer_failed}
+            end,
+            fn _ -> flunk("a failed transfer must not update metadata") end
+          )
+
+        successor = Task.await(Process.delete(:successor), 10_000)
+        assert successor.generation > lease.generation
+        assert File.read!(path) == "successor bytes"
+        assert MediaWatch.lease_current?(successor)
+        assert match?({:error, :transfer_failed}, result) or
+                 match?({:error, {:replacement_recovery_failed, :transfer_failed, :lost_lease}}, result)
+      after
+        if successor = Process.delete(:successor), do: Task.await(successor, 10_000)
+        if ReplacementIntent.pending?(watch.id) do
+          {:ok, intent} = ReplacementIntent.read(watch.id)
+          ReplacementIntent.clear(watch.id, intent["operation_id"])
+        end
+        Repo.delete!(Repo.get!(Watch, watch.id))
+        Repo.delete!(item)
+        Repo.delete!(source)
+        Repo.delete!(profile)
+        File.rm(path)
+        File.rm(staged)
+        File.rm_rf(OriginalArchive.root())
+      end
+    end)
+  end
+
   test "concurrent archive renewal leaves its temporary copy and live lease intact" do
     Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
       profile = media_profile_fixture()
