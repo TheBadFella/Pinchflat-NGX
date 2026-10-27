@@ -18,16 +18,12 @@ defmodule Pinchflat.MediaWatch.Observer do
   @api_endpoint "https://www.googleapis.com/youtube/v3/videos"
 
   @doc """
-  Observes a watch. `:backend` can force `:youtube_api` or `:yt_dlp` for tests.
+  Observes a watch using the configured API key or the yt-dlp fallback.
 
   Returns %Observation{} (never raises for a remote failure).
   """
   def observe(watch, opts \\ []) do
-    case Keyword.get(opts, :backend) do
-      :youtube_api -> observe_youtube_api(watch, opts)
-      :yt_dlp -> observe_yt_dlp(watch, opts)
-      nil -> if api_key(opts), do: observe_youtube_api(watch, opts), else: observe_yt_dlp(watch, opts)
-    end
+    if api_key(opts), do: observe_youtube_api(watch, opts), else: observe_yt_dlp(watch, opts)
   end
 
   @doc "Fetches one video through the YouTube Data API."

@@ -12,6 +12,7 @@ defmodule Pinchflat.MediaWatch do
 
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.MediaWatch.Lease
   alias Pinchflat.MediaWatch.MediaWatch, as: Watch
   alias Pinchflat.MediaWatch.MediaWatchEvent, as: Event
@@ -199,7 +200,7 @@ defmodule Pinchflat.MediaWatch do
     else
       attrs =
         success
-        |> Map.drop([:last_success_at, :next_check_at, :current_visibility, :current_upstream_duration_seconds])
+        |> Map.drop([:last_success_at, :next_check_at, :current_visibility])
         |> Map.merge(%{
           confirmed_state: "suspected",
           suspected_kind: to_string(kind),
@@ -215,7 +216,7 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp confirm_or_extend_suspicion(watch, _observation, now, jitter, success, kind, old_value, new_value) do
+  defp confirm_or_extend_suspicion(watch, observation, now, jitter, success, kind, old_value, new_value) do
     first_seen = watch.suspected_first_seen_at
     elapsed = DateTime.diff(now, first_seen, :second)
 
@@ -232,7 +233,7 @@ defmodule Pinchflat.MediaWatch do
           hold_at: watch.hold_at || first_seen
         })
 
-      attrs = if kind == :duration, do: Map.put(attrs, :current_upstream_duration_seconds, new_value), else: attrs
+      attrs = if kind == :duration, do: Map.put(attrs, :confirmed_upstream_duration_seconds, new_value), else: attrs
 
       {:ok, attrs, build_event_attributes(to_string(kind), old_value, new_value, now)}
     else
@@ -241,6 +242,7 @@ defmodule Pinchflat.MediaWatch do
          last_observed_at: now,
          last_error_at: nil,
          error_count: 0,
+         current_upstream_duration_seconds: observation.duration_seconds,
          suspected_kind: watch.suspected_kind,
          suspected_value: to_string(new_value),
          suspected_first_seen_at: first_seen,
@@ -271,12 +273,9 @@ defmodule Pinchflat.MediaWatch do
     |> clear_unconfirmed_suspicion(watch)
   end
 
-  defp maybe_update_current_duration(attrs, %{current_upstream_duration_seconds: nil} = watch, %{
-         duration_seconds: duration,
-         livestream: live
-       })
+  defp maybe_update_current_duration(attrs, _watch, %{duration_seconds: duration, livestream: live})
        when is_integer(duration) and live != true,
-       do: Map.put(attrs, :current_upstream_duration_seconds, watch.baseline_upstream_duration_seconds || duration)
+       do: Map.put(attrs, :current_upstream_duration_seconds, duration)
 
   defp maybe_update_current_duration(attrs, _watch, _observation), do: attrs
 
@@ -364,7 +363,12 @@ defmodule Pinchflat.MediaWatch do
                      Map.take(attrs, [:observed_at, :old_value, :new_value])
                    ) do
                 {:ok, :duplicate} -> nil
-                {:ok, event} -> event
+                {:ok, event} ->
+                  case Oban.insert(NotificationWorker.new(%{"id" => event.id})) do
+                    {:ok, _job} -> event
+                    {:error, reason} -> Repo.rollback(reason)
+                  end
+
                 {:error, reason} -> Repo.rollback(reason)
               end
           end
@@ -374,22 +378,10 @@ defmodule Pinchflat.MediaWatch do
 
     case result do
       {:ok, {updated, event}} ->
-        if event, do: enqueue_notification(event)
         {:ok, %{watch: updated, event: event}}
 
       error ->
         error
-    end
-  end
-
-  defp enqueue_notification(%Event{} = event) do
-    %{"id" => event.id}
-    |> NotificationWorker.new()
-    |> Oban.insert()
-    |> case do
-      {:ok, _job} -> :ok
-      {:error, :duplicate} -> :ok
-      {:error, reason} -> Logger.warning("Could not enqueue watch notification: #{inspect(reason)}")
     end
   end
 
@@ -421,7 +413,8 @@ defmodule Pinchflat.MediaWatch do
     if File.regular?(OriginalArchive.manifest_path(watch.id)) do
       update_watch(watch, %{
         archive_state: "published",
-        original_manifest_path: OriginalArchive.relative_manifest_path(watch.id)
+        original_manifest_path: OriginalArchive.relative_manifest_path(watch.id),
+        operation_id: nil
       })
     else
       state = if File.exists?(OriginalArchive.archive_directory(watch.id)), do: "needs_recovery", else: "none"
@@ -467,7 +460,12 @@ defmodule Pinchflat.MediaWatch do
 
     case OriginalArchive.verify_relative(manifest_path, watch_id: watch.id) do
       {:ok, _manifest} ->
-        {:ok, _} = update_watch(watch, %{archive_state: "published", original_manifest_path: manifest_path})
+        {:ok, _} =
+          update_watch(watch, %{
+            archive_state: "published",
+            original_manifest_path: manifest_path,
+            operation_id: nil
+          })
         :published
 
       {:error, _reason} ->
@@ -550,7 +548,7 @@ defmodule Pinchflat.MediaWatch do
     with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(media_item),
          {:ok, active} <- fingerprint_entries(entries, operation_id),
          :ok <- stash_stale_backups(active, watch.id, operation_id),
-         :ok <- ensure_active_matches_manifest(active, manifest),
+         :ok <- ensure_active_matches_approved(active, watch, manifest),
          {:ok, staged} <- fingerprint_staged(source_map) do
       ReplacementIntent.publish(watch.id, %{
         "operation_id" => operation_id,
@@ -656,21 +654,36 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  # The archive was published from these exact files moments ago. A mismatch
-  # means a manual edit or a path swap happened in between, so no active file
-  # may move.
-  defp ensure_active_matches_manifest(active, manifest) do
-    by_role = Map.new(manifest["files"] || [], fn file -> {file["role"], file} end)
+  defp ensure_active_matches_approved(_active, %{operation_id: id, approved_active_files: nil}, _manifest)
+       when not is_nil(id),
+       do: {:error, :active_file_unverifiable}
 
-    Enum.reduce_while(active, :ok, fn entry, :ok ->
-      expected = entry["sha256"]
-
-      case Map.get(by_role, entry["role"]) do
-        nil -> {:halt, {:error, {:archive_role_missing, entry["role"]}}}
-        %{"sha256" => ^expected} -> {:cont, :ok}
-        _other -> {:halt, {:error, :active_file_changed}}
+  defp ensure_active_matches_approved(active, watch, manifest) do
+    expected =
+      if watch.approved_active_files do
+        watch.approved_active_files
+      else
+        (manifest["files"] || [])
+        |> Enum.with_index()
+        |> Map.new(fn {file, index} ->
+          {Integer.to_string(index), Map.take(file, ["role", "sha256", "size"])}
+        end)
       end
-    end)
+
+    actual =
+      active
+      |> Enum.with_index()
+      |> Map.new(fn {entry, index} ->
+        fields =
+          if watch.approved_active_files,
+            do: ["role", "path", "sha256", "size"],
+            else: ["role", "sha256", "size"]
+        {Integer.to_string(index), Map.take(entry, fields)}
+      end)
+
+    if map_size(actual) == length(active) and actual == expected,
+      do: :ok,
+      else: {:error, :active_file_changed}
   end
 
   defp invoke_transfer(transfer_fun, pre_images) do
@@ -729,13 +742,88 @@ defmodule Pinchflat.MediaWatch do
     error -> {:error, {:update_raised, Exception.message(error)}}
   end
 
-  defp mark_committed(%Lease{} = lease, operation_id) do
+  defp backup_postprocessing_files(intent) do
+    intent["active"]
+    |> Enum.filter(&(&1["role"] in ["internal-metadata", "internal-thumbnail", "nfo"]))
+    |> Enum.reduce_while(:ok, fn entry, :ok ->
+      backup = entry["backup"]
+      expected = %{sha256: entry["sha256"], size: entry["size"]}
+
+      cond do
+        ReplacementIntent.fingerprint(backup) == {:ok, expected} ->
+          {:cont, :ok}
+
+        File.lstat(backup) != {:error, :enoent} ->
+          {:halt, {:error, :pre_image_backup_changed}}
+
+        ReplacementIntent.fingerprint(entry["path"]) != {:ok, expected} ->
+          {:halt, {:error, :active_file_changed}}
+
+        true ->
+          case File.rename(entry["path"], backup) do
+            :ok -> {:cont, :ok}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+      end
+    end)
+  end
+
+  defp approved_active_files(updated, intent, transferred_json) do
+    with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(updated) do
+      staged = Map.new(intent["staged"], &{&1["destination"], &1})
+      previous = Map.new(intent["active"], &{&1["path"], &1})
+
+      entries
+      |> Enum.with_index()
+      |> Enum.reduce_while({:ok, %{}}, fn {entry, index}, {:ok, acc} ->
+        path = Path.expand(entry.source)
+        expected = Map.get(staged, path) || Map.get(previous, path)
+
+        case ReplacementIntent.fingerprint(path) do
+          {:ok, %{sha256: hash, size: size}} ->
+            if match?(%{"sha256" => ^hash, "size" => ^size}, expected) or
+                 generated_postprocessing_file?(entry, updated, transferred_json) do
+              approved = %{"role" => entry.role, "path" => path, "sha256" => hash, "size" => size}
+              {:cont, {:ok, Map.put(acc, Integer.to_string(index), approved)}}
+            else
+              {:halt, {:error, :active_file_changed}}
+            end
+
+          _ ->
+            {:halt, {:error, :active_file_changed}}
+        end
+      end)
+    end
+  end
+
+  defp generated_postprocessing_file?(%{role: "internal-metadata", source: path}, updated, json) do
+    Path.expand(path) == Path.join(MetadataFileHelpers.metadata_directory_for(updated), "metadata.json.gz") and
+      MetadataFileHelpers.read_compressed_metadata(path) == {:ok, json}
+  end
+
+  defp generated_postprocessing_file?(%{role: "internal-thumbnail", source: path}, updated, _json) do
+    Path.expand(path) == Path.join(MetadataFileHelpers.metadata_directory_for(updated), "thumbnail.jpg")
+  end
+
+  defp generated_postprocessing_file?(%{role: "nfo", source: path}, updated, _json) do
+    Path.expand(path) == Path.rootname(Path.expand(updated.media_filepath)) <> ".nfo"
+  end
+
+  defp generated_postprocessing_file?(_entry, _updated, _json), do: false
+
+  defp mark_committed(%Lease{} = lease, operation_id, approved) do
     query =
       from w in Watch,
         where: w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and w.lease_generation == ^lease.generation
 
     case Repo.update_all(query,
-           set: [operation_id: operation_id, lease_owner: nil, lease_expires_at: nil, operation_kind: nil]
+           set: [
+             operation_id: operation_id,
+             approved_active_files: approved,
+             lease_owner: nil,
+             lease_expires_at: nil,
+             operation_kind: nil
+           ]
          ) do
       {1, _} -> :ok
       _ -> {:error, :lost_lease}
@@ -785,26 +873,38 @@ defmodule Pinchflat.MediaWatch do
   end
 
   defp recover_pending_intent(watch_id) do
-    with {:ok, intent} <- ReplacementIntent.read(watch_id),
-         {:ok, watch} <- locked_watch(watch_id) do
-      if committed_intent?(watch, intent) do
-        _ = ReplacementIntent.clear(watch_id, intent["operation_id"])
-        {:ok, :commit_confirmed}
-      else
-        case ReplacementIntent.restore(intent) do
-          :ok ->
-            _ = ReplacementIntent.clear(watch_id, intent["operation_id"])
-            clear_expired_lease(watch)
-            {:ok, :restored}
+    Repo.transaction(fn ->
+      Repo.update_all(from(w in Watch, where: w.id == ^watch_id), set: [updated_at: utc_now()])
 
-          {:error, reason} ->
-            Logger.error("watched replacement recovery could not restore watch ##{watch_id}: #{inspect(reason)}")
-            {:error, reason}
+      with {:ok, watch} <- locked_watch(watch_id),
+           {:ok, intent} <- ReplacementIntent.read(watch_id) do
+        cond do
+          not is_nil(watch.lease_owner) and not is_nil(watch.lease_expires_at) and
+              DateTime.compare(watch.lease_expires_at, utc_now()) == :gt ->
+            Repo.rollback(:lease_busy)
+
+          committed_intent?(watch, intent) ->
+            :ok = ReplacementIntent.clear(watch_id, intent["operation_id"])
+            :commit_confirmed
+
+          true ->
+            case ReplacementIntent.restore(intent) do
+              :ok ->
+                :ok = ReplacementIntent.clear(watch_id, intent["operation_id"])
+                clear_expired_lease(watch)
+                :restored
+
+              {:error, reason} -> Repo.rollback(reason)
+            end
         end
+      else
+        {:error, :not_pending} -> :nothing_pending
+        {:error, reason} -> Repo.rollback(reason)
       end
-    else
-      {:error, :not_pending} -> {:ok, :nothing_pending}
-      {:error, reason} -> {:error, reason}
+    end)
+    |> case do
+      {:ok, action} -> {:ok, action}
+      error -> error
     end
   end
 
@@ -1203,7 +1303,8 @@ defmodule Pinchflat.MediaWatch do
           {:ok, %{manifest_path: manifest_path}} ->
             update_watch(preparing, %{
               archive_state: "published",
-              original_manifest_path: manifest_path
+              original_manifest_path: manifest_path,
+              operation_id: nil
             })
 
           {:error, reason} ->
@@ -1311,8 +1412,10 @@ defmodule Pinchflat.MediaWatch do
                :ok <- verify_transferred(intent, transferred_json),
                :ok <- reserve_for_commit(lease),
                {:ok, _manifest} <- verify_fence(lease),
+               :ok <- backup_postprocessing_files(intent),
                {:ok, updated} <- invoke_update(update_fun, transferred_json),
-               :ok <- mark_committed(lease, operation_id) do
+               {:ok, approved} <- approved_active_files(updated, intent, transferred_json),
+               :ok <- mark_committed(lease, operation_id, approved) do
             {updated, intent}
           else
             {:error, reason} -> Repo.rollback(reason)
@@ -1402,6 +1505,7 @@ defmodule Pinchflat.MediaWatch do
       ends_at: iso8601(watch.ends_at),
       confirmed_state: watch.confirmed_state,
       current_visibility: watch.current_visibility,
+      current_upstream_duration_seconds: watch.current_upstream_duration_seconds,
       suspected_kind: watch.suspected_kind,
       baseline_upstream_duration_seconds: watch.baseline_upstream_duration_seconds,
       last_success_at: iso8601(watch.last_success_at),

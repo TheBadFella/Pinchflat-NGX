@@ -276,31 +276,6 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
     end
   end
 
-  @doc """
-  Refuses saved-original deletion until an authenticated, version-bound
-  confirmation is available. A caller-supplied boolean and manifest path
-  are not sufficient authority. Returns {:error, term()}.
-  """
-  def delete_published(confirmation) when is_map(confirmation) do
-    with true <- confirmed?(confirmation),
-         watch_id when is_integer(watch_id) <- Map.get(confirmation, :watch_id),
-         expected_path when is_binary(expected_path) <- Map.get(confirmation, :manifest_path),
-         :ok <- ensure_no_replacement_intent(watch_id),
-         {:ok, absolute_manifest} <- resolve_manifest_path(expected_path),
-         :ok <- ensure_watch_directory(absolute_manifest, watch_id),
-         {:ok, manifest} <- verify(absolute_manifest, watch_id: watch_id),
-         :ok <- authorize_saved_original_deletion(confirmation, watch_id),
-         :ok <- delete_manifest_files(manifest, Path.dirname(absolute_manifest)),
-         :ok <- delete_manifest_and_directory(absolute_manifest) do
-      {:ok, :deleted}
-    else
-      false -> {:error, :confirmation_required}
-      nil -> {:error, :incomplete_confirmation}
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, :invalid_confirmation}
-    end
-  end
-
   @doc "Removes unpublished temporary archive directories for a watch."
   def cleanup_temporary(watch_id, opts \\ []) when is_integer(watch_id) do
     prefix = "#{@temporary_prefix}#{watch_id}-"
@@ -805,42 +780,6 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
     end
   end
 
-  defp delete_manifest_files(manifest, archive_directory) do
-    manifest["files"]
-    |> Enum.reduce_while(:ok, fn
-      %{"path" => path}, :ok when is_binary(path) ->
-        with :ok <- validate_archive_file_path(path),
-             absolute = Path.join(archive_directory, path),
-             {:ok, stat} <- File.lstat(absolute),
-             :ok <- validate_regular_file(stat),
-             :ok <- File.rm(absolute) do
-          {:cont, :ok}
-        else
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-
-      _other, :ok ->
-        {:halt, {:error, :invalid_manifest}}
-    end)
-  end
-
-  defp delete_manifest_and_directory(absolute_manifest) do
-    directory = Path.dirname(absolute_manifest)
-
-    with :ok <- File.rm(absolute_manifest),
-         {:ok, entries} <- File.ls(directory),
-         true <- entries == [] do
-      case File.rmdir(directory) do
-        :ok -> :ok
-        {:error, :enoent} -> :ok
-        {:error, reason} -> {:error, reason}
-      end
-    else
-      false -> {:error, :archive_contains_unexpected_files}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   defp ensure_watch_directory(absolute_manifest, watch_id) do
     expected = manifest_path(watch_id)
 
@@ -861,16 +800,6 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
       List.last(parts) != @manifest_name -> {:error, :invalid_manifest_path}
       true -> :ok
     end
-  end
-
-  defp authorize_saved_original_deletion(_confirmation, _watch_id) do
-    # There is no authenticated, scope/version-bound confirmation issuer yet.
-    # A caller-supplied boolean must never authorize permanent original loss.
-    {:error, :watch_confirmation_unavailable}
-  end
-
-  defp confirmed?(confirmation) do
-    Map.get(confirmation, :confirmed) == true or Map.get(confirmation, "confirmed") == true
   end
 
   defp fsync_directory(path) do

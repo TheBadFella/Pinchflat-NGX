@@ -94,6 +94,7 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
     assert second.new_value == "160"
     assert confirmed.baseline_upstream_duration_seconds == 120
     assert confirmed.current_upstream_duration_seconds == 160
+    assert confirmed.confirmed_upstream_duration_seconds == 160
     assert Repo.aggregate(Event, :count) == 2
   end
 
@@ -190,12 +191,37 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
     assert unchanged.confirmed_state == "confirmed"
   end
 
-  test "small duration changes cannot drift the trusted comparison away from its baseline", %{watch: watch} do
+  test "current duration advances without drifting the confirmed comparison", %{watch: watch} do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
-    {:ok, %{event: nil}} = MediaWatch.record_observation(watch, observation(now, 122))
+    {:ok, %{watch: within_tolerance, event: nil}} = MediaWatch.record_observation(watch, observation(now, 122))
+    assert within_tolerance.current_upstream_duration_seconds == 122
+    assert within_tolerance.baseline_upstream_duration_seconds == 120
     {:ok, %{watch: suspected}} = MediaWatch.record_observation(watch, observation(DateTime.add(now, 100), 124))
     assert suspected.confirmed_state == "suspected"
-    assert suspected.current_upstream_duration_seconds == 120
+    assert suspected.current_upstream_duration_seconds == 124
+    assert suspected.confirmed_upstream_duration_seconds == nil
+  end
+
+  @tag :sqlite_only
+  test "notification job failure rolls the confirmed event and state back", %{watch: watch} do
+    Repo.query!("""
+    CREATE TRIGGER reject_watch_notification BEFORE INSERT ON oban_jobs
+    BEGIN SELECT RAISE(FAIL, 'notification unavailable'); END
+    """)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    assert {:ok, _} = MediaWatch.record_observation(watch, observation(now, 130))
+
+    result =
+      try do
+        MediaWatch.record_observation(watch, observation(DateTime.add(now, 1200), 130))
+      rescue
+        error -> {:error, Exception.message(error)}
+      end
+
+    assert match?({:error, _}, result)
+
+    assert Repo.aggregate(Event, :count) == 0
+    assert Repo.get!(Watch, watch.id).confirmed_state == "suspected"
   end
 
   test "missing duration and a livestream do not clear an existing suspicion", %{watch: watch} do
@@ -209,7 +235,7 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
       {:ok, %{watch: preserved, event: nil}} = MediaWatch.record_observation(watch, candidate)
       assert preserved.confirmed_state == "suspected"
       assert preserved.hold_reason
-      assert preserved.current_upstream_duration_seconds == nil
+      assert preserved.current_upstream_duration_seconds == 130
     end
   end
 
@@ -324,6 +350,8 @@ defmodule Pinchflat.MediaWatch.ObservationFlowTest do
       assert servers == "json://test"
       assert opts[:title] =~ "edited"
       assert opts[:body] =~ item.title
+      refute opts[:body] =~ "**"
+      refute Keyword.has_key?(opts, :input_format)
       assert opts[:body] =~ "/sources/#{item.source_id}/media/#{item.id}"
       {:ok, ""}
     end)

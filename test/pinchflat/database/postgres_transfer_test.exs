@@ -91,6 +91,15 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         baseline_upstream_duration_seconds: 582,
         baseline_visibility: "public",
         current_upstream_duration_seconds: 600,
+        confirmed_upstream_duration_seconds: 598,
+        approved_active_files: %{
+          "0" => %{
+            "role" => "media",
+            "path" => "/downloads/unchanged.mkv",
+            "sha256" => "fixture-hash",
+            "size" => 77
+          }
+        },
         confirmed_change_at: ~U[2026-01-03 03:04:05Z],
         released_at: ~U[2026-01-04 03:04:05Z],
         release_manifest_sha256: "approved-manifest-digest",
@@ -168,7 +177,16 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert transferred_watch.baseline_upstream_duration_seconds == 582
     assert transferred_watch.baseline_visibility == "public"
     assert transferred_watch.current_upstream_duration_seconds == 600
-    assert transferred_watch.confirmed_change_at == ~U[2026-01-03 03:04:05Z]
+    assert transferred_watch.confirmed_upstream_duration_seconds == 598
+    assert transferred_watch.approved_active_files == %{
+             "0" => %{
+               "role" => "media",
+               "path" => "/downloads/unchanged.mkv",
+               "sha256" => "fixture-hash",
+               "size" => 77
+             }
+           }
+    assert transferred_watch.confirmed_change_at: == ~U[2026-01-03 03:04:05Z]
     assert transferred_watch.released_at == ~U[2026-01-04 03:04:05Z]
     assert transferred_watch.release_manifest_sha256 == "approved-manifest-digest"
     assert transferred_watch.original_manifest_path == ".pinchflat-originals/first-watch/manifest.json"

@@ -162,6 +162,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
         |> Ecto.Changeset.change(
           baseline_upstream_duration_seconds: 9,
           current_upstream_duration_seconds: 4,
+          confirmed_upstream_duration_seconds: 4,
           hold_reason: "watch change: duration",
           confirmed_state: "confirmed",
           suspected_kind: "duration"

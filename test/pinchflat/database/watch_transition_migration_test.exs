@@ -36,6 +36,19 @@ defmodule Pinchflat.Database.WatchTransitionMigrationTest do
                "SELECT current_upstream_duration_seconds, confirmed_change_at, released_at FROM media_watches"
              ).rows
 
+    newer = Pinchflat.Repo.Migrations.TrackApprovedWatchFilesAndDuration
+
+    unless Code.ensure_loaded?(newer),
+      do: Code.require_file("priv/repo/migrations/20261027120000_track_approved_watch_files_and_duration.exs")
+
+    next_version = 20_261_027_120_000
+    assert [^next_version] = Ecto.Migrator.run(FixtureRepo, [{next_version, newer}], :up, step: 1)
+
+    assert [[130, nil]] =
+             FixtureRepo.query!(
+               "SELECT confirmed_upstream_duration_seconds, approved_active_files FROM media_watches"
+             ).rows
+
     assert_raise RuntimeError, ~r/refusing rollback/, fn ->
       Ecto.Migrator.run(FixtureRepo, [{version, migration}], :down, step: 1)
     end

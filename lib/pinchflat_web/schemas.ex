@@ -381,6 +381,7 @@ defmodule PinchflatWeb.Schemas do
               description: "Type of unconfirmed remote difference, if any"
             },
             baseline_upstream_duration_seconds: %Schema{type: :integer, nullable: true},
+            current_upstream_duration_seconds: %Schema{type: :integer, nullable: true},
             last_success_at: %Schema{type: :string, format: :date_time, nullable: true},
             last_error_at: %Schema{type: :string, format: :date_time, nullable: true},
             hold_reason: %Schema{type: :string, nullable: true},

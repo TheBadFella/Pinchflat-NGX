@@ -41,8 +41,8 @@ defmodule PinchflatWeb.MediaItems.MediaItemHTML do
   """
   def watch_hold_explanation(%{confirmed_state: "confirmed", suspected_kind: "duration"} = watch)
       when not is_nil(watch.baseline_upstream_duration_seconds) and
-             not is_nil(watch.current_upstream_duration_seconds) do
-    "Upstream video duration changed from #{watch.baseline_upstream_duration_seconds}s to #{watch.current_upstream_duration_seconds}s. Automatic replacement is blocked so the modified video does not overwrite your original file."
+             not is_nil(watch.confirmed_upstream_duration_seconds) do
+    "Upstream video duration changed from #{watch.baseline_upstream_duration_seconds}s to #{watch.confirmed_upstream_duration_seconds}s. Automatic replacement is blocked so the modified video does not overwrite your original file."
   end
 
   def watch_hold_explanation(%{confirmed_state: "confirmed", suspected_kind: "duration"}) do

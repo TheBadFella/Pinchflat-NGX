@@ -48,7 +48,6 @@ defmodule Pinchflat.MediaWatch.NotificationWorker do
         opts = [
           title: build_title(event),
           body: build_body(event, watch, item),
-          input_format: "markdown",
           notification_type: notification_type(event.kind)
         ]
 
@@ -118,9 +117,9 @@ defmodule Pinchflat.MediaWatch.NotificationWorker do
   @doc false
   def build_body(%Event{} = event, %Watch{} = watch, nil) do
     """
-    **YouTube Video**: `#{watch.media_id}` *(local media record removed)*
-    **Change**: `#{event.kind}`: #{event.old_value} → #{event.new_value}
-    **Observed**: #{Calendar.strftime(event.observed_at, "%Y-%m-%d %H:%M:%S UTC")}
+    YouTube Video: #{watch.media_id} (local media record removed)
+    Change: #{event.kind}: #{event.old_value} → #{event.new_value}
+    Observed: #{Calendar.strftime(event.observed_at, "%Y-%m-%d %H:%M:%S UTC")}
     """
     |> String.trim()
     |> String.slice(0, @body_limit)
@@ -142,10 +141,10 @@ defmodule Pinchflat.MediaWatch.NotificationWorker do
       end
 
     lines = [
-      "**#{item.title}**",
-      "**Change**: `#{event.kind}` (#{change})",
-      "**Observed**: #{Calendar.strftime(event.observed_at, "%Y-%m-%d %H:%M:%S UTC")}",
-      "**Protection**: #{action_note}",
+      item.title,
+      "Change: #{event.kind} (#{change})",
+      "Observed: #{Calendar.strftime(event.observed_at, "%Y-%m-%d %H:%M:%S UTC")}",
+      "Protection: #{action_note}",
       local_link(watch, item)
     ]
 
@@ -163,7 +162,7 @@ defmodule Pinchflat.MediaWatch.NotificationWorker do
     case Settings.get(:external_base_url) do
       {:ok, base_url} when is_binary(base_url) and base_url != "" ->
         base = String.trim_trailing(base_url, "/")
-        "[Open Media in Pinchflat](#{base}/sources/#{item.source_id}/media/#{watch.media_item_id})"
+        "Open Media in Pinchflat: #{base}/sources/#{item.source_id}/media/#{watch.media_item_id}"
 
       _ ->
         nil

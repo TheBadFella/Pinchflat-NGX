@@ -152,22 +152,6 @@ defmodule Pinchflat.MediaWatch.OriginalArchiveTest do
     assert File.exists?(other)
   end
 
-  test "delete_published refuses a forged boolean even for a valid saved original", %{
-    watch: watch,
-    directory: directory
-  } do
-    assert {:error, :confirmation_required} = OriginalArchive.delete_published(%{watch_id: watch.id})
-    assert {:error, :incomplete_confirmation} = OriginalArchive.delete_published(%{confirmed: true, watch_id: watch.id})
-
-    main = write!(Path.join(directory, "talk.mkv"), "first artifact")
-    assert {:ok, %{manifest_path: relative}} = OriginalArchive.publish(watch, media_item(%{media_filepath: main}))
-
-    assert {:error, :watch_confirmation_unavailable} =
-             OriginalArchive.delete_published(%{confirmed: true, watch_id: watch.id, manifest_path: relative})
-
-    assert {:ok, _} = OriginalArchive.verify_relative(relative, watch_id: watch.id)
-  end
-
   defp media_item(attrs) do
     struct(
       %MediaItem{

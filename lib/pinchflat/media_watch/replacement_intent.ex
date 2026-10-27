@@ -317,7 +317,7 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
       existing_hash(path) == {:ok, expected} ->
         :ok
 
-      is_map(manifest_entry) ->
+      is_map(manifest_entry) and manifest_entry["sha256"] == expected ->
         restore_from_archive(path, manifest_entry, intent["watch_id"])
 
       true ->

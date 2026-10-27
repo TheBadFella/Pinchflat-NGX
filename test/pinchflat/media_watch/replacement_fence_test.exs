@@ -166,6 +166,61 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                Enum.filter(manifest["files"], &(&1["role"] == "media"))
     end
 
+    test "a second replacement accepts only the last approved bytes, not a later manual edit" do
+      {item, watch} = watched_item()
+
+      for {content, title} <- [{"second artifact", "second"}, {"third artifact", "third"}] do
+        {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+        staged = staged_file(content)
+
+        assert {:ok, _} =
+                 MediaWatch.commit_replacement(
+                   lease,
+                   item,
+                   %{source_map: %{staged => item.media_filepath}},
+                   fn _ ->
+                     File.rename!(staged, item.media_filepath)
+                     {:ok, %{"filepath" => item.media_filepath}}
+                   end,
+                   fn _ -> Media.update_media_item(item, %{title: title}) end
+                 )
+
+        assert File.read!(item.media_filepath) == content
+        assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      end
+
+      File.write!(item.media_filepath, "user edit")
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("fourth artifact")
+
+      assert {:error, :active_file_changed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn _ -> flunk("manual edits cannot be replaced") end,
+                 fn _ -> flunk("manual edits cannot be approved") end
+               )
+
+      assert File.read!(item.media_filepath) == "user edit"
+    end
+
+    test "an unverifiable older replacement refuses adoption" do
+      {item, watch} = watched_item()
+      commit_watch(watch, Ecto.UUID.generate())
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:error, :active_file_unverifiable} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn _ -> flunk("unverifiable current files cannot be replaced") end,
+                 fn _ -> flunk("unverifiable current files cannot be approved") end
+               )
+    end
+
     test "an expired lease refuses the commit and never moves the active file" do
       {item, _watch} = watched_item()
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace", lease_seconds: -1)

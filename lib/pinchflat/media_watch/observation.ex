@@ -82,7 +82,7 @@ defmodule Pinchflat.MediaWatch.Observation do
 
   def classify(watch, %__MODULE__{} = observation) do
     current_visibility = watch.current_visibility || watch.baseline_visibility
-    current_duration = Map.get(watch, :current_upstream_duration_seconds) || watch.baseline_upstream_duration_seconds
+    current_duration = Map.get(watch, :confirmed_upstream_duration_seconds) || watch.baseline_upstream_duration_seconds
 
     cond do
       current_visibility == nil and observation.availability == :unknown ->
