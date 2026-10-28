@@ -111,6 +111,67 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
   end
 
   describe "get_source_details/1" do
+    test "fallback rejects an ambiguous channel and incomplete collection metadata" do
+      for metadata <- [
+            %{_type: "playlist", id: "UCowner", title: "Owner"},
+            %{_type: "playlist", id: "UCowner"},
+            %{},
+            []
+          ] do
+        expect(YtDlpRunnerMock, :run, fn @channel_url, :get_source_details, _opts, _template, _addl -> {:ok, ""} end)
+
+        expect(YtDlpRunnerMock, :run, fn @channel_url, :get_source_metadata, _opts, _template, _addl ->
+          {:ok, Jason.encode!(metadata)}
+        end)
+
+        assert {:error, :invalid_collection_metadata} = MediaCollection.get_source_details(@channel_url)
+      end
+    end
+
+    test "blank playlist inspection falls back to bounded collection metadata with the same cookie options" do
+      url = "https://www.youtube.com/playlist?list=WL"
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_details, _opts, _template, _addl -> {:ok, " \n"} end)
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_metadata, opts, "playlist:%()j", addl ->
+        assert opts[:playlist_items] == 0
+        assert addl[:use_cookies]
+        {:ok, Jason.encode!(%{_type: "playlist", id: "WL", title: "Watch Later", entries: []})}
+      end)
+
+      assert {:ok, %{playlist_id: "WL", playlist_name: "Watch Later", filepath: nil}} =
+               MediaCollection.get_source_details(url, [], use_cookies: true)
+    end
+
+    test "fallback refuses metadata for a different playlist" do
+      url = "https://www.youtube.com/playlist?list=WL"
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_details, _opts, _template, _addl -> {:ok, ""} end)
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_metadata, _opts, _template, _addl ->
+        {:ok, Jason.encode!(%{_type: "playlist", id: "PLwrong", title: "Wrong playlist", entries: []})}
+      end)
+
+      assert {:error, :invalid_collection_metadata} = MediaCollection.get_source_details(url)
+    end
+
+    test "empty channel metadata keeps Channel detection instead of becoming a Playlist" do
+      expect(YtDlpRunnerMock, :run, fn @channel_url, :get_source_details, _opts, _template, _addl -> {:ok, ""} end)
+
+      expect(YtDlpRunnerMock, :run, fn @channel_url, :get_source_metadata, _opts, _template, _addl ->
+        {:ok,
+         Jason.encode!(%{
+           _type: "playlist",
+           id: "UCowner",
+           title: "Owner",
+           channel_id: "UCowner",
+           channel: "Owner",
+           entries: []
+         })}
+      end)
+
+      assert {:ok, %{detected_type: :channel, channel_id: "UCowner", filepath: nil}} =
+               MediaCollection.get_source_details(@channel_url)
+    end
+
     test "identifies a channel when only the collection has channel metadata" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl_opts ->
         Phoenix.json_library().encode(%{

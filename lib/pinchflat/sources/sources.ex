@@ -911,11 +911,20 @@ defmodule Pinchflat.Sources do
 
     addl_opts = [use_cookies: should_use_cookies, skip_sleep_interval: true]
 
-    case MediaCollection.get_source_details(
-           original_url,
-           command_opts,
-           Keyword.put(addl_opts, :source_type, source_type)
-         ) do
+    watch_later? = watch_later_source?(original_url, source_type)
+
+    result =
+      if watch_later? and not (should_use_cookies and cookie_file_configured?()) do
+        {:error, :watch_later_cookies_required}
+      else
+        MediaCollection.get_source_details(
+          original_url,
+          command_opts,
+          Keyword.put(addl_opts, :source_type, source_type)
+        )
+      end
+
+    case result do
       {:ok, source_details} ->
         add_source_details_by_collection_type(source, changeset, source_details)
 
@@ -923,7 +932,7 @@ defmodule Pinchflat.Sources do
         Ecto.Changeset.add_error(
           changeset,
           :original_url,
-          source_details_error_message(source_type),
+          source_details_error_message(source_type, err, watch_later?),
           error: source_details_error(err)
         )
     end
@@ -995,6 +1004,21 @@ defmodule Pinchflat.Sources do
     "the selected source type is #{source_type_label(expected)}, but this URL resolves to a " <>
       "#{source_type_label(detected)}; choose #{source_type_label(detected)} or Automatic"
   end
+
+  defp watch_later_source?(url, source_type) do
+    collection? = source_type != :video and not (source_type == :automatic and Source.youtube_video_url?(url))
+    collection? and URI.decode_query(URI.parse(url).query || "")["list"] == "WL"
+  end
+
+  defp source_details_error_message(_source_type, {:error, :watch_later_cookies_required}, _watch_later?) do
+    "Watch Later is private. Upload cookies from the YouTube account that owns it and set Cookie Behaviour to All Operations."
+  end
+
+  defp source_details_error_message(_source_type, _error, true) do
+    "Could not inspect Watch Later. Check that the playlist opens in the owning YouTube account, refresh the cookies, and keep Cookie Behaviour set to All Operations. If the playlist is empty, add a video and try again."
+  end
+
+  defp source_details_error_message(source_type, _error, false), do: source_details_error_message(source_type)
 
   defp source_details_error_message(:automatic), do: "could not fetch source details from URL"
 

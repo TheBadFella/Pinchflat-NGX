@@ -135,11 +135,53 @@ defmodule Pinchflat.YtDlp.MediaCollection do
 
     action = :get_source_details
 
-    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts),
-         {:ok, parsed_json} <- ResponseDecoder.decode(output, action) do
-      {:ok, format_source_details(parsed_json)}
+    with {:ok, output} <- backend_runner().run(source_url, action, all_command_opts, output_template, addl_opts) do
+      if String.trim(output) == "" do
+        get_collection_details_without_video(source_url, command_opts, addl_opts)
+      else
+        with {:ok, parsed_json} <- ResponseDecoder.decode(output, action) do
+          {:ok, format_source_details(parsed_json)}
+        end
+      end
     end
   end
+
+  defp get_collection_details_without_video(source_url, command_opts, addl_opts) do
+    # No video means no filename to predict. Read the collection itself without fetching entries.
+    command_opts =
+      Enum.reject(command_opts, fn
+        {key, _} when key in [:playlist_items, :playlist_end] -> true
+        _ -> false
+      end)
+
+    opts = [:simulate, :ignore_no_formats_error, {:playlist_items, 0}] ++ command_opts
+
+    with {:ok, %{"_type" => "playlist", "id" => id, "title" => title} = metadata} <-
+           get_source_metadata(source_url, opts, addl_opts),
+         true <- collection_metadata_matches?(source_url, metadata) and is_binary(title) and String.trim(title) != "" do
+      {:ok,
+       format_source_details(%{
+         "playlist_id" => id,
+         "playlist_title" => title,
+         "channel_id" => metadata["channel_id"],
+         "channel" => metadata["channel"],
+         "filename" => nil
+       })}
+    else
+      {:error, _} = error -> error
+      {:error, _, _} = error -> error
+      _ -> {:error, :invalid_collection_metadata}
+    end
+  end
+
+  defp collection_metadata_matches?(source_url, %{"id" => id} = metadata) when is_binary(id) and id != "" do
+    case URI.decode_query(URI.parse(source_url).query || "")["list"] do
+      playlist_id when is_binary(playlist_id) and playlist_id != "" -> id == playlist_id
+      _ -> id == metadata["channel_id"]
+    end
+  end
+
+  defp collection_metadata_matches?(_source_url, _metadata), do: false
 
   defp get_single_video_source_details(source_url, command_opts, addl_opts) do
     default_opts = [
