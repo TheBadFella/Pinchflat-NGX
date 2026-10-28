@@ -30,6 +30,29 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
   end
 
   describe "perform/1" do
+    test "empty playlist metadata preserves an existing series directory" do
+      directory = Path.join(Application.get_env(:pinchflat, :media_directory), "existing-playlist")
+
+      source =
+        source_fixture(%{
+          original_url: "https://www.youtube.com/playlist?list=WL",
+          collection_type: :playlist,
+          collection_id: "WL",
+          series_directory: directory
+        })
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _template, _addl ->
+          {:ok, ""}
+
+        _url, :get_source_metadata, _opts, _template, _addl ->
+          {:ok, Jason.encode!(%{_type: "playlist", id: "WL", title: "Watch Later", entries: []})}
+      end)
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      assert Repo.reload(source).series_directory == directory
+    end
+
     test "stores metadata for a standalone video without playlist output" do
       video_id = "dQw4w9WgXcQ"
 
