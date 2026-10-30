@@ -20,6 +20,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias PinchflatWeb.Schemas
+  alias PinchflatWeb.Sources.SourceHTML
 
   tags(["Sources"])
 
@@ -32,14 +33,15 @@ defmodule PinchflatWeb.Sources.SourceController do
     ]
   )
 
-  def index(conn, _params) do
+  def index(conn, params) do
     case get_format(conn) do
       "json" ->
         sources = Sources.list_sources() |> Sources.preload_api_assocs()
         conn |> put_status(:ok) |> json(%{data: sources})
 
       _ ->
-        render(conn, :index)
+        source_type = if params["type"] == "videos", do: "videos", else: "channels"
+        render(conn, :index, source_type: source_type)
     end
   end
 
@@ -404,7 +406,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       _ ->
         conn
         |> put_flash(:info, "Source deletion started. This may take a while to complete.")
-        |> redirect(to: ~p"/sources")
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
     end
   end
 
@@ -431,12 +433,12 @@ defmodule PinchflatWeb.Sources.SourceController do
 
         conn
         |> put_flash(:info, "Downloads paused for #{length(sources)} #{noun}.")
-        |> redirect(to: ~p"/sources")
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
 
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Could not pause the selection. Refresh and select up to 100 available sources.")
-        |> redirect(to: ~p"/sources")
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
     end
   end
 
@@ -447,12 +449,12 @@ defmodule PinchflatWeb.Sources.SourceController do
 
         conn
         |> put_flash(:info, "Downloads resumed for #{length(sources)} #{noun}.")
-        |> redirect(to: ~p"/sources")
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
 
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Could not resume the selection. Refresh and select up to 100 available sources.")
-        |> redirect(to: ~p"/sources")
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
     end
   end
 
@@ -462,7 +464,7 @@ defmodule PinchflatWeb.Sources.SourceController do
     if is_nil(profile_id) or profile_id == "" do
       conn
       |> put_flash(:error, "Please select a media profile.")
-      |> redirect(to: ~p"/sources")
+      |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
     else
       case Sources.assign_selected_sources_profile(params["source_ids"], profile_id) do
         {:ok, sources} ->
@@ -470,7 +472,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
           conn
           |> put_flash(:info, "Media profile updated for #{length(sources)} #{noun}.")
-          |> redirect(to: ~p"/sources")
+          |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
 
         {:error, _reason} ->
           conn
@@ -478,7 +480,7 @@ defmodule PinchflatWeb.Sources.SourceController do
             :error,
             "Could not update media profile for the selection. Select a media profile and up to 100 available sources."
           )
-          |> redirect(to: ~p"/sources")
+          |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
       end
     end
   end

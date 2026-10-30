@@ -38,8 +38,9 @@
     </p>
     <.form for={%{}} action={~p"/sources/cutoff/apply"} method="post" class="flex flex-wrap gap-3">
       <input type="hidden" name="token" value={@token} />
+      <input type="hidden" name="return_to" value={@return_to} />
       <.button type="submit" variant="warning">Confirm cutoff change</.button>
-      <.button href={~p"/sources"} variant="outline">Cancel</.button>
+      <.button href={@return_to} variant="outline">Cancel</.button>
     </.form>
   </section>
 </div>

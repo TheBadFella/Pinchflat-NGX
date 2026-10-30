@@ -8,6 +8,12 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   embed_templates "source_html/*"
 
   @doc """
+  Returns the Sources tab path, accepting only known local list destinations.
+  """
+  def source_list_path("/sources?type=videos"), do: ~p"/sources?type=videos"
+  def source_list_path(_return_to), do: ~p"/sources"
+
+  @doc """
   Renders a source form.
   """
   attr :changeset, Ecto.Changeset, required: true
