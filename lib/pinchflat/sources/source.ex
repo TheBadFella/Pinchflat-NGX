@@ -189,6 +189,7 @@ defmodule Pinchflat.Sources.Source do
 
     source
     |> cast(attrs, @allowed_fields)
+    |> update_change(:original_url, &normalize_youtube_host/1)
     |> normalize_show_url()
     |> dynamic_default(:custom_name, fn cs -> get_field(cs, :collection_name) end)
     |> dynamic_default(:uuid, fn _ -> Ecto.UUID.generate() end)
@@ -333,6 +334,8 @@ defmodule Pinchflat.Sources.Source do
   end
 
   def youtube_video_url?(url) when is_binary(url) do
+    url = normalize_youtube_host(url)
+
     youtube_patterns = [
       ~r<^https?://(?:www\.)?youtube\.com/watch\?[^#]*\bv=[^&]+>,
       ~r<^https?://(?:www\.)?youtube\.com/shorts/[^/?#]+>,
@@ -346,6 +349,8 @@ defmodule Pinchflat.Sources.Source do
   def youtube_video_url?(_url), do: false
 
   def supported_youtube_url?(url) when is_binary(url) do
+    url = normalize_youtube_host(url)
+
     supported_patterns = [
       ~r<^https?://(?:www\.)?youtube\.com/channel/[^/?#]+(?:/(?:featured|videos|shorts|streams|live))?$>,
       ~r<^https?://(?:www\.)?youtube\.com/@[^/?#]+(?:/(?:featured|videos|shorts|streams|live))?$>,
@@ -360,6 +365,23 @@ defmodule Pinchflat.Sources.Source do
   end
 
   def supported_youtube_url?(_url), do: false
+
+  defp normalize_youtube_host(url) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host, port: port, userinfo: nil} = uri}
+      when (scheme == "https" and port == 443) or (scheme == "http" and port == 80) ->
+        if is_binary(host) and String.downcase(host) in ["music.youtube.com", "m.youtube.com"] do
+          URI.to_string(%{uri | host: "www.youtube.com"})
+        else
+          url
+        end
+
+      _ ->
+        url
+    end
+  end
+
+  defp normalize_youtube_host(url), do: url
 
   defp normalize_show_url(changeset) do
     update_change(changeset, :original_url, fn url ->
