@@ -56,11 +56,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
 
     limit = session["results_per_page"]
+    source_type = if session["source_type"] == "videos", do: :videos, else: :channels
 
     initial_params =
       Map.merge(
         %{
           sort_key: session["initial_sort_key"],
+          source_type: source_type,
+          return_to: if(source_type == :videos, do: ~p"/sources?type=videos", else: ~p"/sources"),
           sort_direction: session["initial_sort_direction"],
           view_mode: normalize_view_mode(session["initial_view_mode"]),
           refresh_pending: false,
@@ -68,7 +71,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           media_profiles: Enum.reject(Profiles.list_media_profiles(), & &1.marked_for_deletion_at),
           timezone: Application.fetch_env!(:pinchflat, :timezone)
         },
-        get_pagination_attributes(sources_query(), 1, limit)
+        get_pagination_attributes(sources_query(source_type), 1, limit)
       )
 
     socket
@@ -82,7 +85,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     socket
     |> assign(:selected_ids, MapSet.new())
-    |> assign(get_pagination_attributes(sources_query(), new_page, assigns.limit))
+    |> assign(get_pagination_attributes(sources_query(assigns.source_type), new_page, assigns.limit))
     |> set_sources()
     |> then(&{:noreply, &1})
   end
@@ -165,13 +168,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   defp set_sources(%{assigns: assigns} = socket) do
     sources =
-      sources_query()
+      sources_query(assigns.source_type)
       |> order_by(^[{assigns.sort_direction, sort_attr(assigns.sort_key)}, asc: :id])
       |> limit(^assigns.limit)
       |> offset(^assigns.offset)
       |> Repo.all()
 
     visible_ids = MapSet.new(sources, &to_string(&1.id))
+
     assign(socket, %{sources: sources, selected_ids: MapSet.intersection(assigns.selected_ids, visible_ids)})
   end
 
@@ -189,7 +193,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
-  defp sources_query do
+  defp sources_query(source_type) do
     downloaded_subquery =
       from(
         m in MediaItem,
@@ -225,6 +229,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       left_join: i in subquery(indexed_subquery),
       on: i.source_id == s.id,
       left_join: md in assoc(s, :metadata),
+      where: ^source_type_filter(source_type),
       where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at),
       preload: [media_profile: mp, metadata: md],
       select: map(s, ^Source.__schema__(:fields)),
@@ -235,4 +240,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
         media_count: coalesce(i.media_count, 0)
       }
   end
+
+  defp source_type_filter(:videos), do: dynamic([s], s.collection_type == :video)
+  defp source_type_filter(:channels), do: dynamic([s], is_nil(s.collection_type) or s.collection_type != :video)
 end

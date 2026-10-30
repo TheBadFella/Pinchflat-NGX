@@ -766,6 +766,30 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       # Single-video source must now exist in DB
       source = Repo.get_by(Source, collection_id: test_video_id, media_profile_id: profile.id)
       assert source != nil
+      assert has_element?(view, "#paste-download-destination[href='/sources?type=videos']", "View in Individual videos")
+    end
+
+    test "links a pasted video indexed under a channel after resolution to its existing media page", %{conn: conn} do
+      profile = media_profile_fixture()
+      video_id = "dQw4w9WgXcQ"
+      source = source_fixture(media_profile_id: profile.id)
+      detail = Map.merge(hd(@mock_videos), %{id: video_id, title: "Existing channel video"})
+      Mox.expect(YoutubeBrowserProviderMock, :get_video_details, fn ^video_id, _opts -> {:ok, detail} end)
+      {:ok, view, _html} = live_isolated(conn, BrowseLive)
+      view |> element("#open-paste-url-button") |> render_click()
+      render_change(view, "select_paste_profile", %{"profile_id" => to_string(profile.id)})
+      view |> form("#paste_url_form", %{"url" => "https://youtu.be/#{video_id}"}) |> render_submit()
+      render_async(view)
+      media = media_item_fixture(source_id: source.id, media_id: video_id, media_filepath: nil)
+      view |> element("#paste-download-button") |> render_click()
+
+      assert has_element?(
+               view,
+               "#paste-download-destination[href='/sources/#{source.id}/media/#{media.id}']",
+               "View video"
+             )
+
+      refute Repo.get_by(Source, collection_type: :video)
     end
 
     test "shows Open in Library when video is already present", %{conn: conn} do
