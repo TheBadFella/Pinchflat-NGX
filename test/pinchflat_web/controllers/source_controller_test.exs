@@ -16,6 +16,56 @@ defmodule PinchflatWeb.SourceControllerTest do
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Tasks
 
+  test "list actions return to Individual videos and reject other return destinations", %{conn: conn} do
+    source = source_fixture(collection_type: :video)
+    params = %{"source_ids" => [to_string(source.id)], "return_to" => "/sources?type=videos"}
+    assert redirected_to(post(conn, ~p"/sources/pause_selected", params)) == "/sources?type=videos"
+    assert redirected_to(post(conn, ~p"/sources/resume_selected", params)) == "/sources?type=videos"
+    assert redirected_to(post(conn, ~p"/sources/assign_profile_selected", params)) == "/sources?type=videos"
+
+    params = Map.put(params, "return_to", "https://example.com")
+    assert redirected_to(post(conn, ~p"/sources/pause_selected", params)) == "/sources"
+  end
+
+  test "cutoff preview and confirmation retain the Individual videos tab", %{conn: conn} do
+    source = source_fixture(collection_type: :video)
+    params = %{"source_ids" => [to_string(source.id)], "cutoff_date" => "", "return_to" => "/sources?type=videos"}
+    response = post(conn, ~p"/sources/cutoff/preview", params)
+    html = html_response(response, 200)
+    assert html =~ ~s(href="/sources?type=videos")
+    assert html =~ ~s(name="return_to" value="/sources?type=videos")
+
+    assert redirected_to(
+             post(conn, ~p"/sources/cutoff/apply", %{
+               "token" => response.assigns.token,
+               "return_to" => "/sources?type=videos"
+             })
+           ) == "/sources?type=videos"
+
+    assert redirected_to(post(conn, ~p"/sources/cutoff/preview", %{"return_to" => "/sources?type=videos"})) ==
+             "/sources?type=videos"
+  end
+
+  test "Sources tabs have direct URLs and filter the existing source list", %{conn: conn} do
+    source_fixture(custom_name: "Channel entry")
+    source_fixture(custom_name: "Individual entry", collection_type: :video)
+
+    html = conn |> get(~p"/sources") |> html_response(200)
+    assert html =~ "Channels &amp; playlists"
+    assert html =~ "Individual videos"
+    assert html =~ "Channel entry"
+    refute html =~ "Individual entry"
+
+    html = conn |> get(~p"/sources?type=videos") |> html_response(200)
+    assert html =~ "Individual entry"
+    refute html =~ "Channel entry"
+    assert html =~ ~s(href="/sources?type=videos")
+
+    html = conn |> get(~p"/sources?type=unknown") |> html_response(200)
+    assert html =~ "Channel entry"
+    refute html =~ "Individual entry"
+  end
+
   setup do
     media_profile = media_profile_fixture()
     Settings.set(onboarding: false)

@@ -1,5 +1,15 @@
 <div id="browse-page" phx-hook="BrowseSearch" class="mx-auto max-w-7xl break-words">
-  <.flash id="browse-flash-info" kind={:info} flash={@flash} />
+  <.flash :if={Phoenix.Flash.get(@flash, :info)} id="browse-flash-info" kind={:info} flash={@flash}>
+    {Phoenix.Flash.get(@flash, :info)}
+    <.link
+      :if={@paste_download_destination && @paste_download_destination.message == Phoenix.Flash.get(@flash, :info)}
+      id="paste-download-destination"
+      href={@paste_download_destination.href}
+      class="inline-flex min-h-11 items-center underline underline-offset-4"
+    >
+      {@paste_download_destination.label}
+    </.link>
+  </.flash>
   <.flash id="browse-flash-error" kind={:error} flash={@flash} />
   <%!-- Header --%>
   <div class="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
