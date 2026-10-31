@@ -320,9 +320,11 @@ allowlisted host. `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE` accepts `true`, `1`, `yes`, 
 value leaves private addresses blocked.
 
 Each installed plugin has a **Config** button. The editor stores a yt-dlp config file for that
-plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp command. Use it for
-plugin-documented options such as `--use-postprocessor` or `--extractor-args`. Options apply
-globally, so keep them compatible with your other plugins.
+plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp command. The modal
+shows the package's bundled README when present. The options file starts empty because yt-dlp
+plugins do not expose a config schema; use it for plugin-documented options such as
+`--use-postprocessor` or `--extractor-args`. Options apply globally, so keep them compatible with
+your other plugins.
 
 yt-dlp catches plugin import errors and continues, so Pinchflat-ngx scans command output for them.
 Failures are logged with a `[yt-dlp plugins]` prefix and sent to the configured Apprise server,
