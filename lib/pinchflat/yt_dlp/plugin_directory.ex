@@ -634,9 +634,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
       temporary = Path.join(config_directory(), ".config-#{Ecto.UUID.generate()}.tmp")
 
       try do
-        with :ok <- File.write(temporary, contents),
-             :ok <- File.rename(temporary, destination) do
-          :ok
+        with :ok <- File.write(temporary, contents) do
+          File.rename(temporary, destination)
         end
       after
         _ = File.rm(temporary)
