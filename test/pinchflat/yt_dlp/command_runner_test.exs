@@ -1,6 +1,7 @@
 defmodule Pinchflat.YtDlp.CommandRunnerTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
   import Pinchflat.PluginFixtures
 
   alias Pinchflat.Settings
@@ -294,6 +295,22 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     end
   end
 
+  describe "run/4 when testing plugin diagnostics" do
+    test "logs plugin import errors even when the command succeeds" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/plugin_import_error.sh", fn ->
+        log =
+          with_debug_logs(fn ->
+            capture_log(fn ->
+              assert {:ok, _output} = Runner.run(@media_url, :foo, [], "")
+            end)
+          end)
+
+        assert log =~ "[yt-dlp plugins]"
+        assert log =~ "yt_dlp_plugins.postprocessor.sample"
+      end)
+    end
+  end
+
   describe "run/4 when testing misc options" do
     test "includes --restrict-filenames when enabled" do
       Settings.set(restrict_filenames: true)
@@ -366,6 +383,17 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
       assert {:error, _} = Runner.update("stable")
       assert File.read!(executable) == script
+    end
+  end
+
+  defp with_debug_logs(fun) do
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: previous_level)
     end
   end
 

@@ -1,6 +1,7 @@
 defmodule Pinchflat.YtDlp.PluginDirectoryTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
   import Pinchflat.PluginFixtures
 
   alias Pinchflat.YtDlp.PluginDirectory
@@ -260,6 +261,50 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     end
   end
 
+  describe "plugin logging" do
+    test "logs successful installs" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+          end)
+        end)
+
+      assert log =~ "[yt-dlp plugins] Install succeeded for \"sample.zip\""
+    end
+
+    test "logs failed installs" do
+      path = Path.join(System.tmp_dir!(), "invalid-log-plugin-#{System.unique_integer([:positive])}.zip")
+      File.write!(path, "not a zip")
+      on_exit(fn -> File.rm(path) end)
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert {:error, :invalid_archive} = PluginDirectory.install_archive(path)
+          end)
+        end)
+
+      assert log =~ "[yt-dlp plugins] Install failed"
+    end
+
+    test "logs config saves" do
+      install_sample_plugin()
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+          end)
+        end)
+
+      assert log =~ "[yt-dlp plugins] Config save succeeded for \"sample.zip\""
+    end
+  end
+
   describe "plugin configuration" do
     test "ensure/0 creates the plugin config directory" do
       File.rm_rf!(PluginDirectory.config_directory())
@@ -451,6 +496,17 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     on_exit(fn -> File.rm(source) end)
 
     assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+  end
+
+  defp with_debug_logs(fun) do
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: previous_level)
+    end
   end
 
   defp public_resolver(ip \\ {93, 184, 216, 34}) do

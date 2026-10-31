@@ -8,6 +8,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   loadable entry, preserving the existing command line when unused.
   """
 
+  require Logger
+
   alias Pinchflat.HTTP.SafeFetch
 
   @directory_name "yt-dlp-plugins"
@@ -86,13 +88,17 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     source_url = normalize_source_url(Keyword.get(opts, :source_url))
     replace? = Keyword.get(opts, :replace, false)
 
-    with {:ok, filename} <- sanitize_filename(filename),
-         :ok <- ensure_supported_extension(filename),
-         :ok <- validate_size(source_path),
-         :ok <- validate_archive(source_path),
-         :ok <- validate_destination(filename, replace?) do
-      do_install(source_path, filename, source_url)
-    end
+    result =
+      with {:ok, filename} <- sanitize_filename(filename),
+           :ok <- ensure_supported_extension(filename),
+           :ok <- validate_size(source_path),
+           :ok <- validate_archive(source_path),
+           :ok <- validate_destination(filename, replace?) do
+        do_install(source_path, filename, source_url)
+      end
+
+    log_operation("Install", filename, result)
+    result
   end
 
   @doc """
@@ -117,9 +123,13 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   def update_from_source(filename, opts \\ []) do
     filename = to_string(filename)
 
-    with {:ok, filename} <- sanitize_filename(filename) do
-      do_update_from_source(filename, opts)
-    end
+    result =
+      with {:ok, filename} <- sanitize_filename(filename) do
+        do_update_from_source(filename, opts)
+      end
+
+    log_operation("Update", filename, result)
+    result
   end
 
   defp do_update_from_source(filename, opts) do
@@ -216,15 +226,19 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   def save_config(filename, contents) do
     contents = to_string(contents)
 
-    with :ok <- validate_config_filename(filename),
-         :ok <- validate_plugin_exists(filename),
-         :ok <- validate_config_size(contents) do
-      if String.trim(contents) == "" do
-        clear_config(filename)
-      else
-        write_config(filename, contents)
+    result =
+      with :ok <- validate_config_filename(filename),
+           :ok <- validate_plugin_exists(filename),
+           :ok <- validate_config_size(contents) do
+        if String.trim(contents) == "" do
+          delete_config_file(filename)
+        else
+          write_config(filename, contents)
+        end
       end
-    end
+
+    log_operation("Config save", filename, result)
+    result
   end
 
   @doc """
@@ -233,10 +247,14 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   Returns :ok | {:error, :invalid_name | :not_found | File.posix()}
   """
   def clear_config(filename) do
-    with :ok <- validate_config_filename(filename),
-         :ok <- validate_plugin_exists(filename) do
-      delete_config_file(filename)
-    end
+    result =
+      with :ok <- validate_config_filename(filename),
+           :ok <- validate_plugin_exists(filename) do
+        delete_config_file(filename)
+      end
+
+    log_operation("Config clear", filename, result)
+    result
   end
 
   @doc """
@@ -275,11 +293,15 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   def remove(filename) do
     filename = to_string(filename)
 
-    cond do
-      filename != Path.basename(filename) -> {:error, :invalid_name}
-      hidden?(filename) or filename in ["", ".", ".."] -> {:error, :invalid_name}
-      true -> do_remove(filename)
-    end
+    result =
+      cond do
+        filename != Path.basename(filename) -> {:error, :invalid_name}
+        hidden?(filename) or filename in ["", ".", ".."] -> {:error, :invalid_name}
+        true -> do_remove(filename)
+      end
+
+    log_operation("Remove", filename, result)
+    result
   end
 
   defp do_install(source_path, filename, source_url) do
@@ -637,6 +659,18 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
       {:ok, %{size: size}} -> size > 0
       _ -> false
     end
+  end
+
+  defp log_operation(action, filename, :ok) do
+    Logger.info("[yt-dlp plugins] #{action} succeeded for #{inspect(to_string(filename))}")
+  end
+
+  defp log_operation(action, filename, {:ok, _entry}) do
+    Logger.info("[yt-dlp plugins] #{action} succeeded for #{inspect(to_string(filename))}")
+  end
+
+  defp log_operation(action, filename, {:error, reason}) do
+    Logger.error("[yt-dlp plugins] #{action} failed for #{inspect(to_string(filename))}: #{inspect(reason)}")
   end
 
   defp hidden?(name), do: String.starts_with?(name, ".")

@@ -9,6 +9,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   alias Pinchflat.Utils.CliUtils
   alias Pinchflat.Utils.NumberUtils
   alias Pinchflat.YtDlp.YtDlpCommandRunner
+  alias Pinchflat.YtDlp.PluginDiagnostics
   alias Pinchflat.YtDlp.PluginDirectory
   alias Pinchflat.YtDlp.PoTokenProvider
   alias Pinchflat.Utils.FilesystemUtils, as: FSUtils
@@ -75,6 +76,9 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       else
         CliUtils.wrap_cmd(backend_executable(), formatted_command_opts, [stderr_to_stdout: true], wrap_cmd_opts)
       end
+
+    {command_output, status} = command_result
+    PluginDiagnostics.report(command_output, status, action_name)
 
     case command_result do
       # yt-dlp exit codes:
