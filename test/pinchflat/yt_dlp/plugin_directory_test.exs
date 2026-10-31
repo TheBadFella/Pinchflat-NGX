@@ -305,6 +305,42 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     end
   end
 
+  describe "documentation/1" do
+    test "returns README contents for a folder plugin" do
+      plugin_root = Path.join(PluginDirectory.path(), "sample")
+      File.mkdir_p!(Path.join(plugin_root, "yt_dlp_plugins"))
+      File.write!(Path.join(plugin_root, "README.md"), "# Sample\nUse --use-postprocessor SamplePP")
+
+      assert {:ok, docs} = PluginDirectory.documentation("sample")
+      assert docs =~ "Use --use-postprocessor SamplePP"
+    end
+
+    test "returns README contents from an installed archive" do
+      source =
+        plugin_zip_file_fixture([
+          {"yt_dlp_plugins/extractor/sample.py", "class SampleIE: pass"},
+          {"README.md", "# Sample\nUse --extractor-args 'sample:key=value'"}
+        ])
+
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert {:ok, docs} = PluginDirectory.documentation("sample.zip")
+      assert docs =~ "--extractor-args"
+    end
+
+    test "returns nil when the package has no README" do
+      install_sample_plugin()
+
+      assert {:ok, nil} = PluginDirectory.documentation("sample.zip")
+    end
+
+    test "rejects missing and invalid plugin names" do
+      assert {:error, :not_found} = PluginDirectory.documentation("missing.zip")
+      assert {:error, :invalid_name} = PluginDirectory.documentation("../sample.zip")
+    end
+  end
+
   describe "plugin configuration" do
     test "ensure/0 creates the plugin config directory" do
       File.rm_rf!(PluginDirectory.config_directory())

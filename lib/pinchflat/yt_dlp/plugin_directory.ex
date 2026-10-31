@@ -19,6 +19,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   @supported_archive_extensions ~w(.zip .whl .egg)
   @max_bytes 25 * 1024 * 1024
   @max_config_bytes 64 * 1024
+  @max_documentation_bytes 20 * 1024
+  @documentation_filenames ~w(README.md README.txt README.rst readme.md readme.txt readme.rst)
 
   @doc """
   Returns the absolute path to the managed plugin directory.
@@ -267,6 +269,24 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     |> Enum.filter(& &1.has_config)
     |> Enum.sort_by(& &1.filename)
     |> Enum.map(&{:config_locations, config_file_for(&1.filename)})
+  end
+
+  @doc """
+  Returns bundled plugin documentation from the package README.
+
+  Returns {:ok, String.t() | nil} | {:error, :invalid_name | :not_found}
+  """
+  def documentation(filename) do
+    with :ok <- validate_config_filename(filename),
+         :ok <- validate_plugin_exists(filename) do
+      plugin_path = Path.join(path(), to_string(filename))
+
+      if File.dir?(plugin_path) do
+        folder_documentation(plugin_path)
+      else
+        archive_documentation(plugin_path)
+      end
+    end
   end
 
   @doc """
@@ -658,6 +678,54 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
       {:ok, %{size: size}} -> size > 0
       _ -> false
     end
+  end
+
+  defp folder_documentation(plugin_path) do
+    @documentation_filenames
+    |> Enum.map(&Path.join(plugin_path, &1))
+    |> Enum.find(&File.regular?/1)
+    |> case do
+      nil -> {:ok, nil}
+      path -> read_documentation(path)
+    end
+  end
+
+  defp archive_documentation(plugin_path) do
+    with {:ok, names} <- archive_entry_names(plugin_path),
+         name when is_binary(name) <- find_readme_entry(names) do
+      options = [{:file_list, [String.to_charlist(name)]}, :memory]
+
+      case :zip.extract(String.to_charlist(plugin_path), options) do
+        {:ok, [{_name, contents}]} -> {:ok, normalize_documentation(contents)}
+        _ -> {:ok, nil}
+      end
+    else
+      _ -> {:ok, nil}
+    end
+  end
+
+  defp find_readme_entry(names) do
+    names
+    |> Enum.filter(fn name ->
+      name
+      |> Path.basename()
+      |> String.downcase()
+      |> then(&(&1 in ["readme.md", "readme.txt", "readme.rst"]))
+    end)
+    |> Enum.min_by(fn name -> length(Path.split(name)) end, fn -> nil end)
+  end
+
+  defp read_documentation(path) do
+    case File.read(path) do
+      {:ok, contents} -> {:ok, normalize_documentation(contents)}
+      _ -> {:ok, nil}
+    end
+  end
+
+  defp normalize_documentation(contents) do
+    contents
+    |> String.slice(0, @max_documentation_bytes)
+    |> String.replace("\0", "")
   end
 
   defp log_operation(action, filename, :ok) do
