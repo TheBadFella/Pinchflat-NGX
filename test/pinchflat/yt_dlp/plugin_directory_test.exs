@@ -213,6 +213,21 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
 
       assert [%{filename: "sample.zip", source_url: nil}] = PluginDirectory.list()
     end
+
+    test "tolerates non-map plugin metadata" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+
+      File.write!(
+        Path.join(PluginDirectory.path(), ".pinchflat-plugins.json"),
+        Jason.encode!(%{"plugins" => %{"sample.zip" => 5}})
+      )
+
+      assert [%{filename: "sample.zip", source_url: nil}] = PluginDirectory.list()
+      assert {:error, :no_source_url} = PluginDirectory.update_from_source("sample.zip")
+    end
   end
 
   describe "remove/1" do

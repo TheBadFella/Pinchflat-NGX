@@ -144,8 +144,8 @@ defmodule Pinchflat.HTTP.SafeFetch do
 
   defp allow_private? do
     case Application.get_env(:pinchflat, :yt_dlp_plugin_url_allow_private, false) do
-      value when is_boolean(value) -> value
-      value when is_binary(value) -> String.trim(value) != ""
+      true -> true
+      value when is_binary(value) -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on"]
       _ -> false
     end
   end
@@ -266,6 +266,10 @@ defmodule Pinchflat.HTTP.SafeFetch do
       (a == 0 and Enum.all?([b, c, d, e, f, g], &(&1 == 0)) and h in [0, 1]) or
       (a &&& 0xFE00) == 0xFC00 or
       (a &&& 0xFFC0) == 0xFE80 or
+      (a &&& 0xFFC0) == 0xFEC0 or
+      (a == 0x0064 and b == 0xFF9B) or
+      a == 0x2002 or
+      (a == 0x2001 and b == 0) or
       (a &&& 0xFF00) == 0xFF00
   end
 

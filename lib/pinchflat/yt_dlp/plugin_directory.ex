@@ -36,6 +36,11 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   """
   def max_bytes, do: @max_bytes
 
+  @doc false
+  def temporary_install_path(_filename) do
+    Path.join(path(), ".incoming-#{Ecto.UUID.generate()}.tmp")
+  end
+
   @doc """
   Returns the yt-dlp plugin-directory option when a loadable package exists.
 
@@ -192,7 +197,7 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   defp do_install(source_path, filename, source_url) do
     with :ok <- ensure() do
       destination = Path.join(path(), filename)
-      temporary = Path.join(path(), ".incoming-#{Ecto.UUID.generate()}#{Path.extname(filename)}")
+      temporary = temporary_install_path(filename)
 
       try do
         with :ok <- copy_file(source_path, temporary),
@@ -353,8 +358,16 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     case File.read(metadata_path()) do
       {:ok, contents} ->
         case Jason.decode(contents) do
-          {:ok, %{"plugins" => plugins}} when is_map(plugins) -> %{"plugins" => plugins}
-          _ -> empty_metadata()
+          {:ok, %{"plugins" => plugins}} when is_map(plugins) ->
+            valid_plugins =
+              plugins
+              |> Enum.filter(fn {_filename, plugin_metadata} -> is_map(plugin_metadata) end)
+              |> Map.new()
+
+            %{"plugins" => valid_plugins}
+
+          _ ->
+            empty_metadata()
         end
 
       _ ->

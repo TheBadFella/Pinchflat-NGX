@@ -17,7 +17,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
 
       <.help>
         Plugins add extractors or postprocessors to yt-dlp. Install a direct archive URL,
-        or drop a package into <span class="font-mono">/config/extras/yt-dlp-plugins</span>.
+        or drop a package into <span class="font-mono">{@plugin_path}</span>.
         Postprocessor plugins also need <span class="font-mono">--use-postprocessor NAME</span> in the base yt-dlp config.
       </.help>
 
@@ -88,13 +88,13 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
         <h4 class="text-base font-semibold text-theme-on-surface">Installed Plugins</h4>
 
         <p :if={@plugins == []} class="mt-3 text-sm text-theme-on-surface-muted">
-          No plugins installed. Upload an archive or add one to <span class="font-mono">/config/extras/yt-dlp-plugins</span>.
+          No plugins installed. Upload an archive or add one to <span class="font-mono">{@plugin_path}</span>.
         </p>
 
         <ul :if={@plugins != []} class="mt-3 divide-y divide-theme-outline/40">
           <li
-            :for={plugin <- @plugins}
-            id={"plugin-#{plugin.filename}"}
+            :for={{plugin, index} <- Enum.with_index(@plugins)}
+            id={"plugin-#{index}"}
             class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="min-w-0">
@@ -144,6 +144,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
       |> assign(:url, "")
       |> assign(:notice, nil)
       |> assign(:error, nil)
+      |> assign(:plugin_path, PluginDirectory.path())
       |> assign(:allowed_hosts, SafeFetch.allowed_hosts())
       |> allow_upload(:plugin,
         accept: :any,
@@ -173,10 +174,10 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
          |> assign(:error, nil)}
 
       [{:error, reason}] ->
-        {:noreply, assign(socket, :error, humanize_error(reason))}
+        {:noreply, socket |> assign(:error, humanize_error(reason)) |> assign(:notice, nil)}
 
       [] ->
-        {:noreply, assign(socket, :error, "Choose a plugin archive to upload.")}
+        {:noreply, socket |> assign(:error, "Choose a plugin archive to upload.") |> assign(:notice, nil)}
     end
   end
 
@@ -184,7 +185,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
     url = String.trim(url)
 
     if url == "" do
-      {:noreply, assign(socket, :error, "Enter a plugin archive URL.")}
+      {:noreply, socket |> assign(:error, "Enter a plugin archive URL.") |> assign(:notice, nil)}
     else
       case PluginDirectory.install_from_url(url) do
         {:ok, _entry} ->
@@ -215,7 +216,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
          |> assign(:error, nil)}
 
       {:error, reason} ->
-        {:noreply, assign(socket, :error, humanize_error(reason))}
+        {:noreply, socket |> assign(:error, humanize_error(reason)) |> assign(:notice, nil)}
     end
   end
 
@@ -229,7 +230,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
          |> assign(:error, nil)}
 
       {:error, reason} ->
-        {:noreply, assign(socket, :error, humanize_error(reason))}
+        {:noreply, socket |> assign(:error, humanize_error(reason)) |> assign(:notice, nil)}
     end
   end
 

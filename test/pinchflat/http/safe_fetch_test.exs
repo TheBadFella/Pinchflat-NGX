@@ -65,6 +65,7 @@ defmodule Pinchflat.HTTP.SafeFetchTest do
       original_resolver = Application.get_env(:pinchflat, :yt_dlp_plugin_url_dns_resolver)
 
       Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, ["mirror.internal"])
+
       Application.put_env(:pinchflat, :yt_dlp_plugin_url_dns_resolver, fn _host ->
         {:ok, [{93, 184, 216, 34}]}
       end)
@@ -103,6 +104,22 @@ defmodule Pinchflat.HTTP.SafeFetchTest do
                SafeFetch.fetch("https://example.com/plugin.zip",
                  dns_resolver: public_resolver({0, 0, 0, 0, 0, 0, 0, 1})
                )
+    end
+
+    test "rejects special-purpose IPv6 ranges" do
+      addresses = [
+        {0xFEC0, 0, 0, 0, 0, 0, 0, 1},
+        {0x0064, 0xFF9B, 0, 0, 0, 0, 0xA9FE, 0xA9FE},
+        {0x2002, 0x7F00, 1, 0, 0, 0, 0, 0},
+        {0x2001, 0, 0, 0, 0, 0, 0, 1}
+      ]
+
+      expect(HTTPClientMock, :get_with_response, 0, fn _, _, _ -> flunk("unexpected HTTP request") end)
+
+      for address <- addresses do
+        assert {:error, :unsafe_url} =
+                 SafeFetch.fetch("https://example.com/plugin.zip", dns_resolver: public_resolver(address))
+      end
     end
 
     test "rejects credentials in the URL" do
@@ -254,6 +271,35 @@ defmodule Pinchflat.HTTP.SafeFetchTest do
 
       assert {:error, :unsafe_url} =
                SafeFetch.fetch("https://github.com/plugin.zip",
+                 dns_resolver: public_resolver({192, 168, 1, 10})
+               )
+    end
+
+    test "treats false-like opt-in values as disabled" do
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, ["mirror.internal"])
+      expect(HTTPClientMock, :get_with_response, 0, fn _, _, _ -> flunk("unexpected HTTP request") end)
+
+      for value <- ["false", "0", "no", "off", ""] do
+        Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, value)
+
+        assert {:error, :unsafe_url} =
+                 SafeFetch.fetch("https://mirror.internal/plugin.zip",
+                   dns_resolver: public_resolver({192, 168, 1, 10})
+                 )
+      end
+    end
+
+    test "treats true-like opt-in strings as enabled" do
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, ["mirror.internal"])
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, "true")
+
+      expect(HTTPClientMock, :get_with_response, 1, fn _url, _headers, opts ->
+        assert opts[:connect_address] == {192, 168, 1, 10}
+        {:ok, %{status: 200, headers: [], body: "plugin"}}
+      end)
+
+      assert {:ok, "plugin"} =
+               SafeFetch.fetch("https://mirror.internal/plugin.zip",
                  dns_resolver: public_resolver({192, 168, 1, 10})
                )
     end

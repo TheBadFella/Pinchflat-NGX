@@ -110,7 +110,7 @@ yt_dlp_plugin_url_allowlist =
 
 yt_dlp_plugin_url_allow_private =
   case System.get_env("YT_DLP_PLUGIN_URL_ALLOW_PRIVATE") do
-    value when is_binary(value) -> String.trim(value) != ""
+    value when is_binary(value) -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on"]
     _ -> false
   end
 

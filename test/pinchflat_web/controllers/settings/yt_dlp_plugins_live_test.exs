@@ -52,6 +52,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       assert html =~ "No plugins installed"
       assert html =~ "arbitrary Python code"
       assert html =~ "example.com"
+      assert html =~ PluginDirectory.path()
       assert has_element?(view, "#plugin-upload-form")
       assert has_element?(view, "#plugin-url-form")
     end
@@ -167,6 +168,32 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
 
       assert html =~ "HTTP 404"
       assert html =~ "No plugins installed"
+    end
+
+    test "clears a previous success notice when a later install fails", %{conn: conn} do
+      zip = plugin_zip_fixture()
+
+      expect(HTTPClientMock, :get_with_response, 2, fn url, _headers, _opts ->
+        if String.ends_with?(url, "sample.zip") do
+          {:ok, %{status: 200, headers: [], body: zip}}
+        else
+          {:ok, %{status: 404, headers: [], body: ""}}
+        end
+      end)
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+
+      view
+      |> element("#plugin-url-form")
+      |> render_submit(%{"url" => "https://example.com/sample.zip"})
+
+      html =
+        view
+        |> element("#plugin-url-form")
+        |> render_submit(%{"url" => "https://example.com/other.zip"})
+
+      refute html =~ "Plugin installed from URL"
+      assert html =~ "HTTP 404"
     end
   end
 
