@@ -307,8 +307,7 @@ yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health che
 Pinchflat-ngx loads yt-dlp extractor and postprocessor plugins from `/config/extras/yt-dlp-plugins`.
 Install them from **Settings > yt-dlp > Plugins** by uploading a `.zip`, `.whl`, or `.egg`, or by
 pasting a direct archive URL. You can also place packages in that directory yourself because it
-lives on the persistent `/config` volume. See the [community plugin index](docs/yt-dlp-plugins-index.md)
-for tested recommendations and dependency limits.
+lives on the persistent `/config` volume.
 
 A package is either a folder containing `yt_dlp_plugins/` (for example
 `my-plugin/yt_dlp_plugins/extractor/my_extractor.py`) or an archive whose root contains
