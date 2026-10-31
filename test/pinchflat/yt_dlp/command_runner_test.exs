@@ -3,6 +3,7 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
   alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.YtDlp.PluginDirectory
 
   alias Pinchflat.YtDlp.CommandRunner, as: Runner
 
@@ -210,6 +211,59 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
       assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
 
       assert String.contains?(output, "--cache-dir /tmp/test/tmpfiles/yt-dlp-cache")
+    end
+  end
+
+  describe "run/4 when testing plugin options" do
+    setup do
+      File.rm_rf(PluginDirectory.path())
+      on_exit(fn -> File.rm_rf(PluginDirectory.path()) end)
+      :ok
+    end
+
+    test "does not add plugin directories when none are installed" do
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      refute String.contains?(output, "--plugin-dirs")
+    end
+
+    test "does not add plugin directories when only hidden files exist" do
+      File.mkdir_p!(PluginDirectory.path())
+      File.write!(Path.join(PluginDirectory.path(), ".keep"), "")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      refute String.contains?(output, "--plugin-dirs")
+    end
+
+    test "adds the managed plugin directory when a folder package exists" do
+      File.mkdir_p!(Path.join([PluginDirectory.path(), "sample", "yt_dlp_plugins"]))
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
+    end
+
+    test "adds the managed plugin directory when an archive exists" do
+      File.mkdir_p!(PluginDirectory.path())
+      File.write!(Path.join(PluginDirectory.path(), "sample.zip"), "zipdata")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
+    end
+
+    test "keeps POT extractor options alongside the managed plugin directory" do
+      original_url = Application.get_env(:pinchflat, :po_token_provider_url)
+      Application.put_env(:pinchflat, :po_token_provider_url, "http://pot-provider:4416")
+      on_exit(fn -> Application.put_env(:pinchflat, :po_token_provider_url, original_url) end)
+
+      File.mkdir_p!(Path.join([PluginDirectory.path(), "sample", "yt_dlp_plugins"]))
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, Pinchflat.YtDlp.PoTokenProvider.options(), "")
+
+      assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
+      assert String.contains?(output, "--extractor-args youtubepot-bgutilhttp:base_url=http://pot-provider:4416")
     end
   end
 
