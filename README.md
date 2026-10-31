@@ -297,7 +297,8 @@ services:
 ```
 
 Start the opt-in service with `docker compose --profile pot-provider up -d`. Pinchflat-ngx images include the matching bgutil
-yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. See the
+yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. Installing bgutil again through
+**Settings > yt-dlp > Plugins** is blocked; use `POT_PROVIDER_URL` instead. See the
 [official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
 [yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
 
@@ -311,7 +312,8 @@ lives on the persistent `/config` volume.
 A package is either a folder containing `yt_dlp_plugins/` (for example
 `my-plugin/yt_dlp_plugins/extractor/my_extractor.py`) or an archive whose root contains
 `yt_dlp_plugins/`. URL-installed plugins record their source URL so **Update** can re-fetch them on
-demand. Pinchflat-ngx does not update plugins in the background.
+demand. Pinchflat-ngx does not update plugins in the background. Plugins bundled with
+Pinchflat-ngx, currently the bgutil PO-token plugin, cannot be installed again through this page.
 
 URL installs are limited to public HTTP(S) hosts. The built-in allowlist covers GitHub release
 assets. Add another host with `YT_DLP_PLUGIN_URL_ALLOWLIST=plugins.example.com,cdn.example.com`.

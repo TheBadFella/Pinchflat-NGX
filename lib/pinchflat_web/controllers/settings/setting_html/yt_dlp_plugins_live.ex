@@ -447,6 +447,9 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
   defp humanize_config_error(:file_error), do: "The config file could not be written."
   defp humanize_config_error(_reason), do: "The plugin config could not be saved."
 
+  defp humanize_error(:bundled_plugin),
+    do: "This plugin is already bundled with Pinchflat-ngx and cannot be installed again."
+
   defp humanize_error(:unsupported_extension), do: "Only .zip, .whl, and .egg plugin archives are supported."
 
   defp humanize_error(:invalid_archive), do: "The file is not a valid plugin archive."

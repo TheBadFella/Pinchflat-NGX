@@ -18,15 +18,18 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     original_extras = Application.get_env(:pinchflat, :extras_directory)
     original_allowlist = Application.get_env(:pinchflat, :yt_dlp_plugin_url_allowlist)
     original_allow_private = Application.get_env(:pinchflat, :yt_dlp_plugin_url_allow_private)
+    original_bundled_paths = Application.get_env(:pinchflat, :bundled_plugin_paths)
 
     Application.put_env(:pinchflat, :extras_directory, base_dir)
     Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, ["example.com"])
     Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, false)
+    Application.put_env(:pinchflat, :bundled_plugin_paths, [])
 
     on_exit(fn ->
       Application.put_env(:pinchflat, :extras_directory, original_extras)
       Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, original_allowlist)
       Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, original_allow_private)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, original_bundled_paths)
       File.rm_rf!(base_dir)
     end)
 
@@ -258,6 +261,40 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
 
     test "returns not_found for a missing entry" do
       assert {:error, :not_found} = PluginDirectory.remove("missing.zip")
+    end
+  end
+
+  describe "bundled plugins" do
+    test "rejects an archive that duplicates a bundled plugin" do
+      bundled_dir = create_bundled_plugin(["shared.py"])
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      source = plugin_zip_file_fixture([{"yt_dlp_plugins/extractor/shared.py", "class SharedIE: pass"}])
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "shared.zip")
+      refute File.exists?(Path.join(PluginDirectory.path(), "shared.zip"))
+    end
+
+    test "allows a different plugin when bundled plugins exist" do
+      bundled_dir = create_bundled_plugin(["shared.py"])
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      source = plugin_zip_file_fixture([{"yt_dlp_plugins/extractor/other.py", "class OtherIE: pass"}])
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, entry} = PluginDirectory.install_archive(source, filename: "other.zip")
+      assert entry.filename == "other.zip"
+    end
+
+    test "ignores namespace package init files" do
+      bundled_dir = create_bundled_plugin(["shared.py", "__init__.py"])
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      source = plugin_zip_file_fixture([{"yt_dlp_plugins/extractor/other.py", "class OtherIE: pass"}])
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "other.zip")
     end
   end
 
@@ -532,6 +569,25 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     on_exit(fn -> File.rm(source) end)
 
     assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+  end
+
+  defp create_bundled_plugin(modules) do
+    directory =
+      Path.join([
+        System.tmp_dir!(),
+        "bundled-plugin",
+        Integer.to_string(:erlang.unique_integer([:positive]))
+      ])
+
+    plugin_path = Path.join([directory, "bundled", "yt_dlp_plugins", "extractor"])
+    File.mkdir_p!(plugin_path)
+
+    Enum.each(modules, fn module ->
+      File.write!(Path.join(plugin_path, module), "class Bundled: pass")
+    end)
+
+    on_exit(fn -> File.rm_rf!(directory) end)
+    directory
   end
 
   defp with_debug_logs(fun) do

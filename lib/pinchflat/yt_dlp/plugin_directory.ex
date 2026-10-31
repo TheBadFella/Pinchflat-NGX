@@ -11,6 +11,7 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   require Logger
 
   alias Pinchflat.HTTP.SafeFetch
+  alias Pinchflat.YtDlp.PoTokenProvider
 
   @directory_name "yt-dlp-plugins"
   @config_directory_name "yt-dlp-plugin-configs"
@@ -95,6 +96,7 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
            :ok <- ensure_supported_extension(filename),
            :ok <- validate_size(source_path),
            :ok <- validate_archive(source_path),
+           :ok <- validate_not_bundled(source_path),
            :ok <- validate_destination(filename, replace?) do
         do_install(source_path, filename, source_url)
       end
@@ -550,6 +552,75 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   end
 
   defp normalize_entry_name(name), do: String.replace_prefix(name, "./", "")
+
+  defp validate_not_bundled(source_path) do
+    candidate = archive_plugin_module_names(source_path) |> MapSet.new()
+
+    if MapSet.disjoint?(candidate, bundled_plugin_module_names()) do
+      :ok
+    else
+      {:error, :bundled_plugin}
+    end
+  end
+
+  defp bundled_plugin_module_names do
+    PoTokenProvider.bundled_plugin_paths()
+    |> Enum.flat_map(&bundled_directory_module_names/1)
+    |> MapSet.new()
+  end
+
+  defp bundled_directory_module_names(directory) do
+    case File.ls(directory) do
+      {:ok, entries} ->
+        entries
+        |> Enum.reject(&hidden?/1)
+        |> Enum.flat_map(fn entry ->
+          path = Path.join(directory, entry)
+
+          cond do
+            File.dir?(path) -> folder_plugin_module_names(path)
+            supported_archive?(entry) -> archive_plugin_module_names(path)
+            true -> []
+          end
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp folder_plugin_module_names(plugin_path) do
+    plugin_path
+    |> Path.join("yt_dlp_plugins")
+    |> Path.join("**/*.py")
+    |> Path.wildcard()
+    |> Enum.map(fn path ->
+      path
+      |> Path.relative_to(plugin_path)
+      |> String.replace_suffix(".py", "")
+      |> normalize_entry_name()
+    end)
+    |> Enum.reject(&namespace_init?/1)
+  end
+
+  defp archive_plugin_module_names(archive_path) do
+    case archive_entry_names(archive_path) do
+      {:ok, names} ->
+        names
+        |> Enum.filter(&plugin_module_file?/1)
+        |> Enum.map(&String.replace_suffix(&1, ".py", ""))
+        |> Enum.reject(&namespace_init?/1)
+
+      _ ->
+        []
+    end
+  end
+
+  defp plugin_module_file?(name) do
+    String.starts_with?(name, "yt_dlp_plugins/") and String.ends_with?(name, ".py")
+  end
+
+  defp namespace_init?(module_name), do: String.ends_with?(module_name, "__init__")
 
   defp validate_safe_entries(names) do
     if Enum.any?(names, &unsafe_entry?/1), do: {:error, :unsafe_archive}, else: :ok

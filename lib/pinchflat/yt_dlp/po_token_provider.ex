@@ -38,11 +38,9 @@ defmodule Pinchflat.YtDlp.PoTokenProvider do
   end
 
   defp active_plugin_dir do
-    cond do
-      plugin_directory_present?(@plugin_dir) -> [plugin_dirs: @plugin_dir]
-      plugin_directory_present?(@legacy_plugin_dir) -> [plugin_dirs: @legacy_plugin_dir]
-      true -> []
-    end
+    Enum.find_value(bundled_plugin_paths(), [], fn directory ->
+      if plugin_directory_present?(directory), do: [plugin_dirs: directory]
+    end)
   end
 
   @doc """
@@ -71,6 +69,15 @@ defmodule Pinchflat.YtDlp.PoTokenProvider do
       %{state: :invalid_response} -> {:error, "PO-token provider returned an invalid health response."}
       %{state: :unreachable} -> {:error, "PO-token provider could not be reached within the health-check timeout."}
     end
+  end
+
+  @doc """
+  Returns the configured bundled plugin directories.
+
+  Tests can override this list with `:bundled_plugin_paths`.
+  """
+  def bundled_plugin_paths do
+    Application.get_env(:pinchflat, :bundled_plugin_paths, [@plugin_dir, @legacy_plugin_dir])
   end
 
   @doc false
