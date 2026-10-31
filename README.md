@@ -316,16 +316,28 @@ demand. Pinchflat-ngx does not update plugins in the background.
 URL installs are limited to public HTTP(S) hosts. The built-in allowlist covers GitHub release
 assets. Add another host with `YT_DLP_PLUGIN_URL_ALLOWLIST=plugins.example.com,cdn.example.com`.
 Private or LAN mirrors also require `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE=true` and an explicitly
-allowlisted host.
+allowlisted host. `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE` accepts `true`, `1`, `yes`, or `on`; any other
+value leaves private addresses blocked.
+
+Each installed plugin has a **Config** button. The editor stores a yt-dlp config file for that
+plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp command. Use it for
+plugin-documented options such as `--use-postprocessor` or `--extractor-args`. Options apply
+globally, so keep them compatible with your other plugins.
+
+yt-dlp catches plugin import errors and continues, so Pinchflat-ngx scans command output for them.
+Failures are logged with a `[yt-dlp plugins]` prefix and sent to the configured Apprise server,
+deduplicated for one hour.
 
 > [!WARNING]
-> Plugins run arbitrary Python inside the container. Install only plugins you trust. Extractor
-> plugins take priority over built-in extractors, so a plugin can change or break downloads and
-> indexing. yt-dlp's plugin API is unstable and may break across yt-dlp updates.
+> Plugins run arbitrary Python inside the container and can read files and environment variables
+> available to the app. Install only plugins you trust. If the Settings UI is reachable by
+> untrusted users, configure Basic Auth or SSO before installing plugins. Extractor plugins take
+> priority over built-in extractors, so a plugin can change or break downloads and indexing.
+> yt-dlp's plugin API is unstable and may break across yt-dlp updates.
 
 Plugins are loaded for every yt-dlp operation, including indexing and metadata. Postprocessor
-plugins still need `--use-postprocessor NAME` in the base yt-dlp config. Existing bind mounts at
-`/etc/yt-dlp/plugins` continue to work.
+plugins still need `--use-postprocessor NAME` in the per-plugin config or base yt-dlp config.
+Existing bind mounts at `/etc/yt-dlp/plugins` continue to work.
 
 ### Optional local download staging
 
