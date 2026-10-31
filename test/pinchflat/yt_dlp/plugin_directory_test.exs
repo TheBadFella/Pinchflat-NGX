@@ -29,7 +29,13 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
       Application.put_env(:pinchflat, :extras_directory, original_extras)
       Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, original_allowlist)
       Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, original_allow_private)
-      Application.put_env(:pinchflat, :bundled_plugin_paths, original_bundled_paths)
+
+      if is_nil(original_bundled_paths) do
+        Application.delete_env(:pinchflat, :bundled_plugin_paths)
+      else
+        Application.put_env(:pinchflat, :bundled_plugin_paths, original_bundled_paths)
+      end
+
       File.rm_rf!(base_dir)
     end)
 

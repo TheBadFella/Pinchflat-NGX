@@ -16,6 +16,23 @@ defmodule Pinchflat.YtDlp.PoTokenProviderTest do
     :ok
   end
 
+  describe "bundled_plugin_paths/0" do
+    test "falls back to the default paths when the setting is nil" do
+      original = Application.get_env(:pinchflat, :bundled_plugin_paths)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, nil)
+
+      on_exit(fn ->
+        if is_nil(original) do
+          Application.delete_env(:pinchflat, :bundled_plugin_paths)
+        else
+          Application.put_env(:pinchflat, :bundled_plugin_paths, original)
+        end
+      end)
+
+      assert is_list(PoTokenProvider.bundled_plugin_paths())
+    end
+  end
+
   describe "options/0" do
     test "keeps provider options absent when disabled" do
       assert PoTokenProvider.options() == []

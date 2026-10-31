@@ -77,7 +77,10 @@ defmodule Pinchflat.YtDlp.PoTokenProvider do
   Tests can override this list with `:bundled_plugin_paths`.
   """
   def bundled_plugin_paths do
-    Application.get_env(:pinchflat, :bundled_plugin_paths, [@plugin_dir, @legacy_plugin_dir])
+    case Application.get_env(:pinchflat, :bundled_plugin_paths) do
+      paths when is_list(paths) -> paths
+      _ -> [@plugin_dir, @legacy_plugin_dir]
+    end
   end
 
   @doc false
