@@ -40,6 +40,28 @@ defmodule Pinchflat.HTTP.HTTPClient do
   end
 
   @doc """
+  Makes a GET request and returns the status, headers, and body without
+  treating non-2xx responses as errors. Used by redirect-aware callers.
+  """
+  @impl HTTPBehaviour
+  def get_with_response(url, headers \\ [], opts \\ []) do
+    headers = parse_headers(headers)
+    {connect_address, request_opts} = Keyword.pop(opts, :connect_address)
+    request = Finch.build(:get, url, headers)
+
+    case connect_address do
+      nil ->
+        raw_request(request, request_opts)
+
+      address when is_tuple(address) ->
+        raw_request_to_address(request, address, request_opts)
+
+      _address ->
+        {:error, "HTTP request failed: invalid connection address"}
+    end
+  end
+
+  @doc """
   Makes a POST request to the given URL and returns the response.
   """
   @impl HTTPBehaviour
@@ -62,12 +84,22 @@ defmodule Pinchflat.HTTP.HTTPClient do
   end
 
   defp request(request, opts) do
-    case Finch.request(request, Pinchflat.Finch, opts) do
-      {:ok, %Response{status: status_code, body: body}} when status_code in 200..299 ->
+    case raw_request(request, opts) do
+      {:ok, %{status: status_code, body: body}} when status_code in 200..299 ->
         {:ok, body}
 
-      {:ok, %Response{status: status_code}} ->
+      {:ok, %{status: status_code}} ->
         {:error, "HTTP request failed with status code #{status_code}"}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp raw_request(request, opts) do
+    case Finch.request(request, Pinchflat.Finch, opts) do
+      {:ok, %Response{status: status, headers: headers, body: body}} ->
+        {:ok, %{status: status, headers: headers, body: body}}
 
       {:error, reason} ->
         {:error, "HTTP request failed: #{error_message(reason)}"}
@@ -75,6 +107,14 @@ defmodule Pinchflat.HTTP.HTTPClient do
   end
 
   defp request_to_address(request, address, opts) do
+    with_connected_address(request, address, &request(&1, opts))
+  end
+
+  defp raw_request_to_address(request, address, opts) do
+    with_connected_address(request, address, &raw_request(&1, opts))
+  end
+
+  defp with_connected_address(request, address, fun) do
     pinned_host = address_to_host(address)
     pool_tag = {:pinchflat_pinned, make_ref()}
     pool = Finch.Pool.from_name({request.scheme, pinned_host, request.port, pool_tag})
@@ -90,7 +130,7 @@ defmodule Pinchflat.HTTP.HTTPClient do
       request
       |> Map.put(:host, pinned_host)
       |> Map.put(:pool_tag, pool_tag)
-      |> request(opts)
+      |> fun.()
     after
       _ = Finch.stop_pool(Pinchflat.Finch, pool)
     end

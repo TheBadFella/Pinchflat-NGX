@@ -8,6 +8,9 @@ defmodule Pinchflat.HTTP.HTTPBehaviour do
   @callback get(String.t(), Keyword.t()) :: {:ok, String.t()} | {:error, String.t()}
   @callback get(String.t(), Keyword.t(), Keyword.t()) :: {:ok, String.t()} | {:error, String.t()}
 
+  @callback get_with_response(String.t(), Keyword.t(), Keyword.t()) ::
+              {:ok, %{status: integer(), headers: list(), body: binary()}} | {:error, String.t()}
+
   @callback post(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   @callback post(String.t(), list()) :: {:ok, String.t()} | {:error, String.t()}
   @callback post(String.t(), list(), binary()) :: {:ok, String.t()} | {:error, String.t()}
