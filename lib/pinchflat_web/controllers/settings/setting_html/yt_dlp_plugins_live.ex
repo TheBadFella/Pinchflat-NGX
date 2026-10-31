@@ -46,7 +46,11 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
         >
           <.icon name="hero-arrow-up-tray" class="h-5 w-5" />
           <span>{upload_label(@uploads.plugin.entries)}</span>
-          <.live_file_input upload={@uploads.plugin} class="sr-only" />
+          <.live_file_input
+            upload={@uploads.plugin}
+            accept=".zip,.whl,.egg"
+            class="sr-only"
+          />
         </label>
 
         <.button :if={@uploads.plugin.entries != []} type="submit" variant="primary">

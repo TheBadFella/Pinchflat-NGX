@@ -55,6 +55,12 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       assert has_element?(view, "#plugin-upload-form")
       assert has_element?(view, "#plugin-url-form")
     end
+
+    test "filters the file picker to plugin archive extensions", %{conn: conn} do
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+
+      assert has_element?(view, ~s(#plugin-upload-form input[type="file"][accept=".zip,.whl,.egg"]))
+    end
   end
 
   describe "uploading plugins" do
