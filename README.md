@@ -301,6 +301,32 @@ yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health che
 [official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
 [yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
 
+### Optional yt-dlp plugins
+
+Pinchflat-ngx loads yt-dlp extractor and postprocessor plugins from `/config/extras/yt-dlp-plugins`.
+Install them from **Settings > yt-dlp > Plugins** by uploading a `.zip`, `.whl`, or `.egg`, or by
+pasting a direct archive URL. You can also place packages in that directory yourself because it
+lives on the persistent `/config` volume.
+
+A package is either a folder containing `yt_dlp_plugins/` (for example
+`my-plugin/yt_dlp_plugins/extractor/my_extractor.py`) or an archive whose root contains
+`yt_dlp_plugins/`. URL-installed plugins record their source URL so **Update** can re-fetch them on
+demand. Pinchflat-ngx does not update plugins in the background.
+
+URL installs are limited to public HTTP(S) hosts. The built-in allowlist covers GitHub release
+assets. Add another host with `YT_DLP_PLUGIN_URL_ALLOWLIST=plugins.example.com,cdn.example.com`.
+Private or LAN mirrors also require `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE=true` and an explicitly
+allowlisted host.
+
+> [!WARNING]
+> Plugins run arbitrary Python inside the container. Install only plugins you trust. Extractor
+> plugins take priority over built-in extractors, so a plugin can change or break downloads and
+> indexing. yt-dlp's plugin API is unstable and may break across yt-dlp updates.
+
+Plugins are loaded for every yt-dlp operation, including indexing and metadata. Postprocessor
+plugins still need `--use-postprocessor NAME` in the base yt-dlp config. Existing bind mounts at
+`/etc/yt-dlp/plugins` continue to work.
+
 ### Optional local download staging
 
 Set `DOWNLOAD_STAGING_PATH` to an absolute path inside the container when downloads should complete on a local disk
