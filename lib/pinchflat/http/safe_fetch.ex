@@ -116,7 +116,7 @@ defmodule Pinchflat.HTTP.SafeFetch do
   end
 
   defp resolve_address(host, opts) do
-    resolver = Keyword.get(opts, :dns_resolver, &default_resolver/1)
+    resolver = Keyword.get(opts, :dns_resolver, configured_resolver())
 
     case resolver.(host) do
       {:ok, addresses} when is_list(addresses) and addresses != [] ->
@@ -220,6 +220,13 @@ defmodule Pinchflat.HTTP.SafeFetch do
   defp validate_body_size(_body, _opts), do: {:error, :invalid_response}
 
   defp max_bytes(opts), do: Keyword.get(opts, :max_bytes, @max_bytes)
+
+  defp configured_resolver do
+    case Application.get_env(:pinchflat, :yt_dlp_plugin_url_dns_resolver) do
+      resolver when is_function(resolver, 1) -> resolver
+      _ -> &default_resolver/1
+    end
+  end
 
   defp default_resolver(host) do
     addresses =

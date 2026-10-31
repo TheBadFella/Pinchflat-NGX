@@ -61,6 +61,26 @@ defmodule Pinchflat.HTTP.SafeFetchTest do
       assert {:ok, "data"} = SafeFetch.fetch("https://example.com/plugin.zip", dns_resolver: public_resolver())
     end
 
+    test "uses the configured DNS resolver when none is passed" do
+      original_resolver = Application.get_env(:pinchflat, :yt_dlp_plugin_url_dns_resolver)
+
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, ["mirror.internal"])
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_dns_resolver, fn _host ->
+        {:ok, [{93, 184, 216, 34}]}
+      end)
+
+      on_exit(fn ->
+        Application.put_env(:pinchflat, :yt_dlp_plugin_url_dns_resolver, original_resolver)
+      end)
+
+      expect(HTTPClientMock, :get_with_response, 1, fn _, _, opts ->
+        assert opts[:connect_address] == {93, 184, 216, 34}
+        {:ok, %{status: 200, headers: [], body: "data"}}
+      end)
+
+      assert {:ok, "data"} = SafeFetch.fetch("https://mirror.internal/plugin.zip")
+    end
+
     test "rejects a host outside the allowlist without resolving or calling HTTP" do
       expect(HTTPClientMock, :get_with_response, 0, fn _, _, _ -> flunk("unexpected HTTP request") end)
       resolver = fn _host -> flunk("unexpected DNS resolution") end
