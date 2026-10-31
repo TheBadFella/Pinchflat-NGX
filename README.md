@@ -307,7 +307,8 @@ yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health che
 Pinchflat-ngx loads yt-dlp extractor and postprocessor plugins from `/config/extras/yt-dlp-plugins`.
 Install them from **Settings > yt-dlp > Plugins** by uploading a `.zip`, `.whl`, or `.egg`, or by
 pasting a direct archive URL. You can also place packages in that directory yourself because it
-lives on the persistent `/config` volume.
+lives on the persistent `/config` volume. See the [community plugin index](docs/yt-dlp-plugins-index.md)
+for tested recommendations and dependency limits.
 
 A package is either a folder containing `yt_dlp_plugins/` (for example
 `my-plugin/yt_dlp_plugins/extractor/my_extractor.py`) or an archive whose root contains
@@ -326,7 +327,9 @@ plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp co
 shows the package's bundled README when present. The options file starts empty because yt-dlp
 plugins do not expose a config schema; use it for plugin-documented options such as
 `--use-postprocessor` or `--extractor-args`. Options apply globally, so keep them compatible with
-your other plugins.
+your other plugins. A zip-only install does not install Python dependencies; plugins that import
+packages such as `requests`, `pyotp`, or `nodriver` need those packages added to the container
+first.
 
 yt-dlp catches plugin import errors and continues, so Pinchflat-ngx scans command output for them.
 Failures are logged with a `[yt-dlp plugins]` prefix and sent to the configured Apprise server,
