@@ -1,6 +1,8 @@
 defmodule Pinchflat.YtDlp.CommandRunnerTest do
   use Pinchflat.DataCase
 
+  import Pinchflat.PluginFixtures
+
   alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.YtDlp.PluginDirectory
@@ -217,7 +219,13 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
   describe "run/4 when testing plugin options" do
     setup do
       File.rm_rf(PluginDirectory.path())
-      on_exit(fn -> File.rm_rf(PluginDirectory.path()) end)
+      File.rm_rf(PluginDirectory.config_directory())
+
+      on_exit(fn ->
+        File.rm_rf(PluginDirectory.path())
+        File.rm_rf(PluginDirectory.config_directory())
+      end)
+
       :ok
     end
 
@@ -264,6 +272,25 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
       assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
       assert String.contains?(output, "--extractor-args youtubepot-bgutilhttp:base_url=http://pot-provider:4416")
+    end
+
+    test "adds plugin config locations" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+      assert {:ok, config_path} = PluginDirectory.config_path("sample.zip")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--config-locations #{config_path}")
+    end
+
+    test "does not add plugin config locations when no config exists" do
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      refute String.contains?(output, "--config-locations")
     end
   end
 

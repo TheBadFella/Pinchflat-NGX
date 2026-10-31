@@ -11,9 +11,12 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   alias Pinchflat.HTTP.SafeFetch
 
   @directory_name "yt-dlp-plugins"
+  @config_directory_name "yt-dlp-plugin-configs"
+  @config_extension ".conf"
   @metadata_filename ".pinchflat-plugins.json"
   @supported_archive_extensions ~w(.zip .whl .egg)
   @max_bytes 25 * 1024 * 1024
+  @max_config_bytes 64 * 1024
 
   @doc """
   Returns the absolute path to the managed plugin directory.
@@ -28,13 +31,27 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   Returns :ok | {:error, File.posix()}
   """
   def ensure do
-    File.mkdir_p(path())
+    with :ok <- File.mkdir_p(path()) do
+      File.mkdir_p(config_directory())
+    end
   end
 
   @doc """
   Returns the maximum accepted plugin archive size in bytes.
   """
   def max_bytes, do: @max_bytes
+
+  @doc """
+  Returns the maximum accepted plugin config size in bytes.
+  """
+  def max_config_bytes, do: @max_config_bytes
+
+  @doc """
+  Returns the absolute path to the per-plugin config directory.
+  """
+  def config_directory do
+    Path.join(Application.get_env(:pinchflat, :extras_directory), @config_directory_name)
+  end
 
   @doc false
   def temporary_install_path(_filename) do
@@ -164,6 +181,77 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   end
 
   @doc """
+  Returns the config file path for an installed plugin.
+
+  Returns {:ok, path} | {:error, :invalid_name | :not_found}
+  """
+  def config_path(filename) do
+    with :ok <- validate_config_filename(filename),
+         :ok <- validate_plugin_exists(filename) do
+      {:ok, config_file_for(filename)}
+    end
+  end
+
+  @doc """
+  Reads a plugin's config file, returning an empty string when none exists.
+
+  Returns {:ok, contents} | {:error, :invalid_name | :not_found | File.posix()}
+  """
+  def read_config(filename) do
+    with :ok <- validate_config_filename(filename),
+         :ok <- validate_plugin_exists(filename) do
+      case File.read(config_file_for(filename)) do
+        {:ok, contents} -> {:ok, contents}
+        {:error, :enoent} -> {:ok, ""}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Saves a plugin config file. Blank contents clear the config.
+
+  Returns :ok | {:error, :invalid_name | :not_found | :too_large | File.posix()}
+  """
+  def save_config(filename, contents) do
+    contents = to_string(contents)
+
+    with :ok <- validate_config_filename(filename),
+         :ok <- validate_plugin_exists(filename),
+         :ok <- validate_config_size(contents) do
+      if String.trim(contents) == "" do
+        clear_config(filename)
+      else
+        write_config(filename, contents)
+      end
+    end
+  end
+
+  @doc """
+  Clears a plugin's config file.
+
+  Returns :ok | {:error, :invalid_name | :not_found | File.posix()}
+  """
+  def clear_config(filename) do
+    with :ok <- validate_config_filename(filename),
+         :ok <- validate_plugin_exists(filename) do
+      delete_config_file(filename)
+    end
+  end
+
+  @doc """
+  Returns yt-dlp config-location options for plugins with non-empty configs.
+
+  Returns [config_locations: path]
+  """
+  def config_locations do
+    list()
+    |> Enum.filter(& &1.has_config)
+    |> Enum.sort_by(& &1.filename)
+    |> Enum.map(&{:config_locations, config_file_for(&1.filename)})
+  end
+
+  @doc """
   Returns installed plugins sorted by filename.
 
   Returns [%{name: String.t(), filename: String.t(), kind: :archive | :directory,
@@ -249,7 +337,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
       path: Path.join(path(), filename),
       size: size,
       source_url: plugin_metadata["source_url"],
-      installed_at: plugin_metadata["installed_at"]
+      installed_at: plugin_metadata["installed_at"],
+      has_config: config_present?(filename)
     }
   end
 
@@ -294,6 +383,7 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     if File.exists?(full_path) do
       case delete_path(full_path) do
         :ok ->
+          _ = delete_config_file(filename)
           remove_metadata(filename)
           :ok
 
@@ -491,6 +581,61 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     case String.trim(source_url) do
       "" -> nil
       trimmed -> trimmed
+    end
+  end
+
+  defp validate_config_filename(filename) do
+    filename = to_string(filename)
+
+    if filename == Path.basename(filename) and not hidden?(filename) and filename not in ["", ".", ".."] do
+      :ok
+    else
+      {:error, :invalid_name}
+    end
+  end
+
+  defp validate_plugin_exists(filename) do
+    if File.exists?(Path.join(path(), to_string(filename))) do
+      :ok
+    else
+      {:error, :not_found}
+    end
+  end
+
+  defp validate_config_size(contents) do
+    if byte_size(contents) <= @max_config_bytes, do: :ok, else: {:error, :too_large}
+  end
+
+  defp write_config(filename, contents) do
+    with :ok <- File.mkdir_p(config_directory()) do
+      destination = config_file_for(filename)
+      temporary = Path.join(config_directory(), ".config-#{Ecto.UUID.generate()}.tmp")
+
+      try do
+        with :ok <- File.write(temporary, contents),
+             :ok <- File.rename(temporary, destination) do
+          :ok
+        end
+      after
+        _ = File.rm(temporary)
+      end
+    end
+  end
+
+  defp delete_config_file(filename) do
+    case File.rm(config_file_for(filename)) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp config_file_for(filename), do: Path.join(config_directory(), "#{filename}#{@config_extension}")
+
+  defp config_present?(filename) do
+    case File.stat(config_file_for(filename)) do
+      {:ok, %{size: size}} -> size > 0
+      _ -> false
     end
   end
 

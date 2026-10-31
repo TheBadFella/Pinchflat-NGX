@@ -260,6 +260,81 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     end
   end
 
+  describe "plugin configuration" do
+    test "ensure/0 creates the plugin config directory" do
+      File.rm_rf!(PluginDirectory.config_directory())
+
+      refute File.exists?(PluginDirectory.config_directory())
+
+      assert :ok = PluginDirectory.ensure()
+      assert File.dir?(PluginDirectory.config_directory())
+    end
+
+    test "save_config/2 writes, read_config/1 reads, and list/0 marks configuration" do
+      install_sample_plugin()
+      config = "--extractor-args 'sample:key=value'\n"
+
+      assert :ok = PluginDirectory.save_config("sample.zip", config)
+      assert {:ok, ^config} = PluginDirectory.read_config("sample.zip")
+      assert [%{filename: "sample.zip", has_config: true}] = PluginDirectory.list()
+    end
+
+    test "save_config/2 with blank contents clears the config" do
+      install_sample_plugin()
+
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+      assert :ok = PluginDirectory.save_config("sample.zip", " \n")
+      assert {:ok, ""} = PluginDirectory.read_config("sample.zip")
+      assert [%{filename: "sample.zip", has_config: false}] = PluginDirectory.list()
+    end
+
+    test "clear_config/1 removes the config" do
+      install_sample_plugin()
+
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+      assert :ok = PluginDirectory.clear_config("sample.zip")
+      assert {:ok, ""} = PluginDirectory.read_config("sample.zip")
+      assert [%{filename: "sample.zip", has_config: false}] = PluginDirectory.list()
+    end
+
+    test "remove/1 deletes the plugin config" do
+      install_sample_plugin()
+
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+      assert {:ok, config_path} = PluginDirectory.config_path("sample.zip")
+      assert :ok = PluginDirectory.remove("sample.zip")
+      refute File.exists?(config_path)
+    end
+
+    test "config_locations/0 includes only configs for installed plugins" do
+      install_sample_plugin()
+
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+      assert {:ok, config_path} = PluginDirectory.config_path("sample.zip")
+      assert PluginDirectory.config_locations() == [config_locations: config_path]
+
+      File.write!(Path.join(PluginDirectory.config_directory(), "missing.zip.conf"), "--force-ipv4\n")
+
+      assert PluginDirectory.config_locations() == [config_locations: config_path]
+    end
+
+    test "config_locations/0 returns no options when no configs exist" do
+      install_sample_plugin()
+
+      assert PluginDirectory.config_locations() == []
+    end
+
+    test "save_config/2 rejects invalid names, missing plugins, and oversized contents" do
+      install_sample_plugin()
+
+      assert {:error, :invalid_name} = PluginDirectory.save_config("../sample.zip", "--force-ipv4")
+      assert {:error, :not_found} = PluginDirectory.save_config("missing.zip", "--force-ipv4")
+
+      too_large = String.duplicate("a", PluginDirectory.max_config_bytes() + 1)
+      assert {:error, :too_large} = PluginDirectory.save_config("sample.zip", too_large)
+    end
+  end
+
   describe "install_from_url/2" do
     test "stores a fetched archive and records its source URL" do
       zip = plugin_zip_fixture()
@@ -369,6 +444,13 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     test "returns not_found when the plugin was removed" do
       assert {:error, :not_found} = PluginDirectory.update_from_source("missing.zip")
     end
+  end
+
+  defp install_sample_plugin do
+    source = plugin_zip_file_fixture()
+    on_exit(fn -> File.rm(source) end)
+
+    assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
   end
 
   defp public_resolver(ip \\ {93, 184, 216, 34}) do
