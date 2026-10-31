@@ -131,6 +131,88 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
     end
   end
 
+  describe "plugin configuration" do
+    test "shows a Config button on each plugin row", %{conn: conn} do
+      install_sample_plugin()
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+
+      assert has_element?(view, ~s(button[phx-click="open_config"][phx-value-filename="sample.zip"]))
+    end
+
+    test "opens the modal with existing config", %{conn: conn} do
+      install_sample_plugin()
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+
+      assert has_element?(view, "#plugin-config-modal")
+      assert render(view) =~ "--force-ipv4"
+    end
+
+    test "saves config and marks the plugin configured", %{conn: conn} do
+      install_sample_plugin()
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+
+      html =
+        view
+        |> element("#plugin-config-form")
+        |> render_submit(%{"filename" => "sample.zip", "contents" => "--force-ipv4\n"})
+
+      assert html =~ "Plugin config saved"
+      assert html =~ "Configured"
+      refute has_element?(view, "#plugin-config-modal")
+      assert {:ok, "--force-ipv4\n"} = PluginDirectory.read_config("sample.zip")
+    end
+
+    test "cancels without writing", %{conn: conn} do
+      install_sample_plugin()
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-click="close_config"]), "Cancel") |> render_click()
+
+      refute has_element?(view, "#plugin-config-modal")
+      assert {:ok, ""} = PluginDirectory.read_config("sample.zip")
+    end
+
+    test "clears an existing config", %{conn: conn} do
+      install_sample_plugin()
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+
+      html = view |> element(~s(button[phx-click="clear_config"]), "Clear") |> render_click()
+
+      assert html =~ "Plugin config cleared"
+      refute has_element?(view, "#plugin-config-modal")
+      assert {:ok, ""} = PluginDirectory.read_config("sample.zip")
+      refute html =~ "Configured"
+    end
+
+    test "rejects an oversized config", %{conn: conn} do
+      install_sample_plugin()
+      too_large = String.duplicate("a", PluginDirectory.max_config_bytes() + 1)
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+
+      html =
+        view
+        |> element("#plugin-config-form")
+        |> render_submit(%{"filename" => "sample.zip", "contents" => too_large})
+
+      assert html =~ "Config is too large"
+      assert has_element?(view, "#plugin-config-modal")
+      assert {:ok, ""} = PluginDirectory.read_config("sample.zip")
+    end
+  end
+
   describe "installing from a URL" do
     test "stores the archive and records its source URL", %{conn: conn} do
       zip = plugin_zip_fixture()
@@ -242,5 +324,12 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       assert html =~ "not a valid plugin archive"
       assert File.read!(Path.join(PluginDirectory.path(), "sample.zip")) == File.read!(first)
     end
+  end
+
+  defp install_sample_plugin do
+    source = plugin_zip_file_fixture()
+    on_exit(fn -> File.rm(source) end)
+
+    assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
   end
 end
