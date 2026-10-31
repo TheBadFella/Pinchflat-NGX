@@ -103,18 +103,16 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   defp do_update_from_source(filename, opts) do
     full_path = Path.join(path(), filename)
 
-    cond do
-      not File.exists?(full_path) ->
-        {:error, :not_found}
+    if File.exists?(full_path) do
+      case get_in(metadata(), ["plugins", filename, "source_url"]) do
+        source_url when is_binary(source_url) and source_url != "" ->
+          download_and_install(source_url, filename, Keyword.put(opts, :replace, true))
 
-      true ->
-        case get_in(metadata(), ["plugins", filename, "source_url"]) do
-          source_url when is_binary(source_url) and source_url != "" ->
-            download_and_install(source_url, filename, Keyword.put(opts, :replace, true))
-
-          _ ->
-            {:error, :no_source_url}
-        end
+        _ ->
+          {:error, :no_source_url}
+      end
+    else
+      {:error, :not_found}
     end
   end
 
@@ -372,9 +370,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
 
       result =
         with :ok <- ensure(),
-             :ok <- File.write(temporary, Jason.encode!(metadata)),
-             :ok <- File.rename(temporary, metadata_path()) do
-          :ok
+             :ok <- File.write(temporary, Jason.encode!(metadata)) do
+          File.rename(temporary, metadata_path())
         end
 
       _ = File.rm(temporary)
