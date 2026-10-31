@@ -152,6 +152,35 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       assert render(view) =~ "--force-ipv4"
     end
 
+    test "shows bundled documentation in the config modal", %{conn: conn} do
+      source =
+        plugin_zip_file_fixture([
+          {"yt_dlp_plugins/extractor/sample.py", "class SampleIE: pass"},
+          {"README.md", "# Sample plugin\nUse --use-postprocessor SamplePP"}
+        ])
+
+      on_exit(fn -> File.rm(source) end)
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+
+      html = render(view)
+      assert html =~ "Bundled plugin documentation"
+      assert html =~ "Use --use-postprocessor SamplePP"
+    end
+
+    test "explains when a plugin package has no README", %{conn: conn} do
+      install_sample_plugin()
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+
+      html = render(view)
+      assert html =~ "does not include a README"
+      assert html =~ "do not expose a config schema"
+    end
+
     test "saves config and marks the plugin configured", %{conn: conn} do
       install_sample_plugin()
 

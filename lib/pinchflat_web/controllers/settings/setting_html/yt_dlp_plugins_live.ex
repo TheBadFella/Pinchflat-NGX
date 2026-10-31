@@ -175,6 +175,18 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
             <.icon_button icon_name="hero-x-mark" phx-click="close_config" tooltip="Close" />
           </div>
 
+          <div
+            :if={@config_documentation}
+            class="mt-4 rounded-m3-sm border border-theme-outline/50 bg-theme-surface-2 p-3"
+          >
+            <p class="text-xs font-medium text-theme-on-surface-muted">Bundled plugin documentation</p>
+            <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs text-theme-on-surface">{@config_documentation}</pre>
+          </div>
+
+          <p :if={!@config_documentation} class="mt-4 text-xs text-theme-on-surface-muted">
+            This plugin package does not include a README. Add only options the plugin documents.
+          </p>
+
           <form
             id="plugin-config-form"
             phx-submit="save_config"
@@ -192,6 +204,10 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
                 placeholder="--extractor-args 'plugin:key=value'"
               ><%= Phoenix.HTML.Form.normalize_value("textarea", @config_contents) %></textarea>
             </div>
+
+            <p class="text-xs text-theme-on-surface-muted">
+              yt-dlp plugins do not expose a config schema. This file starts empty and is passed to yt-dlp with <span class="font-mono">--config-locations</span>.
+            </p>
 
             <p :if={@config_error} class="text-sm theme-status-error">{@config_error}</p>
 
@@ -224,6 +240,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
       |> assign(:plugin_path, PluginDirectory.path())
       |> assign(:config_plugin, nil)
       |> assign(:config_contents, "")
+      |> assign(:config_documentation, nil)
       |> assign(:config_error, nil)
       |> assign(:allowed_hosts, SafeFetch.allowed_hosts())
       |> allow_upload(:plugin,
@@ -322,10 +339,17 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
       plugin ->
         case PluginDirectory.read_config(filename) do
           {:ok, contents} ->
+            documentation =
+              case PluginDirectory.documentation(filename) do
+                {:ok, docs} -> docs
+                _ -> nil
+              end
+
             {:noreply,
              socket
              |> assign(:config_plugin, plugin)
              |> assign(:config_contents, contents)
+             |> assign(:config_documentation, documentation)
              |> assign(:config_error, nil)}
 
           {:error, reason} ->
@@ -346,6 +370,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
          |> assign(:plugins, PluginDirectory.list())
          |> assign(:config_plugin, nil)
          |> assign(:config_contents, "")
+         |> assign(:config_documentation, nil)
          |> assign(:config_error, nil)
          |> assign(:notice, "Plugin config saved.")
          |> assign(:error, nil)}
@@ -370,6 +395,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
          |> assign(:plugins, PluginDirectory.list())
          |> assign(:config_plugin, nil)
          |> assign(:config_contents, "")
+         |> assign(:config_documentation, nil)
          |> assign(:config_error, nil)
          |> assign(:notice, "Plugin config cleared.")
          |> assign(:error, nil)}
@@ -384,6 +410,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
      socket
      |> assign(:config_plugin, nil)
      |> assign(:config_contents, "")
+     |> assign(:config_documentation, nil)
      |> assign(:config_error, nil)}
   end
 
