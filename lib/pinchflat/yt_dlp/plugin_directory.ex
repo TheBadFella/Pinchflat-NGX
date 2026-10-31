@@ -8,6 +8,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   loadable entry, preserving the existing command line when unused.
   """
 
+  alias Pinchflat.HTTP.SafeFetch
+
   @directory_name "yt-dlp-plugins"
   @metadata_filename ".pinchflat-plugins.json"
   @supported_archive_extensions ~w(.zip .whl .egg)
@@ -68,6 +70,93 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
          :ok <- validate_archive(source_path),
          :ok <- validate_destination(filename, replace?) do
       do_install(source_path, filename, source_url)
+    end
+  end
+
+  @doc """
+  Installs a plugin from a direct archive URL.
+
+  Returns {:ok, entry} | {:error, atom() | {:http_status, integer()}}
+  """
+  def install_from_url(url, opts \\ []) do
+    filename = filename_from_url(url)
+
+    with {:ok, filename} <- sanitize_filename(filename),
+         :ok <- ensure_supported_extension(filename) do
+      download_and_install(url, filename, opts)
+    end
+  end
+
+  @doc """
+  Re-downloads a URL-installed plugin and atomically replaces it.
+
+  Returns {:ok, entry} | {:error, atom() | {:http_status, integer()}}
+  """
+  def update_from_source(filename, opts \\ []) do
+    filename = to_string(filename)
+
+    with {:ok, filename} <- sanitize_filename(filename) do
+      do_update_from_source(filename, opts)
+    end
+  end
+
+  defp do_update_from_source(filename, opts) do
+    full_path = Path.join(path(), filename)
+
+    cond do
+      not File.exists?(full_path) ->
+        {:error, :not_found}
+
+      true ->
+        case get_in(metadata(), ["plugins", filename, "source_url"]) do
+          source_url when is_binary(source_url) and source_url != "" ->
+            download_and_install(source_url, filename, Keyword.put(opts, :replace, true))
+
+          _ ->
+            {:error, :no_source_url}
+        end
+    end
+  end
+
+  defp download_and_install(url, filename, opts) do
+    case SafeFetch.fetch(url, safe_fetch_options(opts)) do
+      {:ok, body} -> install_downloaded_body(body, filename, url, opts)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp safe_fetch_options(opts) do
+    Keyword.take(opts, [:dns_resolver, :max_bytes, :max_redirects, :receive_timeout, :request_timeout])
+  end
+
+  defp install_downloaded_body(body, filename, source_url, opts) do
+    temporary = temporary_download_path(filename)
+
+    try do
+      with :ok <- File.mkdir_p(Path.dirname(temporary)),
+           :ok <- File.write(temporary, body) do
+        install_archive(temporary,
+          filename: filename,
+          source_url: source_url,
+          replace: Keyword.get(opts, :replace, false)
+        )
+      else
+        {:error, _reason} -> {:error, :file_error}
+      end
+    after
+      _ = File.rm(temporary)
+    end
+  end
+
+  defp temporary_download_path(filename) do
+    directory = Application.get_env(:pinchflat, :tmpfile_directory)
+    Path.join(directory, "plugin-download-#{Ecto.UUID.generate()}#{Path.extname(filename)}")
+  end
+
+  defp filename_from_url(url) do
+    case URI.parse(to_string(url)) do
+      %URI{path: path} when is_binary(path) -> path |> Path.basename() |> URI.decode()
+      _ -> ""
     end
   end
 

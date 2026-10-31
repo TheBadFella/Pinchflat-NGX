@@ -14,11 +14,18 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
       ])
 
     File.mkdir_p!(base_dir)
-    original = Application.get_env(:pinchflat, :extras_directory)
+    original_extras = Application.get_env(:pinchflat, :extras_directory)
+    original_allowlist = Application.get_env(:pinchflat, :yt_dlp_plugin_url_allowlist)
+    original_allow_private = Application.get_env(:pinchflat, :yt_dlp_plugin_url_allow_private)
+
     Application.put_env(:pinchflat, :extras_directory, base_dir)
+    Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, ["example.com"])
+    Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, false)
 
     on_exit(fn ->
-      Application.put_env(:pinchflat, :extras_directory, original)
+      Application.put_env(:pinchflat, :extras_directory, original_extras)
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_allowlist, original_allowlist)
+      Application.put_env(:pinchflat, :yt_dlp_plugin_url_allow_private, original_allow_private)
       File.rm_rf!(base_dir)
     end)
 
@@ -236,5 +243,120 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     test "returns not_found for a missing entry" do
       assert {:error, :not_found} = PluginDirectory.remove("missing.zip")
     end
+  end
+
+  describe "install_from_url/2" do
+    test "stores a fetched archive and records its source URL" do
+      zip = plugin_zip_fixture()
+
+      expect(HTTPClientMock, :get_with_response, fn url, _headers, opts ->
+        assert url == "https://example.com/sample.zip"
+        assert opts[:connect_address] == {93, 184, 216, 34}
+
+        {:ok, %{status: 200, headers: [], body: zip}}
+      end)
+
+      assert {:ok, entry} =
+               PluginDirectory.install_from_url("https://example.com/sample.zip", dns_resolver: public_resolver())
+
+      assert entry.filename == "sample.zip"
+      assert entry.source_url == "https://example.com/sample.zip"
+      assert File.read!(entry.path) == zip
+    end
+
+    test "rejects a URL without a supported archive extension before fetching" do
+      expect(HTTPClientMock, :get_with_response, 0, fn _, _, _ -> flunk("unexpected HTTP request") end)
+
+      assert {:error, :unsupported_extension} =
+               PluginDirectory.install_from_url("https://example.com/plugin", dns_resolver: public_resolver())
+    end
+
+    test "propagates fetch errors and writes nothing" do
+      expect(HTTPClientMock, :get_with_response, fn _, _, _ ->
+        {:ok, %{status: 404, headers: [], body: ""}}
+      end)
+
+      assert {:error, {:http_status, 404}} =
+               PluginDirectory.install_from_url("https://example.com/sample.zip", dns_resolver: public_resolver())
+
+      assert PluginDirectory.list() == []
+    end
+
+    test "rejects an invalid archive returned by the URL" do
+      expect(HTTPClientMock, :get_with_response, fn _, _, _ ->
+        {:ok, %{status: 200, headers: [], body: "not a zip"}}
+      end)
+
+      assert {:error, :invalid_archive} =
+               PluginDirectory.install_from_url("https://example.com/sample.zip", dns_resolver: public_resolver())
+
+      assert PluginDirectory.list() == []
+    end
+  end
+
+  describe "update_from_source/2" do
+    test "replaces a URL-installed archive and updates metadata" do
+      first = plugin_zip_fixture([{"yt_dlp_plugins/extractor/sample.py", "first"}])
+      second = plugin_zip_fixture([{"yt_dlp_plugins/extractor/sample.py", "second"}])
+
+      Process.put(:plugin_update_fetches, 0)
+
+      stub(HTTPClientMock, :get_with_response, fn _url, _headers, _opts ->
+        calls = Process.get(:plugin_update_fetches, 0)
+        Process.put(:plugin_update_fetches, calls + 1)
+        body = if calls == 0, do: first, else: second
+
+        {:ok, %{status: 200, headers: [], body: body}}
+      end)
+
+      assert {:ok, _entry} =
+               PluginDirectory.install_from_url("https://example.com/sample.zip", dns_resolver: public_resolver())
+
+      assert {:ok, entry} = PluginDirectory.update_from_source("sample.zip", dns_resolver: public_resolver())
+      assert File.read!(entry.path) == second
+      assert entry.source_url == "https://example.com/sample.zip"
+    end
+
+    test "keeps the old archive when the new archive is invalid" do
+      first = plugin_zip_fixture()
+
+      Process.put(:plugin_update_fetches, 0)
+
+      stub(HTTPClientMock, :get_with_response, fn _url, _headers, _opts ->
+        calls = Process.get(:plugin_update_fetches, 0)
+        Process.put(:plugin_update_fetches, calls + 1)
+        body = if calls == 0, do: first, else: "not a zip"
+
+        {:ok, %{status: 200, headers: [], body: body}}
+      end)
+
+      assert {:ok, entry} =
+               PluginDirectory.install_from_url("https://example.com/sample.zip", dns_resolver: public_resolver())
+
+      assert {:error, :invalid_archive} =
+               PluginDirectory.update_from_source("sample.zip", dns_resolver: public_resolver())
+
+      assert File.read!(entry.path) == first
+      assert [%{filename: "sample.zip", source_url: "https://example.com/sample.zip"}] = PluginDirectory.list()
+    end
+
+    test "returns no_source_url for uploads and folders" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert {:error, :no_source_url} = PluginDirectory.update_from_source("sample.zip")
+
+      File.mkdir_p!(Path.join([PluginDirectory.path(), "folder", "yt_dlp_plugins"]))
+      assert {:error, :no_source_url} = PluginDirectory.update_from_source("folder")
+    end
+
+    test "returns not_found when the plugin was removed" do
+      assert {:error, :not_found} = PluginDirectory.update_from_source("missing.zip")
+    end
+  end
+
+  defp public_resolver(ip \\ {93, 184, 216, 34}) do
+    fn _host -> {:ok, [ip]} end
   end
 end
