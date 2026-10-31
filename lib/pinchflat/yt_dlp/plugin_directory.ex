@@ -9,6 +9,7 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   """
 
   @directory_name "yt-dlp-plugins"
+  @metadata_filename ".pinchflat-plugins.json"
   @supported_archive_extensions ~w(.zip .whl .egg)
   @max_bytes 25 * 1024 * 1024
 
@@ -46,6 +47,140 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     end
   end
 
+  @doc """
+  Installs a plugin archive into the managed directory.
+
+  Options:
+    - :filename - destination filename, defaulting to the source basename
+    - :source_url - original URL for manual updates
+    - :replace - atomically replace an existing archive when true
+
+  Returns {:ok, entry} | {:error, atom()}
+  """
+  def install_archive(source_path, opts \\ []) do
+    filename = Keyword.get(opts, :filename, Path.basename(source_path))
+    source_url = normalize_source_url(Keyword.get(opts, :source_url))
+    replace? = Keyword.get(opts, :replace, false)
+
+    with {:ok, filename} <- sanitize_filename(filename),
+         :ok <- ensure_supported_extension(filename),
+         :ok <- validate_size(source_path),
+         :ok <- validate_archive(source_path),
+         :ok <- validate_destination(filename, replace?) do
+      do_install(source_path, filename, source_url)
+    end
+  end
+
+  @doc """
+  Returns installed plugins sorted by filename.
+
+  Returns [%{name: String.t(), filename: String.t(), kind: :archive | :directory,
+  path: String.t(), size: integer() | nil, source_url: String.t() | nil,
+  installed_at: String.t() | nil}]
+  """
+  def list do
+    plugins = metadata()["plugins"]
+
+    path()
+    |> list_entries()
+    |> Enum.map(fn {filename, kind} -> build_entry(filename, kind, Map.get(plugins, filename, %{})) end)
+    |> Enum.sort_by(& &1.filename)
+  end
+
+  @doc """
+  Removes an installed plugin and its metadata.
+
+  Returns :ok | {:error, :invalid_name | :not_found | :file_error}
+  """
+  def remove(filename) do
+    filename = to_string(filename)
+
+    cond do
+      filename != Path.basename(filename) -> {:error, :invalid_name}
+      hidden?(filename) or filename in ["", ".", ".."] -> {:error, :invalid_name}
+      true -> do_remove(filename)
+    end
+  end
+
+  defp do_install(source_path, filename, source_url) do
+    with :ok <- ensure() do
+      destination = Path.join(path(), filename)
+      temporary = Path.join(path(), ".incoming-#{Ecto.UUID.generate()}#{Path.extname(filename)}")
+
+      try do
+        with :ok <- copy_file(source_path, temporary),
+             :ok <- File.rename(temporary, destination) do
+          update_metadata(filename, source_url)
+          {:ok, entry_for(filename)}
+        else
+          {:error, _reason} -> {:error, :file_error}
+        end
+      after
+        _ = File.rm(temporary)
+      end
+    end
+  end
+
+  defp copy_file(source, destination) do
+    case File.cp(source, destination) do
+      :ok -> :ok
+      {:error, _reason} -> {:error, :file_error}
+    end
+  end
+
+  defp entry_for(filename) do
+    kind = if File.dir?(Path.join(path(), filename)), do: :directory, else: :archive
+    plugin_metadata = metadata() |> Map.get("plugins", %{}) |> Map.get(filename, %{})
+
+    build_entry(filename, kind, plugin_metadata)
+  end
+
+  defp build_entry(filename, :directory, plugin_metadata) do
+    plugin_entry(filename, :directory, nil, plugin_metadata)
+  end
+
+  defp build_entry(filename, :archive, plugin_metadata) do
+    size =
+      case File.stat(Path.join(path(), filename)) do
+        {:ok, %{size: size}} -> size
+        _ -> nil
+      end
+
+    plugin_entry(filename, :archive, size, plugin_metadata)
+  end
+
+  defp plugin_entry(filename, kind, size, plugin_metadata) do
+    %{
+      name: if(kind == :archive, do: Path.rootname(filename), else: filename),
+      filename: filename,
+      kind: kind,
+      path: Path.join(path(), filename),
+      size: size,
+      source_url: plugin_metadata["source_url"],
+      installed_at: plugin_metadata["installed_at"]
+    }
+  end
+
+  defp list_entries(directory) do
+    case File.ls(directory) do
+      {:ok, entries} ->
+        entries
+        |> Enum.reject(&hidden?/1)
+        |> Enum.flat_map(fn filename ->
+          full_path = Path.join(directory, filename)
+
+          cond do
+            File.dir?(full_path) -> [{filename, :directory}]
+            supported_archive?(filename) -> [{filename, :archive}]
+            true -> []
+          end
+        end)
+
+      _ ->
+        []
+    end
+  end
+
   defp loadable_entries do
     case File.ls(path()) do
       {:ok, entries} -> Enum.filter(entries, &loadable_entry?/1)
@@ -58,6 +193,205 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
       false
     else
       File.dir?(Path.join(path(), name)) or supported_archive?(name)
+    end
+  end
+
+  defp do_remove(filename) do
+    full_path = Path.join(path(), filename)
+
+    if File.exists?(full_path) do
+      case delete_path(full_path) do
+        :ok ->
+          remove_metadata(filename)
+          :ok
+
+        {:error, _reason} ->
+          {:error, :file_error}
+      end
+    else
+      {:error, :not_found}
+    end
+  end
+
+  defp delete_path(full_path) do
+    if File.dir?(full_path) do
+      case File.rm_rf(full_path) do
+        {:ok, _files} -> :ok
+        {:error, _reason, _file} -> {:error, :file_error}
+      end
+    else
+      case File.rm(full_path) do
+        :ok -> :ok
+        {:error, _reason} -> {:error, :file_error}
+      end
+    end
+  end
+
+  defp update_metadata(filename, source_url) do
+    plugins =
+      metadata()
+      |> Map.get("plugins", %{})
+      |> prune_missing()
+      |> put_source(filename, source_url)
+
+    write_metadata(%{"plugins" => plugins})
+  end
+
+  defp remove_metadata(filename) do
+    plugins =
+      metadata()
+      |> Map.get("plugins", %{})
+      |> Map.delete(filename)
+      |> prune_missing()
+
+    write_metadata(%{"plugins" => plugins})
+  end
+
+  defp put_source(plugins, filename, nil), do: Map.delete(plugins, filename)
+
+  defp put_source(plugins, filename, source_url) do
+    Map.put(plugins, filename, %{
+      "source_url" => source_url,
+      "installed_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+    })
+  end
+
+  defp prune_missing(plugins) do
+    plugins
+    |> Enum.reject(fn {filename, _metadata} -> not File.exists?(Path.join(path(), filename)) end)
+    |> Map.new()
+  end
+
+  defp metadata do
+    case File.read(metadata_path()) do
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, %{"plugins" => plugins}} when is_map(plugins) -> %{"plugins" => plugins}
+          _ -> empty_metadata()
+        end
+
+      _ ->
+        empty_metadata()
+    end
+  end
+
+  defp empty_metadata, do: %{"plugins" => %{}}
+
+  defp write_metadata(metadata) do
+    :global.trans({__MODULE__, :metadata}, fn ->
+      temporary = Path.join(path(), ".metadata-#{Ecto.UUID.generate()}.tmp")
+
+      result =
+        with :ok <- ensure(),
+             :ok <- File.write(temporary, Jason.encode!(metadata)),
+             :ok <- File.rename(temporary, metadata_path()) do
+          :ok
+        end
+
+      _ = File.rm(temporary)
+      result
+    end)
+  end
+
+  defp metadata_path, do: Path.join(path(), @metadata_filename)
+
+  defp validate_archive(source_path) do
+    with {:ok, names} <- archive_entry_names(source_path),
+         :ok <- validate_safe_entries(names) do
+      validate_namespace(names)
+    end
+  end
+
+  defp archive_entry_names(source_path) do
+    case :zip.list_dir(String.to_charlist(source_path)) do
+      {:ok, entries} ->
+        names =
+          Enum.flat_map(entries, fn
+            {:zip_file, name, _info, _comment, _offset, _size} -> [normalize_entry_name(to_string(name))]
+            _entry -> []
+          end)
+
+        {:ok, names}
+
+      {:error, _reason} ->
+        {:error, :invalid_archive}
+    end
+  end
+
+  defp normalize_entry_name(name), do: String.replace_prefix(name, "./", "")
+
+  defp validate_safe_entries(names) do
+    if Enum.any?(names, &unsafe_entry?/1), do: {:error, :unsafe_archive}, else: :ok
+  end
+
+  defp unsafe_entry?(name) do
+    Path.type(name) == :absolute or ".." in Path.split(name)
+  end
+
+  defp validate_namespace(names) do
+    cond do
+      Enum.any?(names, &String.starts_with?(&1, "yt_dlp_plugins/")) -> :ok
+      wrapper_directory?(names) -> {:error, :wrapper_directory}
+      true -> {:error, :missing_plugin_namespace}
+    end
+  end
+
+  defp wrapper_directory?(names) do
+    names
+    |> Enum.map(fn name ->
+      case String.split(name, "/", parts: 2) do
+        [top, rest] when rest != "" -> top
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> case do
+      [top] -> Enum.any?(names, &String.starts_with?(&1, "#{top}/yt_dlp_plugins/"))
+      _ -> false
+    end
+  end
+
+  defp validate_destination(filename, replace?) do
+    destination = Path.join(path(), filename)
+
+    cond do
+      File.dir?(destination) -> {:error, :already_installed}
+      File.exists?(destination) and not replace? -> {:error, :already_installed}
+      true -> :ok
+    end
+  end
+
+  defp validate_size(source_path) do
+    case File.stat(source_path) do
+      {:ok, %{size: size}} when size <= @max_bytes -> :ok
+      {:ok, _stat} -> {:error, :too_large}
+      {:error, _reason} -> {:error, :file_error}
+    end
+  end
+
+  defp sanitize_filename(filename) do
+    filename = to_string(filename)
+
+    cond do
+      filename != Path.basename(filename) -> {:error, :invalid_name}
+      filename in ["", ".", ".."] -> {:error, :invalid_name}
+      hidden?(filename) -> {:error, :invalid_name}
+      not String.match?(filename, ~r/\A[A-Za-z0-9][A-Za-z0-9._ -]*\z/) -> {:error, :invalid_name}
+      true -> {:ok, filename}
+    end
+  end
+
+  defp ensure_supported_extension(filename) do
+    if supported_archive?(filename), do: :ok, else: {:error, :unsupported_extension}
+  end
+
+  defp normalize_source_url(nil), do: nil
+
+  defp normalize_source_url(source_url) do
+    case String.trim(source_url) do
+      "" -> nil
+      trimmed -> trimmed
     end
   end
 
