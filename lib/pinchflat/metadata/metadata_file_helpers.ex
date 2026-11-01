@@ -9,8 +9,10 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
   needed
   """
 
-  alias Pinchflat.Sources
+  alias Pinchflat.Downloading.DownloadError
   alias Pinchflat.Downloading.DownloadOptionBuilder
+  alias Pinchflat.Sources
+  alias Pinchflat.Sources.Source
   alias Pinchflat.Utils.FilesystemUtils
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
@@ -77,9 +79,24 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
       [output: yt_dlp_filepath] ++
         DownloadOptionBuilder.build_youtube_options_for(media_item_with_preloads)
 
-    addl_opts = [use_cookies: Sources.use_cookies?(media_item_with_preloads.source, :metadata)]
+    source = media_item_with_preloads.source
+    use_cookies = Sources.use_cookies?(source, :metadata)
+    url = media_item_with_preloads.original_url
 
-    case YtDlpMedia.download_thumbnail(media_item_with_preloads.original_url, command_opts, addl_opts) do
+    result =
+      case YtDlpMedia.download_thumbnail(url, command_opts, use_cookies: use_cookies) do
+        {:error, message, _status} when not use_cookies ->
+          if Sources.use_cookies?(source, :error_recovery) and
+               source.player_client not in Source.cookie_incompatible_player_clients() and
+               DownloadError.cookie_recoverable?(message) do
+            YtDlpMedia.download_thumbnail(url, command_opts, use_cookies: true)
+          end
+
+        result ->
+          result
+      end
+
+    case result do
       {:ok, _} -> real_filepath
       _ -> nil
     end
