@@ -9,7 +9,7 @@ defmodule Pinchflat.YtDlp.UnavailableMedia do
   `ignore_unavailable_media` setting is enabled.
 
   These substrings are kept distinct from the cookie-recoverable errors in
-  `Pinchflat.Downloading.MediaDownloader` so the cookie-retry path always runs
+  `Pinchflat.Downloading.DownloadError` so the cookie-retry path always runs
   first - a members-only video may become downloadable with the right cookies.
   """
 
