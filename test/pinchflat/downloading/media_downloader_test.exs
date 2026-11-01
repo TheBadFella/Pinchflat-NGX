@@ -302,7 +302,7 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
 
       assert {:recovered, updated_media_item, ^message} = MediaDownloader.download_for_media_item(media_item)
 
-      assert DateTime.diff(DateTime.utc_now(), updated_media_item.media_downloaded_at) < 2
+      assert is_nil(updated_media_item.media_downloaded_at)
       assert String.ends_with?(updated_media_item.media_filepath, ".mkv")
     end
 
@@ -477,10 +477,10 @@ defmodule Pinchflat.Downloading.MediaDownloaderTest do
       :ok
     end
 
-    test "sets the media_downloaded_at", %{media_item: media_item} do
+    test "leaves completion for the worker after postprocessing", %{media_item: media_item} do
       assert media_item.media_downloaded_at == nil
       assert {:ok, updated_media_item} = MediaDownloader.download_for_media_item(media_item)
-      assert DateTime.diff(DateTime.utc_now(), updated_media_item.media_downloaded_at) < 2
+      assert updated_media_item.media_downloaded_at == nil
     end
 
     test "sets the culled_at to nil", %{media_item: media_item} do

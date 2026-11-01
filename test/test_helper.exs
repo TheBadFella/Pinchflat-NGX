@@ -22,6 +22,9 @@ Application.put_env(:pinchflat, :youtube_browser_provider, YoutubeBrowserProvide
 # normal suite so cached Postgrex plans cannot observe a changed result type;
 # the dedicated PostgreSQL migration job opts back in with --include.
 adapter_exclude = if Pinchflat.Database.postgres?(), do: [sqlite_only: true], else: [postgres_only: true]
+# The M2 safety review approved the fenced replacement, archive and recovery
+# paths, so the synthetic `:destructive_watch` fault tests now run in the normal
+# suite. The tag stays for documentation and selective reruns.
 exclude = [migration_schema: true] ++ adapter_exclude
 
 ExUnit.start(exclude: exclude)

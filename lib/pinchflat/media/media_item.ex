@@ -37,6 +37,9 @@ defmodule Pinchflat.Media.MediaItem do
     :predicted_media_filepath,
     # these fields are captured only on download
     :media_downloaded_at,
+    :watch_download_started_at,
+    :watch_enrollment_pending_at,
+    :watch_postprocessing_pending,
     :media_filepath,
     :media_size_bytes,
     :subtitle_filepaths,
@@ -80,6 +83,9 @@ defmodule Pinchflat.Media.MediaItem do
     field :short_form_content, :boolean, default: false
     field :availability, Ecto.Enum, values: @availability_values
     field :media_downloaded_at, :utc_datetime
+    field :watch_download_started_at, :utc_datetime
+    field :watch_enrollment_pending_at, :utc_datetime
+    field :watch_postprocessing_pending, :boolean, default: false
     field :media_redownloaded_at, :utc_datetime
     field :uploaded_at, :utc_datetime
     field :upload_date_index, :integer, default: 0
