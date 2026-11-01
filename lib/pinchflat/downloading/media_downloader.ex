@@ -7,6 +7,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
   require Logger
 
+  alias Pinchflat.Downloading.DownloadError
   alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Downloading.DownloadStaging
@@ -456,7 +457,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     source = item_with_preloads.source
     client = Keyword.get(override_opts, :player_client, source.player_client)
     cookie_compatible? = client not in Source.cookie_incompatible_player_clients()
-    message_contains_cookie_error = String.contains?(to_string(message), recoverable_cookie_errors())
+    message_contains_cookie_error = DownloadError.cookie_recoverable?(message)
 
     if cookie_compatible? && Sources.use_cookies?(source, :error_recovery) && message_contains_cookie_error do
       download_with_options(
@@ -658,13 +659,6 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp recoverable_errors do
     [
       "Unable to communicate with SponsorBlock"
-    ]
-  end
-
-  defp recoverable_cookie_errors do
-    [
-      "Sign in to confirm",
-      "This video is available to this channel's members"
     ]
   end
 

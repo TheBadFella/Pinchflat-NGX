@@ -1,6 +1,6 @@
 defmodule Pinchflat.Downloading.DownloadError do
   @moduledoc """
-  Classifies download errors using the existing non-retryable matching rules.
+  Classifies download errors and cookie-recoverable authentication errors.
   """
 
   @rate_limited_errors [
@@ -18,6 +18,11 @@ defmodule Pinchflat.Downloading.DownloadError do
     "Sign in to confirm",
     "This video is available to this channel's members"
   ]
+
+  @doc "Returns true when an authentication error may be recovered with cookies."
+  def cookie_recoverable?(message) do
+    String.contains?(to_string(message), ["Sign in to confirm", "This video is available to this channel's members"])
+  end
 
   @doc """
   Returns `{:rate_limited, progress_status}`, `{:permanent, progress_status}`,

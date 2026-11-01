@@ -196,6 +196,51 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
   end
 
   describe "POST /api/media/:id/actions/download" do
+    test "completes an age-restricted download with When Needed cookies and artwork disabled", %{conn: conn} do
+      profile = media_profile_fixture(%{download_thumbnail: false})
+      source = source_fixture(%{media_profile_id: profile.id, cookie_behaviour: :when_needed})
+      item = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :needs_auth})
+      metadata = render_parsed_metadata(:media_metadata)
+      path = metadata["filepath"]
+      on_exit(fn -> File.rm(path) end)
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, _opts, _template, extra ->
+        refute extra[:use_cookies]
+        {:error, "Sign in to confirm your age", 1}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, _opts, _template, extra ->
+        assert extra[:use_cookies]
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, "authenticated media fixture")
+        {:ok, Jason.encode!(metadata)}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _template, extra ->
+        refute extra[:use_cookies]
+        {:error, "Sign in to confirm your age", 1}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, opts, _template, extra ->
+        assert extra[:use_cookies]
+        thumbnail = String.replace(Keyword.fetch!(opts, :output), "%(ext)s", "jpg")
+        File.mkdir_p!(Path.dirname(thumbnail))
+        File.write!(thumbnail, "authenticated thumbnail fixture")
+        {:ok, ""}
+      end)
+
+      conn |> post("/api/media/#{item.id}/actions/download") |> json_response(200)
+      [job] = all_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker, args: %{"id" => item.id})
+      assert :ok = Pinchflat.Downloading.MediaDownloadWorker.perform(job)
+      completed = Repo.reload!(item) |> Repo.preload(:metadata)
+      assert completed.media_downloaded_at
+      assert completed.media_filepath == path
+      assert File.read!(path) == "authenticated media fixture"
+      assert File.read!(completed.metadata.thumbnail_filepath) == "authenticated thumbnail fixture"
+      assert completed.media_size_bytes == byte_size("authenticated media fixture")
+    end
+
     test "completes a download larger than 2 GiB with artwork disabled", %{conn: conn} do
       profile = media_profile_fixture(%{download_thumbnail: false})
       source = source_fixture(%{media_profile_id: profile.id})
