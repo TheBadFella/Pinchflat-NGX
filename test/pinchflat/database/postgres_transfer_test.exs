@@ -285,6 +285,14 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert retained.index_cutoff_date == ~D[2026-10-07]
   end
 
+  test "preserves file sizes above 2 GiB from SQLite", ctx do
+    edit_source(ctx.path, "UPDATE media_items SET media_size_bytes = 3650722202")
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.get!(MediaItem, ctx.item.id).media_size_bytes == 3_650_722_202
+    assert report["library"]["recorded_bytes"] == 3_650_722_202
+    assert report["tables"]["media_items"]["validated"]
+  end
+
   test "transfers nullable profile retention and explicit source overrides", ctx do
     edit_source(
       ctx.path,
@@ -405,14 +413,24 @@ defmodule Pinchflat.Database.PostgresTransferTest do
 
   test "database exceptions roll back all copied tables", ctx do
     Repo.query!(
-      "CREATE FUNCTION reject_transfer_lab() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'owned transfer rejection'; END; $$ LANGUAGE plpgsql"
+      "CREATE FUNCTION reject_transfer_lab() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'SECRET_TRANSFER_FAILURE' USING ERRCODE = '22003'; END; $$ LANGUAGE plpgsql"
     )
 
     Repo.query!(
       "CREATE TRIGGER reject_transfer_lab BEFORE INSERT ON tasks FOR EACH ROW EXECUTE FUNCTION reject_transfer_lab()"
     )
 
-    assert {:error, :transfer_failed} = Transfer.run(ctx.path, ctx.directory)
+    previous_level = Logger.level()
+    Logger.configure(level: :error)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, :transfer_failed} = Transfer.run(ctx.path, ctx.directory)
+      end)
+
+    assert log =~ "PostgreSQL transfer failed: Postgrex.Error (numeric_value_out_of_range)"
+    refute log =~ "SECRET_TRANSFER_FAILURE"
     assert Repo.aggregate(Source, :count) == 0
     assert Repo.aggregate(MediaItem, :count) == 0
     assert Migration.record().status == "running"

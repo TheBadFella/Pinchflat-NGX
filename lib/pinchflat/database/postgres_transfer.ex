@@ -1,5 +1,7 @@
 defmodule Pinchflat.Database.PostgresTransfer do
   @moduledoc "One explicit, transactional transfer from a retained SQLite snapshot."
+  require Logger
+
   alias Pinchflat.Database.SqliteSnapshot, as: Snapshot
   alias Pinchflat.Repo
   import Ecto.Query, only: [from: 2]
@@ -28,10 +30,16 @@ defmodule Pinchflat.Database.PostgresTransfer do
       timeout: :infinity
     )
   rescue
-    _error -> {:error, :transfer_failed}
+    error ->
+      # Exception messages and query parameters can contain copied credentials.
+      Logger.error("PostgreSQL transfer failed: #{safe_error(error)}")
+      {:error, :transfer_failed}
   catch
     {:migration_error, reason} -> {:error, reason}
   end
+
+  defp safe_error(%Postgrex.Error{postgres: %{code: code}}), do: "Postgrex.Error (#{code})"
+  defp safe_error(error), do: inspect(error.__struct__)
 
   defp transfer!(db, backup) do
     tables = Snapshot.tables()
@@ -61,7 +69,7 @@ defmodule Pinchflat.Database.PostgresTransfer do
   defp library_summary do
     [[downloaded, bytes]] =
       Repo.query!(
-        "SELECT COUNT(*), COALESCE(SUM(media_size_bytes), 0) FROM media_items WHERE media_downloaded_at IS NOT NULL"
+        "SELECT COUNT(*), COALESCE(SUM(media_size_bytes), 0)::bigint FROM media_items WHERE media_downloaded_at IS NOT NULL"
       ).rows
 
     missing =
