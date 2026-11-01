@@ -128,6 +128,30 @@ defmodule Pinchflat.CookieHealthTest do
   end
 
   describe "check_health/1 truthful canary probing" do
+    test "the real command runner authenticates with the snapshot and preserves the uploaded file" do
+      write_cookies(valid_cookie_line())
+      original_contents = File.read!(CookieFile.filepath())
+      original_runner = Application.get_env(:pinchflat, :yt_dlp_runner)
+      original_executable = Application.get_env(:pinchflat, :yt_dlp_executable)
+      Application.put_env(:pinchflat, :yt_dlp_runner, Pinchflat.YtDlp.CommandRunner)
+
+      Application.put_env(
+        :pinchflat,
+        :yt_dlp_executable,
+        "/app/test/support/scripts/yt-dlp-mocks/cookie_writeback.py"
+      )
+
+      on_exit(fn ->
+        Application.put_env(:pinchflat, :yt_dlp_runner, original_runner)
+        Application.put_env(:pinchflat, :yt_dlp_executable, original_executable)
+      end)
+
+      assert {:ok, %{status: "authenticated"}} =
+               CookieHealth.check_health(canary_url: "https://www.youtube.com/watch?v=canary")
+
+      assert File.read!(CookieFile.filepath()) == original_contents
+    end
+
     test "never treats public canary success as authenticated health" do
       write_cookies(valid_cookie_line())
       canary = "https://www.youtube.com/watch?v=public123"
