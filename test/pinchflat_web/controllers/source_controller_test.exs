@@ -710,6 +710,18 @@ defmodule PinchflatWeb.SourceControllerTest do
       delete(conn, ~p"/sources/#{source}")
       assert Repo.reload!(source).marked_for_deletion_at
     end
+
+    test "returns to Individual videos after deletion", %{conn: conn, source: source} do
+      conn = delete(conn, ~p"/sources/#{source}", %{"return_to" => "/sources?type=videos"})
+      assert redirected_to(conn) == "/sources?type=videos"
+      assert Repo.reload!(source).marked_for_deletion_at
+      assert_enqueued(worker: SourceDeletionWorker)
+    end
+
+    test "rejects an external return destination after deletion", %{conn: conn, source: source} do
+      conn = delete(conn, ~p"/sources/#{source}", %{"return_to" => "https://example.com"})
+      assert redirected_to(conn) == "/sources"
+    end
   end
 
   describe "delete source when just deleting the records" do

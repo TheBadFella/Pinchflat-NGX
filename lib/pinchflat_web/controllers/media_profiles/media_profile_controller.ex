@@ -111,12 +111,21 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
     delete_files = Map.get(params, "delete_files", "") == "true"
     media_profile = Profiles.get_media_profile!(id)
 
-    {:ok, _} = Profiles.update_media_profile(media_profile, %{marked_for_deletion_at: DateTime.utc_now()})
-    MediaProfileDeletionWorker.kickoff(media_profile, %{delete_files: delete_files})
+    if Pinchflat.MediaWatch.deletion_blocked?(media_profile) do
+      conn
+      |> put_flash(
+        :error,
+        "End watch protection for this profile's watched videos before deleting the profile. Download any saved originals you want to keep first."
+      )
+      |> redirect(to: ~p"/media_profiles/#{media_profile}")
+    else
+      {:ok, _} = Profiles.update_media_profile(media_profile, %{marked_for_deletion_at: DateTime.utc_now()})
+      MediaProfileDeletionWorker.kickoff(media_profile, %{delete_files: delete_files})
 
-    conn
-    |> put_flash(:info, "Media Profile deletion started. This may take a while to complete.")
-    |> redirect(to: ~p"/media_profiles")
+      conn
+      |> put_flash(:info, "Media Profile deletion started. This may take a while to complete.")
+      |> redirect(to: ~p"/media_profiles")
+    end
   end
 
   defp get_onboarding_layout do

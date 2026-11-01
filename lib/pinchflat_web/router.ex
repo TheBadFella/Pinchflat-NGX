@@ -139,6 +139,9 @@ defmodule PinchflatWeb.Router do
 
       resources "/media", MediaItems.MediaItemController, only: [:show, :edit, :update, :delete] do
         post "/force_download", MediaItems.MediaItemController, :force_download
+        get "/original/files/:role", MediaItems.OriginalController, :file
+        get "/original/release", MediaItems.OriginalController, :confirm
+        post "/original/release", MediaItems.OriginalController, :release
       end
     end
   end

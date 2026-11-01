@@ -1,0 +1,29 @@
+<div class="theme-surface-raised mx-auto max-w-2xl space-y-6 p-6">
+  <h2 class="text-title-md2 font-bold text-theme-on-surface">End watch protection?</h2>
+  <p class="break-words text-theme-on-surface">{@media_item.title}</p>
+  <div class="theme-status-card theme-status-card-warning space-y-3 text-sm">
+    <p>
+      Pinchflat will stop checking this video for changes and remove the protection provided by the watch window.
+    </p>
+    <p :if={@watch.archive_state == "published"}>
+      The saved original and its associated files will be permanently deleted. Download any files you want to keep before continuing.
+    </p>
+    <p>
+      Your current media files and manual protection settings will remain unchanged. Your download and retention settings will apply.
+    </p>
+  </div>
+  <.form
+    for={%{}}
+    action={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/original/release"}
+    method="post"
+    class="flex flex-wrap gap-3"
+  >
+    <input type="hidden" name="confirmation" value={@token} />
+    <.button type="submit" variant="danger" class="max-w-full whitespace-normal text-center">
+      {if @watch.archive_state == "published",
+        do: "End protection and delete saved original",
+        else: "End watch protection"}
+    </.button>
+    <.button href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}"} variant="outline">Cancel</.button>
+  </.form>
+</div>

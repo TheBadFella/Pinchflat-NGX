@@ -2,7 +2,7 @@ defmodule Pinchflat.Database.SqliteSnapshot do
   @moduledoc "Reads a retained SQLite library without opening it for writes."
   alias Exqlite.Sqlite3
 
-  @tables ~w(media_profiles settings_backup settings sources media_items source_metadata media_metadata channel_discovery_suggestions reconcile_plans reconcile_plan_items share_tokens oban_jobs tasks legacy_migration_records)
+  @tables ~w(media_profiles settings_backup settings sources media_items source_metadata media_metadata channel_discovery_suggestions reconcile_plans reconcile_plan_items share_tokens oban_jobs tasks legacy_migration_records media_watches media_watch_events)
   @migration_version 20_261_007_120_000
 
   def tables, do: @tables

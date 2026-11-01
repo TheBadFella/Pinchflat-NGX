@@ -240,7 +240,9 @@ cron_jobs = [
   # Discovery is opt-in in the database. The worker cancels this cheap
   # scheduled job while disabled, so a setting change does not require a
   # runtime config reload or a scheduler restart.
-  {"0 3 * * *", Pinchflat.Discovery.Worker}
+  {"0 3 * * *", Pinchflat.Discovery.Worker},
+  # Due-watch dispatch is cheap when disabled; the query filters inactive rows.
+  {"*/15 * * * *", Pinchflat.MediaWatch.DispatcherWorker}
 ]
 
 cron_jobs =
@@ -261,6 +263,8 @@ config :pinchflat, Oban,
     media_fetching: yt_dlp_download_worker_count,
     remote_metadata: yt_dlp_remote_metadata_worker_count,
     local_data: 8,
+    # One active metadata observation at a time keeps watch polling bounded.
+    media_watch: 1,
     # Reconciliation and database compaction both reserve a full quiet window.
     # Serializing them here prevents each from waiting for the other to finish.
     maintenance: 1

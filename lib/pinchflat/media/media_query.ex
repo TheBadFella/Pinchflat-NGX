@@ -25,7 +25,7 @@ defmodule Pinchflat.Media.MediaQuery do
   end
 
   def new do
-    MediaItem
+    from(media_item in MediaItem, as: :media_item)
   end
 
   def for_source(source_id) when is_integer(source_id), do: dynamic([mi], mi.source_id == ^source_id)
@@ -35,7 +35,96 @@ defmodule Pinchflat.Media.MediaQuery do
   def download_prevented, do: dynamic([mi], mi.prevent_download == true)
   def unavailable, do: dynamic([mi], not is_nil(mi.unavailable_at))
   def culling_prevented, do: dynamic([mi], mi.prevent_culling == true)
+
+  # A watch with an active window, an incident hold, or an interrupted archive
+  # must keep its active files available to automatic retention and cutoff
+  # cleanup. A published archive alone does not protect the active copy after
+  # the window ends; the archive itself is outside these queries.
+  def watch_protected do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    dynamic(
+      [media_item],
+      (not is_nil(media_item.watch_download_started_at) and is_nil(media_item.media_downloaded_at)) or
+        media_item.watch_postprocessing_pending or not is_nil(media_item.watch_enrollment_pending_at) or
+        exists(
+          from watch in "media_watches",
+            where:
+              watch.media_item_id == parent_as(:media_item).id and
+                ((is_nil(watch.released_at) and (watch.ends_at > ^now or not is_nil(watch.hold_reason))) or
+                   watch.archive_state == "needs_recovery" or watch.operation_kind == "delete_original"),
+            select: 1
+        )
+    )
+  end
+
+  # Quality upgrades and force retries must not obtain or overwrite a watched
+  # copy while the preservation gate is unapproved or the item is held. The
+  # execution boundary rechecks the same state before mutating active files.
+  def watch_replacement_blocked do
+    blocked_without_gate = not destructive_gate_enabled?()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    fresh_after = DateTime.add(now, -(6 * 60 * 60 + 10 * 60), :second)
+
+    dynamic(
+      [media_item],
+      exists(
+        from watch in "media_watches",
+          where:
+            watch.media_item_id == parent_as(:media_item).id and
+              (is_nil(watch.released_at) or watch.archive_state != "none") and
+              (^blocked_without_gate or not is_nil(watch.released_at) or watch.confirmed_state != "unchanged" or
+                 not is_nil(watch.hold_reason) or watch.archive_state == "needs_recovery" or
+                 not is_nil(watch.last_error_at) or is_nil(watch.last_success_at) or
+                 watch.last_success_at < ^fresh_after or watch.ends_at <= ^now or
+                 parent_as(:media_item).prevent_download or parent_as(:media_item).prevent_culling),
+          select: 1
+      )
+    )
+  end
+
   def redownloaded, do: dynamic([mi], not is_nil(mi.media_redownloaded_at))
+
+  # Media-catalog filters for watched items. The labels stay distinct so a
+  # inconclusive remote check is never shown as a download failure, and an
+  # unlisted or private video is never called deleted.
+  def watch_filter(:all), do: dynamic([media_item], true)
+
+  def watch_filter(filter) when filter in [:changed_or_unavailable, :changed, :unlisted, :unavailable, :check_failed] do
+    condition =
+      case filter do
+        :changed_or_unavailable ->
+          dynamic(
+            [watch],
+            watch.confirmed_state != "unchanged" or not is_nil(watch.hold_reason) or
+              coalesce(watch.observed_visibility, watch.current_visibility) in ["unlisted", "private", "unavailable"]
+          )
+
+        :changed ->
+          dynamic([watch], watch.confirmed_state == "confirmed" or not is_nil(watch.hold_reason))
+
+        :unlisted ->
+          dynamic([watch], coalesce(watch.observed_visibility, watch.current_visibility) == "unlisted")
+
+        :unavailable ->
+          dynamic([watch], coalesce(watch.observed_visibility, watch.current_visibility) in ["private", "unavailable"])
+
+        :check_failed ->
+          dynamic([watch], not is_nil(watch.last_error_at))
+      end
+
+    dynamic(
+      [media_item],
+      exists(
+        from watch in "media_watches",
+          where: watch.media_item_id == parent_as(:media_item).id and is_nil(watch.released_at),
+          where: ^condition,
+          select: 1
+      )
+    )
+  end
+
+  def watch_filter(_filter), do: dynamic([media_item], true)
 
   def upload_date_matches(other_date) do
     if Pinchflat.Database.postgres?() do
@@ -165,7 +254,8 @@ defmodule Pinchflat.Media.MediaQuery do
       [mi, source],
       ^downloaded() and
         ^past_retention_period() and
-        not (^culling_prevented())
+        not (^culling_prevented()) and
+        not (^watch_protected())
     )
   end
 
@@ -174,7 +264,8 @@ defmodule Pinchflat.Media.MediaQuery do
       [mi, source],
       ^downloaded() and
         not (^upload_date_after_source_cutoff()) and
-        not (^culling_prevented())
+        not (^culling_prevented()) and
+        not (^watch_protected())
     )
   end
 
@@ -202,6 +293,7 @@ defmodule Pinchflat.Media.MediaQuery do
         not (^download_prevented()) and
         not (^redownloaded()) and
         not (^cullable()) and
+        not (^watch_replacement_blocked()) and
         ^past_redownload_delay()
     )
   end
@@ -221,6 +313,10 @@ defmodule Pinchflat.Media.MediaQuery do
     else
       do_require_assoc(query, identifier)
     end
+  end
+
+  defp destructive_gate_enabled? do
+    Application.get_env(:pinchflat, :media_watch_destructive_enabled, true) != false
   end
 
   defp do_require_assoc(query, :media_items_search_index) do
@@ -281,6 +377,20 @@ defmodule Pinchflat.Media.MediaQuery do
       },
       order_by: [desc: fragment("rank")]
     )
+  end
+
+  def order_by_search_relevance(query, term) do
+    if Pinchflat.Database.postgres?() do
+      case build_tsquery(term) do
+        "" ->
+          query
+
+        tsquery ->
+          from mi in query, order_by: [desc: fragment("ts_rank(search_vector, to_tsquery('simple', ?))", ^tsquery)]
+      end
+    else
+      from mi in query, order_by: [desc: fragment("rank")]
+    end
   end
 
   defp matching_postgres_search_term(query, term) do
