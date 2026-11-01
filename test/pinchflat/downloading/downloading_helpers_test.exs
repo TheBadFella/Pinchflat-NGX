@@ -1,6 +1,7 @@
 defmodule Pinchflat.Downloading.DownloadingHelpersTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
@@ -125,8 +126,29 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       source = source_fixture(%{download_media: false})
       media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
 
-      assert {:error, :should_not_download} = DownloadingHelpers.kickoff_download_if_pending(media_item)
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert {:error, :should_not_download} = DownloadingHelpers.kickoff_download_if_pending(media_item)
+          end)
+        end)
 
+      assert log =~ "reason=source_downloads_disabled"
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
+    test "logs media_not_pending when the media item is not pending" do
+      source = source_fixture()
+      media_item = media_item_fixture(source_id: source.id, media_filepath: "some/filepath.mp4")
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert {:error, :should_not_download} = DownloadingHelpers.kickoff_download_if_pending(media_item)
+          end)
+        end)
+
+      assert log =~ "reason=media_not_pending"
       refute_enqueued(worker: MediaDownloadWorker)
     end
 
@@ -230,6 +252,17 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
       assert [{:ok, _task}] = DownloadingHelpers.retry_failed_download_tasks()
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => transient.id, "reset_last_error" => true})
       refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => permanent.id})
+    end
+  end
+
+  defp with_debug_logs(fun) do
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: previous_level)
     end
   end
 end
