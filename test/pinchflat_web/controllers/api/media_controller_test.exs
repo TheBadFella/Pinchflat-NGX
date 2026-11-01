@@ -230,6 +230,9 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       assert completed.media_filepath == path
       assert completed.media_downloaded_at
       assert File.stat!(path).size == size
+      assert Pinchflat.Sources.tab_counts(source).library_bytes == size
+      stats = build_conn() |> get("/api/stats") |> json_response(200)
+      assert stats["total_download_size_bytes"] == size
     end
 
     test "reports an already queued download without claiming another job was created", %{conn: conn} do

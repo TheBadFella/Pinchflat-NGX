@@ -197,7 +197,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     downloaded_subquery =
       from(
         m in MediaItem,
-        select: %{downloaded_count: count(m.id), source_id: m.source_id, media_size_bytes: sum(m.media_size_bytes)},
+        select: %{
+          downloaded_count: count(m.id),
+          source_id: m.source_id,
+          media_size_bytes: type(sum(m.media_size_bytes), :integer)
+        },
         where: ^MediaQuery.downloaded(),
         group_by: m.source_id
       )

@@ -112,7 +112,7 @@ defmodule PinchflatWeb.Pages.PageController do
       tab_href: fn tab -> ~p"/?#{[tab: tab]}" end,
       media_profile_count: Repo.aggregate(MediaProfile, :count, :id),
       source_count: Repo.aggregate(Source, :count, :id),
-      media_item_size: Repo.aggregate(downloaded_media_items, :sum, :media_size_bytes),
+      media_item_size: Repo.one(from(mi in downloaded_media_items, select: type(sum(mi.media_size_bytes), :integer))),
       media_item_count: Repo.aggregate(downloaded_media_items, :count, :id),
       setting: setting
     )
