@@ -355,7 +355,7 @@ defmodule Pinchflat.Sources do
     library_bytes =
       dynamic(
         [mi],
-        fragment("COALESCE(SUM(CASE WHEN ? THEN ? ELSE 0 END), 0)", ^downloaded, mi.media_size_bytes)
+        type(fragment("COALESCE(SUM(CASE WHEN ? THEN ? ELSE 0 END), 0)", ^downloaded, mi.media_size_bytes), :integer)
       )
 
     counts = %{

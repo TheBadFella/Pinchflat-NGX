@@ -196,6 +196,45 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
   end
 
   describe "POST /api/media/:id/actions/download" do
+    test "completes a download larger than 2 GiB with artwork disabled", %{conn: conn} do
+      profile = media_profile_fixture(%{download_thumbnail: false})
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      metadata = render_parsed_metadata(:media_metadata)
+      path = metadata["filepath"]
+      size = 3_650_722_202
+      on_exit(fn -> File.rm(path) end)
+
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download_thumbnail, _opts, _template, _extra ->
+          {:ok, ""}
+
+        _url, :download, _opts, _template, _extra ->
+          File.mkdir_p!(Path.dirname(path))
+
+          File.open!(path, [:write, :binary], fn file ->
+            {:ok, _} = :file.position(file, size - 1)
+            :ok = IO.binwrite(file, <<0>>)
+          end)
+
+          {:ok, Jason.encode!(metadata)}
+      end)
+
+      conn |> post("/api/media/#{item.id}/actions/download") |> json_response(200)
+      [job] = all_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker, args: %{"id" => item.id})
+      assert :ok = Pinchflat.Downloading.MediaDownloadWorker.perform(job)
+      completed = Repo.reload!(item)
+      assert completed.media_size_bytes == size
+      assert completed.media_filepath == path
+      assert completed.media_downloaded_at
+      assert File.stat!(path).size == size
+      assert Pinchflat.Sources.tab_counts(source).library_bytes == size
+      stats = build_conn() |> get("/api/stats") |> json_response(200)
+      assert stats["total_download_size_bytes"] == size
+    end
+
     test "reports an already queued download without claiming another job was created", %{conn: conn} do
       item = media_item_fixture()
       post(conn, "/api/media/#{item.id}/actions/download")

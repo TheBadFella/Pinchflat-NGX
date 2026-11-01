@@ -156,6 +156,7 @@ defmodule Pinchflat.LegacyMigrationTest do
 
       assert summary.db_downloaded_count >= 2
       assert summary.db_downloaded_bytes >= test_size + 50_000
+      assert is_integer(summary.db_downloaded_bytes)
       assert summary.verified_count >= 1
       assert summary.verified_bytes >= test_size
       assert summary.missing_count >= 1

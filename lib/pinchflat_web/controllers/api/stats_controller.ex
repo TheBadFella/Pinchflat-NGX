@@ -26,7 +26,8 @@ defmodule PinchflatWeb.Api.StatsController do
       media_profile_count: Repo.aggregate(MediaProfile, :count, :id),
       source_count: Repo.aggregate(Source, :count, :id),
       media_item_count: Repo.aggregate(downloaded_media_items, :count, :id),
-      total_download_size_bytes: Repo.aggregate(downloaded_media_items, :sum, :media_size_bytes) || 0
+      total_download_size_bytes:
+        Repo.one(from(mi in downloaded_media_items, select: type(sum(mi.media_size_bytes), :integer))) || 0
     }
 
     conn
