@@ -9,6 +9,53 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   alias Pinchflat.Sources.Source
   alias PinchflatWeb.Sources.SourceLive.IndexTableLive
 
+  describe "source categories" do
+    test "separates individual videos from channels and playlists", %{conn: conn} do
+      channel = source_fixture(custom_name: "Subscribed channel")
+      playlist = source_fixture(custom_name: "Saved playlist", collection_type: :playlist)
+      video = source_fixture(custom_name: "Pasted video", collection_type: :video)
+
+      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+      assert html =~ channel.custom_name
+      assert html =~ playlist.custom_name
+      refute html =~ video.custom_name
+
+      session = Map.put(create_session(), "source_type", "videos")
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
+      assert html =~ video.custom_name
+      refute html =~ channel.custom_name
+      refute html =~ playlist.custom_name
+      assert render_click(view, "view_change", %{"view" => "grid"}) =~ video.custom_name
+    end
+
+    test "paginates and refreshes only individual videos", %{conn: conn} do
+      source_fixture(custom_name: "A channel")
+      first = source_fixture(custom_name: "First video", collection_type: :video)
+      second = source_fixture(custom_name: "Second video", collection_type: :video)
+      session = Map.merge(create_session(), %{"source_type" => "videos", "results_per_page" => 1})
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
+      assert html =~ first.custom_name
+      refute html =~ second.custom_name
+
+      click_element(view, "button.pagination-next")
+      assert render(view) =~ second.custom_name
+      refute render(view) =~ first.custom_name
+      media_item_fixture(source_id: second.id)
+      send(view.pid, :throttled_refresh)
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
+      refute render(view) =~ "A channel"
+      assert has_element?(view, "input[name='return_to'][value='/sources?type=videos']")
+    end
+
+    test "explains an empty individual videos list", %{conn: conn} do
+      source_fixture()
+      session = Map.put(create_session(), "source_type", "videos")
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
+      assert html =~ "No individual videos yet"
+      assert has_element?(view, "a[href='/browse']", "Browse YouTube")
+    end
+  end
+
   describe "initial rendering" do
     test "shows effective retention and its origin in table and grid views", %{conn: conn} do
       profile = media_profile_fixture(%{retention_period_days: 30})

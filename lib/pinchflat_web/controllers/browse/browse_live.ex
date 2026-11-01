@@ -44,6 +44,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       |> assign(:paste_resolving?, false)
       |> assign(:paste_downloading?, false)
       |> assign(:paste_selected_profile_id, selected_profile_id)
+      |> assign(:paste_download_destination, nil)
 
     socket =
       case session["prefill_url"] do
@@ -396,6 +397,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
             {:noreply,
              socket
              |> put_flash(:info, msg)
+             |> assign(:paste_download_destination, pasted_download_destination(video.id, profile_id, outcome, msg))
              |> assign(:paste_url_modal_open?, false)
              |> assign(:paste_downloading?, false)
              |> assign(:paste_resolved_video, nil)
@@ -1109,6 +1111,23 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       {:ok, %{id: ^video_id} = detail} -> {:ok, detail}
       {:ok, _} -> {:error, :id_mismatch}
       error -> error
+    end
+  end
+
+  defp pasted_download_destination(_video_id, _profile_id, :indexing, message) do
+    %{message: message, href: ~p"/sources?type=videos", label: "View in Individual videos"}
+  end
+
+  defp pasted_download_destination(video_id, profile_id, _outcome, message) do
+    status = Status.enrich_videos([video_id], selected_profile_id: profile_id)[video_id]
+
+    case status do
+      %{source_id: source_id, media_item_id: media_item_id}
+      when not is_nil(source_id) and not is_nil(media_item_id) ->
+        %{message: message, href: ~p"/sources/#{source_id}/media/#{media_item_id}", label: "View video"}
+
+      _ ->
+        %{message: message, href: ~p"/sources?type=videos", label: "View in Individual videos"}
     end
   end
 

@@ -308,10 +308,9 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
       {:ok, _metadata, :unavailable_fallback} ->
         {:ok, source.series_directory}
 
-      # Either the ignored-unavailable fallback (`{:ok, %{}}`) or a parseable response
-      # that's missing `filename` - there's no filepath to derive a series directory from
+      # An empty collection has no video filename. Keep its existing directory until a video supplies one.
       {:ok, _} ->
-        {:ok, nil}
+        {:ok, source.series_directory}
 
       err ->
         err

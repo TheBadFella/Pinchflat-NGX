@@ -105,6 +105,14 @@
         x-model.fill="sourceUrl"
       />
       <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted" x-text="sourceTypeHelp"></p>
+      <p
+        x-cloak
+        x-show="/[?&]list=WL(?:&|$)/.test(sourceUrl) && sourceType !== 'video' && (sourceType !== 'automatic' || sourceUrl.includes('/playlist?'))"
+        class="mt-2 text-sm text-theme-on-surface-muted"
+      >
+        Watch Later is private. Upload cookies from the YouTube account that owns it and set
+        Cookie Behaviour to All Operations below. A playlist can be added without videos when YouTube returns its details.
+      </p>
     </section>
 
     <.input

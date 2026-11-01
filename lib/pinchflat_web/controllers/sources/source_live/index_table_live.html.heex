@@ -1,4 +1,20 @@
 <div>
+  <div :if={@sources == []} class="mb-5 rounded-m3-sm bg-theme-surface p-5 text-theme-on-surface">
+    <%= if @source_type == :videos do %>
+      <h3 class="font-semibold">No individual videos yet</h3>
+      <p class="mt-2 text-sm text-theme-on-surface-muted">
+        Videos added individually appear here, including those added with Paste URL.
+        Videos downloaded through an existing channel or playlist stay with that source.
+      </p>
+      <.button href={~p"/browse"} variant="primary" class="mt-4">Browse YouTube</.button>
+    <% else %>
+      <h3 class="font-semibold">No channels or playlists yet</h3>
+      <p class="mt-2 text-sm text-theme-on-surface-muted">
+        Add a channel or playlist to follow its videos. Individually added videos are in the Individual videos tab.
+      </p>
+      <.button href={~p"/sources/new"} variant="primary" class="mt-4">New Source</.button>
+    <% end %>
+  </div>
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/70 pb-3">
     <div>
       <p class="text-sm font-medium text-theme-on-surface">Source view</p>
@@ -90,6 +106,7 @@
     <div class="flex flex-wrap items-end gap-3">
       <div class="flex items-center gap-2">
         <.form for={%{}} id="pause-selected-sources" action={~p"/sources/pause_selected"} method="post">
+          <input type="hidden" name="return_to" value={@return_to} />
           <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
           <.icon_button
             type="submit"
@@ -102,6 +119,7 @@
         </.form>
 
         <.form for={%{}} id="resume-selected-sources" action={~p"/sources/resume_selected"} method="post">
+          <input type="hidden" name="return_to" value={@return_to} />
           <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
           <.icon_button
             type="submit"
@@ -121,6 +139,7 @@
         method="post"
         class="flex min-w-0 flex-wrap items-end gap-2"
       >
+        <input type="hidden" name="return_to" value={@return_to} />
         <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
         <div class="w-full min-w-0 sm:w-64">
           <.input
@@ -153,6 +172,7 @@
       method="post"
       class="space-y-2 border-t border-theme-outline/60 pt-3"
     >
+      <input type="hidden" name="return_to" value={@return_to} />
       <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
       <div class="flex flex-wrap items-end gap-2">
         <div class="w-full min-w-0 sm:w-80">
@@ -228,7 +248,7 @@
                 x-data="{ submitting: false }"
                 x-on:submit="submitting = true"
               >
-                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <input type="hidden" name="return_to" value={@return_to} />
                 <.icon_button
                   icon_name="hero-play-solid"
                   variant="primary"
@@ -250,7 +270,7 @@
                 x-data="{ submitting: false }"
                 x-on:submit="submitting = true"
               >
-                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <input type="hidden" name="return_to" value={@return_to} />
                 <.icon_button
                   icon_name="hero-pause-solid"
                   variant="warning"
@@ -272,7 +292,7 @@
                 x-data="{ submitting: false }"
                 x-on:submit="submitting = true"
               >
-                <input type="hidden" name="return_to" value={~p"/sources"} />
+                <input type="hidden" name="return_to" value={@return_to} />
                 <.icon_button
                   icon_name="hero-stop-solid"
                   variant="danger-solid"
@@ -294,7 +314,7 @@
                 class="mx-1"
               />
               <.icon_link
-                href={~p"/sources/#{source.id}"}
+                href={~p"/sources/#{source.id}?return_to=#{@return_to}"}
                 icon="hero-trash"
                 method="delete"
                 data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
@@ -399,7 +419,7 @@
                       x-data="{ submitting: false }"
                       x-on:submit="submitting = true"
                     >
-                      <input type="hidden" name="return_to" value={~p"/sources"} />
+                      <input type="hidden" name="return_to" value={@return_to} />
                       <.icon_button
                         icon_name="hero-play-solid"
                         variant="primary"
@@ -421,7 +441,7 @@
                       x-data="{ submitting: false }"
                       x-on:submit="submitting = true"
                     >
-                      <input type="hidden" name="return_to" value={~p"/sources"} />
+                      <input type="hidden" name="return_to" value={@return_to} />
                       <.icon_button
                         icon_name="hero-pause-solid"
                         variant="warning"
@@ -443,7 +463,7 @@
                       x-data="{ submitting: false }"
                       x-on:submit="submitting = true"
                     >
-                      <input type="hidden" name="return_to" value={~p"/sources"} />
+                      <input type="hidden" name="return_to" value={@return_to} />
                       <.icon_button
                         icon_name="hero-stop-solid"
                         variant="danger-solid"
@@ -502,7 +522,7 @@
                   class="mx-1"
                 />
                 <.icon_link
-                  href={~p"/sources/#{source.id}"}
+                  href={~p"/sources/#{source.id}?return_to=#{@return_to}"}
                   icon="hero-trash"
                   method="delete"
                   data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
@@ -575,8 +595,9 @@
               src={source_poster_url(source)}
               alt={"Artwork for #{source.custom_name}"}
               class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              x-show="image_loaded"
               x-on:load="image_loaded = true"
-              x-on:error="image_loaded = false; $event.target.classList.add('hidden')"
+              x-on:error="image_loaded = false"
             />
           </div>
 
