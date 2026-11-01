@@ -589,7 +589,7 @@ defmodule Pinchflat.LegacyMigration do
         sources_count: Repo.aggregate(Source, :count, :id),
         media_profiles_count: Repo.aggregate(MediaProfile, :count, :id),
         db_downloaded_count: Repo.aggregate(query, :count, :id),
-        db_downloaded_bytes: max(Repo.aggregate(query, :sum, :media_size_bytes) || 0, 0),
+        db_downloaded_bytes: max(Repo.one(from(mi in query, select: type(sum(mi.media_size_bytes), :integer))) || 0, 0),
         totals_ready: true
       })
 
