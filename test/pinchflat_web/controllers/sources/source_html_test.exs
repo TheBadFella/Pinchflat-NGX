@@ -5,6 +5,34 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
 
   alias PinchflatWeb.Sources.SourceHTML
 
+  describe "cutoff_date_presets/1" do
+    test "subtracts calendar days across the spring DST change" do
+      now = DateTime.from_naive!(~N[2026-03-10 00:30:00], "America/New_York")
+
+      assert SourceHTML.cutoff_date_presets(now) == [
+               {"7 days", "2026-03-03"},
+               {"14 days", "2026-02-24"},
+               {"30 days", "2026-02-08"},
+               {"60 days", "2026-01-09"},
+               {"90 days", "2025-12-10"},
+               {"180 days", "2025-09-11"},
+               {"365 days", "2025-03-10"}
+             ]
+    end
+
+    test "subtracts calendar days across the autumn DST change" do
+      now = DateTime.from_naive!(~N[2026-11-03 23:30:00], "America/New_York")
+
+      assert {"7 days", "2026-10-27"} in SourceHTML.cutoff_date_presets(now)
+    end
+
+    test "keeps the local date when it differs from UTC" do
+      now = DateTime.from_naive!(~N[2026-03-10 00:30:00], "Asia/Tokyo")
+
+      assert {"7 days", "2026-03-03"} in SourceHTML.cutoff_date_presets(now)
+    end
+  end
+
   # `next_check_at/1` only reads each task's job worker and scheduled_at, so a
   # bare map stands in for the loaded task
   defp task(worker, scheduled_at) do
