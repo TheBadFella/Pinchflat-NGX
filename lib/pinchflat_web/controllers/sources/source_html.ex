@@ -1140,8 +1140,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
     timezone
     |> DateTime.now!()
-    |> DateTime.add(-days, :day)
     |> DateTime.to_date()
+    |> Date.add(-days)
     |> Date.to_iso8601()
   end
 end
