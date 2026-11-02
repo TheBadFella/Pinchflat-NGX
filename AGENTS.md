@@ -7,7 +7,7 @@ Guidelines for AI agents working on this Elixir/Phoenix codebase.
 Pinchflat-ngx (formerly PinchYT) is a self-hosted media management fork. Its internal Elixir
 application and modules retain the Pinchflat name. It uses:
 
-- **Backend**: Elixir 1.17+, Phoenix 1.7, Ecto with SQLite
+- **Backend**: Elixir 1.17+, Phoenix 1.8, Ecto with SQLite or PostgreSQL
 - **Frontend**: Phoenix LiveView, Tailwind CSS, esbuild
 - **Background Jobs**: Oban
 - **Testing**: ExUnit with Mox for mocking
@@ -22,6 +22,27 @@ Compose files live in `docker/`. The root `compose.yaml` includes `docker/docker
 
 - Create pull requests against this fork's `origin` remote unless the user explicitly says otherwise.
 - Do not open pull requests against `upstream`.
+- Use short, descriptive branch names that identify the work, such as `fix/media-cleanup-guidance`. Use lowercase words separated by hyphens; avoid issue/PR numbers, dates, agent names and vague placeholders in the branch name. Recheck the name when the scope changes.
+
+### Documentation is part of every merged PR
+
+- Assess documentation impact while implementing the change, including configuration, API/authentication, defaults, limits, errors, recovery and effects on existing files/jobs. Dependency and internal-only PRs still need this assessment; do not make artificial wiki edits when usage is unchanged.
+- User/operator instructions live in the [wiki](https://github.com/TheBadFella/Pinchflat-NGX/wiki). Update the existing task guide and affected references, not a second manual in `docs/` or a page for each small implementation detail. Add a task guide only for a distinct workflow, then link it from the Features directory and navigation.
+- Prepare affected wiki edits alongside the code PR. Include the guide links and documentation plan in its description, or a specific explanation of why no user-facing documentation changes are needed. A code PR cannot contain the separate wiki repository's commit; track and verify both explicitly.
+- After **every PR merge**, review the final merged diff, publish the applicable wiki changes within the authorized publication task, and check that the published pages/anchors match the merged behavior. Do this before reporting the merge task complete; do not postpone it until release day. If wiki access fails, report the PR, affected pages and outstanding publication instead of claiming completion.
+- Keep release state accurate. Describe merged-but-unreleased behavior in a clearly marked upcoming section with its PR/commit; retain instructions for the published version. Do not present `master` or a development image as a stable release. At release, reconcile guide version notices and the roadmap with the actual published tag.
+- Verify steps and labels against code and available runtime evidence. Cover expected outcomes, limits, data/file/job effects and recovery; use dated examples for cutoff/retention rules. Keep environment-variable definitions in their reference page and link to them from tutorials.
+- Preserve existing page URLs and section anchors when reorganizing guides, or leave compatible anchors/links. Check internal links and release-note deep links. Documentation-only changes need prose/link checks, not invented application test claims.
+- The final merge handoff must say which documentation was published, with links, or why no update was necessary. Instructions are a required workflow, not proof of automated enforcement; never claim a bot or CI checked wiki accuracy unless that check actually exists and ran.
+
+### PR descriptions and maintainer voice
+
+- Before creating or editing a PR description, reread the final prose for clarity and voice, and check the published body after writing it.
+- Write as the maintainer explaining a concrete change to another person: what was awkward or broken, what users can do now, and why this approach fits. Use a short natural paragraph for small PRs. Headings are optional; remove unused template sections, `N/A` filler and repeated "What's new/changed/fixed" scaffolding.
+- First person is welcome when supported by the work (for example, "I moved the cutoff warning beside the download action so it is visible before confirmation"). Do not invent personal experiences, motivations, excitement, anecdotes or user feedback to manufacture a personal touch. Prefer plain words; avoid promotional openings, em dashes and canned summaries.
+- Keep implementation details only when they help review correctness or a tradeoff. Summarize checks proportionately: relevant results, a CI/evidence link and material gaps. Preserve failures, exclusions and not-run distinctions without pasting a command diary or repeating the same test totals several times.
+- Include documentation impact and credit external contributors/reporters where relevant. Preserve authorship/license requirements without asserting work is original when it is not. Rewrite the title/body around the final scope if the change evolves.
+- For release descriptions, follow [the release-note guide](.github/RELEASE_NOTES.md): the agreed Immich/BentoPDF approach, named contributor thanks and direct usage-guide links. Do not substitute autogenerated PR/dependency lists for the maintainer's release notes.
 
 **Database backup:** Use `pinchflat.db.backup-*` files for testing and development with real data. These contain production-like data for debugging issues.
 
@@ -119,6 +140,7 @@ end
 ### UI Theming Guardrails
 
 - Follow Material Design 3 tokens and design foundations for UI work.
+- For date-based rules, name the compared fields and show their actual dates when available. Distinguish publication date from download time; explain the consequence and available action instead of shorthand such as "this video is before the cutoff".
 - Treat UI work ported from other forks, upstream, or generated patches as unfinished until it has been adapted to Pinchflat-ngx's current design system.
 - Before adding or changing a screen, inspect nearby pages and shared components to match the existing layout density, surfaces, spacing, typography, buttons, tabs, badges, tables, and empty states.
 - Use shared semantic theme classes from `assets/css/app.css` instead of page-local hardcoded palette combinations.
@@ -131,6 +153,18 @@ end
 - Keep raw palette variables in `assets/css/theme/palette.css`. Keep semantic component classes in `assets/css/app.css`.
 - The `@source` paths in `assets/css/app.css` are relative to `assets/css/app.css`. Be careful when editing them; wrong paths can make the UI compile successfully but drop most utilities.
 - Trim custom Tailwind tokens to values the app actually uses instead of restoring large legacy compatibility blocks.
+
+### UI Visual Review Checklist
+
+Complete this review during UI work and before reporting the change as finished:
+
+- Before coding, identify the shared component and variant that fit the control's context. Embedded field icons should use the field-action style; standalone outlined buttons can create unwanted nested borders inside an outlined field.
+- Render the changed UI with synthetic data and inspect actual browser screenshots. Review empty, populated, selected, focused, hovered, disabled, expanded, and error states where applicable. Include long labels and values.
+- Check at 320px, 390px, 768px, and 1440px, plus any widths requested by the user. Inspect borders, icon size, alignment, spacing, text clipping, dropdown placement, and neighboring controls. Passing geometry checks alone does not establish visual consistency.
+- Verify keyboard access, visible focus, focus restoration after clearing or closing, and at least 44px touch targets on phone layouts. Hide selection actions when nothing is selected and clear actions when there is no value to clear.
+- For shared component or CSS changes, inspect callers and render representative affected screens. Put reusable corrections in the shared component or semantic theme class.
+- Fix visual defects found in this review before presenting the result. When showing before/after screenshots, use matching data and viewport sizes.
+- Report the browser widths and states checked, relevant automated checks, and any missing visual verification. If browser review is unavailable, state that gap rather than claiming the UI is visually verified.
 
 ### Return Types
 
@@ -372,10 +406,16 @@ end
 
 ### API Endpoints
 
-**Public Endpoints** (`:api` pipeline - no auth, no CSRF):
+**Public Endpoints** (`:api` pipeline - no management authentication):
 
+- `GET /healthcheck` - Health check
 - `GET /api/spec` - OpenAPI specification JSON
-- `GET /api/media/recent_downloads` - Recent downloads (limit: 1-500)
+
+**Management API** (`:management_api` and `:api` pipelines):
+
+- `GET /api/media/recent_downloads` - Recent downloads (limit: 1-500), subject to management API authentication.
+- General management API reads and writes require configured Basic Auth credentials when Basic Auth or OIDC is enabled. OIDC browser cookies and scoped share tokens do not authorize these calls. OIDC installations need both `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` for API clients.
+- `/api/share/intake` has separate profile-bound Bearer-token authorization. Migration review holds management API writes. Keep the [API access guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/API-access) and OpenAPI definitions aligned when changing these contracts.
 
 **Dual-Format Endpoints** (HTML or JSON based on Accept header):
 
@@ -466,21 +506,13 @@ Lefthook runs on commit (configured in `lefthook.yml`):
 - `mix format` - Elixir formatting (runs in Docker)
 - `typos` - spell checking (runs on host)
 - `actionlint` - GitHub Actions validation (runs on host)
-- `mix check` - Full CI validation (runs in Docker, requires running container)
+- `mix check` - Full CI validation (runs in Docker)
 
 **Note:** `prettier` and `mix format` run inside Docker to avoid permission issues. `typos` and `actionlint` run on the host machine.
 
-**Important:** The `mix check` hook uses `docker compose exec` which requires the phx container to be running. Before committing, ensure the container is started with `docker compose up -d phx`.
+**Important:** Read the current `lefthook.yml` before preparing the hook environment. Its Compose `run` commands create one-off containers; do not assume the hooks use `exec` or require an already-running phx container. Use isolated application/database/media state and preserve pre-existing services.
 
-**NEVER skip hooks with `--no-verify`.** If a hook fails due to the container not running, start it first.
-
-## Repository skills
-
-- For documentation, UI prose and change summaries, read [unslop-pinchflat-ngx](.agents/skills/unslop-pinchflat-ngx/SKILL.md).
-- For verification, read [verify-pinchflat-ngx](.agents/skills/verify-pinchflat-ngx/SKILL.md).
-- For implementation, debugging or review, read [change-pinchflat-ngx](.agents/skills/change-pinchflat-ngx/SKILL.md).
-
-Load the relevant skill, not the full catalog. These workflows preserve the user's scope and the repository's specific contracts. [Source revisions and licenses](.agents/skill-provenance.md).
+**NEVER skip hooks with `--no-verify`.** Repair the actual environment or check failure, then rerun the normal hooks.
 
 ## Verify completed asynchronous workflows
 
