@@ -91,6 +91,7 @@ defmodule Pinchflat.HTTP.SafeFetch do
       url,
       [{"user-agent", @user_agent}],
       connect_address: address,
+      max_bytes: max_bytes(opts),
       receive_timeout: Keyword.get(opts, :receive_timeout, @receive_timeout),
       request_timeout: Keyword.get(opts, :request_timeout, @request_timeout)
     )

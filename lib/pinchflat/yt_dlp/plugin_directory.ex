@@ -9,6 +9,7 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   """
 
   require Logger
+  require Record
 
   alias Pinchflat.HTTP.SafeFetch
   alias Pinchflat.YtDlp.PoTokenProvider
@@ -22,6 +23,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   @max_config_bytes 64 * 1024
   @max_documentation_bytes 20 * 1024
   @documentation_filenames ~w(README.md README.txt README.rst readme.md readme.txt readme.rst)
+
+  Record.defrecordp(:file_info, Record.extract(:file_info, from_lib: "kernel/include/file.hrl"))
 
   @doc """
   Returns the absolute path to the managed plugin directory.
@@ -615,15 +618,23 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   end
 
   defp archive_entry_names(source_path) do
+    with {:ok, entries} <- archive_entries(source_path) do
+      {:ok, Enum.map(entries, fn {name, _size} -> name end)}
+    end
+  end
+
+  # Returns [{name, uncompressed_size}] from the zip directory without extracting anything.
+  defp archive_entries(source_path) do
     case :zip.list_dir(String.to_charlist(source_path)) do
       {:ok, entries} ->
-        names =
-          Enum.flat_map(entries, fn
-            {:zip_file, name, _info, _comment, _offset, _size} -> [normalize_entry_name(to_string(name))]
-            _entry -> []
-          end)
+        {:ok,
+         Enum.flat_map(entries, fn
+           {:zip_file, name, info, _comment, _offset, _compressed_size} ->
+             [{normalize_entry_name(to_string(name)), file_info(info, :size)}]
 
-        {:ok, names}
+           _entry ->
+             []
+         end)}
 
       {:error, _reason} ->
         {:error, :invalid_archive}
@@ -841,8 +852,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   end
 
   defp archive_documentation(plugin_path) do
-    with {:ok, names} <- archive_entry_names(plugin_path),
-         name when is_binary(name) <- find_readme_entry(names) do
+    with {:ok, entries} <- archive_entries(plugin_path),
+         {name, size} when size <= @max_documentation_bytes <- find_readme_entry(entries) do
       options = [{:file_list, [String.to_charlist(name)]}, :memory]
 
       case :zip.extract(String.to_charlist(plugin_path), options) do
@@ -854,26 +865,28 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     end
   end
 
-  defp find_readme_entry(names) do
-    names
-    |> Enum.filter(fn name ->
+  defp find_readme_entry(entries) do
+    entries
+    |> Enum.filter(fn {name, _size} ->
       name
       |> Path.basename()
       |> String.downcase()
       |> then(&(&1 in ["readme.md", "readme.txt", "readme.rst"]))
     end)
-    |> Enum.min_by(fn name -> length(Path.split(name)) end, fn -> nil end)
+    |> Enum.min_by(fn {name, _size} -> length(Path.split(name)) end, fn -> nil end)
   end
 
+  # Reads at most @max_documentation_bytes, so a huge README in a folder plugin is never loaded whole.
   defp read_documentation(path) do
-    case File.read(path) do
-      {:ok, contents} -> {:ok, normalize_documentation(contents)}
+    case File.open(path, [:read, :binary], &IO.binread(&1, @max_documentation_bytes)) do
+      {:ok, contents} when is_binary(contents) -> {:ok, normalize_documentation(contents)}
       _ -> {:ok, nil}
     end
   end
 
   defp normalize_documentation(contents) do
     contents
+    |> String.replace_invalid()
     |> String.slice(0, @max_documentation_bytes)
     |> String.replace("\0", "")
   end

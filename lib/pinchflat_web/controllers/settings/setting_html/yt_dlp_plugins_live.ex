@@ -184,7 +184,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
           </div>
 
           <p :if={!@config_documentation} class="mt-4 text-xs text-theme-on-surface-muted">
-            This plugin package does not include a README. Add only options the plugin documents.
+            This plugin package has no README, or its README is too large to display. Add only options the plugin documents.
           </p>
 
           <form

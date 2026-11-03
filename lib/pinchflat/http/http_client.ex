@@ -42,6 +42,9 @@ defmodule Pinchflat.HTTP.HTTPClient do
   @doc """
   Makes a GET request and returns the status, headers, and body without
   treating non-2xx responses as errors. Used by redirect-aware callers.
+
+  Pass `max_bytes:` to read the body as a stream and abort once it exceeds that many
+  bytes, returning `{:error, :too_large}`. Non-2xx responses are not read in that mode.
   """
   @impl HTTPBehaviour
   def get_with_response(url, headers \\ [], opts \\ []) do
@@ -97,6 +100,62 @@ defmodule Pinchflat.HTTP.HTTPClient do
   end
 
   defp raw_request(request, opts) do
+    case Keyword.pop(opts, :max_bytes) do
+      {nil, request_opts} -> buffered_request(request, request_opts)
+      {max_bytes, request_opts} -> bounded_request(request, max_bytes, request_opts)
+    end
+  end
+
+  # Streams the response and stops reading as soon as the body would exceed `max_bytes`,
+  # so an oversized response is never held in memory. Only 2xx bodies are read: redirects
+  # and error statuses are returned with their headers and an empty body.
+  defp bounded_request(request, max_bytes, opts) do
+    initial = %{status: nil, headers: [], chunks: [], size: 0, too_large: false}
+
+    case Finch.stream_while(request, Pinchflat.Finch, initial, &accumulate_bounded(&1, &2, max_bytes), opts) do
+      {:ok, %{too_large: true}} ->
+        {:error, :too_large}
+
+      {:ok, %{status: status, headers: headers, chunks: chunks}} ->
+        {:ok, %{status: status, headers: headers, body: chunks |> Enum.reverse() |> IO.iodata_to_binary()}}
+
+      {:error, reason, _acc} ->
+        {:error, "HTTP request failed: #{error_message(reason)}"}
+    end
+  end
+
+  defp accumulate_bounded({:status, status}, acc, _max_bytes), do: {:cont, %{acc | status: status}}
+
+  defp accumulate_bounded({:headers, headers}, %{status: status} = acc, max_bytes) do
+    acc = %{acc | headers: headers}
+
+    cond do
+      status not in 200..299 -> {:halt, acc}
+      declared_length_over?(headers, max_bytes) -> {:halt, %{acc | too_large: true}}
+      true -> {:cont, acc}
+    end
+  end
+
+  defp accumulate_bounded({:data, data}, %{size: size} = acc, max_bytes) do
+    new_size = size + byte_size(data)
+
+    if new_size > max_bytes do
+      {:halt, %{acc | too_large: true}}
+    else
+      {:cont, %{acc | size: new_size, chunks: [data | acc.chunks]}}
+    end
+  end
+
+  defp accumulate_bounded(_other, acc, _max_bytes), do: {:cont, acc}
+
+  defp declared_length_over?(headers, max_bytes) do
+    Enum.any?(headers, fn {key, value} ->
+      String.downcase(to_string(key)) == "content-length" and
+        match?({length, _rest} when length > max_bytes, Integer.parse(to_string(value)))
+    end)
+  end
+
+  defp buffered_request(request, opts) do
     case Finch.request(request, Pinchflat.Finch, opts) do
       {:ok, %Response{status: status, headers: headers, body: body}} ->
         {:ok, %{status: status, headers: headers, body: body}}

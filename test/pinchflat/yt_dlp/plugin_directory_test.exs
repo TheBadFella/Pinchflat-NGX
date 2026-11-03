@@ -438,6 +438,44 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
       assert docs =~ "--extractor-args"
     end
 
+    test "does not extract an archive README that is too large once uncompressed" do
+      # Compresses to a few KB, so only the uncompressed size in the zip directory reveals it.
+      source =
+        plugin_zip_file_fixture([
+          {"yt_dlp_plugins/extractor/sample.py", "class SampleIE: pass"},
+          {"README.md", String.duplicate("a", 5_000_000)}
+        ])
+
+      on_exit(fn -> File.rm(source) end)
+
+      assert File.stat!(source).size < 100_000
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert {:ok, nil} = PluginDirectory.documentation("sample.zip")
+    end
+
+    test "returns an archive README that is exactly at the size limit" do
+      source =
+        plugin_zip_file_fixture([
+          {"yt_dlp_plugins/extractor/sample.py", "class SampleIE: pass"},
+          {"README.md", String.duplicate("a", 20 * 1024)}
+        ])
+
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert {:ok, docs} = PluginDirectory.documentation("sample.zip")
+      assert byte_size(docs) == 20 * 1024
+    end
+
+    test "truncates a very large folder README without reading it whole" do
+      plugin_root = Path.join(PluginDirectory.path(), "sample")
+      File.mkdir_p!(Path.join(plugin_root, "yt_dlp_plugins"))
+      File.write!(Path.join(plugin_root, "README.md"), String.duplicate("b", 3_000_000))
+
+      assert {:ok, docs} = PluginDirectory.documentation("sample")
+      assert byte_size(docs) == 20 * 1024
+    end
+
     test "returns nil when the package has no README" do
       install_sample_plugin()
 

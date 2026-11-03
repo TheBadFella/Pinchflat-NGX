@@ -232,6 +232,30 @@ defmodule Pinchflat.HTTP.SafeFetchTest do
                SafeFetch.fetch("https://example.com/plugin.zip", dns_resolver: public_resolver(), max_bytes: 4)
     end
 
+    test "asks the HTTP client to stop reading at the size limit" do
+      expect(HTTPClientMock, :get_with_response, 1, fn _, _, opts ->
+        assert opts[:max_bytes] == 4
+        {:error, :too_large}
+      end)
+
+      assert {:error, :too_large} =
+               SafeFetch.fetch("https://example.com/plugin.zip", dns_resolver: public_resolver(), max_bytes: 4)
+    end
+
+    test "limits each redirect hop to the same size" do
+      expect(HTTPClientMock, :get_with_response, 2, fn
+        "https://example.com/start.zip", _, opts ->
+          assert opts[:max_bytes] == SafeFetch.max_bytes()
+          {:ok, %{status: 302, headers: [{"location", "https://example.com/final.zip"}], body: ""}}
+
+        "https://example.com/final.zip", _, opts ->
+          assert opts[:max_bytes] == SafeFetch.max_bytes()
+          {:ok, %{status: 200, headers: [], body: "data"}}
+      end)
+
+      assert {:ok, "data"} = SafeFetch.fetch("https://example.com/start.zip", dns_resolver: public_resolver())
+    end
+
     test "rejects a body over the limit" do
       expect(HTTPClientMock, :get_with_response, 1, fn _, _, _ ->
         {:ok, %{status: 200, headers: [], body: "12345"}}

@@ -177,7 +177,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
 
       html = render(view)
-      assert html =~ "does not include a README"
+      assert html =~ "has no README, or its README is too large to display"
       assert html =~ "do not expose a config schema"
     end
 
