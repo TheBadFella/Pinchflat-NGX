@@ -329,6 +329,22 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     result
   end
 
+  @doc """
+  Returns the plugins this build ships, read from the bundled plugin directories each time.
+
+  Nothing is hardcoded: whatever archives or folders the image placed in those directories are
+  opened and their `yt_dlp_plugins` module names listed. Installs are refused when they would
+  provide any of these modules. A bundled entry with no modules is logged, because the duplicate
+  check cannot protect an entry it cannot see.
+
+  Returns [%{path: String.t(), modules: [String.t()]}]
+  """
+  def bundled_plugins do
+    PoTokenProvider.bundled_plugin_paths()
+    |> Enum.flat_map(&bundled_directory_plugins/1)
+    |> Enum.uniq_by(& &1.modules)
+  end
+
   # The whole check, copy, swap and metadata update runs under one lock so concurrent
   # installs cannot interleave their metadata read-modify-write cycles. This serializes
   # installs while an archive is copied, which is bounded by the 25 MB archive limit.
@@ -654,28 +670,45 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   end
 
   defp bundled_plugin_module_names do
-    PoTokenProvider.bundled_plugin_paths()
-    |> Enum.flat_map(&bundled_directory_module_names/1)
+    bundled_plugins()
+    |> Enum.flat_map(& &1.modules)
     |> MapSet.new()
   end
 
-  defp bundled_directory_module_names(directory) do
+  defp bundled_directory_plugins(directory) do
     case File.ls(directory) do
       {:ok, entries} ->
         entries
         |> Enum.reject(&hidden?/1)
-        |> Enum.flat_map(fn entry ->
-          path = Path.join(directory, entry)
-
-          cond do
-            File.dir?(path) -> folder_plugin_module_names(path)
-            supported_archive?(entry) -> archive_plugin_module_names(path)
-            true -> []
-          end
-        end)
+        |> Enum.flat_map(&bundled_entry_plugin(Path.join(directory, &1)))
 
       _ ->
         []
+    end
+  end
+
+  defp bundled_entry_plugin(path) do
+    modules =
+      cond do
+        File.dir?(path) -> folder_plugin_module_names(path)
+        supported_archive?(path) -> archive_plugin_module_names(path)
+        true -> nil
+      end
+
+    case modules do
+      nil ->
+        []
+
+      [] ->
+        Logger.warning(
+          "[yt-dlp plugins] Bundled plugin #{inspect(path)} exposes no yt_dlp_plugins modules, " <>
+            "so installs cannot be checked against it"
+        )
+
+        [%{path: path, modules: []}]
+
+      modules ->
+        [%{path: path, modules: Enum.sort(modules)}]
     end
   end
 

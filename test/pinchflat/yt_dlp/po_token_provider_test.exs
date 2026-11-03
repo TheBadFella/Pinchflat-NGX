@@ -29,7 +29,31 @@ defmodule Pinchflat.YtDlp.PoTokenProviderTest do
         end
       end)
 
-      assert is_list(PoTokenProvider.bundled_plugin_paths())
+      assert "/opt/pinchflat-ngx/yt-dlp-plugins" in PoTokenProvider.bundled_plugin_paths()
+    end
+
+    test "the default path and the plugin set match what the Dockerfiles bundle" do
+      original = Application.get_env(:pinchflat, :bundled_plugin_paths)
+      Application.delete_env(:pinchflat, :bundled_plugin_paths)
+
+      on_exit(fn ->
+        if not is_nil(original), do: Application.put_env(:pinchflat, :bundled_plugin_paths, original)
+      end)
+
+      bundled_directory = "/opt/pinchflat-ngx/yt-dlp-plugins"
+      assert bundled_directory in PoTokenProvider.bundled_plugin_paths()
+
+      # Every image installs exactly the bgutil archive into the directory the code treats as bundled.
+      # A plugin added to an image without being listed here would be installable a second time from the UI.
+      for dockerfile <- ["docker/selfhosted.Dockerfile", "docker/dev.Dockerfile"] do
+        bundled_archives =
+          ~r{#{bundled_directory}/([\w.\-]+\.(?:zip|whl|egg))}
+          |> Regex.scan(File.read!(dockerfile), capture: :all_but_first)
+          |> List.flatten()
+          |> Enum.uniq()
+
+        assert bundled_archives == ["bgutil-ytdlp-pot-provider.zip"], "unexpected bundled plugins in #{dockerfile}"
+      end
     end
   end
 

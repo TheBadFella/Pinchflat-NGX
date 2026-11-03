@@ -5,6 +5,7 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
   import Pinchflat.PluginFixtures
 
   alias Pinchflat.YtDlp.PluginDirectory
+  alias Pinchflat.YtDlp.PoTokenProvider
 
   setup do
     base_dir =
@@ -359,6 +360,87 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
       assert entry.filename == "other.zip"
     end
 
+    test "rejects a copy of the shipped bgutil archive under any filename" do
+      bundled_dir = bundled_bgutil_directory_fixture()
+      on_exit(fn -> File.rm_rf!(bundled_dir) end)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      source = plugin_zip_file_fixture(bgutil_plugin_entries())
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "my-pot-provider.zip")
+      assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "bgutil.egg")
+      assert PluginDirectory.list() == []
+    end
+
+    test "rejects an archive that overlaps the shipped bgutil modules in part" do
+      bundled_dir = bundled_bgutil_directory_fixture()
+      on_exit(fn -> File.rm_rf!(bundled_dir) end)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      source =
+        plugin_zip_file_fixture([
+          {"yt_dlp_plugins/extractor/getpot_bgutil_http.py", "# replacement\n"},
+          {"yt_dlp_plugins/extractor/my_own_extractor.py", "class MyOwnIE: pass\n"}
+        ])
+
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "mixed.zip")
+    end
+
+    test "installs an unrelated plugin next to the shipped bgutil archive" do
+      bundled_dir = bundled_bgutil_directory_fixture()
+      on_exit(fn -> File.rm_rf!(bundled_dir) end)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      source = plugin_zip_file_fixture([{"yt_dlp_plugins/extractor/getpot_other.py", "class OtherIE: pass\n"}])
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, entry} = PluginDirectory.install_archive(source, filename: "other.zip")
+      assert entry.filename == "other.zip"
+    end
+
+    test "lists the modules of every bundled archive and folder, read from disk each time" do
+      bundled_dir = bundled_bgutil_directory_fixture()
+      on_exit(fn -> File.rm_rf!(bundled_dir) end)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      assert [%{path: path, modules: modules}] = PluginDirectory.bundled_plugins()
+      assert Path.basename(path) == "bgutil-ytdlp-pot-provider.zip"
+
+      assert modules == [
+               "yt_dlp_plugins/extractor/getpot_bgutil",
+               "yt_dlp_plugins/extractor/getpot_bgutil_http",
+               "yt_dlp_plugins/extractor/getpot_bgutil_script"
+             ]
+
+      # A plugin added to the build later is picked up without any code change.
+      File.write!(
+        Path.join(bundled_dir, "added-later.zip"),
+        plugin_zip_fixture([{"yt_dlp_plugins/extractor/added_later.py", "class AddedLaterIE: pass\n"}])
+      )
+
+      assert "yt_dlp_plugins/extractor/added_later" in Enum.flat_map(PluginDirectory.bundled_plugins(), & &1.modules)
+    end
+
+    test "logs a bundled archive that exposes no plugin modules, since it cannot be protected" do
+      bundled_dir = bundled_bgutil_directory_fixture()
+      on_exit(fn -> File.rm_rf!(bundled_dir) end)
+
+      File.write!(
+        Path.join(bundled_dir, "wrapped.zip"),
+        plugin_zip_fixture([{"wrapper/yt_dlp_plugins/x.py", "pass\n"}])
+      )
+
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      log = with_debug_logs(fn -> capture_log(fn -> PluginDirectory.bundled_plugins() end) end)
+
+      assert log =~ "wrapped.zip"
+      assert log =~ "exposes no yt_dlp_plugins modules"
+    end
+
     test "ignores namespace package init files" do
       bundled_dir = create_bundled_plugin(["shared.py", "__init__.py"])
       Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
@@ -367,6 +449,38 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
       on_exit(fn -> File.rm(source) end)
 
       assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "other.zip")
+    end
+  end
+
+  describe "plugins actually bundled in this build" do
+    # These tests read the real bundled directories of the image the suite runs in, not fixtures.
+    setup do
+      Application.delete_env(:pinchflat, :bundled_plugin_paths)
+      :ok
+    end
+
+    test "the build bundles plugins and the code can see the modules of every one" do
+      bundled = PluginDirectory.bundled_plugins()
+
+      assert bundled != [],
+             "no bundled plugins found in #{inspect(PoTokenProvider.bundled_plugin_paths())}; " <>
+               "run the suite in the Docker image, which installs them"
+
+      for %{path: path, modules: modules} <- bundled do
+        assert modules != [], "#{path} exposes no yt_dlp_plugins modules, so the duplicate check cannot protect it"
+      end
+    end
+
+    test "refuses a copy of every plugin that ships in this build, under any filename" do
+      for %{path: path} <- PluginDirectory.bundled_plugins() do
+        source = copy_of_bundled_plugin(path)
+
+        assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "copy-of-bundled.zip")
+        assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "another-name.egg")
+        assert {:error, :bundled_plugin} = PluginDirectory.install_archive(source, filename: "third.whl")
+      end
+
+      assert PluginDirectory.list() == []
     end
   end
 
@@ -709,6 +823,29 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     after
       Logger.configure(level: previous_level)
     end
+  end
+
+  # An installable archive with exactly the contents of a bundled plugin: a bundled archive is copied,
+  # a bundled folder is zipped from its files.
+  defp copy_of_bundled_plugin(bundled_path) do
+    target = Path.join(System.tmp_dir!(), "bundled-copy-#{System.unique_integer([:positive])}.zip")
+    on_exit(fn -> File.rm(target) end)
+
+    if File.dir?(bundled_path) do
+      entries =
+        bundled_path
+        |> Path.join("**/*")
+        |> Path.wildcard()
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.map(fn file -> {String.to_charlist(Path.relative_to(file, bundled_path)), File.read!(file)} end)
+
+      {:ok, {_name, binary}} = :zip.create(~c"copy.zip", entries, [:memory])
+      File.write!(target, binary)
+    else
+      File.cp!(bundled_path, target)
+    end
+
+    target
   end
 
   # Turns the metadata path into a directory so reads fall back to empty metadata and

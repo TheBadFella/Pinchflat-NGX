@@ -99,6 +99,35 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       refute File.exists?(Path.join(PluginDirectory.path(), "bad.zip"))
     end
 
+    test "rejects an upload that duplicates the bundled plugin and writes nothing", %{conn: conn} do
+      bundled_dir = bundled_bgutil_directory_fixture()
+      original = Application.get_env(:pinchflat, :bundled_plugin_paths)
+      Application.put_env(:pinchflat, :bundled_plugin_paths, [bundled_dir])
+
+      on_exit(fn ->
+        File.rm_rf!(bundled_dir)
+
+        if is_nil(original) do
+          Application.delete_env(:pinchflat, :bundled_plugin_paths)
+        else
+          Application.put_env(:pinchflat, :bundled_plugin_paths, original)
+        end
+      end)
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+
+      upload =
+        file_input(view, "#plugin-upload-form", :plugin, [
+          %{name: "my-pot.zip", content: plugin_zip_fixture(bgutil_plugin_entries()), type: "application/zip"}
+        ])
+
+      render_upload(upload, "my-pot.zip")
+      html = view |> element("#plugin-upload-form") |> render_submit()
+
+      assert html =~ "already bundled with Pinchflat-ngx"
+      refute File.exists?(Path.join(PluginDirectory.path(), "my-pot.zip"))
+    end
+
     test "rejects an unsupported upload type", %{conn: conn} do
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
 
