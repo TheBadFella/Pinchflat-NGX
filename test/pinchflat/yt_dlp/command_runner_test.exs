@@ -6,6 +6,7 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
   alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.YtDlp.PluginDiagnostics
   alias Pinchflat.YtDlp.PluginDirectory
 
   alias Pinchflat.YtDlp.CommandRunner, as: Runner
@@ -373,6 +374,26 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
         assert log =~ "[yt-dlp plugins]"
         assert log =~ "yt_dlp_plugins.postprocessor.sample"
       end)
+    end
+
+    test "completes the command when the plugin failure alert is delivered" do
+      PluginDiagnostics.reset_alert_state()
+      Settings.set(apprise_server: "json://localhost")
+      expect(AppriseRunnerMock, :run, 1, fn ["json://localhost"], _opts -> {:ok, ""} end)
+
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/plugin_import_error.sh", fn ->
+        log =
+          with_debug_logs(fn ->
+            capture_log(fn ->
+              assert {:ok, _output} = Runner.run(@media_url, :foo, [], "")
+            end)
+          end)
+
+        assert log =~ "Sent plugin failure alert"
+        refute log =~ "Plugin diagnostics failed"
+      end)
+
+      PluginDiagnostics.reset_alert_state()
     end
   end
 

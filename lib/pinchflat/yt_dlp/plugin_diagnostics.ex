@@ -13,6 +13,7 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
   @import_error ~r/Error while importing module '((?:yt_dlp_plugins|ytdlp_plugins)\.[^']+)'/
   @alert_cooldown_seconds 3_600
   @alert_state_key {__MODULE__, :alerts}
+  @diagnostics_failure_message "Plugin diagnostics failed"
 
   @doc """
   Extracts yt-dlp plugin import failures from command output.
@@ -36,6 +37,9 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
   @doc """
   Logs plugin import failures and dispatches a deduplicated Apprise alert.
 
+  Diagnostics are a side channel for the yt-dlp command that produced the output,
+  so any failure here is logged and swallowed rather than raised into the caller.
+
   Returns :ok
   """
   def report(output, status, action_name) do
@@ -47,6 +51,10 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
     end
 
     :ok
+  rescue
+    error ->
+      Logger.error("[yt-dlp plugins] #{@diagnostics_failure_message}: #{Exception.message(error)}")
+      :ok
   end
 
   @doc false
@@ -106,7 +114,7 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
         ]
 
         case apprise_runner().run([server], opts) do
-          :ok ->
+          {:ok, _output} ->
             Logger.info("[yt-dlp plugins] Sent plugin failure alert")
             :ok
 
