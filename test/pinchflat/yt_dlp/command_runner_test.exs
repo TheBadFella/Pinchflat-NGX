@@ -378,6 +378,7 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
     test "completes the command when the plugin failure alert is delivered" do
       PluginDiagnostics.reset_alert_state()
+      on_exit(&PluginDiagnostics.reset_alert_state/0)
       Settings.set(apprise_server: "json://localhost")
       expect(AppriseRunnerMock, :run, 1, fn ["json://localhost"], _opts -> {:ok, ""} end)
 
@@ -392,8 +393,6 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
         assert log =~ "Sent plugin failure alert"
         refute log =~ "Plugin diagnostics failed"
       end)
-
-      PluginDiagnostics.reset_alert_state()
     end
   end
 
