@@ -137,7 +137,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
 
-      assert has_element?(view, ~s(button[phx-click="open_config"][phx-value-filename="sample.zip"]))
+      assert has_element?(view, ~s(button[phx-value-filename="sample.zip"]), "Config")
     end
 
     test "opens the modal with existing config", %{conn: conn} do
@@ -146,10 +146,43 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
 
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
 
       assert has_element?(view, "#plugin-config-modal")
       assert render(view) =~ "--force-ipv4"
+    end
+
+    test "renders the config editor in the shared dialog with Escape and close wired to the server", %{conn: conn} do
+      install_sample_plugin()
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      refute has_element?(view, "#plugin-config-modal")
+
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
+
+      assert has_element?(view, ~s(#plugin-config-modal [role="dialog"][aria-modal="true"]))
+      assert has_element?(view, ~s([aria-labelledby="plugin-config-modal-title"]))
+      assert has_element?(view, "#plugin-config-modal-title", "Configure sample")
+      assert has_element?(view, "#plugin-config-modal-description")
+      assert has_element?(view, ~s(#plugin-config-modal-container[phx-key="escape"]))
+      assert has_element?(view, "#plugin-config-modal-focus-wrap #plugin-config-contents")
+
+      # The Config button records itself so focus returns to it when the dialog closes.
+      assert has_element?(view, ~s(button[phx-value-filename="sample.zip"][phx-click*="push_focus"]), "Config")
+
+      # Escape, click-away and the X button all execute the modal's cancel command.
+      assert view |> element("#plugin-config-modal") |> render() =~ "close_config"
+    end
+
+    test "closes the config dialog when the server receives close_config", %{conn: conn} do
+      install_sample_plugin()
+
+      {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
+      assert has_element?(view, "#plugin-config-modal")
+
+      render_click(view, "close_config", %{})
+      refute has_element?(view, "#plugin-config-modal")
     end
 
     test "shows bundled documentation in the config modal", %{conn: conn} do
@@ -163,7 +196,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
 
       html = render(view)
       assert html =~ "Bundled plugin documentation"
@@ -174,7 +207,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       install_sample_plugin()
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
 
       html = render(view)
       assert html =~ "has no README, or its README is too large to display"
@@ -185,7 +218,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       install_sample_plugin()
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
 
       html =
         view
@@ -202,7 +235,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       install_sample_plugin()
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
       view |> element(~s(button[phx-click="close_config"]), "Cancel") |> render_click()
 
       refute has_element?(view, "#plugin-config-modal")
@@ -214,7 +247,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
 
       html = view |> element(~s(button[phx-click="clear_config"]), "Clear") |> render_click()
 
@@ -229,7 +262,7 @@ defmodule PinchflatWeb.Settings.YtDlpPluginsLiveTest do
       too_large = String.duplicate("a", PluginDirectory.max_config_bytes() + 1)
 
       {:ok, view, _html} = live_isolated(conn, YtDlpPluginsLive)
-      view |> element(~s(button[phx-click="open_config"]), "Config") |> render_click()
+      view |> element(~s(button[phx-value-filename]), "Config") |> render_click()
 
       html =
         view

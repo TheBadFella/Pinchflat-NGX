@@ -117,7 +117,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
             <div class="flex flex-wrap items-center gap-2">
               <.button
                 type="button"
-                phx-click="open_config"
+                phx-click={JS.push_focus() |> JS.push("open_config")}
                 phx-value-filename={plugin.filename}
                 variant="secondary"
                 size="compact"
@@ -152,38 +152,27 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
         </ul>
       </div>
 
-      <div
-        :if={@config_plugin}
-        id="plugin-config-modal"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-theme-bg/80 p-4"
-      >
-        <div
-          class="theme-surface-raised w-full max-w-2xl rounded-m3-md p-6 shadow-m3-2"
-          phx-click-away="close_config"
-        >
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h4 class="text-lg font-semibold text-theme-on-surface">
-                Configure {@config_plugin.name}
-              </h4>
-              <p class="mt-1 text-sm text-theme-on-surface-muted">
-                One yt-dlp option per line. Saved options load with <span class="font-mono">--config-locations</span>
-                for every yt-dlp command.
-              </p>
-            </div>
-
-            <.icon_button icon_name="hero-x-mark" phx-click="close_config" tooltip="Close" />
+      <.modal :if={@config_plugin} id="plugin-config-modal" show on_cancel={JS.push("close_config")}>
+        <div class="space-y-4">
+          <div class="pr-8">
+            <h4 id="plugin-config-modal-title" class="text-lg font-semibold text-theme-on-surface">
+              Configure {@config_plugin.name}
+            </h4>
+            <p id="plugin-config-modal-description" class="mt-1 text-sm text-theme-on-surface-muted">
+              One yt-dlp option per line. Saved options load with <span class="font-mono">--config-locations</span>
+              for every yt-dlp command.
+            </p>
           </div>
 
           <div
             :if={@config_documentation}
-            class="mt-4 rounded-m3-sm border border-theme-outline/50 bg-theme-surface-2 p-3"
+            class="rounded-m3-sm border border-theme-outline/50 bg-theme-surface-2 p-3"
           >
             <p class="text-xs font-medium text-theme-on-surface-muted">Bundled plugin documentation</p>
             <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs text-theme-on-surface">{@config_documentation}</pre>
           </div>
 
-          <p :if={!@config_documentation} class="mt-4 text-xs text-theme-on-surface-muted">
+          <p :if={!@config_documentation} class="text-xs text-theme-on-surface-muted">
             This plugin package has no README, or its README is too large to display. Add only options the plugin documents.
           </p>
 
@@ -191,7 +180,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
             id="plugin-config-form"
             phx-submit="save_config"
             phx-change="config_changed"
-            class="mt-4 space-y-3"
+            class="space-y-3"
           >
             <input type="hidden" name="filename" value={@config_plugin.filename} />
 
@@ -225,7 +214,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
             </div>
           </form>
         </div>
-      </div>
+      </.modal>
     </div>
     """
   end
