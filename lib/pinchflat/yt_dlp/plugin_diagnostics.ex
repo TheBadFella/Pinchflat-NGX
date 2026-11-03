@@ -9,10 +9,10 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
   require Logger
 
   alias Pinchflat.Settings
+  alias Pinchflat.YtDlp.PluginAlertCooldown
 
   @import_error ~r/Error while importing module '((?:yt_dlp_plugins|ytdlp_plugins)\.[^']+)'/
   @alert_cooldown_seconds 3_600
-  @alert_state_key {__MODULE__, :alerts}
   @diagnostics_failure_message "Plugin diagnostics failed"
 
   @doc """
@@ -55,13 +55,14 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
     error ->
       Logger.error("[yt-dlp plugins] #{@diagnostics_failure_message}: #{Exception.message(error)}")
       :ok
+  catch
+    :exit, reason ->
+      Logger.error("[yt-dlp plugins] #{@diagnostics_failure_message}: #{inspect(reason)}")
+      :ok
   end
 
   @doc false
-  def reset_alert_state do
-    :persistent_term.erase(@alert_state_key)
-    :ok
-  end
+  def reset_alert_state, do: PluginAlertCooldown.reset()
 
   defp detail_for(lines, index) do
     lines
@@ -85,17 +86,33 @@ defmodule Pinchflat.YtDlp.PluginDiagnostics do
 
   defp maybe_alert(issues, status, action_name) do
     signature = signature(issues)
-    now = System.os_time(:second)
-    alerts = :persistent_term.get(@alert_state_key, %{})
 
-    if now - Map.get(alerts, signature, 0) >= @alert_cooldown_seconds do
-      case send_alert(issues, status, action_name) do
-        :ok -> :persistent_term.put(@alert_state_key, Map.put(alerts, signature, now))
-        _ -> :ok
-      end
+    case claim_alert(signature) do
+      {:claimed, claimed_at} -> deliver_claimed_alert(signature, claimed_at, issues, status, action_name)
+      :cooling_down -> :ok
     end
 
     :ok
+  end
+
+  # Checking the cooldown and recording the alert are one step in PluginAlertCooldown, so concurrent yt-dlp
+  # jobs reporting the same failure cannot each see an expired cooldown and all send. That step does no I/O,
+  # so jobs never queue behind the slow Apprise call.
+  defp claim_alert(signature) do
+    PluginAlertCooldown.claim(signature, System.os_time(:second), @alert_cooldown_seconds)
+  end
+
+  # A claim that does not end in a delivered alert is given back, whether the runner reported an error,
+  # no server is configured, or it raised, so the failure stays retryable on the next report.
+  defp deliver_claimed_alert(signature, claimed_at, issues, status, action_name) do
+    case send_alert(issues, status, action_name) do
+      :ok -> :ok
+      _not_delivered -> PluginAlertCooldown.release(signature, claimed_at)
+    end
+  catch
+    kind, reason ->
+      PluginAlertCooldown.release(signature, claimed_at)
+      :erlang.raise(kind, reason, __STACKTRACE__)
   end
 
   defp signature(issues) do
