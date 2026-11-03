@@ -97,8 +97,8 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
            :ok <- validate_size(source_path),
            :ok <- validate_archive(source_path),
            :ok <- validate_not_bundled(source_path),
-           :ok <- validate_destination(filename, replace?) do
-        do_install(source_path, filename, source_url)
+           :ok <- ensure() do
+        do_install(source_path, filename, source_url, replace?)
       end
 
     log_operation("Install", filename, result)
@@ -326,22 +326,28 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     result
   end
 
-  defp do_install(source_path, filename, source_url) do
-    with :ok <- ensure() do
-      destination = Path.join(path(), filename)
-      temporary = temporary_install_path(filename)
+  # The whole check, copy, swap and metadata update runs under one lock so concurrent
+  # installs cannot interleave their metadata read-modify-write cycles. This serializes
+  # installs while an archive is copied, which is bounded by the 25 MB archive limit.
+  defp do_install(source_path, filename, source_url, replace?) do
+    with_metadata_lock(fn -> locked_install(source_path, filename, source_url, replace?) end)
+  end
 
-      try do
-        with :ok <- copy_file(source_path, temporary),
-             :ok <- File.rename(temporary, destination) do
-          update_metadata(filename, source_url)
-          {:ok, entry_for(filename)}
-        else
-          {:error, _reason} -> {:error, :file_error}
-        end
-      after
-        _ = File.rm(temporary)
+  defp locked_install(source_path, filename, source_url, replace?) do
+    destination = Path.join(path(), filename)
+    temporary = temporary_install_path(filename)
+
+    try do
+      with :ok <- validate_destination(filename, replace?),
+           :ok <- copy_file(source_path, temporary),
+           {:ok, backup} <- move_aside(destination),
+           :ok <- put_in_place(temporary, destination, backup),
+           :ok <- record_install(filename, source_url, destination, backup) do
+        discard_backup(backup)
+        {:ok, entry_for(filename)}
       end
+    after
+      _ = File.rm(temporary)
     end
   end
 
@@ -351,6 +357,61 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
       {:error, _reason} -> {:error, :file_error}
     end
   end
+
+  # Replacing an existing archive keeps the old one under a hidden name until the
+  # install is fully recorded, so a failure can put it back.
+  defp move_aside(destination) do
+    if File.exists?(destination) do
+      backup = Path.join(path(), ".#{Path.basename(destination)}.bak-#{Ecto.UUID.generate()}")
+
+      case File.rename(destination, backup) do
+        :ok -> {:ok, backup}
+        {:error, _reason} -> {:error, :file_error}
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp put_in_place(temporary, destination, backup) do
+    case File.rename(temporary, destination) do
+      :ok ->
+        :ok
+
+      {:error, _reason} ->
+        restore_backup(backup, destination)
+        {:error, :file_error}
+    end
+  end
+
+  defp record_install(filename, source_url, destination, backup) do
+    case update_metadata(filename, source_url) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("[yt-dlp plugins] Could not save metadata for #{inspect(filename)}: #{inspect(reason)}")
+        _ = File.rm(destination)
+        restore_backup(backup, destination)
+        {:error, :metadata_error}
+    end
+  end
+
+  defp restore_backup(nil, _destination), do: :ok
+
+  defp restore_backup(backup, destination) do
+    case File.rename(backup, destination) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("[yt-dlp plugins] Could not restore #{inspect(backup)}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp discard_backup(nil), do: :ok
+  defp discard_backup(backup), do: File.rm(backup)
 
   defp entry_for(filename) do
     kind = if File.dir?(Path.join(path(), filename)), do: :directory, else: :archive
@@ -422,13 +483,17 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
   end
 
   defp do_remove(filename) do
+    with_metadata_lock(fn -> locked_remove(filename) end)
+  end
+
+  defp locked_remove(filename) do
     full_path = Path.join(path(), filename)
 
     if File.exists?(full_path) do
       case delete_path(full_path) do
         :ok ->
           _ = delete_config_file(filename)
-          remove_metadata(filename)
+          log_stale_metadata(filename, remove_metadata(filename))
           :ok
 
         {:error, _reason} ->
@@ -437,6 +502,14 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
     else
       {:error, :not_found}
     end
+  end
+
+  # The plugin itself is already gone, and stale entries are pruned on the next
+  # metadata write, so a failure here is worth a log line but not an error.
+  defp log_stale_metadata(_filename, :ok), do: :ok
+
+  defp log_stale_metadata(filename, {:error, reason}) do
+    Logger.error("[yt-dlp plugins] Could not clear metadata for #{inspect(filename)}: #{inspect(reason)}")
   end
 
   defp delete_path(full_path) do
@@ -511,19 +584,25 @@ defmodule Pinchflat.YtDlp.PluginDirectory do
 
   defp empty_metadata, do: %{"plugins" => %{}}
 
+  # Callers hold the metadata lock, so the read that produced `metadata` cannot go stale.
   defp write_metadata(metadata) do
-    :global.trans({__MODULE__, :metadata}, fn ->
-      temporary = Path.join(path(), ".metadata-#{Ecto.UUID.generate()}.tmp")
+    temporary = Path.join(path(), ".metadata-#{Ecto.UUID.generate()}.tmp")
 
-      result =
-        with :ok <- ensure(),
-             :ok <- File.write(temporary, Jason.encode!(metadata)) do
-          File.rename(temporary, metadata_path())
-        end
+    result =
+      with :ok <- ensure(),
+           {:ok, encoded} <- Jason.encode(metadata),
+           :ok <- File.write(temporary, encoded) do
+        File.rename(temporary, metadata_path())
+      end
 
-      _ = File.rm(temporary)
-      result
-    end)
+    _ = File.rm(temporary)
+    result
+  end
+
+  # The lock id is {resource, requester}. :global grants a lock again to the same requester,
+  # so the requester must be the calling process for concurrent callers to exclude each other.
+  defp with_metadata_lock(fun) do
+    :global.trans({__MODULE__, self()}, fun)
   end
 
   defp metadata_path, do: Path.join(path(), @metadata_filename)

@@ -477,5 +477,9 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
   defp humanize_error(:invalid_redirect), do: "The URL returned an invalid redirect."
   defp humanize_error({:http_status, status}), do: "The server returned HTTP #{status}."
   defp humanize_error(:file_error), do: "The plugin file could not be written."
+
+  defp humanize_error(:metadata_error),
+    do: "The plugin could not be saved because its install record could not be written. Nothing was changed."
+
   defp humanize_error(_reason), do: "The plugin operation failed."
 end

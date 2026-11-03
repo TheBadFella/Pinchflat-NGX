@@ -195,6 +195,72 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     end
   end
 
+  describe "install_archive/2 metadata integrity" do
+    test "does not report success or keep the plugin when metadata cannot be saved" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+      block_metadata_writes()
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert {:error, :metadata_error} =
+                     PluginDirectory.install_archive(source,
+                       filename: "sample.zip",
+                       source_url: "https://example.com/sample.zip"
+                     )
+          end)
+        end)
+
+      assert log =~ "Could not save metadata"
+      refute File.exists?(Path.join(PluginDirectory.path(), "sample.zip"))
+      assert leftover_files() == []
+    end
+
+    test "restores the previous archive when an update cannot save metadata" do
+      first = plugin_zip_file_fixture([{"yt_dlp_plugins/extractor/sample.py", "first"}])
+      second = plugin_zip_file_fixture([{"yt_dlp_plugins/extractor/sample.py", "second"}])
+      on_exit(fn -> File.rm(first) end)
+      on_exit(fn -> File.rm(second) end)
+
+      assert {:ok, entry} = PluginDirectory.install_archive(first, filename: "sample.zip")
+      block_metadata_writes()
+
+      capture_log(fn ->
+        assert {:error, :metadata_error} =
+                 PluginDirectory.install_archive(second, filename: "sample.zip", replace: true)
+      end)
+
+      assert File.read!(entry.path) == File.read!(first)
+      assert leftover_files() == []
+    end
+
+    test "concurrent installs do not lose each other's metadata" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+      assert :ok = PluginDirectory.ensure()
+
+      # Hold the metadata lock the way a concurrent installer would, then let a second
+      # install start while a "competing" metadata write lands underneath it.
+      :global.set_lock({PluginDirectory, self()})
+
+      task =
+        Task.async(fn ->
+          PluginDirectory.install_archive(source, filename: "second.zip", source_url: "https://example.com/second.zip")
+        end)
+
+      assert Task.yield(task, 300) == nil
+      write_competing_metadata("first.zip", "https://example.com/first.zip")
+      :global.del_lock({PluginDirectory, self()})
+
+      assert {:ok, _entry} = Task.await(task)
+
+      sources = Map.new(PluginDirectory.list(), &{&1.filename, &1.source_url})
+      assert sources["first.zip"] == "https://example.com/first.zip"
+      assert sources["second.zip"] == "https://example.com/second.zip"
+    end
+  end
+
   describe "list/0" do
     test "returns no entries when the directory is missing" do
       assert PluginDirectory.list() == []
@@ -605,6 +671,28 @@ defmodule Pinchflat.YtDlp.PluginDirectoryTest do
     after
       Logger.configure(level: previous_level)
     end
+  end
+
+  # Turns the metadata path into a directory so reads fall back to empty metadata and
+  # the atomic rename onto it fails with :eisdir, regardless of the user running the tests.
+  defp block_metadata_writes do
+    assert :ok = PluginDirectory.ensure()
+    metadata_path = Path.join(PluginDirectory.path(), ".pinchflat-plugins.json")
+    File.rm_rf!(metadata_path)
+    File.mkdir_p!(metadata_path)
+  end
+
+  defp write_competing_metadata(filename, source_url) do
+    File.write!(Path.join(PluginDirectory.path(), filename), plugin_zip_fixture())
+
+    metadata = %{"plugins" => %{filename => %{"source_url" => source_url, "installed_at" => "2026-01-01T00:00:00Z"}}}
+    File.write!(Path.join(PluginDirectory.path(), ".pinchflat-plugins.json"), Jason.encode!(metadata))
+  end
+
+  defp leftover_files do
+    PluginDirectory.path()
+    |> File.ls!()
+    |> Enum.filter(&(String.starts_with?(&1, [".incoming-", ".metadata-"]) or String.contains?(&1, ".bak-")))
   end
 
   defp public_resolver(ip \\ {93, 184, 216, 34}) do
