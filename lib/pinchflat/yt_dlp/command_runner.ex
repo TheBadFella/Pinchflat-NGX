@@ -5,6 +5,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
   require Logger
 
+  alias Pinchflat.CookieHealth
   alias Pinchflat.Settings
   alias Pinchflat.Utils.CliUtils
   alias Pinchflat.Utils.NumberUtils
@@ -33,7 +34,9 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       file will be created and used. Useful for if you need a reference to the file
       for a file watcher.
     - :use_cookies - if true, will add a cookie file to the command options. Will not
-      attach a cookie file if the user hasn't set one up.
+      attach a cookie file if the user hasn't set one up. Each invocation uses a
+      temporary snapshot so yt-dlp cannot overwrite the shared file.
+    - :cookies_filepath - an isolated cookie snapshot supplied and cleaned up by the caller.
     - :skip_sleep_interval - if true, will not add the sleep interval options to the command.
       Usually only used for commands that would be UI-blocking
     - :expected_exit_codes - additional non-zero exit codes the caller treats as a
@@ -49,54 +52,18 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   """
   @impl YtDlpCommandRunner
   def run(url, action_name, command_opts, output_template, addl_opts \\ []) do
-    Logger.debug("Running yt-dlp command for action: #{action_name}")
+    if Keyword.get(addl_opts, :use_cookies, false) && !Keyword.has_key?(addl_opts, :cookies_filepath) do
+      result =
+        CookieHealth.with_cookie_snapshot(fn path ->
+          do_run(url, action_name, command_opts, output_template, Keyword.put(addl_opts, :cookies_filepath, path))
+        end)
 
-    output_filepath = generate_output_filepath(addl_opts)
-    marker_filepath = stage_marker_filepath(action_name, output_filepath)
-    print_to_file_opts = [{:print_to_file, output_template}, output_filepath] ++ stage_marker_options(marker_filepath)
-
-    user_configured_opts =
-      cookie_file_options(addl_opts) ++
-        rate_limit_options(addl_opts) ++
-        misc_options() ++
-        progress_options(addl_opts)
-
-    # These must stay in exactly this order, hence why I'm giving it its own variable.
-    all_opts = command_opts ++ print_to_file_opts ++ user_configured_opts ++ global_options(addl_opts)
-    formatted_command_opts = [url] ++ CliUtils.parse_options(all_opts)
-    expected_exit_codes = [101] ++ Keyword.get(addl_opts, :expected_exit_codes, [])
-
-    wrap_cmd_opts = [expected_exit_codes: expected_exit_codes]
-
-    maybe_remove(marker_filepath)
-
-    command_result =
-      if action_name == :download && Keyword.has_key?(addl_opts, :progress_handler) do
-        wrap_streaming_cmd(backend_executable(), formatted_command_opts, addl_opts)
-      else
-        CliUtils.wrap_cmd(backend_executable(), formatted_command_opts, [stderr_to_stdout: true], wrap_cmd_opts)
+      case result do
+        {:error, :not_configured} -> do_run(url, action_name, command_opts, output_template, addl_opts)
+        result -> result
       end
-
-    {command_output, status} = command_result
-    PluginDiagnostics.report(command_output, status, action_name)
-
-    case command_result do
-      # yt-dlp exit codes:
-      #   0 = Everything is successful
-      #   100 = yt-dlp must restart for update to complete
-      #   101 = Download cancelled by --max-downloads etc
-      #     2 = Error in user-provided options
-      #     1 = Any other error
-      {command_output, 0} ->
-        read_download_output(output_filepath, marker_filepath, command_output)
-
-      {_, status} when status == 101 ->
-        maybe_remove(marker_filepath)
-        File.read(output_filepath)
-
-      {output, status} ->
-        maybe_remove(marker_filepath)
-        {:error, output, status}
+    else
+      do_run(url, action_name, command_opts, output_template, addl_opts)
     end
   end
 
@@ -146,6 +113,59 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       end
     after
       File.rm(candidate)
+    end
+  end
+
+  defp do_run(url, action_name, command_opts, output_template, addl_opts) do
+    Logger.debug("Running yt-dlp command for action: #{action_name}")
+
+    output_filepath = generate_output_filepath(addl_opts)
+    marker_filepath = stage_marker_filepath(action_name, output_filepath)
+    print_to_file_opts = [{:print_to_file, output_template}, output_filepath] ++ stage_marker_options(marker_filepath)
+
+    user_configured_opts =
+      cookie_file_options(addl_opts) ++
+        rate_limit_options(addl_opts) ++
+        misc_options() ++
+        progress_options(addl_opts)
+
+    # These must stay in exactly this order, hence why I'm giving it its own variable.
+    all_opts = command_opts ++ print_to_file_opts ++ user_configured_opts ++ global_options(addl_opts)
+    formatted_command_opts = [url] ++ CliUtils.parse_options(all_opts)
+    expected_exit_codes = [101] ++ Keyword.get(addl_opts, :expected_exit_codes, [])
+
+    wrap_cmd_opts =
+      [expected_exit_codes: expected_exit_codes] ++ Keyword.take(addl_opts, [:logging_arg_override, :output_transform])
+
+    maybe_remove(marker_filepath)
+
+    command_result =
+      if action_name == :download && Keyword.has_key?(addl_opts, :progress_handler) do
+        wrap_streaming_cmd(backend_executable(), formatted_command_opts, addl_opts)
+      else
+        CliUtils.wrap_cmd(backend_executable(), formatted_command_opts, [stderr_to_stdout: true], wrap_cmd_opts)
+      end
+
+    {command_output, status} = command_result
+    PluginDiagnostics.report(command_output, status, action_name)
+
+    case command_result do
+      # yt-dlp exit codes:
+      #   0 = Everything is successful
+      #   100 = yt-dlp must restart for update to complete
+      #   101 = Download cancelled by --max-downloads etc
+      #     2 = Error in user-provided options
+      #     1 = Any other error
+      {command_output, 0} ->
+        read_download_output(output_filepath, marker_filepath, command_output)
+
+      {_, status} when status == 101 ->
+        maybe_remove(marker_filepath)
+        File.read(output_filepath)
+
+      {output, status} ->
+        maybe_remove(marker_filepath)
+        {:error, output, status}
     end
   end
 
@@ -244,25 +264,10 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   end
 
   defp cookie_file_options(addl_opts) do
-    case Keyword.get(addl_opts, :use_cookies) do
-      true -> add_cookie_file()
-      _ -> []
+    case Keyword.get(addl_opts, :cookies_filepath) do
+      nil -> []
+      path -> [cookies: path]
     end
-  end
-
-  defp add_cookie_file do
-    base_dir = Application.get_env(:pinchflat, :extras_directory)
-    filename_options_map = %{cookies: "cookies.txt"}
-
-    Enum.reduce(filename_options_map, [], fn {opt_name, filename}, acc ->
-      filepath = Path.join(base_dir, filename)
-
-      if FSUtils.exists_and_nonempty?(filepath) do
-        [{opt_name, filepath} | acc]
-      else
-        acc
-      end
-    end)
   end
 
   defp rate_limit_options(addl_opts) do

@@ -118,7 +118,72 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
       assert {:ok, output} = Runner.run(@media_url, :foo, [], "", use_cookies: true)
 
-      assert String.contains?(output, "--cookies #{cookie_file}")
+      assert [_, snapshot] = Regex.run(~r/--cookies (\S+)/, output)
+      refute snapshot == cookie_file
+      refute File.exists?(snapshot)
+      assert File.read!(cookie_file) == "cookie data"
+    end
+
+    test "cookie writeback cannot alter the shared file, including failed and streaming runs", %{
+      cookie_file: cookie_file
+    } do
+      FilesystemUtils.write_p!(cookie_file, "original cookies")
+
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/cookie_writeback.py", fn ->
+        for action <- [:get_media_attributes, :index, :download], failure? <- [false, true] do
+          url = if failure?, do: @media_url <> "&cookie_failure", else: @media_url
+          opts = [use_cookies: true] ++ if action == :download, do: [progress_handler: fn _ -> :ok end], else: []
+          result = Runner.run(url, action, [], "%()j", opts)
+
+          output =
+            if failure? do
+              assert {:error, output, 1} = result
+              output
+            else
+              assert {:ok, output} = result
+              output
+            end
+
+          data = Jason.decode!(output)
+          assert data["cookie_contents"] == "original cookies"
+          assert data["cookie_mode"] == 0o600
+          refute data["cookie_path"] == cookie_file
+          refute File.exists?(data["cookie_path"])
+          assert File.read!(cookie_file) == "original cookies"
+        end
+      end)
+    end
+
+    test "concurrent cookie runs get separate snapshots", %{cookie_file: cookie_file} do
+      FilesystemUtils.write_p!(cookie_file, "original cookies")
+
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/cookie_writeback.py", fn ->
+        results =
+          1..4
+          |> Enum.map(fn _ -> Task.async(fn -> Runner.run(@media_url, :index, [], "%()j", use_cookies: true) end) end)
+          |> Enum.map(&Task.await/1)
+
+        paths =
+          Enum.map(results, fn {:ok, output} ->
+            data = Jason.decode!(output)
+            assert data["cookie_contents"] == "original cookies"
+            refute File.exists?(data["cookie_path"])
+            data["cookie_path"]
+          end)
+
+        assert length(Enum.uniq(paths)) == 4
+        assert File.read!(cookie_file) == "original cookies"
+      end)
+    end
+
+    test "uses the health check's caller-owned snapshot", %{cookie_file: cookie_file} do
+      FilesystemUtils.write_p!(cookie_file, "original cookies")
+
+      Pinchflat.CookieHealth.with_cookie_snapshot(fn path ->
+        assert {:ok, output} = Runner.run(@media_url, :foo, [], "", cookies_filepath: path)
+        assert output =~ "--cookies #{path}"
+        assert File.exists?(path)
+      end)
     end
 
     test "doesn't include cookie options when cookies.txt exists but disabled", %{cookie_file: cookie_file} do
@@ -141,7 +206,7 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     test "doesn't include cookie options when cookies.txt doesn't exist", %{cookie_file: cookie_file} do
       File.rm(cookie_file)
 
-      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "", use_cookies: true)
 
       refute String.contains?(output, "--cookies")
       refute String.contains?(output, cookie_file)

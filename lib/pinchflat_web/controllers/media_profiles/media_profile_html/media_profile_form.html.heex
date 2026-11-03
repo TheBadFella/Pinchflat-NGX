@@ -274,6 +274,16 @@
       help="Optional age-based cleanup for sources with blank retention. Age is counted from download time. Changing this profile or assigning it to a source can make previously downloaded files eligible at the next cleanup. Source 0 disables age-based cleanup; protection still prevents deletion. A publication-date cutoff is separate and can delete files sooner."
     />
 
+    <.input
+      field={f[:watch_window_days]}
+      type="number"
+      label="Watch window (days)"
+      min="0"
+      max="365"
+      help="Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain. Sources use this value unless overridden."
+      html_help={true}
+    />
+
     <section x-data="{ presets: { default: null, media_center: 1, audio: null, archiving: 1 } }">
       <.input
         field={f[:redownload_delay_days]}

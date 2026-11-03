@@ -25,53 +25,347 @@
     <section
       :if={MediaCleanupHelpers.cutoff_cleanup?(@media_item, @media_item.source)}
       id="automatic-deletion"
-      class="mb-6 space-y-3 text-sm text-theme-on-surface"
+      class="theme-status-card theme-status-card-warning mb-6 space-y-3 text-sm"
     >
-      <h3 class="text-lg font-medium">Automatic deletion</h3>
-      <p class="theme-status-warning">
-        {MediaCleanupHelpers.cutoff_cleanup_warning(@media_item, @media_item.source)} Enable Prevent Automatic Deletion to keep it.
-      </p>
-      <.button
-        href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit#media_item_prevent_culling"}
-        variant="outline"
-        size="compact"
-      >
-        Protect this video
-      </.button>
+      <div class="flex items-start gap-3">
+        <.icon name="hero-exclamation-triangle" class="mt-0.5 h-5 w-5 shrink-0" />
+        <div class="min-w-0 flex-1 space-y-3 text-theme-on-surface">
+          <h3 class="font-semibold">Automatic deletion</h3>
+          <p>
+            {MediaCleanupHelpers.cutoff_cleanup_warning(@media_item, @media_item.source)} Enable Prevent Automatic Deletion to keep it.
+          </p>
+          <.button
+            href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/edit#media_item_prevent_culling"}
+            variant="outline"
+            size="compact"
+          >
+            Protect this video
+          </.button>
+        </div>
+      </div>
     </section>
 
     <p
       :if={@media_item.prevent_culling}
       id="automatic-deletion-status"
-      class="theme-status-success mb-3 flex items-start gap-2 text-sm"
+      class="theme-status-card theme-status-card-success mb-6 flex items-start gap-2 text-sm"
     >
-      <.icon name="hero-shield-check" class="mt-0.5 h-4 w-4 shrink-0" /> Protected from automatic deletion
+      <.icon name="hero-shield-check" class="mt-0.5 h-5 w-5 shrink-0" /> Protected from automatic deletion
     </p>
+
+    <section
+      :if={@watch}
+      id="watch-window"
+      role="status"
+      class={[
+        "theme-status-card mb-6 min-w-0 text-sm",
+        if(@watch.hold_reason || @watch.last_error_at || @watch.archive_state == "needs_recovery",
+          do: "theme-status-card-warning",
+          else: "theme-status-card-info"
+        )
+      ]}
+    >
+      <div class="flex items-start gap-3">
+        <.icon
+          name={
+            if @watch.hold_reason || @watch.last_error_at || @watch.archive_state == "needs_recovery",
+              do: "hero-exclamation-triangle",
+              else: "hero-eye"
+          }
+          class="mt-0.5 h-5 w-5 shrink-0"
+        />
+        <div class="min-w-0 flex-1 text-theme-on-surface">
+          <h3 class="font-semibold">Watch window</h3>
+          <p class="mt-1">
+            <%= cond do %>
+              <% @watch.operation_kind == "delete_original" -> %>
+                Saved original cleanup is pending. Replacement and file deletion are blocked until cleanup completes.
+              <% @watch.released_at -> %>
+                Watch protection ended. Your download and retention settings apply. Manual protection settings are unchanged.
+              <% @watch.archive_state == "needs_recovery" -> %>
+                The saved original requires recovery. Automatic replacement is blocked.
+              <% @watch.last_error_at -> %>
+                The latest remote check was inconclusive. Automatic replacement is blocked.
+              <% @watch.hold_reason -> %>
+                <span :if={@watch.confirmed_state in ["suspected", "confirmed"]}>
+                  {watch_hold_explanation(@watch)}
+                </span>
+                <span :if={@watch.confirmed_state not in ["suspected", "confirmed"]}>
+                  Automatic replacement is blocked to protect the original.
+                </span>
+              <% !@watch_policy_enabled -> %>
+                Remote checks are disabled. Existing watch protection remains in place until you end it.
+              <% DateTime.compare(@watch.ends_at, DateTime.utc_now()) != :gt -> %>
+                Remote checks ended on {format_watch_timestamp(@watch.ends_at, "%Y-%m-%d %H:%M")}.
+                Protection for previously detected changes remains in place until you end watch protection.
+              <% true -> %>
+                Remote checks end on {format_watch_timestamp(@watch.ends_at, "%Y-%m-%d %H:%M")}.
+            <% end %>
+          </p>
+          <p
+            :if={@watch.archive_state == "published" && !@watch.released_at && watch_archive_summary(@archive_summary)}
+            class="mt-1 theme-status-success"
+          >
+            Saved original protected.
+          </p>
+        </div>
+      </div>
+      <details id="watch-details" class="mt-1 text-theme-on-surface">
+        <summary class="theme-touch-target min-h-11 cursor-pointer py-3 text-theme-primary underline">
+          Watch details
+        </summary>
+        <div class="grid grid-cols-1 gap-6 border-t border-theme-outline/50 pt-4 sm:grid-cols-2">
+          <section id="watch-remote-state" class="min-w-0">
+            <h4 class="mb-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+              Remote status
+            </h4>
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Remote visibility</dt>
+                <dd class="mt-1">{watch_visibility_label(@watch.observed_visibility || @watch.current_visibility)}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Change status</dt>
+                <dd class="mt-1">{watch_change_label(@watch.confirmed_state)}</dd>
+              </div>
+              <div :if={@watch.confirmed_state == "suspected"}>
+                <dt class="text-xs text-theme-on-surface-muted">Next step</dt>
+                <dd class="mt-1">Awaiting a second matching check</dd>
+              </div>
+              <div :if={@watch.suspected_kind}>
+                <dt class="text-xs text-theme-on-surface-muted">Change type</dt>
+                <dd class="mt-1">{@watch.suspected_kind}</dd>
+              </div>
+              <div :if={@watch.last_success_at}>
+                <dt class="text-xs text-theme-on-surface-muted">Last verified check</dt>
+                <dd class="mt-1">{format_watch_timestamp(@watch.last_success_at, "%Y-%m-%d %H:%M")}</dd>
+              </div>
+              <div :if={@watch.last_error_at}>
+                <dt class="text-xs text-theme-on-surface-muted">Last inconclusive check</dt>
+                <dd class="mt-1">{format_watch_timestamp(@watch.last_error_at, "%Y-%m-%d %H:%M")}</dd>
+              </div>
+            </dl>
+          </section>
+          <section class="min-w-0">
+            <h4 class="mb-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+              Watch period
+            </h4>
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">First completed local download</dt>
+                <dd class="mt-1">{format_watch_timestamp(@watch.started_at, "%Y-%m-%d %H:%M")}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Remote checks end</dt>
+                <dd class="mt-1">{format_watch_timestamp(@watch.ends_at, "%Y-%m-%d %H:%M")}</dd>
+              </div>
+            </dl>
+            <p class="mt-3 text-xs text-theme-on-surface-muted">Redownloading does not extend this window.</p>
+          </section>
+          <section class="min-w-0">
+            <h4 class="mb-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+              Duration comparison
+            </h4>
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Remote duration baseline</dt>
+                <dd class="mt-1">
+                  <%= if @watch.baseline_upstream_duration_seconds do %>
+                    {@watch.baseline_upstream_duration_seconds} seconds
+                  <% else %>
+                    Not observed yet
+                  <% end %>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Current remote duration</dt>
+                <dd class="mt-1 flex items-center gap-2">
+                  <%= if @watch.current_upstream_duration_seconds do %>
+                    <span>{@watch.current_upstream_duration_seconds} seconds</span>
+                    <%= if delta = watch_duration_delta(@watch.current_upstream_duration_seconds, @watch.baseline_upstream_duration_seconds) do %>
+                      <span class="rounded bg-theme-warning/20 px-1.5 py-0.5 text-xs font-medium text-theme-warning">
+                        {delta}
+                      </span>
+                    <% end %>
+                  <% else %>
+                    Not observed yet
+                  <% end %>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Local playback duration</dt>
+                <dd class="mt-1">{@media_item.duration_seconds || "unknown"} seconds</dd>
+              </div>
+            </dl>
+            <p class="mt-3 text-xs text-theme-on-surface-muted">Remote duration is measured before local processing.</p>
+          </section>
+          <section :if={@watch.archive_state == "published"} id="watch-saved-original" class="min-w-0">
+            <h4 class="mb-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+              Saved original
+            </h4>
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs text-theme-on-surface-muted">Status</dt>
+                <dd :if={watch_archive_summary(@archive_summary)} class="mt-1">
+                  Saved original retained separately from the current file
+                </dd>
+                <dd :if={!watch_archive_summary(@archive_summary)} class="mt-1">
+                  Saved original could not be verified. Playback and download are unavailable.
+                </dd>
+              </div>
+              <div :if={watch_archive_summary(@archive_summary)}>
+                <dt class="text-xs text-theme-on-surface-muted">Size</dt>
+                <dd class="mt-1">
+                  <.readable_filesize byte_size={watch_archive_summary(@archive_summary).bytes} />
+                </dd>
+              </div>
+            </dl>
+            <p :if={watch_archive_summary(@archive_summary)} class="mt-3 text-xs text-theme-on-surface-muted">
+              The saved original is retained until you choose to delete it.
+              <%= if DateTime.compare(@watch.ends_at, DateTime.utc_now()) != :gt && is_nil(@watch.hold_reason) do %>
+                The watch has ended; automatic retention may remove the current file.
+              <% end %>
+            </p>
+            <div :if={!@watch.released_at && @archive_files != []} class="mt-3 flex flex-wrap gap-2">
+              <.button
+                href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/original/files/media"}
+                variant="outline"
+                size="compact"
+                target="_blank"
+              >Play saved original</.button>
+              <.button
+                href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/original/files/media?download=true"}
+                variant="outline"
+                size="compact"
+              >Download original</.button>
+            </div>
+            <details :if={!@watch.released_at && Enum.any?(@archive_files, &(&1["role"] != "media"))} class="mt-2">
+              <summary class="theme-touch-target cursor-pointer py-3 text-xs text-theme-primary underline">
+                Associated files
+              </summary>
+              <ul class="space-y-2 text-sm">
+                <li :for={file <- @archive_files} :if={file["role"] != "media"}>
+                  <.link
+                    href={
+                      ~p"/sources/#{@media_item.source_id}/media/#{@media_item}/original/files/#{file["role"]}?download=true"
+                    }
+                    class="theme-touch-target inline-flex items-center text-theme-primary underline"
+                  >{watch_archive_download_label(file["role"])}</.link>
+                </li>
+              </ul>
+            </details>
+          </section>
+          <section
+            :if={@watch_events != []}
+            id="watch-history"
+            class="min-w-0 border-t border-theme-outline/50 pt-4 sm:col-span-2"
+          >
+            <h4 class="mb-3 text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+              Watch history
+            </h4>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[36rem] text-left text-xs">
+                <thead>
+                  <tr class="border-b border-theme-outline/40 text-theme-on-surface-muted">
+                    <th class="pb-2 font-medium">Timestamp</th>
+                    <th class="pb-2 font-medium">Event</th>
+                    <th class="pb-2 font-medium">Change</th>
+                    <th class="pb-2 font-medium">Notification</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-theme-outline/20">
+                  <tr :for={event <- @watch_events} class="py-2">
+                    <td class="whitespace-nowrap py-2.5 font-mono text-theme-on-surface-muted">
+                      {format_watch_timestamp(event.observed_at)}
+                    </td>
+                    <td class="py-2.5 font-medium text-theme-on-surface">
+                      {watch_event_label(event.kind)}
+                    </td>
+                    <td class="py-2.5 text-theme-on-surface">
+                      {watch_event_summary(event)}
+                    </td>
+                    <td class="py-2.5">
+                      <span class={[
+                        "inline-block rounded px-2 py-0.5 text-[11px] font-medium capitalize",
+                        watch_delivery_badge_class(event.delivery_state)
+                      ]}>
+                        {event.delivery_state}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        <div :if={!@watch.released_at} class="mt-4 border-t border-theme-outline/50 pt-4">
+          <.button
+            href={~p"/sources/#{@media_item.source_id}/media/#{@media_item}/original/release"}
+            variant="danger"
+            size="compact"
+          >End watch protection</.button>
+        </div>
+        <details
+          :if={@watch.hold_reason || watch_archive_summary(@archive_summary)}
+          class="mt-4 border-t border-theme-outline/50 pt-1"
+        >
+          <summary class="theme-touch-target min-h-11 cursor-pointer py-3 text-xs text-theme-on-surface-muted underline">
+            Technical details
+          </summary>
+          <dl class="space-y-3 break-words text-xs text-theme-on-surface-muted">
+            <div :if={@watch.hold_reason}>
+              <dt>Replacement hold</dt>
+              <dd class="mt-1">{@watch.hold_reason}</dd>
+            </div>
+            <div :if={watch_archive_summary(@archive_summary)}>
+              <dt>Manifest under the media directory</dt>
+              <dd class="mt-1 break-all font-mono">{watch_archive_summary(@archive_summary).manifest_path}</dd>
+            </div>
+          </dl>
+        </details>
+      </details>
+    </section>
 
     <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
       <:tab_append><.actions_dropdown media_item={@media_item} /></:tab_append>
 
       <:tab title="Media" id="media">
         <div class="flex flex-col gap-10 text-theme-on-surface">
-          <section :if={@media_item.last_error} class="mt-6">
-            <div class="flex items-center gap-1 mb-2">
-              <.icon name="hero-exclamation-circle-solid" class="theme-status-error" />
-              <h3 class="font-bold text-xl">Last Error</h3>
+          <section
+            :if={@media_item.last_error}
+            class="theme-status-card theme-status-card-error mt-6 text-sm"
+            role="alert"
+          >
+            <div class="flex items-start gap-3">
+              <.icon name="hero-exclamation-circle-solid" class="mt-0.5 h-5 w-5 shrink-0" />
+              <div class="min-w-0 flex-1 text-theme-on-surface">
+                <h3 class="font-semibold">Last Error</h3>
+                <details>
+                  <summary class="theme-touch-target min-h-11 cursor-pointer py-3 text-theme-primary underline">
+                    Error details
+                  </summary>
+                  <p class="whitespace-pre-wrap break-words">{@media_item.last_error}</p>
+                </details>
+              </div>
             </div>
-            <span>{@media_item.last_error}</span>
           </section>
 
-          <section :if={@media_item.unavailable_at} class="mt-6">
-            <div class="flex items-center gap-1 mb-2">
-              <.icon name="hero-no-symbol" class="theme-status-warning" />
-              <h3 class="font-bold text-xl">Unavailable</h3>
+          <section
+            :if={@media_item.unavailable_at}
+            class="theme-status-card theme-status-card-warning mt-6 text-sm"
+            role="status"
+          >
+            <div class="flex items-start gap-3">
+              <.icon name="hero-no-symbol" class="mt-0.5 h-5 w-5 shrink-0" />
+              <div class="min-w-0 flex-1 text-theme-on-surface">
+                <h3 class="font-semibold">Unavailable</h3>
+                <p class="mt-1">
+                  This item was skipped because it is permanently unavailable{if @media_item.unavailable_reason,
+                    do: ": #{@media_item.unavailable_reason}",
+                    else: " (members-only, private, or removed)"}.
+                </p>
+              </div>
             </div>
-
-            <span>
-              This item was skipped because it is permanently unavailable{if @media_item.unavailable_reason,
-                do: ": #{@media_item.unavailable_reason}",
-                else: " (members-only, private, or removed)"}.
-            </span>
           </section>
 
           <%= if media_file_exists?(@media_item) do %>

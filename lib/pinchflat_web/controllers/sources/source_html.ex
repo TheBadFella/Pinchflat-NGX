@@ -671,15 +671,15 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     [{"Default", ""} | Pinchflat.Sources.Source.player_client_options()]
   end
 
-  def cutoff_date_presets do
+  def cutoff_date_presets(now \\ DateTime.now!(Application.get_env(:pinchflat, :timezone))) do
     [
-      {"7 days", compute_date_offset(7)},
-      {"14 days", compute_date_offset(14)},
-      {"30 days", compute_date_offset(30)},
-      {"60 days", compute_date_offset(60)},
-      {"90 days", compute_date_offset(90)},
-      {"180 days", compute_date_offset(180)},
-      {"365 days", compute_date_offset(365)}
+      {"7 days", compute_date_offset(now, 7)},
+      {"14 days", compute_date_offset(now, 14)},
+      {"30 days", compute_date_offset(now, 30)},
+      {"60 days", compute_date_offset(now, 60)},
+      {"90 days", compute_date_offset(now, 90)},
+      {"180 days", compute_date_offset(now, 180)},
+      {"365 days", compute_date_offset(now, 365)}
     ]
   end
 
@@ -1135,13 +1135,10 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
-  defp compute_date_offset(days) do
-    timezone = Application.get_env(:pinchflat, :timezone)
-
-    timezone
-    |> DateTime.now!()
-    |> DateTime.add(-days, :day)
+  defp compute_date_offset(now, days) do
+    now
     |> DateTime.to_date()
+    |> Date.add(-days)
     |> Date.to_iso8601()
   end
 end

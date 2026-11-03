@@ -109,6 +109,56 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
   end
 
   describe "download_and_store_thumbnail_for/2 when testing cookie usage" do
+    test "retries authentication failures once with When Needed cookies" do
+      source = source_fixture(%{cookie_behaviour: :when_needed})
+      item = Repo.preload(media_item_fixture(%{source_id: source.id}), :source)
+
+      for message <- ["Sign in to confirm your age", "This video is available to this channel's members"] do
+        expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _ot, extra ->
+          refute extra[:use_cookies]
+          {:error, message, 1}
+        end)
+
+        expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _ot, extra ->
+          assert extra[:use_cookies]
+          {:ok, ""}
+        end)
+
+        assert Helpers.download_and_store_thumbnail_for(item) =~ "/media_items/#{item.id}/thumbnail.jpg"
+      end
+    end
+
+    test "returns nil when authenticated recovery also fails" do
+      source = source_fixture(%{cookie_behaviour: :when_needed})
+      item = Repo.preload(media_item_fixture(%{source_id: source.id}), :source)
+
+      expect(YtDlpRunnerMock, :run, 2, fn _url, :download_thumbnail, _opts, _ot, _extra ->
+        {:error, "Sign in to confirm your age", 1}
+      end)
+
+      assert Helpers.download_and_store_thumbnail_for(item) == nil
+    end
+
+    for {policy, client, message} <- [
+          {:disabled, nil, "Sign in to confirm your age"},
+          {:all_operations, nil, "Sign in to confirm your age"},
+          {:when_needed, :android, "Sign in to confirm your age"},
+          {:when_needed, nil, "HTTP Error 429: Too Many Requests"},
+          {:when_needed, nil, "Network is unreachable"}
+        ] do
+      test "does not retry #{policy}/#{client} on #{message}" do
+        source = source_fixture(%{cookie_behaviour: unquote(policy)})
+        item = Repo.preload(media_item_fixture(%{source_id: source.id}), :source)
+        item = put_in(item.source.player_client, unquote(client))
+
+        expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _ot, _extra ->
+          {:error, unquote(message), 1}
+        end)
+
+        assert Helpers.download_and_store_thumbnail_for(item) == nil
+      end
+    end
+
     test "sets use_cookies if the source uses cookies" do
       expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _ot, addl ->
         assert {:use_cookies, true} in addl
