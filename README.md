@@ -323,7 +323,8 @@ value leaves private addresses blocked.
 
 Each installed plugin has a **Config** button. The editor stores a yt-dlp config file for that
 plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp command. The modal
-shows the package's bundled README when present. The options file starts empty because yt-dlp
+shows the package's bundled README when present. Archive READMEs over 20 KB are not shown, and folder
+READMEs are cut off at 20 KB. The options file starts empty because yt-dlp
 plugins do not expose a config schema; use it for plugin-documented options such as
 `--use-postprocessor` or `--extractor-args`. Options apply globally, so keep them compatible with
 your other plugins. A zip-only install does not install Python dependencies; plugins that import
