@@ -737,6 +737,52 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
   end
 
   describe "index_and_enqueue_download_for_media_items when testing the indexing cutoff date" do
+    test "real yt-dlp stops before the rest of the catalog with download cutoff and retention options" do
+      today = Date.utc_today()
+      index_cutoff = Date.add(today, -30)
+      profile = media_profile_fixture(%{download_source_images: false, retention_period_days: 7})
+
+      for attrs <- [
+            %{download_cutoff_date: nil, retention_period_days: 0},
+            %{download_cutoff_date: index_cutoff, retention_period_days: 0},
+            %{download_cutoff_date: Date.add(today, -10), retention_period_days: 0},
+            %{download_cutoff_date: nil, retention_period_days: nil}
+          ],
+          was_forced <- [false, true] do
+        source =
+          source_fixture(
+            Map.merge(attrs, %{
+              original_url: "https://www.youtube.com/@fixture/videos",
+              index_cutoff_date: index_cutoff,
+              media_profile_id: profile.id,
+              download_media: false
+            })
+          )
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, template, _runner_opts ->
+          filepath = Pinchflat.Utils.FilesystemUtils.generate_metadata_tmpfile(:json)
+          on_exit(fn -> File.rm(filepath) end)
+
+          args =
+            ["test/support/scripts/index_cutoff_fixture.py"] ++
+              Pinchflat.Utils.CliUtils.parse_options(opts) ++ ["--print-to-file", template, filepath]
+
+          {output, 0} = System.cmd("python3", args)
+          assert %{"visited" => ["undated", "recent", "old"], "status" => 101} = Jason.decode!(output)
+
+          File.read(filepath)
+        end)
+
+        items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, was_forced: was_forced)
+        assert Enum.sort(Enum.map(items, & &1.media_id)) == ["recent", "undated"]
+        media_directory = Application.fetch_env!(:pinchflat, :media_directory)
+        assert Enum.all?(items, &(&1.predicted_media_filepath == Path.join(media_directory, "#{&1.title}.mp4")))
+
+        assert Enum.sort(Enum.map(Pinchflat.Repo.preload(source, :media_items).media_items, & &1.media_id)) ==
+                 ["recent", "undated"]
+      end
+    end
+
     test "a channel with an indexing cutoff date passes break filters to every tab" do
       source =
         source_fixture(%{
@@ -748,6 +794,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
         break_filters = for {:break_match_filters, filter} <- opts, do: filter
 
         assert break_filters == ["upload_date >= 20260701", "!upload_date"]
+        assert :break_on_reject in opts
 
         {:ok, source_attributes_return_fixture()}
       end)
@@ -765,6 +812,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         assert Keyword.has_key?(opts, :break_match_filters)
+        assert :break_on_reject in opts
 
         {:ok, source_attributes_return_fixture()}
       end)
@@ -777,6 +825,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute Keyword.has_key?(opts, :break_match_filters)
+        refute :break_on_reject in opts
 
         {:ok, source_attributes_return_fixture()}
       end)
@@ -789,6 +838,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute Keyword.has_key?(opts, :break_match_filters)
+        refute :break_on_reject in opts
 
         {:ok, source_attributes_return_fixture()}
       end)
@@ -806,6 +856,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
         refute Keyword.has_key?(opts, :break_match_filters)
+        refute :break_on_reject in opts
 
         {:ok, source_attributes_return_fixture()}
       end)
