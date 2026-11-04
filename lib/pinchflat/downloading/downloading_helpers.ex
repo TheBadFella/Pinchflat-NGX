@@ -162,7 +162,8 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
 
           MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts)
         else
-          Logger.info("download_enqueue_skipped media_item_id=#{media_item.id} reason=should_not_download")
+          reason = if media_item.source.download_media, do: "media_not_pending", else: "source_downloads_disabled"
+          Logger.info("download_enqueue_skipped media_item_id=#{media_item.id} reason=#{reason}")
           {:error, :should_not_download}
         end
     end

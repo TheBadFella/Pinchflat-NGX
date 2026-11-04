@@ -297,9 +297,54 @@ services:
 ```
 
 Start the opt-in service with `docker compose --profile pot-provider up -d`. Pinchflat-ngx images include the matching bgutil
-yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. See the
+yt-dlp plugin, and Diagnostics reports the provider's bounded `/ping` health check. Installing bgutil again through
+**Settings > yt-dlp > Plugins** is blocked; use `POT_PROVIDER_URL` instead. See the
 [official bgutil provider documentation](https://github.com/Brainicism/bgutil-ytdlp-pot-provider) and
 [yt-dlp's PO-token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) for background and limitations.
+
+### Optional yt-dlp plugins
+
+Pinchflat-ngx loads yt-dlp extractor and postprocessor plugins from `/config/extras/yt-dlp-plugins`.
+Install them from **Settings > yt-dlp > Plugins** by uploading a `.zip`, `.whl`, or `.egg`, or by
+pasting a direct archive URL. You can also place packages in that directory yourself because it
+lives on the persistent `/config` volume.
+
+A package is either a folder containing `yt_dlp_plugins/` (for example
+`my-plugin/yt_dlp_plugins/extractor/my_extractor.py`) or an archive whose root contains
+`yt_dlp_plugins/`. URL-installed plugins record their source URL so **Update** can re-fetch them on
+demand. Pinchflat-ngx does not update plugins in the background. Plugins bundled with
+Pinchflat-ngx, currently the bgutil PO-token plugin, cannot be installed again through this page.
+
+URL installs are limited to public HTTP(S) hosts. The built-in allowlist covers GitHub release
+assets. Add another host with `YT_DLP_PLUGIN_URL_ALLOWLIST=plugins.example.com,cdn.example.com`.
+Private or LAN mirrors also require `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE=true` and an explicitly
+allowlisted host. `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE` accepts `true`, `1`, `yes`, or `on`; any other
+value leaves private addresses blocked.
+
+Each installed plugin has a **Config** button. The editor stores a yt-dlp config file for that
+plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp command. The modal
+shows the package's bundled README when present. Archive READMEs over 20 KB are not shown, and folder
+READMEs are cut off at 20 KB. The options file starts empty because yt-dlp
+plugins do not expose a config schema; use it for plugin-documented options such as
+`--use-postprocessor` or `--extractor-args`. Options apply globally, so keep them compatible with
+your other plugins. A zip-only install does not install Python dependencies; plugins that import
+packages such as `requests`, `pyotp`, or `nodriver` need those packages added to the container
+first.
+
+yt-dlp catches plugin import errors and continues, so Pinchflat-ngx scans command output for them.
+Failures are logged with a `[yt-dlp plugins]` prefix and sent to the configured Apprise server,
+deduplicated for one hour.
+
+> [!WARNING]
+> Plugins run arbitrary Python inside the container and can read files and environment variables
+> available to the app. Install only plugins you trust. If the Settings UI is reachable by
+> untrusted users, configure Basic Auth or SSO before installing plugins. Extractor plugins take
+> priority over built-in extractors, so a plugin can change or break downloads and indexing.
+> yt-dlp's plugin API is unstable and may break across yt-dlp updates.
+
+Plugins are loaded for every yt-dlp operation, including indexing and metadata. Postprocessor
+plugins still need `--use-postprocessor NAME` in the per-plugin config or base yt-dlp config.
+Existing bind mounts at `/etc/yt-dlp/plugins` continue to work.
 
 ### Optional local download staging
 
