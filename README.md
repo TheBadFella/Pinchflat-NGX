@@ -81,6 +81,16 @@
 
 - **Single video sources:** Add one-off YouTube video URLs directly instead of treating everything as a channel or
   playlist.
+- **Browse and URL intake:** Search YouTube, preview a video, paste a URL or subscribe to a channel from
+  [Browse](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Browse-and-URL-intake).
+- **Batch source import:** Preview and import Google Takeout subscription CSVs or text URL lists with one media profile.
+  [Import subscriptions](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Import-subscriptions).
+- **Bulk source management:** Pause or resume downloads, assign profiles and preview publication-date cutoff changes
+  across selected sources. [Bulk actions](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Bulk-source-management).
+- **Import existing downloads:** Register media already on disk without downloading it again.
+  [Import guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Import-existing-downloads).
+- **Bookmarklets and scoped share tokens:** Send a video from a browser or external shortcut using a chosen media profile.
+  [Sharing guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Sharing-and-bookmarklets).
 - **Selective playlist downloads:** Index a playlist, review its items, and choose exactly what to fetch from the
   Selection flow.
 - **Stronger source controls:** See automatic and delayed sources at a glance, with inline and menu actions to start,
@@ -99,6 +109,10 @@
 - **Collapsible sidebar:** Collapse desktop navigation when you want a denser workspace.
 - **Mobile polish:** Source, job, history, profile, and settings views adapt cleanly to smaller screens.
 - **Settings search:** Filter Settings to find notifications, extractor options, cookies, and yt-dlp controls quickly.
+- **Latest across sources:** Filter recently indexed videos by date and group them by source.
+  [Latest guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Latest-across-sources).
+- **Channel Discovery:** Review related channels found from local metadata and subscriptions; scanning is opt-in.
+  [Discovery guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Channel-Discovery).
 - **Interface gallery:** Explore the [Screenshots](#screenshots) gallery below for full captures of the interface.
 
 ### Downloads
@@ -113,6 +127,8 @@
 - **yt-dlp base configuration:** Maintain additional yt-dlp options in Settings using familiar config-file syntax.
 - **Failed-download workflow:** Review failed items on Home and retry one or many from history and source tables.
 - **Cookie-aware forced retries:** Forced retries continue to apply cookies when livestream prechecks are skipped.
+- **Separate Shorts paths:** Choose a different output template for Shorts on a media profile.
+  [Download settings](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Download-settings).
 
 ### Operations
 
@@ -123,12 +139,46 @@
 - **Release status:** See whether Pinchflat-ngx is current and which yt-dlp update policy is active.
 - **Operational diagnostics:** Use structured source, indexing, enqueue, and skipped-download logs alongside responsive
   integrity and maintenance tools.
+- **Media-server refresh:** Notify Plex, Jellyfin or Emby after completed downloads.
+  [Refresh guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Media-server-refresh).
+- **Database backups and transfer:** Create PostgreSQL dumps and review an in-app SQLite-to-PostgreSQL transfer.
+  [Backups](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Backups-and-Restore),
+  [transfer guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/SQLite-to-PostgreSQL-migration).
 - **Repository-friendly Compose layout:** Development Compose files live in `docker/`, while the root `compose.yaml`
   keeps `docker compose up` working for contributors.
 - **Current FFmpeg builds:** Images install FFmpeg from
   [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds) `latest`.
 - **Ongoing fork improvements:** Smaller workflow, interface, and reliability changes continue to land as they prove
   useful in daily self-hosted use.
+
+### New in 2026.11.0
+
+Release **2026.11.0** adds the workflows below. See the [release notes](https://github.com/TheBadFella/Pinchflat-NGX/releases/tag/2026.11.0) for upgrade guidance and contributor thanks.
+
+- **Watch windows and saved originals:** Opt in to duration/visibility checks after new downloads, receive confirmed-change
+  notifications and preserve originals before protected replacements. Checks do not detect every content edit.
+  [Watch guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Watch-downloaded-videos).
+- **Profile retention defaults:** Leave a source's retention blank to inherit its profile, set a positive override or use
+  `0` to disable age-based expiry. Effective-value previews show which rule applies. Changes can affect existing files.
+  [Retention guide](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Retention-and-protection).
+- **Library views:** Find one-off sources in **Individual videos** and browse each source's **Videos** tab in list or grid
+  view. [Individual videos](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Browse-and-URL-intake#find-individually-added-videos),
+  [source views](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Source-settings#source-library-views).
+- **Download and indexing recovery:** Preserve uploaded cookies, retry authenticated thumbnails with **When Needed**,
+  stop repeated retries for confirmed filter skips and report incomplete indexing runs.
+  [Download recovery](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Download-recovery),
+  [indexing health](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Indexing-health).
+- **Source URL support:** Accept YouTube Music/mobile URLs and inspect empty Watch Later playlists when YouTube returns
+  collection metadata. Valid cookies and provider access requirements still apply.
+  [Source setup](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Source-settings#source-type).
+- **Operations:** Record PostgreSQL files above 2 GiB, keep byte totals usable, open PostgreSQL backups from **Config >
+  Backups**, and use Discord embed formatting for notifications.
+  [Large-file migration](https://github.com/TheBadFella/Pinchflat-NGX/wiki/SQLite-to-PostgreSQL-migration#files-larger-than-2-gib),
+  [backups](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Backups-and-Restore),
+  [notifications](https://github.com/TheBadFella/Pinchflat-NGX/wiki/Notifications).
+
+- **yt-dlp plugins:** Install trusted archives or use allowlisted direct URLs, edit per-plugin configuration, and update or remove packages in Settings.
+  [Plugin setup and recovery](https://github.com/TheBadFella/Pinchflat-NGX/wiki/yt-dlp-plugins).
 
 ### Single sign-on
 
@@ -275,7 +325,7 @@ procedure before reusing existing PostgreSQL data. Keep using `latest` for an ex
 you have migrated its data separately.
 
 > [!TIP]
-> The PostgreSQL image supports in-app `pg_dump` backups and retention policies. In the current release, open **Settings > PostgreSQL Backups**; the upcoming update moves the **PostgreSQL Backups** page to **Config > Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
+> The PostgreSQL image supports in-app `pg_dump` backups and retention policies. In **2026.11.0**, open **Config > Backups**. Older 2026.10.20 installations use **Settings > PostgreSQL Backups**. See the [Backups and restore guide](https://github.com/TheBadFella/pinchflat-ngx/wiki/Backups-and-Restore) for backup operations and restore commands.
 
 ### Optional PO-token provider
 
