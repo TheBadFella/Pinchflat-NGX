@@ -9,6 +9,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
   alias Pinchflat.Media
   alias Pinchflat.Settings
   alias Pinchflat.Boot.PreJobStartupTasks
+  alias Pinchflat.YtDlp.PluginDirectory
 
   setup do
     stub(YtDlpRunnerMock, :version, fn -> {:ok, "1"} end)
@@ -144,6 +145,18 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
       PreJobStartupTasks.init(%{})
 
       assert File.exists?(filepath)
+    end
+  end
+
+  describe "ensure_plugin_directory" do
+    test "creates the managed plugin directory" do
+      File.rm_rf!(PluginDirectory.path())
+
+      refute File.exists?(PluginDirectory.path())
+
+      PreJobStartupTasks.init(%{})
+
+      assert File.dir?(PluginDirectory.path())
     end
   end
 

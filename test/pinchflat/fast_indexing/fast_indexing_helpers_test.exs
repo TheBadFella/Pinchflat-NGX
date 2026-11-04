@@ -1,6 +1,7 @@
 defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
   import Pinchflat.TasksFixtures
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
@@ -188,6 +189,24 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
 
       assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
     end
+
+    test "skips upcoming live events without logging an error", %{source: source} do
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      stub(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _ot, _addl ->
+        {:error, "ERROR: [youtube] test_1: This live event will begin in a few moments.\n", 1}
+      end)
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+          end)
+        end)
+
+      refute log =~ "Error creating media item"
+      assert log =~ "Skipping transient live event"
+    end
   end
 
   describe "index_and_kickoff_downloads/1 when testing cookies" do
@@ -276,6 +295,17 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
       Settings.set(youtube_api_key: nil)
 
       assert [%MediaItem{}] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+    end
+  end
+
+  defp with_debug_logs(fun) do
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: previous_level)
     end
   end
 end

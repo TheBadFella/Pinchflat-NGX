@@ -1,8 +1,13 @@
 defmodule Pinchflat.YtDlp.CommandRunnerTest do
   use Pinchflat.DataCase
 
+  import ExUnit.CaptureLog
+  import Pinchflat.PluginFixtures
+
   alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
+  alias Pinchflat.YtDlp.PluginDiagnostics
+  alias Pinchflat.YtDlp.PluginDirectory
 
   alias Pinchflat.YtDlp.CommandRunner, as: Runner
 
@@ -278,6 +283,119 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
     end
   end
 
+  describe "run/4 when testing plugin options" do
+    setup do
+      File.rm_rf(PluginDirectory.path())
+      File.rm_rf(PluginDirectory.config_directory())
+
+      on_exit(fn ->
+        File.rm_rf(PluginDirectory.path())
+        File.rm_rf(PluginDirectory.config_directory())
+      end)
+
+      :ok
+    end
+
+    test "does not add plugin directories when none are installed" do
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      refute String.contains?(output, "--plugin-dirs")
+    end
+
+    test "does not add plugin directories when only hidden files exist" do
+      File.mkdir_p!(PluginDirectory.path())
+      File.write!(Path.join(PluginDirectory.path(), ".keep"), "")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      refute String.contains?(output, "--plugin-dirs")
+    end
+
+    test "adds the managed plugin directory when a folder package exists" do
+      File.mkdir_p!(Path.join([PluginDirectory.path(), "sample", "yt_dlp_plugins"]))
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
+    end
+
+    test "adds the managed plugin directory when an archive exists" do
+      File.mkdir_p!(PluginDirectory.path())
+      File.write!(Path.join(PluginDirectory.path(), "sample.zip"), "zipdata")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
+    end
+
+    test "keeps POT extractor options alongside the managed plugin directory" do
+      original_url = Application.get_env(:pinchflat, :po_token_provider_url)
+      Application.put_env(:pinchflat, :po_token_provider_url, "http://pot-provider:4416")
+      on_exit(fn -> Application.put_env(:pinchflat, :po_token_provider_url, original_url) end)
+
+      File.mkdir_p!(Path.join([PluginDirectory.path(), "sample", "yt_dlp_plugins"]))
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, Pinchflat.YtDlp.PoTokenProvider.options(), "")
+
+      assert String.contains?(output, "--plugin-dirs #{PluginDirectory.path()}")
+      assert String.contains?(output, "--extractor-args youtubepot-bgutilhttp:base_url=http://pot-provider:4416")
+    end
+
+    test "adds plugin config locations" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert :ok = PluginDirectory.save_config("sample.zip", "--force-ipv4\n")
+      assert {:ok, config_path} = PluginDirectory.config_path("sample.zip")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--config-locations #{config_path}")
+    end
+
+    test "does not add plugin config locations when no config exists" do
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      refute String.contains?(output, "--config-locations")
+    end
+  end
+
+  describe "run/4 when testing plugin diagnostics" do
+    test "logs plugin import errors even when the command succeeds" do
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/plugin_import_error.sh", fn ->
+        log =
+          with_debug_logs(fn ->
+            capture_log(fn ->
+              assert {:ok, _output} = Runner.run(@media_url, :foo, [], "")
+            end)
+          end)
+
+        assert log =~ "[yt-dlp plugins]"
+        assert log =~ "yt_dlp_plugins.postprocessor.sample"
+      end)
+    end
+
+    test "completes the command when the plugin failure alert is delivered" do
+      PluginDiagnostics.reset_alert_state()
+      on_exit(&PluginDiagnostics.reset_alert_state/0)
+      Settings.set(apprise_server: "json://localhost")
+      expect(AppriseRunnerMock, :run, 1, fn ["json://localhost"], _opts -> {:ok, ""} end)
+
+      wrap_executable("/app/test/support/scripts/yt-dlp-mocks/plugin_import_error.sh", fn ->
+        log =
+          with_debug_logs(fn ->
+            capture_log(fn ->
+              assert {:ok, _output} = Runner.run(@media_url, :foo, [], "")
+            end)
+          end)
+
+        assert log =~ "Sent plugin failure alert"
+        refute log =~ "Plugin diagnostics failed"
+      end)
+    end
+  end
+
   describe "run/4 when testing misc options" do
     test "includes --restrict-filenames when enabled" do
       Settings.set(restrict_filenames: true)
@@ -350,6 +468,17 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
       assert {:error, _} = Runner.update("stable")
       assert File.read!(executable) == script
+    end
+  end
+
+  defp with_debug_logs(fun) do
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: previous_level)
     end
   end
 

@@ -18,6 +18,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
   alias Pinchflat.FastIndexing.YoutubeApi
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.FastIndexing.FastIndexingWorker
+  alias Pinchflat.YtDlp.TransientMedia
   alias Pinchflat.Downloading.DownloadOptionBuilder
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
@@ -56,6 +57,15 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
           {:ok, media_item} ->
             DownloadingHelpers.kickoff_download_if_pending(media_item, priority: 0)
             media_item
+
+          {:error, message, _status} = err ->
+            if TransientMedia.error?(message) do
+              Logger.info("Skipping transient live event '#{media_id}': #{inspect(message)}")
+              nil
+            else
+              Logger.error("Error creating media item '#{media_id}' from URL: #{inspect(err)}")
+              nil
+            end
 
           err ->
             Logger.error("Error creating media item '#{media_id}' from URL: #{inspect(err)}")

@@ -102,6 +102,18 @@ download_staging_directory =
       nil
   end
 
+yt_dlp_plugin_url_allowlist =
+  case System.get_env("YT_DLP_PLUGIN_URL_ALLOWLIST") do
+    value when is_binary(value) -> value
+    _ -> nil
+  end
+
+yt_dlp_plugin_url_allow_private =
+  case System.get_env("YT_DLP_PLUGIN_URL_ALLOW_PRIVATE") do
+    value when is_binary(value) -> String.downcase(String.trim(value)) in ["1", "true", "yes", "on"]
+    _ -> false
+  end
+
 build_track =
   case System.get_env("BUILD_TRACK") || System.get_env("PINCHFLAT_BUILD_TRACK") do
     value when is_binary(value) ->
@@ -136,7 +148,12 @@ config :pinchflat,
   po_token_provider_url: pot_provider_url,
   # Optional local download staging. An absent or blank path preserves direct
   # writes to the configured media directory.
-  download_staging_directory: download_staging_directory
+  download_staging_directory: download_staging_directory,
+  # Optional plugin archive URL policy. The built-in GitHub hosts always apply;
+  # this list extends them. Private addresses additionally require the explicit
+  # allow-private opt-in.
+  yt_dlp_plugin_url_allowlist: yt_dlp_plugin_url_allowlist,
+  yt_dlp_plugin_url_allow_private: yt_dlp_plugin_url_allow_private
 
 # Optional OIDC/OAuth2 single sign-on. When all three of these are set,
 # the web UI requires logging in via the provider and BASIC_AUTH_* is

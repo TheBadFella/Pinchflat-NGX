@@ -56,7 +56,7 @@ window.settingsPage = () => ({
       'discovery channel suggestions scheduled scan mention mentions metadata featured subscribed',
     database: 'database postgresql postgres migration migrate transfer sqlite setup connection',
     ytdlp:
-      'yt-dlp ytdlp youtube-dl update nightly stable pinned version base config force-ipv4 retries fragment-retries socket-timeout ipv4',
+      'yt-dlp ytdlp youtube-dl update nightly stable pinned version base config force-ipv4 retries fragment-retries socket-timeout ipv4 plugin plugins extension extensions',
     codec: 'codec video audio avc m4a remux preference mp4',
     cookies:
       'cookies cookie netscape cookies.txt members-only age-restricted default cookie behavior',

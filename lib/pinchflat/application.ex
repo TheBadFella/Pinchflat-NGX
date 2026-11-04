@@ -20,6 +20,7 @@ defmodule Pinchflat.Application do
       PinchflatWeb.Telemetry,
       Pinchflat.Repo,
       Pinchflat.Diagnostics.MigrationRepair.TokenStore,
+      Pinchflat.YtDlp.PluginAlertCooldown,
       {Task.Supervisor, name: Pinchflat.LegacyMigration.ScanSupervisor},
       # Must be before startup tasks
       Pinchflat.Boot.PreJobStartupTasks,

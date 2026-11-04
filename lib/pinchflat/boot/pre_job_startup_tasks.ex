@@ -18,6 +18,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
   alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.YtDlp.PluginDirectory
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
 
@@ -53,6 +54,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
       recover_interrupted_watch_replacements()
       revive_stalled_reconcile_jobs()
       create_blank_yt_dlp_files()
+      ensure_plugin_directory()
       create_blank_user_script_file()
       apply_default_settings()
       if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: run_app_init_script()
@@ -154,6 +156,16 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
         FilesystemUtils.write_p!(filepath, "")
       end
     end)
+  end
+
+  defp ensure_plugin_directory do
+    case PluginDirectory.ensure() do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        raise "Could not create plugin directory #{PluginDirectory.path()}: #{inspect(reason)}"
+    end
   end
 
   defp create_blank_user_script_file do

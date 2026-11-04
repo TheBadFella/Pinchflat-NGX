@@ -14,6 +14,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ "Extractor Settings"
       assert html =~ "Cookies"
       assert html =~ "Base yt-dlp Config"
+      assert html =~ "yt-dlp Plugins"
       assert html =~ "PostgreSQL Backups"
       assert html =~ ~s(href="/backups")
       refute html =~ ~s(data-settings-group="backups")

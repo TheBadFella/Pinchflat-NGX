@@ -91,7 +91,7 @@ defmodule PinchflatWeb.CoreComponents do
     ~H"""
     <div
       id={@id}
-      phx-mounted={@show && show_modal(@id)}
+      phx-mounted={@show && reveal_modal(%JS{}, @id)}
       phx-remove={hide_modal(@id)}
       data-cancel={JS.exec(@on_cancel, "phx-remove")}
       class="relative z-99999 hidden"
@@ -114,18 +114,20 @@ defmodule PinchflatWeb.CoreComponents do
               phx-click-away={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
               class="theme-surface-raised relative hidden rounded-m3-lg p-8 sm:p-14 transition"
             >
-              <div :if={@allow_close} class="absolute top-6 right-5">
-                <button
-                  phx-click={JS.exec("data-cancel", to: "##{@id}")}
-                  type="button"
-                  class="-m-3 flex min-h-11 min-w-11 items-center justify-center p-3 opacity-60 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg"
-                  aria-label={gettext("close")}
-                >
-                  <.icon name="hero-x-mark-solid" class="h-5 w-5 text-theme-on-surface" />
-                </button>
-              </div>
+              <.focus_wrap id={"#{@id}-focus-wrap"}>
+                <div :if={@allow_close} class="absolute top-6 right-5">
+                  <button
+                    phx-click={JS.exec("data-cancel", to: "##{@id}")}
+                    type="button"
+                    class="-m-3 flex min-h-11 min-w-11 items-center justify-center p-3 opacity-60 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg"
+                    aria-label={gettext("close")}
+                  >
+                    <.icon name="hero-x-mark-solid" class="h-5 w-5 text-theme-on-surface" />
+                  </button>
+                </div>
 
-              <div id={"#{@id}-content"}>{render_slot(@inner_block)}</div>
+                <div id={"#{@id}-content"}>{render_slot(@inner_block)}</div>
+              </.focus_wrap>
             </div>
           </div>
         </div>
@@ -986,7 +988,16 @@ defmodule PinchflatWeb.CoreComponents do
     )
   end
 
+  # For click handlers: remembers the clicked element so hide_modal/2 can return focus to it.
   def show_modal(js \\ %JS{}, id) when is_binary(id) do
+    js
+    |> JS.push_focus()
+    |> reveal_modal(id)
+  end
+
+  # For server-rendered modals shown on mount. push_focus would record the modal itself there,
+  # so the element that opened it must call JS.push_focus() in its own click handler instead.
+  defp reveal_modal(js, id) do
     js
     |> JS.show(to: "##{id}")
     |> JS.show(
@@ -995,6 +1006,7 @@ defmodule PinchflatWeb.CoreComponents do
     )
     |> show("##{id}-container")
     |> JS.add_class("overflow-hidden", to: "body")
+    |> JS.focus_first(to: "##{id}-content")
   end
 
   def hide_modal(js \\ %JS{}, id) do
@@ -1006,6 +1018,7 @@ defmodule PinchflatWeb.CoreComponents do
     |> hide("##{id}-container")
     |> JS.hide(to: "##{id}", transition: {"block", "block", "hidden"})
     |> JS.remove_class("overflow-hidden", to: "body")
+    |> JS.pop_focus()
   end
 
   @doc """
