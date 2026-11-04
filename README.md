@@ -372,7 +372,7 @@ allowlisted host. `YT_DLP_PLUGIN_URL_ALLOW_PRIVATE` accepts `true`, `1`, `yes`, 
 value leaves private addresses blocked.
 
 Each installed plugin has a **Config** button. The editor stores a yt-dlp config file for that
-plugin, and Pinchflat-ngx loads it with `--config-locations` for every yt-dlp command. The modal
+plugin, and Pinchflat-ngx loads it with `--config-locations` through its main yt-dlp command runner. The modal
 shows the package's bundled README when present. Archive READMEs over 20 KB are not shown, and folder
 READMEs are cut off at 20 KB. The options file starts empty because yt-dlp
 plugins do not expose a config schema; use it for plugin-documented options such as
@@ -392,7 +392,7 @@ deduplicated for one hour.
 > priority over built-in extractors, so a plugin can change or break downloads and indexing.
 > yt-dlp's plugin API is unstable and may break across yt-dlp updates.
 
-Plugins are loaded for every yt-dlp operation, including indexing and metadata. Postprocessor
+Managed plugins are loaded for indexing, metadata and downloads through the main command runner. Browse search uses a separate command and does not load these plugins or their configs. Postprocessor
 plugins still need `--use-postprocessor NAME` in the per-plugin config or base yt-dlp config.
 Existing bind mounts at `/etc/yt-dlp/plugins` continue to work.
 
