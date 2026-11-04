@@ -475,6 +475,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     formatted_date = Calendar.strftime(cutoff_date, "%Y%m%d")
 
     [
+      # Date-range rejection happens before match filters, so it must also stop the crawl.
+      :break_on_reject,
       break_match_filters: "upload_date >= #{formatted_date}",
       break_match_filters: "!upload_date"
     ]
