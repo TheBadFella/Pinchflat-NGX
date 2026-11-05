@@ -15,4 +15,6 @@
 
 This directory keeps **screenshots and assets** (`docs/assets/`), **maintainer drafts** (issue comment drafts, migration checklists), and **redirect stubs** for old repo paths. Release notes are published on [GitHub Releases](https://github.com/TheBadFella/Pinchflat-NGX/releases) only.
 
+Maintainer release workflow: [release-runbook.md](release-runbook.md). Release note style: [.github/RELEASE_NOTES.md](../.github/RELEASE_NOTES.md).
+
 Development conventions: [AGENTS.md](../AGENTS.md) at the repository root.
