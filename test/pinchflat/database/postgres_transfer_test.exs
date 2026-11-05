@@ -382,12 +382,71 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert Repo.aggregate(Source, :count) == 0
   end
 
-  test "refuses fractional timestamps that cannot be preserved in the target schema", ctx do
-    edit_source(ctx.path, "UPDATE media_items SET details_updated_at = '2026-10-07T01:02:03.123456'")
-    assert {:error, :validation_mismatch} = Transfer.run(ctx.path, ctx.directory)
-    assert Repo.aggregate(Source, :count) == 0
-    assert Repo.aggregate(MediaItem, :count) == 0
-    assert Migration.record().status == "running"
+  test "normalizes second-precision columns and preserves fractional job timestamps", ctx do
+    edit_source(ctx.path, """
+    UPDATE media_items SET details_updated_at = '2026-10-07T01:02:03.987654',
+      media_downloaded_at = '2026-01-02 03:04:05.987654';
+    UPDATE oban_jobs SET inserted_at = '2026-10-07T01:02:03.987654Z';
+    """)
+
+    assert {:ok, _} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.query!("SELECT details_updated_at FROM media_items").rows == [[~N[2026-10-07 01:02:03]]]
+    assert Repo.get!(MediaItem, ctx.item.id).media_downloaded_at == ~U[2026-01-02 03:04:05Z]
+    assert Repo.get!(Oban.Job, ctx.interrupted_job.id).inserted_at == ~U[2026-10-07 01:02:03.987654Z]
+    assert Migration.record().status == "pending_review"
+  end
+
+  for {mismatch, action, target_count} <- [
+        {"hash", "NEW.title := 'changed'; RETURN NEW;", 1},
+        {"count", "RETURN NULL;", 0}
+      ] do
+    test "persists safe #{mismatch} mismatch diagnostics and rolls back the library", ctx do
+      Repo.query!(
+        "CREATE FUNCTION change_transfer_lab() RETURNS trigger AS $$ BEGIN " <>
+          unquote(action) <> " END; $$ LANGUAGE plpgsql"
+      )
+
+      Repo.query!(
+        "CREATE TRIGGER change_transfer_lab BEFORE INSERT ON media_items FOR EACH ROW EXECUTE FUNCTION change_transfer_lab()"
+      )
+
+      previous =
+        for {key, value} <- [sqlite_migration_source: ctx.path, postgres_backup_directory: ctx.directory] do
+          old = Application.get_env(:pinchflat, key)
+          Application.put_env(:pinchflat, key, value)
+          {key, old}
+        end
+
+      previous_level = Logger.level()
+      Logger.configure(level: :error)
+
+      on_exit(fn ->
+        Logger.configure(level: previous_level)
+
+        Enum.each(previous, fn
+          {key, nil} -> Application.delete_env(:pinchflat, key)
+          {key, value} -> Application.put_env(:pinchflat, key, value)
+        end)
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> Migration.perform() end)
+      assert log =~ "table=media_items source_count=1 target_count=#{unquote(target_count)}"
+      assert log =~ "mismatch=#{unquote(mismatch)}"
+      refute log =~ ctx.item.title
+      assert Migration.record().status == "failed"
+
+      assert Migration.record().report == %{
+               "error" => "validation_mismatch",
+               "table" => "media_items",
+               "source_count" => 1,
+               "target_count" => unquote(target_count),
+               "mismatch_type" => unquote(mismatch),
+               "backup_directory" => ctx.directory
+             }
+
+      assert Repo.aggregate(Source, :count) == 0
+      assert Repo.aggregate(MediaItem, :count) == 0
+    end
   end
 
   test "rejects a populated target without deleting its library", ctx do
@@ -447,7 +506,9 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         values =
           Enum.zip(names, original)
           |> Enum.map(fn
-            {"id", value} -> value + index
+            {"id", _value} when index == 1 -> -7
+            {"id", _value} when index == 2 -> 0
+            {"id", value} -> value + index * 7
             {"media_id", _} -> "chunk-#{index}"
             {"uuid", _} -> Ecto.UUID.generate()
             {_field, value} -> value
@@ -463,9 +524,25 @@ defmodule Pinchflat.Database.PostgresTransferTest do
       Sqlite3.close(db)
     end
 
-    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
-    assert report["tables"]["media_items"]["rows"] == 502
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+          assert report["tables"]["media_items"]["rows"] == 502
+        end)
+
+      assert log =~ "FROM media_items WHERE id > $1 ORDER BY id LIMIT 500"
+      refute log =~ "OFFSET"
+    after
+      Logger.configure(level: previous_level)
+    end
+
     assert Repo.aggregate(MediaItem, :count) == 502
+    assert Repo.get!(MediaItem, -7)
+    assert Repo.get!(MediaItem, 0)
   end
 
   test "copied notification credentials are not written to SQL logs", ctx do
