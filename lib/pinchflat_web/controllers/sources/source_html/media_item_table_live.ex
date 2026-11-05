@@ -1,5 +1,6 @@
 defmodule PinchflatWeb.Sources.MediaItemTableLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
   use Pinchflat.Media.MediaQuery
   import Ecto.Query, warn: false
 

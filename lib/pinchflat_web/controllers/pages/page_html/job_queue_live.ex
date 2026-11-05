@@ -5,6 +5,7 @@ defmodule Pinchflat.Pages.JobQueueLive do
   Shows jobs grouped by state with the ability to see details and cancel jobs.
   """
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
   use Pinchflat.Tasks.TasksQuery
 
   import Ecto.Query, warn: false

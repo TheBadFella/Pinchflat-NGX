@@ -306,8 +306,8 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def tooltip(assigns) do
     ~H"""
-    <div class="group relative inline-flex cursor-pointer overflow-visible align-middle">
-      <div>{render_slot(@inner_block)}</div>
+    <div class="group relative inline-flex cursor-pointer items-center justify-center overflow-visible align-middle">
+      <div class="inline-flex min-w-0 items-center justify-center">{render_slot(@inner_block)}</div>
 
       <div
         :if={@tooltip}

@@ -1,5 +1,6 @@
 defmodule Pinchflat.Settings.CookieFileLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   alias Pinchflat.CookieHealth
   alias Pinchflat.CookieHealth.HealthCheckWorker
