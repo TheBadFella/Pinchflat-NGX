@@ -277,4 +277,58 @@ defmodule PinchflatWeb.PlugsTest do
       assert conn.resp_body == "Unauthorized"
     end
   end
+
+  describe "PostgresMigrationGate" do
+    setup do
+      previous = Application.get_env(:pinchflat, :postgres_migration_boot_held)
+      Application.delete_env(:pinchflat, :postgres_migration_boot_held)
+
+      on_exit(fn ->
+        if is_nil(previous),
+          do: Application.delete_env(:pinchflat, :postgres_migration_boot_held),
+          else: Application.put_env(:pinchflat, :postgres_migration_boot_held, previous)
+      end)
+
+      :ok
+    end
+
+    test "redirects ordinary browser paths while a transfer is pending" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+
+      conn = Plugs.PostgresMigrationGate.call(%{build_conn() | request_path: "/sources"}, [])
+
+      assert conn.halted
+      assert redirected_to(conn) == "/postgres_migration"
+    end
+
+    test "allows the migration page and actions while pending" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+
+      for path <- ["/postgres_migration", "/postgres_migration/start", "/postgres_migration/complete"] do
+        conn = Plugs.PostgresMigrationGate.call(%{build_conn() | request_path: path}, [])
+        refute conn.halted, "#{path} must stay reachable"
+      end
+    end
+
+    test "passes through when no transfer is pending" do
+      conn = Plugs.PostgresMigrationGate.call(%{build_conn() | request_path: "/sources"}, [])
+      refute conn.halted
+    end
+
+    test "halts a connected LiveView mount and redirects to the migration page" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+      socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+
+      assert {:halt, halted} = Plugs.PostgresMigrationGate.on_mount(:default, %{}, %{}, socket)
+      assert {:redirect, %{to: "/postgres_migration"}} = halted.redirected
+    end
+
+    test "continues a disconnected mount even while a transfer is pending" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+      socket = %Phoenix.LiveView.Socket{}
+
+      assert {:cont, %Phoenix.LiveView.Socket{}} =
+               Plugs.PostgresMigrationGate.on_mount(:default, %{}, %{}, socket)
+    end
+  end
 end

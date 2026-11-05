@@ -1,5 +1,6 @@
 defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
   use Pinchflat.Media.MediaQuery
   use Pinchflat.Sources.SourcesQuery
 

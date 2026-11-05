@@ -1,6 +1,7 @@
 defmodule PinchflatWeb.Sources.ImportLive do
   @moduledoc "Reviews bounded text or Takeout CSV imports and processes one source at a time with visible progress."
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   import Ecto.Query, warn: false
 
