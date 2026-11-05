@@ -1,5 +1,6 @@
 defmodule Pinchflat.Settings.ReconcilePlanLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   import Ecto.Query, warn: false
 
