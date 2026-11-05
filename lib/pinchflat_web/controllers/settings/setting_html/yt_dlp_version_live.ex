@@ -1,5 +1,6 @@
 defmodule Pinchflat.Settings.YtDlpVersionLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   alias PinchflatWeb.Settings.SettingHTML
   alias Pinchflat.YtDlp.ReleaseLookup

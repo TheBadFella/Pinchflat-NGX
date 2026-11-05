@@ -238,4 +238,175 @@ defmodule PinchflatWeb.PageControllerTest do
       assert get(recycle(conn), ~p"/api/stats").status == 200
     end
   end
+
+  describe "PostgreSQL transfer review gate" do
+    setup do
+      keys = [
+        :postgres_migration_boot_held,
+        :sqlite_migration_source,
+        :basic_auth_username,
+        :basic_auth_password,
+        :oidc
+      ]
+
+      previous = Map.new(keys, &{&1, Application.get_env(:pinchflat, &1)})
+      initial_onboarding = Settings.get!(:onboarding)
+      Enum.each(keys, &Application.delete_env(:pinchflat, &1))
+
+      on_exit(fn ->
+        Settings.set(onboarding: initial_onboarding)
+
+        Enum.each(previous, fn
+          {key, nil} -> Application.delete_env(:pinchflat, key)
+          {key, value} -> Application.put_env(:pinchflat, key, value)
+        end)
+      end)
+
+      :ok
+    end
+
+    test "redirects the root before onboarding when a transfer is pending", %{conn: conn} do
+      Settings.set(onboarding: false)
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+      initial_profiles = Repo.aggregate(Pinchflat.Profiles.MediaProfile, :count)
+      initial_sources = Repo.aggregate(Pinchflat.Sources.Source, :count)
+
+      conn = get(conn, ~p"/")
+      assert redirected_to(conn) == ~p"/postgres_migration"
+
+      page = conn |> recycle() |> get(~p"/postgres_migration") |> html_response(200)
+      assert page =~ "PostgreSQL Migration"
+      refute page =~ "Welcome to Pinchflat"
+
+      refute Settings.get!(:onboarding)
+      assert Repo.aggregate(Pinchflat.Profiles.MediaProfile, :count) == initial_profiles
+      assert Repo.aggregate(Pinchflat.Sources.Source, :count) == initial_sources
+    end
+
+    test "blocks direct onboarding pages and query-parameter bypasses" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+
+      for path <- [~p"/sources/new", ~p"/media_profiles/new", ~p"/discovery", "/?onboarding=0", "/?onboarding=1"] do
+        assert get(build_conn(), path) |> redirected_to() == ~p"/postgres_migration"
+      end
+    end
+
+    test "blocks direct library creation while a transfer is pending" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+      initial_profiles = Repo.aggregate(Pinchflat.Profiles.MediaProfile, :count)
+      initial_sources = Repo.aggregate(Pinchflat.Sources.Source, :count)
+
+      profile_conn =
+        post(build_conn(), ~p"/media_profiles", %{
+          "media_profile" => %{"name" => "Blocked target", "output_path_template" => "{{id}}.{{ext}}"}
+        })
+
+      assert redirected_to(profile_conn) == ~p"/postgres_migration"
+      assert Repo.aggregate(Pinchflat.Profiles.MediaProfile, :count) == initial_profiles
+
+      profile = Pinchflat.ProfilesFixtures.media_profile_fixture()
+
+      source_conn =
+        post(build_conn(), ~p"/sources", %{
+          "source" => %{
+            "media_profile_id" => profile.id,
+            "collection_type" => "channel",
+            "original_url" => "https://www.youtube.com/@pinchflattest"
+          }
+        })
+
+      assert redirected_to(source_conn) == ~p"/postgres_migration"
+      assert Repo.aggregate(Pinchflat.Sources.Source, :count) == initial_sources
+    end
+
+    test "a configured SQLite source alone does not activate PostgreSQL routing", %{conn: conn} do
+      Application.put_env(:pinchflat, :sqlite_migration_source, "/tmp/does-not-exist.db")
+      Settings.set(onboarding: false)
+
+      assert html_response(get(conn, ~p"/"), 200) =~ "MENU"
+      assert get(build_conn(), ~p"/sources").status == 200
+    end
+
+    test "authentication is checked before the transfer gate" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+      Application.put_env(:pinchflat, :basic_auth_username, "operator")
+      Application.put_env(:pinchflat, :basic_auth_password, "fixture-password")
+
+      assert get(build_conn(), ~p"/").status == 401
+
+      authorized =
+        build_conn()
+        |> put_req_header("authorization", Plug.BasicAuth.encode_basic_auth("operator", "fixture-password"))
+        |> get(~p"/")
+
+      assert redirected_to(authorized) == ~p"/postgres_migration"
+    end
+
+    test "SSO login stays reachable and precedes migration review" do
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+
+      Application.put_env(:pinchflat, :oidc,
+        issuer: "https://identity.example.test",
+        client_id: "fixture",
+        client_secret: "fixture"
+      )
+
+      login = get(build_conn(), ~p"/auth/login")
+      assert login.status in [200, 302]
+      if login.status == 302, do: refute(redirected_to(login) == ~p"/postgres_migration")
+
+      assert redirected_to(get(build_conn(), ~p"/")) == "/auth/login?redirect_to=%2F"
+
+      session = Plug.Test.init_test_session(build_conn(), %{PinchflatWeb.OIDC.session_key() => %{sub: "fixture"}})
+      assert redirected_to(get(session, ~p"/")) == ~p"/postgres_migration"
+    end
+  end
+
+  describe "when legacy and PostgreSQL reviews are both pending" do
+    setup do
+      test_state_file = Path.join(System.tmp_dir!(), "test_postgres_gate_#{System.unique_integer([:positive])}.json")
+      Application.put_env(:pinchflat, :legacy_migration_state_path, test_state_file)
+
+      File.write!(
+        test_state_file,
+        Jason.encode!(%{
+          provenance: "legacy_pinchflat",
+          status: "pending_review",
+          detected_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+          original_max_version: 20_250_317_213_740,
+          source_count: 3
+        })
+      )
+
+      Pinchflat.LegacyMigrationFixtures.pending_migration_fixture()
+      LegacyMigration.verify_library()
+      Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+
+      on_exit(fn ->
+        for pid <- Task.Supervisor.children(Pinchflat.LegacyMigration.ScanSupervisor),
+            do: Task.Supervisor.terminate_child(Pinchflat.LegacyMigration.ScanSupervisor, pid)
+
+        Application.delete_env(:pinchflat, :legacy_migration_state_path)
+        Application.delete_env(:pinchflat, :postgres_migration_boot_held)
+        File.rm(test_state_file)
+      end)
+
+      :ok
+    end
+
+    test "PostgreSQL review takes priority and migration URLs do not loop" do
+      assert LegacyMigration.legacy_migration_pending?()
+
+      assert redirected_to(get(build_conn(), ~p"/")) == ~p"/postgres_migration"
+      assert redirected_to(get(build_conn(), ~p"/discovery")) == ~p"/postgres_migration"
+
+      page = get(build_conn(), ~p"/postgres_migration") |> html_response(200)
+      assert page =~ "PostgreSQL Migration"
+      refute page =~ "Migration Review"
+
+      response = post(build_conn(), ~p"/postgres_migration/start")
+      assert redirected_to(response) == ~p"/postgres_migration"
+      assert Phoenix.Flash.get(response.assigns.flash, :error) =~ "Stop the old instance"
+    end
+  end
 end

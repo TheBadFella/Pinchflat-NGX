@@ -1,5 +1,6 @@
 defmodule Pinchflat.Pages.JobTableLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
   import Ecto.Query, warn: false
 
   alias Pinchflat.Repo

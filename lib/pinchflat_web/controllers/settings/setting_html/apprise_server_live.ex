@@ -1,5 +1,6 @@
 defmodule Pinchflat.Settings.AppriseServerLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   alias PinchflatWeb.Settings.SettingHTML
 

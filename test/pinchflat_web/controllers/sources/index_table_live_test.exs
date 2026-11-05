@@ -480,4 +480,31 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       "results_per_page" => 10
     }
   end
+
+  describe "source action controls" do
+    test "start, pause and stop forms keep their destinations and accessible labels", %{conn: conn} do
+      source = source_fixture(custom_name: "Action source")
+
+      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      for action <- ["start_all", "pause_all", "stop_all"] do
+        assert html =~ ~s(action="/sources/#{source.id}/#{action}")
+      end
+
+      assert html =~ ~s(aria-label="Start all")
+      assert html =~ ~s(aria-label="Pause all")
+      assert html =~ ~s(aria-label="Stop all")
+      assert html =~ ~s(name="return_to" value="/sources")
+    end
+
+    test "keeps the individual-video return path on the action forms", %{conn: conn} do
+      source = source_fixture(custom_name: "Video source", collection_type: :video)
+      session = Map.merge(create_session(), %{"source_type" => "videos"})
+
+      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert html =~ ~s(action="/sources/#{source.id}/start_all")
+      assert html =~ ~s(name="return_to" value="/sources?type=videos")
+    end
+  end
 end

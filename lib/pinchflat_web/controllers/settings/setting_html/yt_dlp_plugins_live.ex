@@ -4,6 +4,7 @@ defmodule Pinchflat.Settings.YtDlpPluginsLive do
   """
 
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   alias Pinchflat.HTTP.SafeFetch
   alias Pinchflat.YtDlp.PluginDirectory

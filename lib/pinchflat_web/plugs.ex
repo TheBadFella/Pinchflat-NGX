@@ -158,7 +158,8 @@ defmodule PinchflatWeb.Plugs do
   to the migration review screen until the user confirms the review.
   """
   def require_migration_review(conn, _opts) do
-    if Pinchflat.LegacyMigration.legacy_migration_pending?() do
+    if Pinchflat.LegacyMigration.legacy_migration_pending?() and
+         not Pinchflat.Database.PostgresMigration.pending?() do
       case conn.request_path do
         "/" ->
           conn
