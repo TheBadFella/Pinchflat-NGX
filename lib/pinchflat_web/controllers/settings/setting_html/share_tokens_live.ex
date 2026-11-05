@@ -1,5 +1,6 @@
 defmodule Pinchflat.Settings.ShareTokensLive do
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   alias Pinchflat.Profiles
   alias Pinchflat.ShareTokens

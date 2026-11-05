@@ -50,3 +50,48 @@ parallel test runs.
 This is an explicit browser check alongside ExUnit. It is not silently run by
 `mix test` or the existing CI jobs, and it does not prove PostgreSQL behavior,
 packaged release behavior or live-provider downloads.
+
+## Source actions and Paste URL regression
+
+This checks the source play/pause/stop controls and the Browse YouTube Paste URL
+placement. It asserts icon-box centres within 2 CSS pixels of the button content
+box, alignment with the neighbouring edit/delete controls, 44x44 targets under
+touch emulation, no horizontal overflow, and that opening Paste URL from its new
+search-row location preserves the query/profile and restores focus on close. It
+paints both screens at 320, 390, 768 and 1440 CSS pixels.
+
+The fixture refuses a non-test environment or a database that already contains
+sources or profiles, and it refuses to inspect an unrelated library by checking its own
+fixture names first. It uses manual Oban testing mode and no live downloads.
+
+Start a fresh container with the source mounted for the test fixture (the image
+excludes `/test`):
+
+```bash
+docker run --rm --name pinchflat-source-actions-ui \
+  -p 127.0.0.1:4003:4003 -e MIX_ENV=test -e SOURCE_ACTIONS_UI_FIXTURE=1 \
+  -e TEST_DATABASE_PATH=/tmp/pinchflat-source-actions-ui.db \
+  -v "$PWD:/app" -v pinchflat_source_actions_deps:/app/deps -v pinchflat_source_actions_build:/app/_build \
+  --entrypoint sh pinchyt-phx -lc \
+  'mix ecto.create --quiet && mix ecto.migrate --quiet && mix assets.build && mix run --no-start test/support/source_actions_ui_fixture.exs'
+```
+
+Wait for `SOURCE_ACTIONS_UI_READY`, then copy the manifest and run the test with
+an installed Chrome DevTools AXI CLI:
+
+```bash
+docker cp pinchflat-source-actions-ui:/tmp/pinchflat-source-actions-ui.json /tmp/source-actions-ui.json
+export SOURCE_ACTIONS_UI_BASE_URL=http://127.0.0.1:4003
+export SOURCE_ACTIONS_UI_FIXTURES=/tmp/source-actions-ui.json
+export CHROME_DEVTOOLS_AXI_SESSION=source-actions-regression
+export SOURCE_ACTIONS_UI_BROWSER_CLI=/home/badfellawsl/.local/bin/browser-axi
+browser-axi run < test/browser/source_actions_browse.mjs
+browser-axi stop
+docker stop pinchflat-source-actions-ui
+```
+
+Set `SOURCE_ACTIONS_UI_ARTIFACTS` to save screenshots and
+`SOURCE_ACTIONS_UI_BROWSER_CLI` to use a local wrapper. Use one named browser
+session for the run and stop it and the container after a failed assertion too.
+This is an explicit browser check; it is not run by `mix test` or CI and does not
+prove PostgreSQL or packaged release behavior.

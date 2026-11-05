@@ -28,7 +28,9 @@ if System.get_env("DATABASE_ADAPTER", "sqlite") == "postgres" do
     pool: Ecto.Adapters.SQL.Sandbox
 else
   config :pinchflat, Pinchflat.Repo,
-    database: Path.expand("../priv/repo/pinchflat_test.db", Path.dirname(__ENV__.file)),
+    database:
+      System.get_env("TEST_DATABASE_PATH") ||
+        Path.expand("../priv/repo/pinchflat_test.db", Path.dirname(__ENV__.file)),
     pool: Ecto.Adapters.SQL.Sandbox
 end
 
