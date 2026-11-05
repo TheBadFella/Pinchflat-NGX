@@ -22,19 +22,8 @@
       </p>
     </div>
 
-    <%!-- Header Actions: Paste URL & Profile Selector --%>
+    <%!-- Header Actions: Profile Selector --%>
     <div class="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto sm:max-w-sm">
-      <.button
-        variant="secondary"
-        type="button"
-        id="open-paste-url-button"
-        phx-click={JS.push_focus() |> JS.push("open_paste_url_modal")}
-        class="gap-1.5"
-      >
-        <.icon name="hero-arrow-down-tray" class="h-4 w-4 text-theme-primary" />
-        <span>Paste URL</span>
-      </.button>
-
       <div class="flex w-full min-w-0 items-center gap-2">
         <label for="profile_selector" class="text-sm font-medium text-theme-on-surface-muted whitespace-nowrap">
           Media Profile:
@@ -77,7 +66,12 @@
 
   <%!-- Search & Controls Card --%>
   <div class="theme-surface mb-8 p-4 sm:p-6">
-    <form id="browse_search_form" phx-submit="search" class="flex flex-col gap-4">
+    <form
+      id="browse_search_form"
+      phx-submit="search"
+      phx-change="update_draft_query"
+      class="flex flex-col gap-4"
+    >
       <input type="hidden" name="tab" value={@active_tab} />
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
         <%!-- Query Input --%>
@@ -87,7 +81,7 @@
             id="browse_query"
             aria-label="Search YouTube"
             name="query"
-            value={@query}
+            value={@draft_query}
             placeholder="Search YouTube videos or channels..."
             maxlength="200"
             disabled={@loading?}
@@ -95,8 +89,8 @@
           />
         </div>
 
-        <%!-- Submit & Cancel Buttons --%>
-        <div class="flex items-center gap-2">
+        <%!-- Submit, Paste URL & Cancel Buttons --%>
+        <div class="flex flex-wrap items-center gap-2">
           <.button
             variant="primary"
             type="submit"
@@ -107,6 +101,17 @@
             <% else %>
               <.icon name="hero-magnifying-glass" class="mr-2 h-4 w-4" /> Search
             <% end %>
+          </.button>
+
+          <.button
+            variant="secondary"
+            type="button"
+            id="open-paste-url-button"
+            phx-click={JS.push_focus() |> JS.push("open_paste_url_modal")}
+            class="gap-1.5"
+          >
+            <.icon name="hero-arrow-down-tray" class="h-4 w-4 text-theme-primary" />
+            <span>Paste URL</span>
           </.button>
 
           <%= if @loading? do %>

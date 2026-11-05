@@ -104,4 +104,30 @@ defmodule Pinchflat.Settings.ShareTokensLiveTest do
       assert_raise Ecto.NoResultsError, fn -> ShareTokens.get_token!(token.id) end
     end
   end
+
+  test "a previously issued session cannot connect during a PostgreSQL transfer", %{
+    conn: conn
+  } do
+    previous = Application.get_env(:pinchflat, :postgres_migration_boot_held)
+
+    static =
+      conn
+      |> put_private(:phoenix_endpoint, PinchflatWeb.Endpoint)
+      |> Plug.Test.init_test_session(%{})
+      |> Phoenix.LiveView.Router.fetch_live_flash([])
+      |> Phoenix.LiveView.Controller.live_render(Pinchflat.Settings.ShareTokensLive)
+
+    Application.put_env(:pinchflat, :postgres_migration_boot_held, true)
+
+    on_exit(fn ->
+      if is_nil(previous),
+        do: Application.delete_env(:pinchflat, :postgres_migration_boot_held),
+        else: Application.put_env(:pinchflat, :postgres_migration_boot_held, previous)
+    end)
+
+    assert {:error, {:redirect, %{to: "/postgres_migration"}}} =
+             live(static)
+
+    assert ShareTokens.list_tokens() == []
+  end
 end

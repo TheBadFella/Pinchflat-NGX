@@ -4,6 +4,7 @@ defmodule Pinchflat.Settings.MediaServerTestLive do
   """
 
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
   alias Pinchflat.MediaServers
 
   @impl true
