@@ -1,0 +1,91 @@
+name: Publish stable release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      confirm_active:
+        description: 'Explicitly run when RELEASE_PUBLISH_ENABLED is false'
+        required: false
+        type: boolean
+        default: false
+      sha:
+        description: 'Merge commit SHA to publish (defaults to the current master head)'
+        required: false
+        type: string
+      checks_wait_seconds:
+        description: 'Seconds to wait for required checks on the merge commit'
+        required: false
+        type: string
+        default: '2400'
+      publisher_wait_seconds:
+        description: 'Seconds to wait for the stable publisher'
+        required: false
+        type: string
+        default: '3600'
+      dry_run:
+        description: 'Validate only; do not tag, release, or dispatch the publisher'
+        required: false
+        type: boolean
+        default: false
+
+# A release is immutable. Queue reruns instead of cancelling an in-flight publish.
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Validate and publish
+    runs-on: ubuntu-latest
+    if: ${{ vars.RELEASE_PUBLISH_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.confirm_active) }}
+    timeout-minutes: 150
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      # Needed only to retry the existing stable publisher through workflow_dispatch.
+      actions: write
+      packages: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and publish
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PYTHONPATH: tooling
+        run: |
+          python3 -m release_automation publish \
+            --event-file "$GITHUB_EVENT_PATH" \
+            --output-json "$RUNNER_TEMP/release-publish.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload publish result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-publish-result
+          path: ${{ runner.temp }}/release-publish.json
+          if-no-files-found: ignore
+          retention-days: 30

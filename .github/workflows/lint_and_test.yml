@@ -70,6 +70,12 @@ jobs:
       - name: Run code checks
         run: docker compose exec -T phx mix check --no-fix --no-retry
 
+      - name: Test release automation offline
+        if: matrix.database == 'sqlite'
+        run: |
+          docker compose exec -T phx python3 -c 'import yaml'
+          docker compose run --rm --no-deps --entrypoint python3 phx -m unittest discover -s test/tooling -p 'test_*.py' -v
+
       - name: Cleanup
         if: always()
         run: docker compose down --volumes --remove-orphans

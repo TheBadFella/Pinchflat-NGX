@@ -41,6 +41,8 @@ permissions:
 jobs:
   # Determine which platforms to build based on trigger type
   prepare:
+    # Managed releases dispatch explicitly; a delayed release event must not rebuild tags.
+    if: ${{ github.event_name != 'release' || !contains(github.event.release.body, '<!-- pinchflat-release-automation:publisher=dispatch -->') }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
