@@ -65,6 +65,14 @@ defmodule Pinchflat.Database.SqliteSnapshot do
   def backup!(db, directory) do
     File.mkdir_p!(directory)
     File.chmod!(directory, 0o700)
+    [_sequence, "main", source] = Enum.find(query!(db, "PRAGMA database_list"), &(Enum.at(&1, 1) == "main"))
+
+    directory
+    |> Path.join("sqlite-before-postgres-*.db")
+    |> Path.wildcard()
+    |> Enum.reject(&(Path.expand(&1) == Path.expand(source)))
+    |> Enum.each(&File.rm!/1)
+
     [[pages]] = query!(db, "PRAGMA page_count")
     [[page_size]] = query!(db, "PRAGMA page_size")
 

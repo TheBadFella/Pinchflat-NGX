@@ -84,7 +84,7 @@ defmodule Pinchflat.Database.PostgresTransfer do
   defp copy_table!(db, table) do
     columns =
       Repo.query!(
-        "SELECT column_name, udt_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
+        "SELECT column_name, udt_name, datetime_precision FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
         [table]
       ).rows
       |> Enum.reject(&(hd(&1) == "search_vector"))
@@ -102,10 +102,26 @@ defmodule Pinchflat.Database.PostgresTransfer do
         {count + length(rows), digest_rows(hash, rows)}
       end)
 
-    {target_count, target_hash} = target_digest(table, select, 0, initial)
+    {target_count, target_hash} = target_digest(table, names, nil, initial)
 
-    if target_count != count or :crypto.hash_final(target_hash) != :crypto.hash_final(source_hash),
-      do: Repo.rollback(:validation_mismatch)
+    count_mismatch = target_count != count
+    hash_mismatch = :crypto.hash_final(target_hash) != :crypto.hash_final(source_hash)
+
+    if count_mismatch or hash_mismatch do
+      mismatch = if count_mismatch, do: "count", else: "hash"
+
+      Logger.error(
+        "PostgreSQL transfer validation failed: table=#{table} source_count=#{count} target_count=#{target_count} mismatch=#{mismatch}"
+      )
+
+      Repo.rollback(%{
+        "error" => "validation_mismatch",
+        "table" => table,
+        "source_count" => count,
+        "target_count" => target_count,
+        "mismatch_type" => mismatch
+      })
+    end
 
     [[sequence]] = Repo.query!("SELECT pg_get_serial_sequence($1, 'id')", [table]).rows
     [[next_id]] = Repo.query!("SELECT GREATEST(COALESCE(MAX(id), 0) + 1, 1) FROM " <> table).rows
@@ -119,7 +135,7 @@ defmodule Pinchflat.Database.PostgresTransfer do
     executing = table == "oban_jobs" and Enum.at(row, Enum.find_index(columns, &(hd(&1) == "state"))) == "executing"
 
     Enum.zip(row, columns)
-    |> Enum.map(fn {value, [column, type]} ->
+    |> Enum.map(fn {value, [column, type, precision]} ->
       cond do
         executing and column == "state" ->
           "retryable"
@@ -135,6 +151,9 @@ defmodule Pinchflat.Database.PostgresTransfer do
 
         table == "oban_jobs" and column == "errors" ->
           load_sqlite_array(value, {:array, :map})
+
+        not is_nil(value) and type in ["timestamp", "timestamptz"] and precision == 0 ->
+          value |> load_value(type) |> truncate_timestamp()
 
         true ->
           load_value(value, type)
@@ -181,11 +200,19 @@ defmodule Pinchflat.Database.PostgresTransfer do
     end)
   end
 
-  defp target_digest(table, select, offset, {count, hash}) do
-    rows = Repo.query!("SELECT " <> select <> " FROM " <> table <> " ORDER BY id LIMIT 500 OFFSET $1", [offset]).rows
+  defp target_digest(table, names, last_id, {count, hash}) do
+    select = Enum.map_join(names, ",", &quote_column/1)
+    {where, params} = if is_nil(last_id), do: {"", []}, else: {" WHERE id > $1", [last_id]}
+    rows = Repo.query!("SELECT " <> select <> " FROM " <> table <> where <> " ORDER BY id LIMIT 500", params).rows
     next = {count + length(rows), digest_rows(hash, rows)}
-    if length(rows) == 500, do: target_digest(table, select, offset + 500, next), else: next
+
+    if length(rows) == 500,
+      do: target_digest(table, names, Enum.at(List.last(rows), Enum.find_index(names, &(&1 == "id"))), next),
+      else: next
   end
+
+  defp truncate_timestamp(%DateTime{} = value), do: DateTime.truncate(value, :second)
+  defp truncate_timestamp(%NaiveDateTime{} = value), do: NaiveDateTime.truncate(value, :second)
 
   defp digest_rows(hash, rows),
     do: Enum.reduce(rows, hash, &:crypto.hash_update(&2, :erlang.term_to_binary(canonical(&1))))
