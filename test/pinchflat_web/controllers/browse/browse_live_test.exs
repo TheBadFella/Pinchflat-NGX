@@ -848,4 +848,111 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       File.rm(file_path)
     end
   end
+
+  describe "Paste URL placement" do
+    test "renders exactly one Paste URL action inside the search form", %{conn: conn} do
+      media_profile_fixture(%{name: "Placement profile"})
+      {:ok, view, html} = live_isolated(conn, BrowseLive, session: %{})
+
+      assert length(Regex.scan(~r/id="open-paste-url-button"/, html)) == 1
+      assert html =~ ~s(id="browse_search_form")
+      assert html =~ "Paste URL"
+
+      assert has_element?(
+               view,
+               "#browse_search_form #open-paste-url-button[type='button']",
+               "Paste URL"
+             )
+    end
+
+    test "opening Paste URL preserves the search query and selected profile", %{conn: conn} do
+      first = media_profile_fixture(%{name: "First placed profile"})
+      second = media_profile_fixture(%{name: "Second placed profile"})
+      Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "kept query", _opts -> {:ok, @mock_videos} end)
+
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+      render_change(view, "select_profile", %{"profile_id" => to_string(second.id)})
+      view |> form("#browse_search_form", %{"query" => "kept query"}) |> render_submit()
+      render_async(view)
+
+      view |> element("#open-paste-url-button") |> render_click()
+      assert has_element?(view, "#paste-url-dialog")
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.query == "kept query"
+      assert assigns.selected_profile_id == second.id
+      refute assigns.selected_profile_id == first.id
+      assert has_element?(view, "#browse_query[value='kept query']")
+    end
+
+    test "keeps a typed draft query when opening Paste URL", %{conn: conn} do
+      media_profile_fixture(%{name: "Draft profile"})
+
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+      render_change(view, "update_draft_query", %{"query" => "typed only"})
+      assert has_element?(view, "#browse_query[value='typed only']")
+
+      view |> element("#open-paste-url-button") |> render_click()
+      assert has_element?(view, "#paste-url-dialog")
+      assert has_element?(view, "#browse_query[value='typed only']")
+
+      assigns = :sys.get_state(view.pid).socket.assigns
+      assert assigns.draft_query == "typed only"
+      assert assigns.query == ""
+    end
+
+    test "keeps Paste URL available while a search is running and allows reopening", %{conn: conn} do
+      media_profile_fixture(%{name: "Loading profile"})
+      owner = self()
+
+      Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "slow search", _opts ->
+        send(owner, {:search_running, self()})
+
+        receive do
+          :finish_search -> {:ok, @mock_videos}
+        end
+      end)
+
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+      view |> form("#browse_search_form", %{"query" => "slow search"}) |> render_submit()
+      assert_receive {:search_running, provider}, 2000
+
+      assert has_element?(view, "#open-paste-url-button")
+      assert render(view) =~ "Cancel"
+
+      view |> element("#open-paste-url-button") |> render_click()
+      assert has_element?(view, "#paste-url-dialog")
+      view |> element("#paste-cancel-button") |> render_click()
+      refute has_element?(view, "#paste-url-dialog")
+
+      # Reopening and closing again must also leave the search running.
+      view |> element("#open-paste-url-button") |> render_click()
+      assert has_element?(view, "#paste-url-dialog")
+      view |> element("#paste-cancel-button") |> render_click()
+
+      send(provider, :finish_search)
+      html = render_async(view)
+      assert html =~ "Elixir Phoenix LiveView Guide"
+      refute html =~ "Search cancelled."
+    end
+
+    test "renders Paste URL and its dialog with no profiles", %{conn: conn} do
+      {:ok, view, html} = live_isolated(conn, BrowseLive, session: %{})
+
+      assert html =~ "Create Profile"
+      assert has_element?(view, "#open-paste-url-button")
+
+      view |> element("#open-paste-url-button") |> render_click()
+      assert has_element?(view, "#paste-url-dialog")
+      assert render(view) =~ "No media profiles configured"
+    end
+
+    test "keeps the action available with a long profile name", %{conn: conn} do
+      media_profile_fixture(%{name: String.duplicate("Long profile name ", 6)})
+      {:ok, view, html} = live_isolated(conn, BrowseLive, session: %{})
+
+      assert html =~ "Long profile name"
+      assert has_element?(view, "#open-paste-url-button")
+    end
+  end
 end

@@ -245,6 +245,7 @@
                 as={:start_source}
                 action={~p"/sources/#{source.id}/start_all"}
                 method="post"
+                class="inline-flex"
                 x-data="{ submitting: false }"
                 x-on:submit="submitting = true"
               >
@@ -267,6 +268,7 @@
                 as={:pause_source}
                 action={~p"/sources/#{source.id}/pause_all"}
                 method="post"
+                class="inline-flex"
                 x-data="{ submitting: false }"
                 x-on:submit="submitting = true"
               >
@@ -289,6 +291,7 @@
                 as={:stop_source}
                 action={~p"/sources/#{source.id}/stop_all"}
                 method="post"
+                class="inline-flex"
                 x-data="{ submitting: false }"
                 x-on:submit="submitting = true"
               >
@@ -375,108 +378,113 @@
         <div class="min-w-max">
           <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
             <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
-              <div data-source-id={source.id} class="flex min-w-0 flex-col gap-2">
-                <.input
-                  type="checkbox"
-                  id={"source-select-table-#{source.id}"}
-                  name="source_selection"
-                  label="Select"
-                  aria-label={"Select #{source.custom_name}"}
-                  checked={MapSet.member?(@selected_ids, to_string(source.id))}
-                  phx-click="toggle_source_selection"
-                  phx-value-id={source.id}
-                />
-                <div class="flex min-w-0 items-center gap-3">
-                  <div class="flex min-w-0 flex-1 items-center gap-2">
-                    <span
-                      class={[
-                        "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                        if(source.selection_mode == :manual,
-                          do: "theme-badge-warning",
-                          else: "theme-badge-success"
-                        )
-                      ]}
-                      title={source_download_mode_label(source)}
-                    >
-                      <.icon
-                        name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
-                        class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
-                      /> <span class="sr-only">{source_download_mode_label(source)}</span>
-                    </span>
+              <div data-source-id={source.id} class="flex min-w-0 items-center gap-3">
+                <div class="flex min-w-0 flex-1 flex-col gap-2">
+                  <.input
+                    type="checkbox"
+                    id={"source-select-table-#{source.id}"}
+                    name="source_selection"
+                    label="Select"
+                    aria-label={"Select #{source.custom_name}"}
+                    checked={MapSet.member?(@selected_ids, to_string(source.id))}
+                    phx-click="toggle_source_selection"
+                    phx-value-id={source.id}
+                  />
+                  <div class="flex min-w-0 items-center gap-3">
+                    <div class="flex min-w-0 flex-1 items-center gap-2">
+                      <span
+                        class={[
+                          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                          if(source.selection_mode == :manual,
+                            do: "theme-badge-warning",
+                            else: "theme-badge-success"
+                          )
+                        ]}
+                        title={source_download_mode_label(source)}
+                      >
+                        <.icon
+                          name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
+                          class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
+                        /> <span class="sr-only">{source_download_mode_label(source)}</span>
+                      </span>
 
-                    <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
-                      <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
-                      <SourceHTML.retention_summary source={source} />
+                      <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
+                        <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+                        <SourceHTML.retention_summary source={source} />
+                      </div>
                     </div>
                   </div>
+                </div>
 
-                  <div class="ml-auto flex shrink-0 items-center gap-1.5 self-center">
-                    <.form
-                      for={%{}}
-                      as={:start_source}
-                      action={~p"/sources/#{source.id}/start_all"}
-                      method="post"
-                      x-data="{ submitting: false }"
-                      x-on:submit="submitting = true"
-                    >
-                      <input type="hidden" name="return_to" value={@return_to} />
-                      <.icon_button
-                        icon_name="hero-play-solid"
-                        variant="primary"
-                        type="submit"
-                        class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                        icon_class="h-4 w-4"
-                        title="Start all"
-                        aria-label="Start all"
-                        data-confirm={"Start downloads for #{source.custom_name}?"}
-                        x-bind:disabled="submitting"
-                      />
-                    </.form>
+                <div class="ml-auto flex shrink-0 items-center gap-1.5">
+                  <.form
+                    for={%{}}
+                    as={:start_source}
+                    action={~p"/sources/#{source.id}/start_all"}
+                    method="post"
+                    class="inline-flex"
+                    x-data="{ submitting: false }"
+                    x-on:submit="submitting = true"
+                  >
+                    <input type="hidden" name="return_to" value={@return_to} />
+                    <.icon_button
+                      icon_name="hero-play-solid"
+                      variant="primary"
+                      type="submit"
+                      class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                      icon_class="h-4 w-4"
+                      title="Start all"
+                      aria-label="Start all"
+                      data-confirm={"Start downloads for #{source.custom_name}?"}
+                      x-bind:disabled="submitting"
+                    />
+                  </.form>
 
-                    <.form
-                      for={%{}}
-                      as={:pause_source}
-                      action={~p"/sources/#{source.id}/pause_all"}
-                      method="post"
-                      x-data="{ submitting: false }"
-                      x-on:submit="submitting = true"
-                    >
-                      <input type="hidden" name="return_to" value={@return_to} />
-                      <.icon_button
-                        icon_name="hero-pause-solid"
-                        variant="warning"
-                        type="submit"
-                        class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                        icon_class="h-4 w-4"
-                        title="Pause all"
-                        aria-label="Pause all"
-                        data-confirm={"Pause downloads for #{source.custom_name}?"}
-                        x-bind:disabled="submitting"
-                      />
-                    </.form>
+                  <.form
+                    for={%{}}
+                    as={:pause_source}
+                    action={~p"/sources/#{source.id}/pause_all"}
+                    method="post"
+                    class="inline-flex"
+                    x-data="{ submitting: false }"
+                    x-on:submit="submitting = true"
+                  >
+                    <input type="hidden" name="return_to" value={@return_to} />
+                    <.icon_button
+                      icon_name="hero-pause-solid"
+                      variant="warning"
+                      type="submit"
+                      class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                      icon_class="h-4 w-4"
+                      title="Pause all"
+                      aria-label="Pause all"
+                      data-confirm={"Pause downloads for #{source.custom_name}?"}
+                      x-bind:disabled="submitting"
+                    />
+                  </.form>
 
-                    <.form
-                      for={%{}}
-                      as={:stop_source}
-                      action={~p"/sources/#{source.id}/stop_all"}
-                      method="post"
-                      x-data="{ submitting: false }"
-                      x-on:submit="submitting = true"
-                    >
-                      <input type="hidden" name="return_to" value={@return_to} />
-                      <.icon_button
-                        icon_name="hero-stop-solid"
-                        variant="danger-solid"
-                        type="submit"
-                        class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                        icon_class="h-4 w-4"
-                        title="Stop all"
-                        aria-label="Stop all"
-                        data-confirm={"Stop downloads for #{source.custom_name}?"}
-                        x-bind:disabled="submitting"
-                      />
-                    </.form>
-                  </div>
+                  <.form
+                    for={%{}}
+                    as={:stop_source}
+                    action={~p"/sources/#{source.id}/stop_all"}
+                    method="post"
+                    class="inline-flex"
+                    x-data="{ submitting: false }"
+                    x-on:submit="submitting = true"
+                  >
+                    <input type="hidden" name="return_to" value={@return_to} />
+                    <.icon_button
+                      icon_name="hero-stop-solid"
+                      variant="danger-solid"
+                      type="submit"
+                      class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
+                      icon_class="h-4 w-4"
+                      title="Stop all"
+                      aria-label="Stop all"
+                      data-confirm={"Stop downloads for #{source.custom_name}?"}
+                      x-bind:disabled="submitting"
+                    />
+                  </.form>
                 </div>
               </div>
             </:col>

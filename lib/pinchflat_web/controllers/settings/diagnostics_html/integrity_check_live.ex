@@ -14,6 +14,7 @@ defmodule Pinchflat.Settings.IntegrityCheckLive do
   """
 
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
 
   require Logger
 

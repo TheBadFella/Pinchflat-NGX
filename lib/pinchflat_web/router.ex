@@ -15,6 +15,7 @@ defmodule PinchflatWeb.Router do
     plug :put_secure_browser_headers
     plug :allow_iframe_embed
     plug :require_sso_auth
+    plug PinchflatWeb.Plugs.PostgresMigrationGate
     plug :require_migration_review
   end
 

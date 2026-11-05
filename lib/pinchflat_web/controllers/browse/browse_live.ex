@@ -1,6 +1,7 @@
 defmodule PinchflatWeb.Browse.BrowseLive do
   @moduledoc false
   use PinchflatWeb, :live_view
+  on_mount PinchflatWeb.Plugs.PostgresMigrationGate
   require Logger
 
   alias Pinchflat.Profiles
@@ -24,6 +25,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       |> assign(:profiles, profiles)
       |> assign(:selected_profile_id, selected_profile_id)
       |> assign(:query, "")
+      |> assign(:draft_query, "")
       |> assign(:active_tab, :videos)
       |> assign(:search_tab, nil)
       |> assign(:search_generation, 0)
@@ -93,6 +95,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
         socket
         |> cancel_async(:search_task)
         |> assign(:query, trimmed_query)
+        |> assign(:draft_query, trimmed_query)
         |> assign(:active_tab, tab)
         |> assign(:search_tab, tab)
         |> assign(:search_generation, new_gen)
@@ -109,6 +112,10 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
       {:noreply, socket}
     end
+  end
+
+  def handle_event("update_draft_query", %{"query" => query}, socket) do
+    {:noreply, assign(socket, :draft_query, String.slice(query, 0, 200))}
   end
 
   @impl true
@@ -278,7 +285,10 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
   @impl true
   def handle_event("close_paste_url_modal", _params, socket) do
-    YoutubeBrowser.cancel_operation(self())
+    if socket.assigns.paste_resolving? do
+      YoutubeBrowser.cancel_operation(self())
+    end
+
     socket = cancel_async(socket, :resolve_pasted_url_task)
 
     {:noreply,
@@ -1013,6 +1023,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
         |> cancel_async(:search_task)
         |> assign(
           query: "",
+          draft_query: "",
           active_tab: tab,
           results: [],
           loading?: false,
