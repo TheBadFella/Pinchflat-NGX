@@ -91,6 +91,9 @@ defmodule Pinchflat.Database.PostgresMigration do
       {:ok, _report} ->
         :ok
 
+      {:error, %{"error" => _} = details} ->
+        update!(record(), status: "failed", report: Map.put(details, "backup_directory", directory))
+
       {:error, reason} ->
         update!(record(), status: "failed", report: %{"error" => to_string(reason), "backup_directory" => directory})
     end

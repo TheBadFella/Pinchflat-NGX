@@ -33,20 +33,47 @@
     <%= if @record.status in ["pending", "failed"] do %>
       <%= if @record.status == "failed" do %>
         <div class="theme-status-card theme-status-card-danger mb-6 text-sm">
-          Migration stopped: {@record.report["error"]}. The target copy was rolled back. Keep the old instance stopped, correct the source or connection and retry.
+          <p class="font-semibold">Migration stopped: {@record.report["error"]}</p>
+          <p class="mt-2">
+            The transfer did not commit a library. The SQLite source was not changed. Keep the old instance stopped.
+          </p>
+          <p class="mt-2">{recovery_guidance(@record.report["error"])}</p>
+          <p :if={@record.report["table"]} class="mt-2 break-words">
+            Table: {@record.report["table"]}. Source rows: {@record.report["source_count"]}.
+            Target rows: {@record.report["target_count"]}. Mismatch: {@record.report["mismatch_type"]}.
+          </p>
         </div>
       <% end %>
+      <div class="theme-status-card theme-status-card-info mb-6 text-sm">
+        <p class="font-semibold">Checks run automatically before copying</p>
+        <ul class="mt-2 list-disc space-y-2 pl-5">
+          <li>
+            The SQLite source must be readable, use the matching schema and pass integrity and relationship checks.
+          </li>
+          <li>
+            The backup filesystem needs room for a snapshot plus 10 MB. The PostgreSQL target must have no existing library.
+          </li>
+          <li>
+            Timestamps are converted to the target column's precision. Every copied field and row count is checked before committing.
+          </li>
+        </ul>
+        <p class="mt-3">
+          Each attempt removes older sqlite-before-postgres-*.db snapshots from the backup directory before creating a replacement. The opened source is retained. Keep your separate config and downloads backup.
+        </p>
+      </div>
       <.form for={%{}} action={~p"/postgres_migration/start"} class="space-y-4 max-w-2xl">
-        <label class="flex items-start gap-3 text-sm text-theme-on-surface cursor-pointer">
+        <label class="flex min-h-11 items-start gap-3 text-sm text-theme-on-surface cursor-pointer">
           <input type="checkbox" name="stopped" value="true" required class="mt-0.5 rounded border-theme-outline" />
           <span>The old SQLite instance is stopped and will stay stopped.</span>
         </label>
-        <label class="flex items-start gap-3 text-sm text-theme-on-surface cursor-pointer">
+        <label class="flex min-h-11 items-start gap-3 text-sm text-theme-on-surface cursor-pointer">
           <input type="checkbox" name="backup" value="true" required class="mt-0.5 rounded border-theme-outline" />
           <span>I have backed up config and downloads together. The target has no existing library; its default settings will be replaced.</span>
         </label>
         <div>
-          <.button type="submit" variant="primary">Migrate to Postgres</.button>
+          <.button type="submit" variant="primary">
+            {if @record.status == "failed", do: "Retry migration", else: "Migrate to Postgres"}
+          </.button>
         </div>
       </.form>
     <% end %>
