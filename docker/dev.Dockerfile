@@ -44,7 +44,7 @@ RUN set -eux; \
       -o Acquire::https::No-Cache=true \
       update -qq && \
       apt-get install -y --no-install-recommends inotify-tools curl git openssh-client jq \
-        python3 python3-setuptools python3-wheel python3-dev pipx \
+        python3 python3-setuptools python3-wheel python3-dev python3-yaml pipx \
         python3-mutagen locales procps build-essential graphviz zsh unzip \
         ${DATABASE_CLIENT_PACKAGE}; then \
       break; \

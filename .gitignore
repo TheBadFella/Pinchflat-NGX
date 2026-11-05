@@ -65,3 +65,11 @@ build.log
 
 # Local clone of the GitHub wiki (documentation source of truth is the wiki remote).
 /.wiki-tmp/
+
+# Python release tooling caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Command Code session directory
+/.commandcode/

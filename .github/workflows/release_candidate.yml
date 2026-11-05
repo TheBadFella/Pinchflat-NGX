@@ -1,0 +1,76 @@
+name: Prepare stable release candidate
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      confirm_active:
+        description: 'Explicitly run when RELEASE_CANDIDATE_ENABLED is false'
+        required: false
+        type: boolean
+        default: false
+      version_override:
+        description: 'Explicit YEAR.MONTH.PATCH (must be strictly newer than the latest release)'
+        required: false
+        type: string
+      bootstrap_version:
+        description: 'Bootstrap version when no published stable release exists'
+        required: false
+        type: string
+      source_ref:
+        description: 'Branch, tag, or SHA to release (defaults to dev)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Report the proposed version without creating or updating the candidate'
+        required: false
+        type: boolean
+        default: false
+
+# Candidate preparation mutates one managed branch. Serialize every trigger.
+concurrency:
+  group: release-candidate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare release candidate
+    runs-on: ubuntu-latest
+    if: ${{ vars.RELEASE_CANDIDATE_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.confirm_active) }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+
+      - name: Prepare or refresh candidate
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PYTHONPATH: tooling
+        run: |
+          python3 -m release_automation prepare \
+            --event-file "$GITHUB_EVENT_PATH" \
+            --output-json "$RUNNER_TEMP/release-prepare.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload preparation result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-prepare-result
+          path: ${{ runner.temp }}/release-prepare.json
+          if-no-files-found: ignore
+          retention-days: 7
