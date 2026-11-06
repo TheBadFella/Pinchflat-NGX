@@ -52,14 +52,14 @@ fi
 # Install both project-level and assets-level JS dependencies
 echo "\nInstalling JS deps..."
 if [ "$need_root_yarn_install" -eq 1 ]; then
-  yarn install --frozen-lockfile
+  yarn install --frozen-lockfile --ignore-engines
 else
   echo "Root JS deps already cached."
 fi
 
 if [ "$need_assets_yarn_install" -eq 1 ]; then
   cd assets
-  yarn install --frozen-lockfile
+  yarn install --frozen-lockfile --ignore-engines
   cd ..
 else
   echo "Asset JS deps already cached."

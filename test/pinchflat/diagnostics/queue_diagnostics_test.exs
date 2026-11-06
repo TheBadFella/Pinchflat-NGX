@@ -162,6 +162,28 @@ defmodule Pinchflat.Diagnostics.QueueDiagnosticsTest do
     end
   end
 
+  describe "reset_discarded_jobs/0" do
+    test "makes discarded jobs available again and returns the count" do
+      {:ok, job_one} = Oban.insert(TestJobWorker.new(%{"id" => 1}))
+      {:ok, job_two} = Oban.insert(TestJobWorker.new(%{"id" => 2}))
+      set_job_state(job_one, "discarded", attempt: 20, max_attempts: 20, errors: [%{"error" => "boom"}])
+      set_job_state(job_two, "discarded")
+
+      assert QueueDiagnostics.reset_discarded_jobs() == 2
+
+      assert %{state: "available"} = Repo.get(Oban.Job, job_one.id)
+      assert %{state: "available"} = Repo.get(Oban.Job, job_two.id)
+    end
+
+    test "does not touch jobs in other states" do
+      {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
+      set_job_state(job, "retryable")
+
+      assert QueueDiagnostics.reset_discarded_jobs() == 0
+      assert %{state: "retryable"} = Repo.get(Oban.Job, job.id)
+    end
+  end
+
   describe "reset_job/1" do
     test "resets a retryable job" do
       {:ok, job} = Oban.insert(TestJobWorker.new(%{}))
