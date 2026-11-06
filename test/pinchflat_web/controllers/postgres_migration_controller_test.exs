@@ -12,17 +12,23 @@ defmodule PinchflatWeb.PostgresMigrationControllerTest do
       status: "failed",
       report: %{
         "error" => "validation_mismatch",
-        "table" => "media_items",
+        "table" => "tasks",
         "source_count" => 502,
-        "target_count" => 501,
-        "mismatch_type" => "count"
+        "target_count" => 502,
+        "mismatch_type" => "hash",
+        "column" => "progress_percent",
+        "row_id" => 10,
+        "source_type" => "integer",
+        "target_type" => "float"
       }
     })
 
     html = conn |> get("/postgres_migration") |> html_response(200)
-    assert html =~ "media_items"
+    assert html =~ "tasks"
     assert html =~ "Source rows: 502"
-    assert html =~ "Target rows: 501"
+    assert html =~ "Target rows: 502"
+    assert html =~ "Mismatch: hash"
+    assert html =~ "Differing column: progress_percent (row ID: 10, source type: integer, target type: float)"
     assert html =~ "Do not edit the source or delete rows"
     assert html =~ "Retry migration"
     assert html =~ "Checks run automatically before copying"
