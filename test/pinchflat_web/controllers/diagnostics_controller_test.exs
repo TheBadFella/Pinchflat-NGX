@@ -123,6 +123,21 @@ defmodule PinchflatWeb.DiagnosticsControllerTest do
     end
   end
 
+  describe "reset_discarded_jobs" do
+    test "resets discarded jobs", %{conn: conn, task: task} do
+      Oban.Job
+      |> Repo.get!(task.job_id)
+      |> Ecto.Changeset.change(%{state: "discarded"})
+      |> Repo.update!()
+
+      conn = post(conn, ~p"/diagnostics/reset_discarded_jobs")
+      assert redirected_to(conn) == ~p"/diagnostics"
+
+      job = Repo.get!(Oban.Job, task.job_id)
+      assert job.state == "available"
+    end
+  end
+
   describe "reset_job" do
     test "resets a single job", %{conn: conn, task: task} do
       Oban.Job

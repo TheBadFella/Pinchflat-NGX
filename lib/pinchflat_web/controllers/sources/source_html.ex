@@ -289,7 +289,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       ]}
     >
       <.icon name={severity_icon(@severity)} class="h-5 w-5 shrink-0" />
-      <p class="min-w-0 grow max-w-prose text-sm">{@condition.message}</p>
+      <p class="min-w-0 grow text-sm">{@condition.message}</p>
       <% action = condition_action(@condition.code, @source) %>
       <.link
         :if={action}

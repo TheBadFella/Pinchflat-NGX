@@ -4,14 +4,14 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   use Pinchflat.Media.MediaQuery
   import Ecto.Query, warn: false
 
-  alias Pinchflat.Repo
-  alias Pinchflat.Utils.NumberUtils
-  alias Pinchflat.Media
-  alias Pinchflat.Sources
-  alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Downloading.DownloadingHelpers
+  alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Media
+  alias Pinchflat.Repo
+  alias Pinchflat.Sources
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
+  alias Pinchflat.Utils.NumberUtils
   alias PinchflatWeb.Helpers.JobActionHelpers
   alias PinchflatWeb.Helpers.MediaCleanupHelpers
 
@@ -50,7 +50,42 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     """
   end
 
-  def render(%{total_record_count: 0} = assigns) do
+  attr :transient_failure_count, :integer, default: 0
+  attr :permanent_failure_count, :integer, default: 0
+
+  defp failed_retry_controls(assigns) do
+    ~H"""
+    <div
+      :if={@transient_failure_count > 0 or @permanent_failure_count > 0}
+      class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center"
+    >
+      <.button
+        :if={@transient_failure_count > 0}
+        type="button"
+        rounding="rounded-m3-sm"
+        class="w-full text-sm sm:w-auto"
+        phx-click="retry_all_failed"
+        data-confirm="Retry all transiently failed downloads for this source? They go to the back of the queue."
+      >
+        <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry Transient Failed
+      </.button>
+
+      <.button
+        :if={@permanent_failure_count > 0}
+        type="button"
+        variant="warning"
+        rounding="rounded-m3-sm"
+        class="w-full text-sm sm:w-auto"
+        phx-click="force_retry_permanent"
+        data-confirm="Force retry all permanently failed downloads? This will re-attempt downloads that were previously marked unrecoverable."
+      >
+        <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Force Retry Permanent
+      </.button>
+    </div>
+    """
+  end
+
+  def render(%{total_record_count: 0, error_type_filter: "all", watch_filter: "all"} = assigns) do
     ~H"""
     <.action_feedback feedback={@action_feedback} />
     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -101,32 +136,29 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
             </button>
           </div>
 
-          <.button
+          <.failed_retry_controls
             :if={@media_state == "failed"}
-            type="button"
-            rounding="rounded-m3-sm"
-            class="w-full text-sm sm:w-auto"
-            phx-click="retry_all_failed"
-            data-confirm="Retry all failed downloads for this source? They go to the back of the queue."
-          >
-            <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
-          </.button>
+            transient_failure_count={@transient_failure_count}
+            permanent_failure_count={@permanent_failure_count}
+          />
 
           <.watch_filter :if={@media_state == "downloaded"} watch_filter={@watch_filter} />
 
           <form :if={@media_state == "failed"} id="source-error-type-filter" phx-change="filter_error_type">
-            <label class="sr-only" for="source-error-type">Failure type</label>
-            <select
+            <.input
+              type="select"
               id="source-error-type"
               name="error_type"
-              class="theme-input rounded-m3-sm text-sm"
-            >
-              <option value="all" selected={@error_type_filter == "all"}>All failures</option>
-
-              <option value="transient" selected={@error_type_filter == "transient"}>Transient failures</option>
-
-              <option value="permanent" selected={@error_type_filter == "permanent"}>Permanent failures</option>
-            </select>
+              aria_label="Failure type"
+              align="right"
+              value={@error_type_filter}
+              options={[
+                {"All failures", "all"},
+                {"Transient failures", "transient"},
+                {"Permanent failures", "permanent"}
+              ]}
+              inputclass="min-h-10 text-sm w-full sm:w-44"
+            />
           </form>
 
           <div class="theme-surface-accent rounded-m3-sm">
@@ -460,7 +492,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     error_type_filter = "all"
     watch_filter = "all"
     base_query = generate_base_query(source, media_state, error_type_filter, watch_filter)
-    pagination_attrs = fetch_pagination_attributes(base_query, page, nil, media_state)
+    pagination_attrs = fetch_pagination_attributes(base_query, page, nil, media_state, source)
 
     new_assigns =
       Map.merge(
@@ -488,7 +520,15 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("page_change", %{"direction" => direction}, %{assigns: assigns} = socket) do
     direction = if direction == "inc", do: 1, else: -1
     new_page = assigns.page + direction
-    new_assigns = fetch_pagination_attributes(assigns.base_query, new_page, assigns.search_term, assigns.media_state)
+
+    new_assigns =
+      fetch_pagination_attributes(
+        assigns.base_query,
+        new_page,
+        assigns.search_term,
+        assigns.media_state,
+        assigns.source
+      )
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -497,7 +537,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     search_term = Map.get(params, "q", nil)
 
     new_assigns =
-      fetch_pagination_attributes(socket.assigns.base_query, 1, search_term, socket.assigns.media_state)
+      fetch_pagination_attributes(
+        socket.assigns.base_query,
+        1,
+        search_term,
+        socket.assigns.media_state,
+        socket.assigns.source
+      )
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -514,7 +560,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       )
 
     pagination_attrs =
-      fetch_pagination_attributes(base_query, 1, socket.assigns.search_term, socket.assigns.media_state)
+      fetch_pagination_attributes(
+        base_query,
+        1,
+        socket.assigns.search_term,
+        socket.assigns.media_state,
+        socket.assigns.source
+      )
 
     {:noreply,
      assign(
@@ -535,7 +587,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       )
 
     pagination_attrs =
-      fetch_pagination_attributes(base_query, 1, socket.assigns.search_term, socket.assigns.media_state)
+      fetch_pagination_attributes(
+        base_query,
+        1,
+        socket.assigns.search_term,
+        socket.assigns.media_state,
+        socket.assigns.source
+      )
 
     {:noreply,
      assign(
@@ -567,6 +625,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
   end
 
+  def handle_event("force_retry_permanent", _params, socket) do
+    results = DownloadingHelpers.force_retry_permanent_download_tasks(socket.assigns.source)
+    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+
+    {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
+  end
+
   def handle_event("stop_download", %{"task-id" => task_id}, socket) do
     task = Repo.get(Task, task_id)
 
@@ -588,7 +653,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_info(%{topic: "media_table", event: "reload"}, %{assigns: assigns} = socket) do
     new_assigns =
-      fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term, assigns.media_state)
+      fetch_pagination_attributes(
+        assigns.base_query,
+        assigns.page,
+        assigns.search_term,
+        assigns.media_state,
+        assigns.source
+      )
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -597,7 +668,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       when is_map(payload) do
     if refresh_required?(assigns, payload) do
       new_assigns =
-        fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term, assigns.media_state)
+        fetch_pagination_attributes(
+          assigns.base_query,
+          assigns.page,
+          assigns.search_term,
+          assigns.media_state,
+          assigns.source
+        )
 
       {:noreply, assign(socket, new_assigns)}
     else
@@ -607,7 +684,13 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
     new_assigns =
-      fetch_pagination_attributes(assigns.base_query, assigns.page, assigns.search_term, assigns.media_state)
+      fetch_pagination_attributes(
+        assigns.base_query,
+        assigns.page,
+        assigns.search_term,
+        assigns.media_state,
+        assigns.source
+      )
 
     {:noreply, assign(socket, new_assigns)}
   end
@@ -623,13 +706,15 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     {:noreply, socket}
   end
 
-  defp fetch_pagination_attributes(base_query, page, "", media_state),
-    do: fetch_pagination_attributes(base_query, page, nil, media_state)
+  defp fetch_pagination_attributes(base_query, page, "", media_state, source),
+    do: fetch_pagination_attributes(base_query, page, nil, media_state, source)
 
-  defp fetch_pagination_attributes(base_query, page, nil, media_state) do
+  defp fetch_pagination_attributes(base_query, page, nil, media_state, source) do
     total_record_count = Repo.aggregate(base_query, :count, :id)
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
+    permanent_failure_count = permanent_failure_count(source, media_state)
+    transient_failure_count = transient_failure_count(source, media_state)
 
     if media_state == "pending" do
       records =
@@ -645,7 +730,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           records: records,
           search_term: nil,
           total_record_count: total_record_count,
-          filtered_record_count: total_record_count
+          filtered_record_count: total_record_count,
+          permanent_failure_count: permanent_failure_count,
+          transient_failure_count: transient_failure_count
         },
         media_state,
         base_query
@@ -663,7 +750,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           records: records,
           search_term: nil,
           total_record_count: total_record_count,
-          filtered_record_count: total_record_count
+          filtered_record_count: total_record_count,
+          permanent_failure_count: permanent_failure_count,
+          transient_failure_count: transient_failure_count
         },
         media_state,
         base_query
@@ -671,13 +760,15 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     end
   end
 
-  defp fetch_pagination_attributes(base_query, page, search_term, media_state) do
+  defp fetch_pagination_attributes(base_query, page, search_term, media_state, source) do
     filtered_base_query = filtered_base_query(base_query, search_term)
 
     total_record_count = Repo.aggregate(base_query, :count, :id)
     filtered_record_count = Repo.aggregate(filtered_base_query, :count, :id)
     total_pages = max(ceil(filtered_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
+    permanent_failure_count = permanent_failure_count(source, media_state)
+    transient_failure_count = transient_failure_count(source, media_state)
 
     if media_state == "pending" do
       records =
@@ -693,7 +784,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           records: records,
           search_term: search_term,
           total_record_count: total_record_count,
-          filtered_record_count: filtered_record_count
+          filtered_record_count: filtered_record_count,
+          permanent_failure_count: permanent_failure_count,
+          transient_failure_count: transient_failure_count
         },
         media_state,
         filtered_base_query
@@ -712,13 +805,36 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
           records: records,
           search_term: search_term,
           total_record_count: total_record_count,
-          filtered_record_count: filtered_record_count
+          filtered_record_count: filtered_record_count,
+          permanent_failure_count: permanent_failure_count,
+          transient_failure_count: transient_failure_count
         },
         media_state,
         filtered_base_query
       )
     end
   end
+
+  defp transient_failure_count(source, "failed") do
+    MediaQuery.new()
+    |> where(
+      ^dynamic(
+        ^MediaQuery.for_source(source) and ^MediaQuery.download_failed() and
+          not (^MediaQuery.permanent_failure())
+      )
+    )
+    |> Repo.aggregate(:count, :id)
+  end
+
+  defp transient_failure_count(_source, _media_state), do: 0
+
+  defp permanent_failure_count(source, "failed") do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.permanent_failure()))
+    |> Repo.aggregate(:count, :id)
+  end
+
+  defp permanent_failure_count(_source, _media_state), do: 0
 
   defp fetch_records(base_query, page) do
     offset = (page - 1) * @limit
@@ -778,12 +894,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> where(^MediaQuery.matches_search_term(search_term))
   end
 
-  defp error_type_condition(error_type_filter) do
-    case Map.fetch!(@error_type_filters, error_type_filter) do
-      nil -> dynamic([_media_item], true)
-      error_type -> dynamic([media_item], media_item.error_type == ^error_type)
-    end
-  end
+  defp error_type_condition("permanent"), do: MediaQuery.permanent_failure()
+  defp error_type_condition("transient"), do: dynamic([mi], not (^MediaQuery.permanent_failure()))
+  defp error_type_condition(_), do: dynamic([_mi], true)
 
   # Selecting only what we need GREATLY speeds up queries on large tables
   defp select_fields do
