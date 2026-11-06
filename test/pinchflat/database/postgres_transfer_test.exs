@@ -435,14 +435,29 @@ defmodule Pinchflat.Database.PostgresTransferTest do
       refute log =~ ctx.item.title
       assert Migration.record().status == "failed"
 
-      assert Migration.record().report == %{
-               "error" => "validation_mismatch",
-               "table" => "media_items",
-               "source_count" => 1,
-               "target_count" => unquote(target_count),
-               "mismatch_type" => unquote(mismatch),
-               "backup_directory" => ctx.directory
-             }
+      expected_report =
+        %{
+          "error" => "validation_mismatch",
+          "table" => "media_items",
+          "source_count" => 1,
+          "target_count" => unquote(target_count),
+          "mismatch_type" => unquote(mismatch),
+          "backup_directory" => ctx.directory
+        }
+        |> then(fn map ->
+          if unquote(mismatch) == "hash" do
+            Map.merge(map, %{
+              "column" => "title",
+              "row_id" => ctx.item.id,
+              "source_type" => "binary",
+              "target_type" => "binary"
+            })
+          else
+            map
+          end
+        end)
+
+      assert Migration.record().report == expected_report
 
       assert Repo.aggregate(Source, :count) == 0
       assert Repo.aggregate(MediaItem, :count) == 0
@@ -595,6 +610,153 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     Migration.initialize!()
     refute Migration.pending?()
     assert {:error, :not_ready} = Migration.complete([])
+  end
+
+  test "transfers tasks with varied progress percent, integers and timestamps in SQLite", ctx do
+    {:ok, db} = Sqlite3.open(ctx.path, mode: :readwrite)
+
+    try do
+      task_ids =
+        Snapshot.query!(db, "SELECT id FROM tasks ORDER BY id")
+        |> List.flatten()
+
+      case task_ids do
+        [t1, t2, t3, t4, t5 | _rest] ->
+          Snapshot.query!(db, "UPDATE tasks SET progress_percent = 0, progress_status = 'Pending' WHERE id = ?", [t1])
+
+          Snapshot.query!(
+            db,
+            "UPDATE tasks SET progress_percent = 100, progress_status = 'Finished', progress_updated_at = '2026-01-02 03:04:05.123456' WHERE id = ?",
+            [t2]
+          )
+
+          Snapshot.query!(
+            db,
+            "UPDATE tasks SET progress_percent = 42.5, progress_status = 'Downloading' WHERE id = ?",
+            [
+              t3
+            ]
+          )
+
+          Snapshot.query!(db, "UPDATE tasks SET progress_percent = -0.0, progress_status = 'Starting' WHERE id = ?", [
+            t4
+          ])
+
+          Snapshot.query!(db, "UPDATE tasks SET progress_percent = NULL, progress_status = NULL WHERE id = ?", [t5])
+
+        _ ->
+          :ok
+      end
+    after
+      Sqlite3.close(db)
+    end
+
+    before = File.read!(ctx.path)
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert File.read!(ctx.path) == before
+    assert get_in(report, ["tables", "tasks", "validated"]) == true
+
+    tasks = Repo.all(from(t in Pinchflat.Tasks.Task, order_by: t.id))
+    assert length(tasks) == 7
+    [t1, t2, t3, t4, t5 | _] = tasks
+    assert t1.progress_percent === 0.0
+    assert t2.progress_percent === 100.0
+    assert t2.progress_updated_at == ~U[2026-01-02 03:04:05Z]
+    assert t3.progress_percent === 42.5
+    assert t4.progress_percent === 0.0
+    assert is_nil(t5.progress_percent)
+  end
+
+  test "transfers task progress byte counters above 2 GiB and validates their digests", ctx do
+    bytes = 5_998_903_849
+
+    edit_source(
+      ctx.path,
+      "UPDATE tasks SET progress_downloaded_bytes = #{bytes}, progress_total_bytes = #{bytes}, " <>
+        "progress_status = 'Downloading' WHERE id = (SELECT min(id) FROM tasks)"
+    )
+
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert get_in(report, ["tables", "tasks", "validated"]) == true
+
+    task = Repo.one!(from(t in Pinchflat.Tasks.Task, where: t.progress_total_bytes == ^bytes))
+    assert task.progress_downloaded_bytes == bytes
+    assert task.progress_total_bytes == bytes
+  end
+
+  test "persists task progress byte counters above the 32-bit range", _ctx do
+    task = Pinchflat.TasksFixtures.task_fixture()
+    bytes = 5_998_903_849
+
+    assert {:ok, updated} =
+             Pinchflat.Tasks.update_task_progress(task, %{
+               progress_downloaded_bytes: bytes,
+               progress_total_bytes: bytes
+             })
+
+    assert updated.progress_downloaded_bytes == bytes
+    assert updated.progress_total_bytes == bytes
+    assert Repo.get!(Pinchflat.Tasks.Task, task.id).progress_total_bytes == bytes
+  end
+
+  test "corruption in tasks progress_percent fails validation with safe diagnostics and rolls back", ctx do
+    Repo.query!(
+      "CREATE FUNCTION corrupt_tasks() RETURNS trigger AS $$ BEGIN NEW.progress_percent := 99.9; RETURN NEW; END; $$ LANGUAGE plpgsql"
+    )
+
+    Repo.query!("CREATE TRIGGER corrupt_tasks BEFORE INSERT ON tasks FOR EACH ROW EXECUTE FUNCTION corrupt_tasks()")
+
+    edit_source(ctx.path, "UPDATE tasks SET progress_percent = 0 WHERE id = (SELECT min(id) FROM tasks)")
+
+    previous_level = Logger.level()
+    Logger.configure(level: :error)
+
+    on_exit(fn ->
+      Logger.configure(level: previous_level)
+      Repo.query!("DROP TRIGGER IF EXISTS corrupt_tasks ON tasks")
+      Repo.query!("DROP FUNCTION IF EXISTS corrupt_tasks()")
+    end)
+
+    assert {:error, report} = Transfer.run(ctx.path, ctx.directory)
+    assert report["error"] == "validation_mismatch"
+    assert report["table"] == "tasks"
+    assert report["mismatch_type"] == "hash"
+    assert report["column"] == "progress_percent"
+    assert report["source_type"] == "float"
+    assert report["target_type"] == "float"
+    assert is_integer(report["row_id"])
+    assert Repo.aggregate(Pinchflat.Tasks.Task, :count) == 0
+  end
+
+  test "corruption in tasks progress_downloaded_bytes fails validation with safe diagnostics and rolls back", ctx do
+    Repo.query!(
+      "CREATE FUNCTION corrupt_task_bytes() RETURNS trigger AS $$ BEGIN NEW.progress_downloaded_bytes := COALESCE(NEW.progress_downloaded_bytes, 0) + 1; RETURN NEW; END; $$ LANGUAGE plpgsql"
+    )
+
+    Repo.query!(
+      "CREATE TRIGGER corrupt_task_bytes BEFORE INSERT ON tasks FOR EACH ROW EXECUTE FUNCTION corrupt_task_bytes()"
+    )
+
+    edit_source(ctx.path, "UPDATE tasks SET progress_downloaded_bytes = 1000 WHERE id = (SELECT min(id) FROM tasks)")
+
+    previous_level = Logger.level()
+    Logger.configure(level: :error)
+
+    on_exit(fn ->
+      Logger.configure(level: previous_level)
+      Repo.query!("DROP TRIGGER IF EXISTS corrupt_task_bytes ON tasks")
+      Repo.query!("DROP FUNCTION IF EXISTS corrupt_task_bytes()")
+    end)
+
+    assert {:error, report} = Transfer.run(ctx.path, ctx.directory)
+    assert report["error"] == "validation_mismatch"
+    assert report["table"] == "tasks"
+    assert report["mismatch_type"] == "hash"
+    assert report["column"] == "progress_downloaded_bytes"
+    assert report["source_type"] == "integer"
+    assert report["target_type"] == "integer"
+    assert is_integer(report["row_id"])
+    assert Repo.aggregate(Pinchflat.Tasks.Task, :count) == 0
   end
 
   defp edit_source(path, sql) do
