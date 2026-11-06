@@ -18,20 +18,21 @@ defmodule Pinchflat.Database.TaskProgressBytesMigrationSqliteTest do
     on_exit(fn -> File.rm_rf!(directory) end)
 
     FixtureRepo.query!(
-      "CREATE TABLE tasks (id INTEGER PRIMARY KEY, progress_downloaded_bytes INTEGER, progress_total_bytes INTEGER)"
+      "CREATE TABLE tasks (id INTEGER PRIMARY KEY, progress_downloaded_bytes INTEGER, progress_total_bytes INTEGER, progress_speed_bytes_per_second INTEGER)"
     )
 
-    FixtureRepo.query!("INSERT INTO tasks VALUES (1, 5998903849, 5998903849), (2, NULL, NULL)")
+    FixtureRepo.query!("INSERT INTO tasks VALUES (1, 5998903849, 5998903849, 2500000000), (2, NULL, NULL, NULL)")
     version = 20_261_106_020_000
 
     for direction <- [:up, :down, :up] do
       assert [^version] = Ecto.Migrator.run(FixtureRepo, [{version, migration}], direction, step: 1)
 
-      assert FixtureRepo.query!("SELECT progress_downloaded_bytes, progress_total_bytes FROM tasks ORDER BY id").rows ==
-               [
-                 [5_998_903_849, 5_998_903_849],
-                 [nil, nil]
-               ]
+      assert FixtureRepo.query!(
+               "SELECT progress_downloaded_bytes, progress_total_bytes, progress_speed_bytes_per_second FROM tasks ORDER BY id"
+             ).rows == [
+               [5_998_903_849, 5_998_903_849, 2_500_000_000],
+               [nil, nil, nil]
+             ]
 
       assert FixtureRepo.query!("PRAGMA foreign_key_check").rows == []
     end

@@ -3,8 +3,6 @@ defmodule Pinchflat.Database.TaskProgressBytesMigrationPostgresTest do
   @moduletag :postgres_only
   @moduletag :migration_schema
 
-  import Ecto.Query
-
   alias Pinchflat.Repo
   alias Pinchflat.Tasks.Task
 
@@ -28,7 +26,12 @@ defmodule Pinchflat.Database.TaskProgressBytesMigrationPostgresTest do
   end
 
   setup do
-    task = Pinchflat.TasksFixtures.task_fixture(%{progress_downloaded_bytes: 77, progress_total_bytes: 77})
+    task =
+      Pinchflat.TasksFixtures.task_fixture(%{
+        progress_downloaded_bytes: 77,
+        progress_total_bytes: 77,
+        progress_speed_bytes_per_second: 77
+      })
 
     on_exit(fn ->
       Repo.delete_all(Task)
@@ -47,6 +50,7 @@ defmodule Pinchflat.Database.TaskProgressBytesMigrationPostgresTest do
     try do
       assert column_type("progress_downloaded_bytes") == "integer"
       assert column_type("progress_total_bytes") == "integer"
+      assert column_type("progress_speed_bytes_per_second") == "integer"
 
       assert_raise Postgrex.Error, fn ->
         Repo.query!("UPDATE tasks SET progress_downloaded_bytes = 2147483648 WHERE id = $1", [task.id])
@@ -57,10 +61,11 @@ defmodule Pinchflat.Database.TaskProgressBytesMigrationPostgresTest do
 
     assert column_type("progress_downloaded_bytes") == "bigint"
     assert column_type("progress_total_bytes") == "bigint"
+    assert column_type("progress_speed_bytes_per_second") == "bigint"
     assert downloaded_size(task.id) == "77"
 
     Repo.query!(
-      "UPDATE tasks SET progress_downloaded_bytes = 5998903849, progress_total_bytes = 5998903849 WHERE id = $1",
+      "UPDATE tasks SET progress_downloaded_bytes = 5998903849, progress_total_bytes = 5998903849, progress_speed_bytes_per_second = 2500000000 WHERE id = $1",
       [task.id]
     )
 

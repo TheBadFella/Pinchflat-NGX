@@ -7,6 +7,7 @@ defmodule Pinchflat.Repo.Migrations.WidenTaskProgressBytes do
       alter table(:tasks) do
         modify :progress_downloaded_bytes, :bigint
         modify :progress_total_bytes, :bigint
+        modify :progress_speed_bytes_per_second, :bigint
       end
     end
   end
@@ -17,7 +18,7 @@ defmodule Pinchflat.Repo.Migrations.WidenTaskProgressBytes do
 
       %{rows: [[count]]} =
         repo().query!(
-          "SELECT COUNT(*) FROM tasks WHERE (progress_downloaded_bytes IS NOT NULL AND progress_downloaded_bytes NOT BETWEEN -2147483648 AND 2147483647) OR (progress_total_bytes IS NOT NULL AND progress_total_bytes NOT BETWEEN -2147483648 AND 2147483647)"
+          "SELECT COUNT(*) FROM tasks WHERE (progress_downloaded_bytes IS NOT NULL AND progress_downloaded_bytes NOT BETWEEN -2147483648 AND 2147483647) OR (progress_total_bytes IS NOT NULL AND progress_total_bytes NOT BETWEEN -2147483648 AND 2147483647) OR (progress_speed_bytes_per_second IS NOT NULL AND progress_speed_bytes_per_second NOT BETWEEN -2147483648 AND 2147483647)"
         )
 
       if count > 0 do
@@ -27,6 +28,7 @@ defmodule Pinchflat.Repo.Migrations.WidenTaskProgressBytes do
       alter table(:tasks) do
         modify :progress_downloaded_bytes, :integer
         modify :progress_total_bytes, :integer
+        modify :progress_speed_bytes_per_second, :integer
       end
     end
   end
