@@ -112,6 +112,41 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   end
 
   @doc """
+  Re-enqueues download jobs for media items that were marked as permanent
+  failures (`error_type: :permanent`) and are download-prevented. These items
+  are deliberately skipped by `retry_failed_download_tasks/1`, so this is the
+  explicit override that re-attempts them. Pass a source to limit the retry to
+  that source; omit it to retry every permanently failed item.
+
+  The jobs are enqueued with `force: true` so the worker ignores the persisted
+  prevention, and with `reset_last_error: true` so the new attempt starts clean.
+
+  Returns [{:ok, %Task{}} | {:error, any()}]
+  """
+  def force_retry_permanent_download_tasks(source \\ nil)
+
+  def force_retry_permanent_download_tasks(%Source{} = source) do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.permanent_failure()))
+    |> Repo.all()
+    |> do_force_retry_permanent_download_tasks()
+  end
+
+  def force_retry_permanent_download_tasks(nil) do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.permanent_failure()))
+    |> Repo.all()
+    |> do_force_retry_permanent_download_tasks()
+  end
+
+  defp do_force_retry_permanent_download_tasks(media_items) do
+    Enum.map(
+      media_items,
+      &MediaDownloadWorker.kickoff_with_task(&1, %{"force" => true, "reset_last_error" => true})
+    )
+  end
+
+  @doc """
   Deletes queued download tasks for a source, including replacement downloads
   for media that already has a file. Other worker types are preserved.
 

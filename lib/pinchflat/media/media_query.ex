@@ -286,6 +286,12 @@ defmodule Pinchflat.Media.MediaQuery do
     dynamic([mi], (not is_nil(mi.last_error) or mi.error_type == :permanent) and not (^downloaded()))
   end
 
+  # A permanent failure blocks automatic downloads until the user explicitly
+  # forces a retry, so both fields must agree for a retry to be meaningful.
+  def permanent_failure do
+    dynamic([mi], mi.error_type == :permanent and mi.prevent_download == true)
+  end
+
   def upgradeable do
     dynamic(
       [mi, source],
