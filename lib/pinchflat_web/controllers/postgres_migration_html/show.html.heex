@@ -41,6 +41,11 @@
           <p :if={@record.report["table"]} class="mt-2 break-words">
             Table: {@record.report["table"]}. Source rows: {@record.report["source_count"]}.
             Target rows: {@record.report["target_count"]}. Mismatch: {@record.report["mismatch_type"]}.
+            <%= if @record.report["column"] do %>
+              Differing column: {@record.report["column"]} (row ID: {@record.report["row_id"]}, source type: {@record.report[
+                "source_type"
+              ]}, target type: {@record.report["target_type"]}).
+            <% end %>
           </p>
         </div>
       <% end %>
