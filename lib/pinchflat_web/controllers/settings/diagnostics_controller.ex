@@ -31,6 +31,14 @@ defmodule PinchflatWeb.Settings.DiagnosticsController do
     |> redirect(to: ~p"/diagnostics")
   end
 
+  def reset_discarded_jobs(conn, _params) do
+    count = QueueDiagnostics.reset_discarded_jobs()
+
+    conn
+    |> put_flash(:info, "Reset #{count} discarded job(s). They will each get a fresh attempt shortly.")
+    |> redirect(to: ~p"/diagnostics")
+  end
+
   def reset_job(conn, %{"id" => job_id}) do
     with {:ok, id} <- parse_job_id(job_id),
          1 <- QueueDiagnostics.reset_job(id) do

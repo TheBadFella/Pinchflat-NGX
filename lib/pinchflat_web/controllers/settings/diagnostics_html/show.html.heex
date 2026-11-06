@@ -274,17 +274,30 @@
 <div id="failed-jobs" class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <h3 class="text-lg font-semibold text-theme-on-surface">Failed Jobs</h3>
-    <%= if length(retryable) > 0 do %>
-      <.button
-        href={~p"/diagnostics/reset_retryable_jobs"}
-        method="post"
-        data-confirm="Retry all retryable jobs now? Attempt counts and error history will be preserved."
-        variant="danger"
-        class="w-full sm:w-auto"
-      >
-        <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Reset All Retryable Jobs
-      </.button>
-    <% end %>
+    <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+      <%= if length(retryable) > 0 do %>
+        <.button
+          href={~p"/diagnostics/reset_retryable_jobs"}
+          method="post"
+          data-confirm="Retry all retryable jobs now? Attempt counts and error history will be preserved."
+          variant="danger"
+          class="w-full sm:w-auto"
+        >
+          <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Reset All Retryable Jobs
+        </.button>
+      <% end %>
+      <%= if length(discarded) > 0 do %>
+        <.button
+          href={~p"/diagnostics/reset_discarded_jobs"}
+          method="post"
+          data-confirm="Reset all discarded jobs? They exhausted their retries and will each get a fresh attempt."
+          variant="warning"
+          class="w-full sm:w-auto"
+        >
+          <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Reset All Discarded Jobs
+        </.button>
+      <% end %>
+    </div>
   </div>
 
   <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
