@@ -83,6 +83,17 @@ class PublishHarness:
 
 
 class PublishTests(unittest.TestCase):
+    def test_commit_pull_summary_loads_maintainer_merge_from_full_pull(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            harness = PublishHarness(Path(temporary))
+            merge_sha = harness.merge()
+            summary = dict(harness.pull)
+            summary.pop("merged_by")
+            with patch.object(harness.github, "get_commit_pulls", return_value=[summary]):
+                result = harness.publish(merge_sha, dry_run=True)
+            self.assertEqual(result.status, "dry_run")
+            self.assertEqual(harness.github.tags_created, [])
+
     def test_master_advancing_during_check_validation_blocks_tagging(self):
         with tempfile.TemporaryDirectory() as temporary:
             harness = PublishHarness(Path(temporary))

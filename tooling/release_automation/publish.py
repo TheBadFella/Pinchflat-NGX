@@ -525,6 +525,8 @@ def publish(
             merge_sha=merge_sha,
         )
 
+    # Commit-associated PR summaries omit the maintainer's merged_by record.
+    pull = github.get_pull_request(int(pull["number"]))
     _require_current_target(github, options, merge_sha)
 
     _metadata, version, tag = _validate_pull_metadata(
