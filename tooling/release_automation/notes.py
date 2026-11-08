@@ -208,6 +208,7 @@ def render_generated_changes(
     *,
     base_label: str,
     head_label: str,
+    maintainer: str = "",
     limit: int = 100,
 ) -> str:
     all_items = list(changes)
@@ -224,7 +225,7 @@ def render_generated_changes(
         author = change.get("author")
         if number:
             line += f" (#{number})"
-        if author:
+        if author and author.casefold() != maintainer.casefold():
             line += f". Thanks @{author}."
         lines.append(line)
     if len(all_items) > limit:

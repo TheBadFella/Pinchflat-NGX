@@ -385,6 +385,7 @@ def prepare(
         changes,
         base_label=baseline_tag or f"{options.target_branch}@{master_sha[:12]}",
         head_label=f"{options.source_ref}@{source_sha[:12]}",
+        maintainer=owner,
     )
     body = render_pr_body(
         tag=tag,
