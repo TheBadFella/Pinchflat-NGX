@@ -382,12 +382,86 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     assert Repo.aggregate(Source, :count) == 0
   end
 
-  test "refuses fractional timestamps that cannot be preserved in the target schema", ctx do
-    edit_source(ctx.path, "UPDATE media_items SET details_updated_at = '2026-10-07T01:02:03.123456'")
-    assert {:error, :validation_mismatch} = Transfer.run(ctx.path, ctx.directory)
-    assert Repo.aggregate(Source, :count) == 0
-    assert Repo.aggregate(MediaItem, :count) == 0
-    assert Migration.record().status == "running"
+  test "normalizes second-precision columns and preserves fractional job timestamps", ctx do
+    edit_source(ctx.path, """
+    UPDATE media_items SET details_updated_at = '2026-10-07T01:02:03.987654',
+      media_downloaded_at = '2026-01-02 03:04:05.987654';
+    UPDATE oban_jobs SET inserted_at = '2026-10-07T01:02:03.987654Z';
+    """)
+
+    assert {:ok, _} = Transfer.run(ctx.path, ctx.directory)
+    assert Repo.query!("SELECT details_updated_at FROM media_items").rows == [[~N[2026-10-07 01:02:03]]]
+    assert Repo.get!(MediaItem, ctx.item.id).media_downloaded_at == ~U[2026-01-02 03:04:05Z]
+    assert Repo.get!(Oban.Job, ctx.interrupted_job.id).inserted_at == ~U[2026-10-07 01:02:03.987654Z]
+    assert Migration.record().status == "pending_review"
+  end
+
+  for {mismatch, action, target_count} <- [
+        {"hash", "NEW.title := 'changed'; RETURN NEW;", 1},
+        {"count", "RETURN NULL;", 0}
+      ] do
+    test "persists safe #{mismatch} mismatch diagnostics and rolls back the library", ctx do
+      Repo.query!(
+        "CREATE FUNCTION change_transfer_lab() RETURNS trigger AS $$ BEGIN " <>
+          unquote(action) <> " END; $$ LANGUAGE plpgsql"
+      )
+
+      Repo.query!(
+        "CREATE TRIGGER change_transfer_lab BEFORE INSERT ON media_items FOR EACH ROW EXECUTE FUNCTION change_transfer_lab()"
+      )
+
+      previous =
+        for {key, value} <- [sqlite_migration_source: ctx.path, postgres_backup_directory: ctx.directory] do
+          old = Application.get_env(:pinchflat, key)
+          Application.put_env(:pinchflat, key, value)
+          {key, old}
+        end
+
+      previous_level = Logger.level()
+      Logger.configure(level: :error)
+
+      on_exit(fn ->
+        Logger.configure(level: previous_level)
+
+        Enum.each(previous, fn
+          {key, nil} -> Application.delete_env(:pinchflat, key)
+          {key, value} -> Application.put_env(:pinchflat, key, value)
+        end)
+      end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> Migration.perform() end)
+      assert log =~ "table=media_items source_count=1 target_count=#{unquote(target_count)}"
+      assert log =~ "mismatch=#{unquote(mismatch)}"
+      refute log =~ ctx.item.title
+      assert Migration.record().status == "failed"
+
+      expected_report =
+        %{
+          "error" => "validation_mismatch",
+          "table" => "media_items",
+          "source_count" => 1,
+          "target_count" => unquote(target_count),
+          "mismatch_type" => unquote(mismatch),
+          "backup_directory" => ctx.directory
+        }
+        |> then(fn map ->
+          if unquote(mismatch) == "hash" do
+            Map.merge(map, %{
+              "column" => "title",
+              "row_id" => ctx.item.id,
+              "source_type" => "binary",
+              "target_type" => "binary"
+            })
+          else
+            map
+          end
+        end)
+
+      assert Migration.record().report == expected_report
+
+      assert Repo.aggregate(Source, :count) == 0
+      assert Repo.aggregate(MediaItem, :count) == 0
+    end
   end
 
   test "rejects a populated target without deleting its library", ctx do
@@ -447,7 +521,9 @@ defmodule Pinchflat.Database.PostgresTransferTest do
         values =
           Enum.zip(names, original)
           |> Enum.map(fn
-            {"id", value} -> value + index
+            {"id", _value} when index == 1 -> -7
+            {"id", _value} when index == 2 -> 0
+            {"id", value} -> value + index * 7
             {"media_id", _} -> "chunk-#{index}"
             {"uuid", _} -> Ecto.UUID.generate()
             {_field, value} -> value
@@ -463,9 +539,25 @@ defmodule Pinchflat.Database.PostgresTransferTest do
       Sqlite3.close(db)
     end
 
-    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
-    assert report["tables"]["media_items"]["rows"] == 502
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+
+    try do
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+          assert report["tables"]["media_items"]["rows"] == 502
+        end)
+
+      assert log =~ "FROM media_items WHERE id > $1 ORDER BY id LIMIT 500"
+      refute log =~ "OFFSET"
+    after
+      Logger.configure(level: previous_level)
+    end
+
     assert Repo.aggregate(MediaItem, :count) == 502
+    assert Repo.get!(MediaItem, -7)
+    assert Repo.get!(MediaItem, 0)
   end
 
   test "copied notification credentials are not written to SQL logs", ctx do
@@ -518,6 +610,153 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     Migration.initialize!()
     refute Migration.pending?()
     assert {:error, :not_ready} = Migration.complete([])
+  end
+
+  test "transfers tasks with varied progress percent, integers and timestamps in SQLite", ctx do
+    {:ok, db} = Sqlite3.open(ctx.path, mode: :readwrite)
+
+    try do
+      task_ids =
+        Snapshot.query!(db, "SELECT id FROM tasks ORDER BY id")
+        |> List.flatten()
+
+      case task_ids do
+        [t1, t2, t3, t4, t5 | _rest] ->
+          Snapshot.query!(db, "UPDATE tasks SET progress_percent = 0, progress_status = 'Pending' WHERE id = ?", [t1])
+
+          Snapshot.query!(
+            db,
+            "UPDATE tasks SET progress_percent = 100, progress_status = 'Finished', progress_updated_at = '2026-01-02 03:04:05.123456' WHERE id = ?",
+            [t2]
+          )
+
+          Snapshot.query!(
+            db,
+            "UPDATE tasks SET progress_percent = 42.5, progress_status = 'Downloading' WHERE id = ?",
+            [
+              t3
+            ]
+          )
+
+          Snapshot.query!(db, "UPDATE tasks SET progress_percent = -0.0, progress_status = 'Starting' WHERE id = ?", [
+            t4
+          ])
+
+          Snapshot.query!(db, "UPDATE tasks SET progress_percent = NULL, progress_status = NULL WHERE id = ?", [t5])
+
+        _ ->
+          :ok
+      end
+    after
+      Sqlite3.close(db)
+    end
+
+    before = File.read!(ctx.path)
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert File.read!(ctx.path) == before
+    assert get_in(report, ["tables", "tasks", "validated"]) == true
+
+    tasks = Repo.all(from(t in Pinchflat.Tasks.Task, order_by: t.id))
+    assert length(tasks) == 7
+    [t1, t2, t3, t4, t5 | _] = tasks
+    assert t1.progress_percent === 0.0
+    assert t2.progress_percent === 100.0
+    assert t2.progress_updated_at == ~U[2026-01-02 03:04:05Z]
+    assert t3.progress_percent === 42.5
+    assert t4.progress_percent === 0.0
+    assert is_nil(t5.progress_percent)
+  end
+
+  test "transfers task progress byte counters above 2 GiB and validates their digests", ctx do
+    bytes = 5_998_903_849
+
+    edit_source(
+      ctx.path,
+      "UPDATE tasks SET progress_downloaded_bytes = #{bytes}, progress_total_bytes = #{bytes}, " <>
+        "progress_status = 'Downloading' WHERE id = (SELECT min(id) FROM tasks)"
+    )
+
+    assert {:ok, report} = Transfer.run(ctx.path, ctx.directory)
+    assert get_in(report, ["tables", "tasks", "validated"]) == true
+
+    task = Repo.one!(from(t in Pinchflat.Tasks.Task, where: t.progress_total_bytes == ^bytes))
+    assert task.progress_downloaded_bytes == bytes
+    assert task.progress_total_bytes == bytes
+  end
+
+  test "persists task progress byte counters above the 32-bit range", _ctx do
+    task = Pinchflat.TasksFixtures.task_fixture()
+    bytes = 5_998_903_849
+
+    assert {:ok, updated} =
+             Pinchflat.Tasks.update_task_progress(task, %{
+               progress_downloaded_bytes: bytes,
+               progress_total_bytes: bytes
+             })
+
+    assert updated.progress_downloaded_bytes == bytes
+    assert updated.progress_total_bytes == bytes
+    assert Repo.get!(Pinchflat.Tasks.Task, task.id).progress_total_bytes == bytes
+  end
+
+  test "corruption in tasks progress_percent fails validation with safe diagnostics and rolls back", ctx do
+    Repo.query!(
+      "CREATE FUNCTION corrupt_tasks() RETURNS trigger AS $$ BEGIN NEW.progress_percent := 99.9; RETURN NEW; END; $$ LANGUAGE plpgsql"
+    )
+
+    Repo.query!("CREATE TRIGGER corrupt_tasks BEFORE INSERT ON tasks FOR EACH ROW EXECUTE FUNCTION corrupt_tasks()")
+
+    edit_source(ctx.path, "UPDATE tasks SET progress_percent = 0 WHERE id = (SELECT min(id) FROM tasks)")
+
+    previous_level = Logger.level()
+    Logger.configure(level: :error)
+
+    on_exit(fn ->
+      Logger.configure(level: previous_level)
+      Repo.query!("DROP TRIGGER IF EXISTS corrupt_tasks ON tasks")
+      Repo.query!("DROP FUNCTION IF EXISTS corrupt_tasks()")
+    end)
+
+    assert {:error, report} = Transfer.run(ctx.path, ctx.directory)
+    assert report["error"] == "validation_mismatch"
+    assert report["table"] == "tasks"
+    assert report["mismatch_type"] == "hash"
+    assert report["column"] == "progress_percent"
+    assert report["source_type"] == "float"
+    assert report["target_type"] == "float"
+    assert is_integer(report["row_id"])
+    assert Repo.aggregate(Pinchflat.Tasks.Task, :count) == 0
+  end
+
+  test "corruption in tasks progress_downloaded_bytes fails validation with safe diagnostics and rolls back", ctx do
+    Repo.query!(
+      "CREATE FUNCTION corrupt_task_bytes() RETURNS trigger AS $$ BEGIN NEW.progress_downloaded_bytes := COALESCE(NEW.progress_downloaded_bytes, 0) + 1; RETURN NEW; END; $$ LANGUAGE plpgsql"
+    )
+
+    Repo.query!(
+      "CREATE TRIGGER corrupt_task_bytes BEFORE INSERT ON tasks FOR EACH ROW EXECUTE FUNCTION corrupt_task_bytes()"
+    )
+
+    edit_source(ctx.path, "UPDATE tasks SET progress_downloaded_bytes = 1000 WHERE id = (SELECT min(id) FROM tasks)")
+
+    previous_level = Logger.level()
+    Logger.configure(level: :error)
+
+    on_exit(fn ->
+      Logger.configure(level: previous_level)
+      Repo.query!("DROP TRIGGER IF EXISTS corrupt_task_bytes ON tasks")
+      Repo.query!("DROP FUNCTION IF EXISTS corrupt_task_bytes()")
+    end)
+
+    assert {:error, report} = Transfer.run(ctx.path, ctx.directory)
+    assert report["error"] == "validation_mismatch"
+    assert report["table"] == "tasks"
+    assert report["mismatch_type"] == "hash"
+    assert report["column"] == "progress_downloaded_bytes"
+    assert report["source_type"] == "integer"
+    assert report["target_type"] == "integer"
+    assert is_integer(report["row_id"])
+    assert Repo.aggregate(Pinchflat.Tasks.Task, :count) == 0
   end
 
   defp edit_source(path, sql) do

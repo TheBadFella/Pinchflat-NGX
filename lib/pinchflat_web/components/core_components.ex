@@ -305,6 +305,7 @@ defmodule PinchflatWeb.CoreComponents do
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
   attr :inputclass, :string, default: ""
   attr :aria_label, :string, default: nil
+  attr :align, :string, default: "auto", values: ~w(auto left right)
 
   attr :rest, :global, include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
                 multiple pattern placeholder readonly required rows size step)
@@ -449,6 +450,8 @@ defmodule PinchflatWeb.CoreComponents do
       |> assign(:prompt_json, Phoenix.json_library().encode!(assigns.prompt || ""))
       |> assign(:rest_disabled, rest_attr(assigns.rest, "disabled"))
       |> assign(:rest_x_bind_disabled, rest_attr(assigns.rest, "x-bind:disabled"))
+      |> assign(:align, assigns[:align] || "auto")
+      |> assign(:align_right_initial, (assigns[:align] || "auto") == "right")
 
     if assigns.multiple do
       render_native_select(assigns)
@@ -559,6 +562,8 @@ defmodule PinchflatWeb.CoreComponents do
     {
       open: false,
       openUpwards: false,
+      alignRight: #{assigns.align_right_initial},
+      alignMode: '#{assigns.align}',
       menuHeight: 288,
       options: #{assigns.select_options_json},
       prompt: #{assigns.prompt_json},
@@ -575,6 +580,18 @@ defmodule PinchflatWeb.CoreComponents do
         const above = Math.max(0, anchor.top - top - 8)
         this.openUpwards = below < Math.min(288, above)
         this.menuHeight = Math.min(288, this.openUpwards ? above : below)
+
+        if (this.alignMode === 'right') {
+          this.alignRight = true
+        } else if (this.alignMode === 'left') {
+          this.alignRight = false
+        } else {
+          const container = this.$el.closest('main, [class*="overflow"]') || document.body
+          const containerRight = container.getBoundingClientRect().right
+          const viewportWidth = viewport?.width || window.innerWidth || document.documentElement.clientWidth
+          const rightEdge = Math.min(containerRight, viewportWidth)
+          this.alignRight = (anchor.left + 220 > rightEdge - 8) || (rightEdge - anchor.right < 80)
+        }
       },
       syncFromInput() {
         this.selectedValue = `${this.$refs.input.value ?? ''}`
@@ -586,7 +603,6 @@ defmodule PinchflatWeb.CoreComponents do
         this.$refs.input.value = value
         this.syncFromInput()
         this.open = false
-        this.$refs.input.dispatchEvent(new Event('input', { bubbles: true }))
         this.$refs.input.dispatchEvent(new Event('change', { bubbles: true }))
       },
       init() {
@@ -639,6 +655,7 @@ defmodule PinchflatWeb.CoreComponents do
             x-on:click="if (!$refs.input.disabled) open = !open"
             x-on:keydown.escape.prevent="open = false"
             x-bind:aria-expanded="open"
+            aria-label={@aria_label}
             aria-haspopup="listbox"
             aria-controls={"#{@id}-options"}
             x-bind:disabled={@rest_x_bind_disabled}
@@ -661,8 +678,8 @@ defmodule PinchflatWeb.CoreComponents do
             x-show="open"
             x-transition.scale.duration.120ms
             id={"#{@id}-options"}
-            class="theme-select-menu absolute left-0 z-[100] flex w-full flex-col p-2"
-            x-bind:class="openUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
+            class="theme-select-menu absolute z-[100] flex min-w-[12rem] w-max max-w-xs flex-col p-2"
+            x-bind:class="(openUpwards ? 'bottom-full mb-2 ' : 'top-full mt-2 ') + (alignRight ? 'right-0' : 'left-0')"
             x-bind:style="{ maxHeight: menuHeight + 'px' }"
             role="listbox"
           >
@@ -670,25 +687,25 @@ defmodule PinchflatWeb.CoreComponents do
               <button
                 :if={@prompt_option}
                 type="button"
-                class="theme-select-option flex w-full items-center rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
+                class="theme-select-option flex w-full items-center rounded-m3-sm px-4 py-2.5 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
                 x-bind:class="selectedValue === '' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-default'"
                 x-on:click="selectOption('')"
               >
-                {@prompt_option.label}
+                <span class="min-w-0 flex-1 whitespace-nowrap">{@prompt_option.label}</span>
               </button>
 
               <button
                 :for={option <- @select_options}
                 type="button"
                 data-value={option.value}
-                class="theme-select-option flex w-full items-center justify-between gap-3 rounded-m3-sm px-4 py-3 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
+                class="theme-select-option flex w-full items-center justify-between gap-3 rounded-m3-sm pl-4 pr-3.5 py-2.5 text-left text-sm transition hover:border-theme-outline hover:bg-theme-surface-3 hover:text-theme-on-surface"
                 x-bind:class={"selectedValue === '#{option.value}' ? 'bg-theme-primary-container text-theme-on-primary-container' : 'theme-select-option-default'"}
                 x-on:click="selectOption($el.dataset.value)"
               >
-                <span class="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">{option.label}</span>
+                <span class="min-w-0 flex-1 whitespace-nowrap">{option.label}</span>
                 <.icon
                   name="hero-check"
-                  class="h-4 w-4 shrink-0 text-theme-primary"
+                  class="ml-2 h-4 w-4 shrink-0 text-theme-primary"
                   x-show={"selectedValue === '#{option.value}'"}
                 />
               </button>
