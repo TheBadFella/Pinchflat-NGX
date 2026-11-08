@@ -186,6 +186,22 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
   end
 
   @doc """
+  Resets all discarded jobs by transitioning them to available via Oban.
+  Returns the number of jobs reset.
+  """
+  def reset_discarded_jobs do
+    query =
+      from(j in Oban.Job,
+        where: j.state == "discarded"
+      )
+
+    case Oban.retry_all_jobs(query) do
+      {:ok, count} -> count
+      _ -> 0
+    end
+  end
+
+  @doc """
   Resets a specific job by ID.
 
   Only retryable or discarded jobs can be reset. Executing jobs are deliberately
