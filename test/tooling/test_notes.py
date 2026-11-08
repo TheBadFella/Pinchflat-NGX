@@ -263,6 +263,20 @@ class NotesTests(unittest.TestCase):
         self.assertIn("Thanks @contributor", rendered)
         self.assertIn("Compared `2026.10.0` to `dev`", rendered)
 
+    def test_generated_changes_thank_contributors_but_not_the_maintainer(self):
+        rendered = render_generated_changes(
+            [
+                {"subject": "fix: maintainer change", "author": "thebadfella"},
+                {"subject": "fix: contributor change", "author": "contributor"},
+            ],
+            base_label="2026.11.1",
+            head_label="dev",
+            maintainer="TheBadFella",
+        )
+        self.assertIn("- fix: maintainer change\n", rendered)
+        self.assertNotIn("Thanks @thebadfella", rendered)
+        self.assertIn("Thanks @contributor", rendered)
+
     def test_extract_block_rejects_stray_end_marker(self):
         with self.assertRaises(ReleaseError):
             extract_block(f"{NOTES_START}\nnotes\n", NOTES_START, "<!-- RELEASE-NOTES-END -->")

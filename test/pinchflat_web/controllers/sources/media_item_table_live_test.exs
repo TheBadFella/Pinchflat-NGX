@@ -399,6 +399,80 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       assert has_element?(view, "button[title='Grid'][aria-pressed='false']")
       assert html =~ "space-y-4 md:hidden"
     end
+
+    test "filters failures by type and shows retry controls only when failures exist", %{conn: conn, source: source} do
+      transient =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Temporary network timeout",
+          error_type: :transient,
+          title: "SOURCE_TRANSIENT_ITEM"
+        })
+
+      permanent =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video removed by uploader",
+          error_type: :permanent,
+          title: "SOURCE_PERMANENT_ITEM"
+        })
+
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "failed"))
+
+      assert html =~ transient.title
+      assert html =~ permanent.title
+      assert html =~ "Retry Transient Failed"
+      assert html =~ "Force Retry Permanent"
+
+      # Filter to permanent
+      render_change(view, "filter_error_type", %{"error_type" => "permanent"})
+      html = render(view)
+      assert html =~ permanent.title
+      refute html =~ transient.title
+
+      # Filter to transient
+      render_change(view, "filter_error_type", %{"error_type" => "transient"})
+      html = render(view)
+      assert html =~ transient.title
+      refute html =~ permanent.title
+
+      # Filter back to all
+      render_change(view, "filter_error_type", %{"error_type" => "all"})
+      html = render(view)
+      assert html =~ transient.title
+      assert html =~ permanent.title
+    end
+
+    test "retains error filter when a filter slice has zero records", %{conn: conn, source: source} do
+      _transient =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          last_error: "Temporary network timeout",
+          error_type: :transient,
+          title: "ONLY_TRANSIENT_ITEM"
+        })
+
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "failed"))
+      assert html =~ "Retry Transient Failed"
+      refute html =~ "Force Retry Permanent"
+
+      # Filter to permanent (0 records)
+      render_change(view, "filter_error_type", %{"error_type" => "permanent"})
+      html = render(view)
+      refute html =~ "Nothing Here!"
+      assert html =~ "No media matches your search. Try another search or change the filter."
+      assert has_element?(view, "#source-error-type-filter")
+
+      # Switch back to all
+      render_change(view, "filter_error_type", %{"error_type" => "all"})
+      html = render(view)
+      assert html =~ "ONLY_TRANSIENT_ITEM"
+    end
   end
 
   defp downloaded_item(source, title) do

@@ -5,13 +5,13 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   import PinchflatWeb.Helpers.SortingHelpers
   import PinchflatWeb.CustomComponents.DatePicker, only: [date_picker: 1]
 
-  alias Pinchflat.Repo
-  alias Pinchflat.Media
-  alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Downloading.DownloadingHelpers
-  alias Pinchflat.Utils.NumberUtils
+  alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Media
+  alias Pinchflat.Repo
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
+  alias Pinchflat.Utils.NumberUtils
   alias PinchflatWeb.CustomComponents.TextComponents
   alias PinchflatWeb.Helpers.JobActionHelpers
   alias PinchflatWeb.Helpers.MediaCleanupHelpers
@@ -62,31 +62,29 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           </span>
         </span>
 
-        <.button
-          :if={@media_state == "failed"}
-          type="button"
-          rounding="rounded-m3-sm"
-          class="w-full text-sm sm:w-auto"
-          phx-click="retry_all_failed"
-          data-confirm="Retry all failed downloads? They go to the back of the queue."
-        >
-          <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry All Failed
-        </.button>
+        <div :if={@media_state == "failed"} class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <.failed_retry_controls
+            transient_failure_count={@transient_failure_count}
+            permanent_failure_count={@permanent_failure_count}
+          />
 
-        <form :if={@media_state == "failed"} id="history-error-type-filter" phx-change="filter_error_type">
-          <label class="sr-only" for="history-error-type">Failure type</label>
-          <select
-            id="history-error-type"
-            name="error_type"
-            class="theme-input rounded-m3-sm text-sm"
-          >
-            <option value="all" selected={@error_type_filter == "all"}>All failures</option>
-
-            <option value="transient" selected={@error_type_filter == "transient"}>Transient failures</option>
-
-            <option value="permanent" selected={@error_type_filter == "permanent"}>Permanent failures</option>
-          </select>
-        </form>
+          <form id="history-error-type-filter" phx-change="filter_error_type">
+            <.input
+              type="select"
+              id="history-error-type"
+              name="error_type"
+              aria_label="Failure type"
+              align="right"
+              value={@error_type_filter}
+              options={[
+                {"All failures", "all"},
+                {"Transient failures", "transient"},
+                {"Permanent failures", "permanent"}
+              ]}
+              inputclass="min-h-10 text-sm w-full sm:w-44"
+            />
+          </form>
+        </div>
       </span>
 
       <div class="space-y-6">
@@ -109,6 +107,41 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       <section class="flex justify-center mt-5">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
       </section>
+    </div>
+    """
+  end
+
+  attr :transient_failure_count, :integer, default: 0
+  attr :permanent_failure_count, :integer, default: 0
+
+  defp failed_retry_controls(assigns) do
+    ~H"""
+    <div
+      :if={@transient_failure_count > 0 or @permanent_failure_count > 0}
+      class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center"
+    >
+      <.button
+        :if={@transient_failure_count > 0}
+        type="button"
+        rounding="rounded-m3-sm"
+        class="w-full text-sm sm:w-auto"
+        phx-click="retry_all_failed"
+        data-confirm="Retry all transiently failed downloads? They go to the back of the queue."
+      >
+        <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Retry Transient Failed
+      </.button>
+
+      <.button
+        :if={@permanent_failure_count > 0}
+        type="button"
+        variant="warning"
+        rounding="rounded-m3-sm"
+        class="w-full text-sm sm:w-auto"
+        phx-click="force_retry_permanent"
+        data-confirm="Force retry all permanently failed downloads? This will re-attempt downloads that were previously marked unrecoverable."
+      >
+        <.icon name="hero-arrow-path" class="mr-1 h-4 w-4" /> Force Retry Permanent
+      </.button>
     </div>
     """
   end
@@ -513,7 +546,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           <form
             id="latest-sort"
             phx-change="latest_sort"
-            class="grid w-full grid-cols-2 items-end gap-3 sm:ml-auto sm:w-auto lg:w-72 2xl:w-auto"
+            class="grid w-full grid-cols-2 items-end gap-3 sm:ml-auto sm:w-auto lg:w-80 2xl:w-auto"
           >
             <.input
               type="select"
@@ -533,6 +566,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               id="latest-sort-direction"
               name="sort_direction"
               label="Order"
+              align="right"
               value={@sort_direction}
               options={[{"Newest first", :desc}, {"Oldest first", :asc}]}
               inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
@@ -901,6 +935,22 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     {:noreply, assign(socket, new_assigns)}
   end
 
+  def handle_event("force_retry_permanent", _params, %{assigns: assigns} = socket) do
+    results = DownloadingHelpers.force_retry_permanent_download_tasks()
+    socket = assign(socket, :action_feedback, JobActionHelpers.feedback(results))
+
+    new_assigns =
+      fetch_pagination_attributes(
+        assigns.base_query,
+        assigns.page,
+        assigns.media_state,
+        assigns.sort_key,
+        assigns.sort_direction
+      )
+
+    {:noreply, assign(socket, new_assigns)}
+  end
+
   def handle_event("stop_download", %{"task-id" => task_id}, %{assigns: assigns} = socket) do
     task = Repo.get(Task, task_id)
 
@@ -967,6 +1017,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     total_pages = max(ceil(total_record_count / @limit), 1)
     page = NumberUtils.clamp(page, 1, total_pages)
     sorted_query = order_records(base_query, media_state, sort_key, sort_direction)
+    permanent_failure_count = permanent_failure_count(media_state)
+    transient_failure_count = transient_failure_count(media_state)
 
     if media_state == "pending" do
       records = fetch_records(sorted_query, page)
@@ -978,7 +1030,9 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         total_pages: total_pages,
         records: records,
         total_record_count: total_record_count,
-        tasks_by_media_item_id: tasks_by_media_item_id
+        tasks_by_media_item_id: tasks_by_media_item_id,
+        permanent_failure_count: permanent_failure_count,
+        transient_failure_count: transient_failure_count
       }
     else
       records = fetch_records(sorted_query, page)
@@ -988,10 +1042,28 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         total_pages: total_pages,
         records: records,
         total_record_count: total_record_count,
-        tasks_by_media_item_id: fetch_download_tasks(records)
+        tasks_by_media_item_id: fetch_download_tasks(records),
+        permanent_failure_count: permanent_failure_count,
+        transient_failure_count: transient_failure_count
       }
     end
   end
+
+  defp transient_failure_count("failed") do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.download_failed() and not (^MediaQuery.permanent_failure())))
+    |> Repo.aggregate(:count, :id)
+  end
+
+  defp transient_failure_count(_media_state), do: 0
+
+  defp permanent_failure_count("failed") do
+    MediaQuery.new()
+    |> where(^dynamic(^MediaQuery.permanent_failure()))
+    |> Repo.aggregate(:count, :id)
+  end
+
+  defp permanent_failure_count(_media_state), do: 0
 
   defp fetch_records(base_query, page) do
     offset = (page - 1) * @limit
@@ -1158,12 +1230,9 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     )
   end
 
-  defp error_type_condition(error_type_filter) do
-    case Map.fetch!(@error_type_filters, error_type_filter) do
-      nil -> dynamic([_media_item], true)
-      error_type -> dynamic([media_item], media_item.error_type == ^error_type)
-    end
-  end
+  defp error_type_condition("permanent"), do: MediaQuery.permanent_failure()
+  defp error_type_condition("transient"), do: dynamic([mi], not (^MediaQuery.permanent_failure()))
+  defp error_type_condition(_), do: dynamic([_mi], true)
 
   defp order_records(base_query, "pending", nil, _sort_direction), do: order_pending_media(base_query)
   defp order_records(base_query, _media_state, nil, _sort_direction), do: order_by(base_query, desc: :id)

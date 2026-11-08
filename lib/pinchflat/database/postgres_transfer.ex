@@ -84,7 +84,7 @@ defmodule Pinchflat.Database.PostgresTransfer do
   defp copy_table!(db, table) do
     columns =
       Repo.query!(
-        "SELECT column_name, udt_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
+        "SELECT column_name, udt_name, datetime_precision FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
         [table]
       ).rows
       |> Enum.reject(&(hd(&1) == "search_vector"))
@@ -102,10 +102,44 @@ defmodule Pinchflat.Database.PostgresTransfer do
         {count + length(rows), digest_rows(hash, rows)}
       end)
 
-    {target_count, target_hash} = target_digest(table, select, 0, initial)
+    {target_count, target_hash} = target_digest(table, names, nil, initial)
 
-    if target_count != count or :crypto.hash_final(target_hash) != :crypto.hash_final(source_hash),
-      do: Repo.rollback(:validation_mismatch)
+    count_mismatch = target_count != count
+    hash_mismatch = :crypto.hash_final(target_hash) != :crypto.hash_final(source_hash)
+
+    if count_mismatch or hash_mismatch do
+      mismatch = if count_mismatch, do: "count", else: "hash"
+
+      detail =
+        if hash_mismatch and not count_mismatch do
+          find_mismatch_detail(db, table, names, columns, nil)
+        else
+          nil
+        end
+
+      detail_log =
+        if detail do
+          " row_id=#{detail["row_id"]} column=#{detail["column"]} source_type=#{detail["source_type"]} target_type=#{detail["target_type"]}"
+        else
+          ""
+        end
+
+      Logger.error(
+        "PostgreSQL transfer validation failed: table=#{table} source_count=#{count} target_count=#{target_count} mismatch=#{mismatch}#{detail_log}"
+      )
+
+      payload =
+        %{
+          "error" => "validation_mismatch",
+          "table" => table,
+          "source_count" => count,
+          "target_count" => target_count,
+          "mismatch_type" => mismatch
+        }
+        |> then(fn m -> if detail, do: Map.merge(m, detail), else: m end)
+
+      Repo.rollback(payload)
+    end
 
     [[sequence]] = Repo.query!("SELECT pg_get_serial_sequence($1, 'id')", [table]).rows
     [[next_id]] = Repo.query!("SELECT GREATEST(COALESCE(MAX(id), 0) + 1, 1) FROM " <> table).rows
@@ -119,7 +153,7 @@ defmodule Pinchflat.Database.PostgresTransfer do
     executing = table == "oban_jobs" and Enum.at(row, Enum.find_index(columns, &(hd(&1) == "state"))) == "executing"
 
     Enum.zip(row, columns)
-    |> Enum.map(fn {value, [column, type]} ->
+    |> Enum.map(fn {value, [column, type, precision]} ->
       cond do
         executing and column == "state" ->
           "retryable"
@@ -135,6 +169,9 @@ defmodule Pinchflat.Database.PostgresTransfer do
 
         table == "oban_jobs" and column == "errors" ->
           load_sqlite_array(value, {:array, :map})
+
+        not is_nil(value) and type in ["timestamp", "timestamptz"] and precision == 0 ->
+          value |> load_value(type) |> truncate_timestamp()
 
         true ->
           load_value(value, type)
@@ -181,15 +218,88 @@ defmodule Pinchflat.Database.PostgresTransfer do
     end)
   end
 
-  defp target_digest(table, select, offset, {count, hash}) do
-    rows = Repo.query!("SELECT " <> select <> " FROM " <> table <> " ORDER BY id LIMIT 500 OFFSET $1", [offset]).rows
+  defp target_digest(table, names, last_id, {count, hash}) do
+    select = Enum.map_join(names, ",", &quote_column/1)
+    {where, params} = if is_nil(last_id), do: {"", []}, else: {" WHERE id > $1", [last_id]}
+    rows = Repo.query!("SELECT " <> select <> " FROM " <> table <> where <> " ORDER BY id LIMIT 500", params).rows
     next = {count + length(rows), digest_rows(hash, rows)}
-    if length(rows) == 500, do: target_digest(table, select, offset + 500, next), else: next
+
+    if length(rows) == 500,
+      do: target_digest(table, names, Enum.at(List.last(rows), Enum.find_index(names, &(&1 == "id"))), next),
+      else: next
   end
+
+  defp find_mismatch_detail(db, table, names, columns, last_id) do
+    select = Enum.map_join(names, ",", &quote_column/1)
+    {pg_where, pg_params} = if is_nil(last_id), do: {"", []}, else: {" WHERE id > $1", [last_id]}
+    {sqlite_where, sqlite_params} = if is_nil(last_id), do: {"", []}, else: {" WHERE id > ?", [last_id]}
+
+    sqlite_rows =
+      Snapshot.query!(
+        db,
+        "SELECT " <> select <> " FROM " <> table <> sqlite_where <> " ORDER BY id LIMIT 500",
+        sqlite_params
+      )
+      |> Enum.map(&load_row(&1, columns, table))
+
+    pg_rows =
+      Repo.query!("SELECT " <> select <> " FROM " <> table <> pg_where <> " ORDER BY id LIMIT 500", pg_params).rows
+
+    id_index = Enum.find_index(names, &(&1 == "id"))
+
+    mismatch =
+      Enum.zip(sqlite_rows, pg_rows)
+      |> Enum.find_value(fn {src_row, tgt_row} ->
+        if :erlang.term_to_binary(canonical(src_row)) != :erlang.term_to_binary(canonical(tgt_row)) do
+          row_id = if id_index, do: Enum.at(tgt_row, id_index), else: nil
+
+          Enum.zip([names, src_row, tgt_row])
+          |> Enum.find_value(fn {col_name, s_val, t_val} ->
+            if :erlang.term_to_binary(canonical(s_val)) != :erlang.term_to_binary(canonical(t_val)) do
+              %{
+                "row_id" => row_id,
+                "column" => col_name,
+                "source_type" => safe_value_type(s_val),
+                "target_type" => safe_value_type(t_val)
+              }
+            end
+          end)
+        end
+      end)
+
+    cond do
+      not is_nil(mismatch) ->
+        mismatch
+
+      length(sqlite_rows) == 500 and not is_nil(id_index) ->
+        next_id = Enum.at(List.last(sqlite_rows), id_index)
+        find_mismatch_detail(db, table, names, columns, next_id)
+
+      true ->
+        nil
+    end
+  end
+
+  defp safe_value_type(nil), do: "nil"
+  defp safe_value_type(v) when is_integer(v), do: "integer"
+  defp safe_value_type(v) when is_float(v), do: "float"
+  defp safe_value_type(v) when is_binary(v), do: "binary"
+  defp safe_value_type(v) when is_boolean(v), do: "boolean"
+  defp safe_value_type(%DateTime{}), do: "DateTime"
+  defp safe_value_type(%NaiveDateTime{}), do: "NaiveDateTime"
+  defp safe_value_type(%Date{}), do: "Date"
+  defp safe_value_type(%Decimal{}), do: "Decimal"
+  defp safe_value_type(v) when is_list(v), do: "list"
+  defp safe_value_type(v) when is_map(v), do: "map"
+  defp safe_value_type(_), do: "unknown"
+
+  defp truncate_timestamp(%DateTime{} = value), do: DateTime.truncate(value, :second)
+  defp truncate_timestamp(%NaiveDateTime{} = value), do: NaiveDateTime.truncate(value, :second)
 
   defp digest_rows(hash, rows),
     do: Enum.reduce(rows, hash, &:crypto.hash_update(&2, :erlang.term_to_binary(canonical(&1))))
 
+  defp canonical(value) when is_float(value), do: normalize_float(value)
   defp canonical(%Date{} = value), do: {:date, Date.to_iso8601(value)}
   defp canonical(%DateTime{} = value), do: {:timestamp, DateTime.to_unix(value, :microsecond)}
   defp canonical(%NaiveDateTime{} = value), do: canonical(DateTime.from_naive!(value, "Etc/UTC"))
@@ -211,11 +321,28 @@ defmodule Pinchflat.Database.PostgresTransfer do
   defp load_value(value, "numeric"), do: Decimal.new(to_string(value))
   defp load_value(value, "_" <> _type), do: Jason.decode!(value)
 
+  defp load_value(value, type) when type in ["float4", "float8"] and is_integer(value),
+    do: normalize_float(value * 1.0)
+
+  defp load_value(value, type) when type in ["float4", "float8"] and is_float(value),
+    do: normalize_float(value)
+
+  defp load_value(value, type) when type in ["float4", "float8"] and is_binary(value) do
+    case Float.parse(value) do
+      {parsed, _rest} -> normalize_float(parsed)
+      :error -> Snapshot.fail(:unsupported_column_type)
+    end
+  end
+
   defp load_value(value, type)
-       when type in ["int2", "int4", "int8", "float4", "float8", "varchar", "text", "bytea", "oban_job_state"],
+       when type in ["int2", "int4", "int8", "varchar", "text", "bytea", "oban_job_state"],
        do: value
 
   defp load_value(_value, _type), do: Snapshot.fail(:unsupported_column_type)
+
+  defp normalize_float(value) when is_float(value) do
+    if value == 0.0, do: 0.0, else: value
+  end
 
   defp timestamp(value) do
     case DateTime.from_iso8601(value) do

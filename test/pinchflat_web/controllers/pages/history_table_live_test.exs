@@ -441,13 +441,44 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
 
       assert html =~ failed.title
       refute html =~ "Nothing Here!"
-      assert html =~ "Retry All Failed"
+      assert html =~ "Retry Transient Failed"
+      refute has_element?(view, "button[phx-click=force_retry_permanent]")
 
       view
-      |> element("button", "Retry All Failed")
+      |> element("button", "Retry Transient Failed")
       |> render_click()
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => failed.id})
+      assert render(view) =~ "1 queued, 0 already queued, 0 failed."
+    end
+
+    test "force retries permanent failures when they exist", %{conn: conn} do
+      source = source_fixture()
+
+      permanent =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent
+        })
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "failed"})
+
+      assert has_element?(view, "button[phx-click=force_retry_permanent]")
+      refute has_element?(view, "button[phx-click=retry_all_failed]")
+
+      view
+      |> element("button", "Force Retry Permanent")
+      |> render_click()
+
+      assert_enqueued(
+        worker: MediaDownloadWorker,
+        args: %{"id" => permanent.id, "force" => true, "reset_last_error" => true}
+      )
+
       assert render(view) =~ "1 queued, 0 already queued, 0 failed."
     end
 
