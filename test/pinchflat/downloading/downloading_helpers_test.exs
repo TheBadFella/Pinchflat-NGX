@@ -255,6 +255,83 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
     end
   end
 
+  describe "force_retry_permanent_download_tasks/1" do
+    test "force retries permanent failures and leaves transient failures alone" do
+      transient =
+        media_item_fixture(
+          media_filepath: nil,
+          last_error: "Network is unreachable",
+          error_type: :transient
+        )
+
+      permanent =
+        media_item_fixture(
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent
+        )
+
+      assert [{:ok, _task}] = DownloadingHelpers.force_retry_permanent_download_tasks()
+
+      assert_enqueued(
+        worker: MediaDownloadWorker,
+        args: %{"id" => permanent.id, "force" => true, "reset_last_error" => true}
+      )
+
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => transient.id})
+    end
+
+    test "does not retry permanent errors that are not download-prevented" do
+      media_item =
+        media_item_fixture(
+          media_filepath: nil,
+          prevent_download: false,
+          last_error: "Video unavailable",
+          error_type: :permanent
+        )
+
+      assert [] = DownloadingHelpers.force_retry_permanent_download_tasks()
+
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "scopes the retry to the given source" do
+      source = source_fixture()
+      other_source = source_fixture()
+
+      scoped =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent
+        )
+
+      other =
+        media_item_fixture(
+          source_id: other_source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          download_prevented_reason: :error,
+          last_error: "Video unavailable",
+          error_type: :permanent
+        )
+
+      assert [{:ok, _task}] = DownloadingHelpers.force_retry_permanent_download_tasks(source)
+
+      assert_enqueued(
+        worker: MediaDownloadWorker,
+        args: %{"id" => scoped.id, "force" => true, "reset_last_error" => true}
+      )
+
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => other.id})
+    end
+  end
+
   defp with_debug_logs(fun) do
     previous_level = Logger.level()
     Logger.configure(level: :debug)

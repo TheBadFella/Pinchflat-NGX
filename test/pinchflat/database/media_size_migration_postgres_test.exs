@@ -14,13 +14,26 @@ defmodule Pinchflat.Database.MediaSizeMigrationPostgresTest do
   setup_all do
     Code.require_file("priv/repo/migrations/20261101190000_widen_media_size_bytes.exs")
     Ecto.Adapters.SQL.Sandbox.mode(Repo, :auto)
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Repo, :manual) end)
+
+    on_exit(fn ->
+      Repo.delete_all(MediaItem)
+      Repo.delete_all(Pinchflat.Sources.Source)
+      Repo.delete_all(Pinchflat.Profiles.MediaProfile)
+      Ecto.Adapters.SQL.Sandbox.mode(Repo, :manual)
+    end)
+
     :ok
   end
 
   setup do
     item = Pinchflat.MediaFixtures.media_item_fixture(%{media_size_bytes: 77})
-    on_exit(fn -> Repo.delete_all(from(mi in MediaItem, where: mi.id == ^item.id)) end)
+
+    on_exit(fn ->
+      Repo.delete_all(from(mi in MediaItem, where: mi.id == ^item.id))
+      Repo.delete_all(Pinchflat.Sources.Source)
+      Repo.delete_all(Pinchflat.Profiles.MediaProfile)
+    end)
+
     %{item: item}
   end
 
