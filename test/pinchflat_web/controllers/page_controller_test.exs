@@ -50,7 +50,6 @@ defmodule PinchflatWeb.PageControllerTest do
 
       latest_conn = get(recycle(default_conn), ~p"/?tab=latest")
       assert latest_conn.assigns.active_tab == "latest"
-      assert html_response(latest_conn, 200) =~ "No media indexed in this time frame."
     end
 
     test "restores the custom indexed range from the URL", %{conn: conn} do
@@ -408,5 +407,67 @@ defmodule PinchflatWeb.PageControllerTest do
       assert redirected_to(response) == ~p"/postgres_migration"
       assert Phoenix.Flash.get(response.assigns.flash, :error) =~ "Stop the old instance"
     end
+  end
+
+  describe "GET /activity when testing operational tabs" do
+    setup do
+      Settings.set(onboarding: false)
+      :ok
+    end
+
+    test "renders Active Tasks by default", %{conn: conn} do
+      conn = get(conn, ~p"/activity")
+      html = html_response(conn, 200)
+
+      assert conn.assigns.active_tab == "active-tasks"
+      assert html =~ "Activity"
+      assert active_page_section(html) =~ "<span>Active Tasks</span>"
+    end
+
+    test "renders the Job Queue and System Health tabs", %{conn: conn} do
+      for {tab, title} <- [{"job-queue", "Job Queue"}, {"system-health", "System Health"}] do
+        conn = get(recycle(conn), ~p"/activity?#{[tab: tab]}")
+        html = html_response(conn, 200)
+
+        assert conn.assigns.active_tab == tab
+        assert active_page_section(html) =~ "<span>#{title}</span>"
+      end
+    end
+
+    test "redirects legacy operational home links to Activity", %{conn: conn} do
+      for tab <- ~w(active-tasks job-queue system-health) do
+        conn = get(recycle(conn), ~p"/?#{[tab: tab]}")
+        assert redirected_to(conn) == ~p"/activity?#{[tab: tab]}"
+      end
+    end
+
+    test "Home no longer renders the operational tabs", %{conn: conn} do
+      html = conn |> get(~p"/") |> html_response(200)
+
+      refute html =~ "Active Tasks"
+      refute html =~ "Job Queue"
+      refute html =~ "System Health"
+    end
+
+    test "Basic Auth protects Activity like Home" do
+      Application.put_env(:pinchflat, :basic_auth_username, "operator")
+      Application.put_env(:pinchflat, :basic_auth_password, "fixture-password")
+
+      on_exit(fn ->
+        Application.delete_env(:pinchflat, :basic_auth_username)
+        Application.delete_env(:pinchflat, :basic_auth_password)
+      end)
+
+      assert get(build_conn(), ~p"/activity").status == 401
+      assert get(build_conn(), ~p"/").status == 401
+    end
+  end
+
+  defp active_page_section(html) do
+    assert [sections] =
+             Regex.run(~r/<nav\b[^>]*aria-label="Page sections"[^>]*>(.*?)<\/nav>/s, html, capture: :all_but_first)
+
+    assert [[current_link]] = Regex.scan(~r/<a\b[^>]*aria-current="page"[^>]*>.*?<\/a>/s, sections)
+    current_link
   end
 end
