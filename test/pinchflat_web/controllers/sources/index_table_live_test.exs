@@ -140,7 +140,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
     end
 
-    test "renders the table view by default and exposes an accessible grid toggle", %{conn: conn} do
+    test "renders the table view when selected and exposes the poster grid toggle", %{conn: conn} do
       source = source_fixture(custom_name: "Grid candidate")
 
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
@@ -443,6 +443,44 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       # Send the internal timer message to trigger trailing refresh
       send(view.pid, :throttled_refresh)
       assert render(view) =~ source.custom_name
+    end
+  end
+
+  describe "view mode defaults" do
+    test "opens the poster grid by default", %{conn: conn} do
+      source_fixture(custom_name: "Default grid source")
+
+      session = %{
+        "initial_sort_key" => :custom_name,
+        "initial_sort_direction" => :asc,
+        "results_per_page" => 10
+      }
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert html =~ ~s(data-view="poster-grid")
+      assert has_element?(view, "#source-poster-grid")
+      refute has_element?(view, "#source-table")
+    end
+
+    test "renders the table when the initial view mode is table", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert html =~ ~s(data-view="table")
+      assert has_element?(view, "#source-table")
+      refute has_element?(view, "#source-poster-grid")
+    end
+
+    test "falls back to the grid for an unknown initial view mode", %{conn: conn} do
+      source_fixture()
+
+      session = Map.put(create_session(), "initial_view_mode", "sideways")
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert has_element?(view, "#source-poster-grid")
+      refute has_element?(view, "#source-table")
     end
   end
 

@@ -69,13 +69,6 @@
           <.actions_dropdown source={@source} conn={@conn} />
         </:tab_append>
 
-        <:tab title="Source" id="source">
-          <div class="mb-3 flex justify-end">
-            <.switch model="showUnset" label="Show unset fields" />
-          </div>
-          <.source_info_panel source={@source} />
-        </:tab>
-
         <:tab title="Videos" id="videos">
           {live_render(
             @conn,
@@ -262,6 +255,13 @@
               Subscribe to this source in a podcast app. The feed lists downloaded media from this source.
             </:description>
           </.feed_option>
+        </:tab>
+
+        <:tab title="Source" id="source">
+          <div class="mb-3 flex justify-end">
+            <.switch model="showUnset" label="Show unset fields" />
+          </div>
+          <.source_info_panel source={@source} />
         </:tab>
       </.tabbed_layout>
     </div>

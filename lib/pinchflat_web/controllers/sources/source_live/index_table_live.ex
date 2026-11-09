@@ -15,7 +15,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   alias Pinchflat.Sources.Source
   alias PinchflatWeb.Sources.SourceHTML
 
-  @default_view_mode :table
+  @default_view_mode :grid
 
   def source_download_mode_label(%{selection_mode: :manual}), do: "Delayed Downloads"
   def source_download_mode_label(%{selection_mode: _selection_mode}), do: "Automatic Downloads"
@@ -160,6 +160,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
+
+  defp normalize_view_mode(mode) when mode in [:table, "table"], do: :table
 
   defp normalize_view_mode(mode) when mode in [:grid, "grid"], do: :grid
   defp normalize_view_mode(_mode), do: @default_view_mode
