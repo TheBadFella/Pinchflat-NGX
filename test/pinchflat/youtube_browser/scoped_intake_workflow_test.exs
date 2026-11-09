@@ -31,6 +31,7 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
   end
 
   setup do
+    stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 10_000_000_000} end)
     original_extras = Application.get_env(:pinchflat, :extras_directory)
     original_fs = Application.get_env(:pinchflat, :yt_dlp_config_file_fs)
     original_hold = Application.get_env(:pinchflat, :postgres_migration_boot_held)
@@ -320,13 +321,40 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
     assert {:ok, item_path} = YtDlpConfigFile.scope_path(:media_item, item.id)
     assert :ok = YtDlpConfigFile.save_scope(:media_item, item.id, "--old\n", :missing)
 
+    stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 10_000_000_000} end)
+
     stub(YtDlpRunnerMock, :run, fn
-      _url, :download, _opts, _template, _addl ->
+      _url, :download, opts, _template, _addl ->
         send(self(), {:download_saw, File.read!(item_path)})
-        {:ok, render_metadata(:media_metadata)}
+
+        filepath =
+          if output = opts[:output] do
+            dir = Path.dirname(output)
+            File.mkdir_p!(dir)
+            path = Path.join(dir, "Pinchflat Example Video-ABC123.mkv")
+            File.write!(path, "dummy")
+            path
+          else
+            "/tmp/test/media/Pinchflat Example Video-ABC123.mkv"
+          end
+
+        metadata =
+          render_parsed_metadata(:media_metadata)
+          |> Map.merge(%{
+            "filepath" => filepath,
+            "infojson_filename" => nil,
+            "requested_subtitles" => nil,
+            "thumbnails" => []
+          })
+          |> Phoenix.json_library().encode!()
+
+        {:ok, metadata}
 
       _url, :download_thumbnail, _opts, _template, _addl ->
         {:ok, ""}
+
+      _url, :get_downloadable_status, _opts, _template, _addl ->
+        {:ok, "{}"}
     end)
 
     stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
@@ -365,6 +393,8 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
   end
 
   defp stub_download_success(on_opts) do
+    stub(DiskSpaceCheckerMock, :available_bytes, fn _path -> {:ok, 10_000_000_000} end)
+
     stub(YtDlpRunnerMock, :run, fn
       _url, :download, opts, _template, _addl ->
         on_opts.(opts)
