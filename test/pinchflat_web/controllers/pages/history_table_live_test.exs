@@ -689,6 +689,24 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
     end
   end
 
+  describe "empty states" do
+    test "P3: empty state on latest 1-day range offers past 7 days and view downloaded", %{conn: conn} do
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+      assert html =~ "Nothing was indexed in the past 24 hours."
+      assert has_element?(view, "a", "Show past 7 days")
+      assert has_element?(view, "a[href='/?tab=downloaded']", "View downloaded")
+
+      {:ok, _view, html_week} =
+        live_isolated(conn, HistoryTableLive,
+          session: %{"media_state" => "latest", "latest_range" => %{"range" => "week"}}
+        )
+
+      assert html_week =~ "No media indexed in this time frame."
+      refute html_week =~ "Show past 7 days"
+      refute html_week =~ "View downloaded"
+    end
+  end
+
   defp indexed_fixture(source, title, indexed_at) do
     item = media_item_fixture(source_id: source.id, title: title)
     Repo.update_all(from(m in MediaItem, where: m.id == ^item.id), set: [inserted_at: indexed_at])
