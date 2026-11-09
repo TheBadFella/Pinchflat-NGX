@@ -19,6 +19,8 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Metadata.MediaMetadata
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.ScopedYtDlpOptions
 
   # Some fields should only be set on insert and not on update.
   @fields_to_drop_on_update [:playlist_index]
@@ -303,6 +305,55 @@ defmodule Pinchflat.Media do
     media_item
     |> MediaItem.changeset(update_attrs)
     |> Repo.update()
+  end
+
+  @doc """
+  Updates a media_item and its scoped yt-dlp options in one transaction. A file
+  failure rolls back the media item update.
+
+  Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}} |
+  {:error, %Ecto.Changeset{}, reason}
+  """
+  def update_media_item_with_yt_dlp_options(%MediaItem{} = media_item, attrs, opts \\ []) do
+    payload = ScopedYtDlpOptions.payload(opts)
+
+    if payload == :absent do
+      update_media_item(media_item, attrs)
+    else
+      expected = ScopedYtDlpOptions.expected_version(opts, :any)
+      prior = ScopedYtDlpOptions.prior(:media_item, media_item.id)
+      :ok = PendingMediaItemOptions.supersede_for_item(media_item)
+
+      result =
+        Repo.transaction(fn ->
+          case update_media_item(media_item, attrs) do
+            {:ok, updated} ->
+              case ScopedYtDlpOptions.save(payload, :media_item, updated.id, expected) do
+                :ok -> updated
+                {:error, reason} -> Repo.rollback({:yt_dlp_options, reason})
+              end
+
+            {:error, changeset} ->
+              Repo.rollback({:changeset, changeset})
+          end
+        end)
+
+      case result do
+        {:ok, updated} ->
+          {:ok, updated}
+
+        {:error, {:changeset, changeset}} ->
+          {:error, changeset}
+
+        {:error, {:yt_dlp_options, reason}} ->
+          ScopedYtDlpOptions.restore(:media_item, media_item.id, prior, payload)
+          {:error, %{change_media_item(media_item, attrs) | action: :update}, reason}
+
+        {:error, reason} ->
+          ScopedYtDlpOptions.restore(:media_item, media_item.id, prior, payload)
+          {:error, %{change_media_item(media_item, attrs) | action: :update}, reason}
+      end
+    end
   end
 
   @doc """

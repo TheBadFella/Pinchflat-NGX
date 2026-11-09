@@ -22,6 +22,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.PendingMediaItemOptions
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
@@ -164,7 +165,14 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       end)
 
     update_source_after_indexing(source)
-    enqueued_download_count = DownloadingHelpers.enqueue_pending_download_tasks(source)
+    materialized_items = Enum.filter(result, &match?(%MediaItem{}, &1))
+
+    enqueued_download_count =
+      case apply_pending_item_options(source, materialized_items) do
+        :ok -> DownloadingHelpers.enqueue_pending_download_tasks(source)
+        {:applied, count} -> count
+        {:error, _reason} -> 0
+      end
 
     Logger.info(
       "indexing_completed source_id=#{source.id} indexed_media_count=#{length(media_attributes)} " <>
@@ -174,6 +182,26 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
     result
   end
+
+  defp apply_pending_item_options(%Source{collection_type: :video} = source, media_items) do
+    results = Enum.map(media_items, &PendingMediaItemOptions.apply_for_item/1)
+
+    case Enum.find(results, &match?({:error, _reason}, &1)) do
+      nil ->
+        if Enum.any?(results, &match?({:ok, outcome} when outcome in [:queued, :already_queued], &1)) do
+          {:applied, Enum.count(results, &match?({:ok, outcome} when outcome in [:queued, :already_queued], &1))}
+        else
+          :ok
+        end
+
+      {:error, reason} ->
+        Logger.warning("pending_item_options_apply_failed source_id=#{source.id} reason=#{inspect(reason)}")
+
+        {:error, reason}
+    end
+  end
+
+  defp apply_pending_item_options(_source, _media_items), do: :ok
 
   # The file follower is a GenServer that watches a file for new lines and
   # processes them. This works well, but we have to be resilliant to partially-written

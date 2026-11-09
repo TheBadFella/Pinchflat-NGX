@@ -10,6 +10,7 @@ defmodule Pinchflat.YoutubeBrowser do
 
   defdelegate download_video(video_id, profile_id, opts \\ []), to: Intake
   defdelegate subscribe_channel(channel_id, profile_id, opts \\ []), to: Intake
+  defdelegate preview_item_options(video_id, profile_id, opts \\ []), to: Intake
 
   def provider do
     Application.get_env(

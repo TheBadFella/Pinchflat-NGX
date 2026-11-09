@@ -11,7 +11,9 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   alias Pinchflat.MediaWatch
   alias Pinchflat.MediaWatch.OriginalArchive
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Settings.YtDlpConfigFile
   alias PinchflatWeb.Schemas
+  alias PinchflatWeb.YtDlpOptionsHelpers
 
   tags(["Podcasts"])
 
@@ -44,21 +46,28 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   def edit(conn, %{"id" => id}) do
     media_item = Media.get_media_item!(id)
     changeset = Media.change_media_item(media_item)
+    options = media_item_options(media_item)
 
-    render(conn, :edit, media_item: media_item, changeset: changeset)
+    render_media_item_edit(conn, media_item, changeset, options)
   end
 
-  def update(conn, %{"id" => id, "media_item" => params}) do
+  def update(conn, %{"id" => id, "media_item" => params} = all_params) do
     media_item = Media.get_media_item!(id)
+    opts = YtDlpOptionsHelpers.options_opts(all_params, :any)
 
-    case Media.update_media_item(media_item, params) do
+    case Media.update_media_item_with_yt_dlp_options(media_item, params, opts) do
       {:ok, media_item} ->
         conn
         |> put_flash(:info, "Media Item updated successfully.")
         |> redirect(to: ~p"/sources/#{media_item.source_id}/media/#{media_item}")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :edit, media_item: media_item, changeset: changeset)
+        options = submitted_media_item_options(media_item, all_params)
+        render_media_item_edit(conn, media_item, changeset, options)
+
+      {:error, %Ecto.Changeset{} = changeset, reason} ->
+        options = submitted_media_item_options(media_item, all_params, reason)
+        render_media_item_edit(conn, media_item, changeset, options)
     end
   end
 
@@ -228,6 +237,46 @@ defmodule PinchflatWeb.MediaItems.MediaItemController do
   defp byte_range(start, last, _file_size) when last < start, do: {:error, :invalid_range}
   defp byte_range(start, _last, file_size) when start >= file_size, do: {:error, :unsatisfiable_range}
   defp byte_range(start, last, file_size), do: {:ok, {start, min(last, file_size - 1)}}
+
+  defp media_item_options(media_item) do
+    YtDlpOptionsHelpers.load_assigns(:media_item, media_item.id, media_item_inherited(media_item))
+  end
+
+  defp submitted_media_item_options(media_item, params, reason \\ nil) do
+    error = if reason, do: YtDlpOptionsHelpers.message(reason)
+
+    options =
+      YtDlpOptionsHelpers.submitted_assigns(
+        params,
+        media_item_inherited(media_item),
+        %{},
+        error,
+        :any
+      )
+
+    if reason == :stale_conflict do
+      case YtDlpConfigFile.read_scope(:media_item, media_item.id) do
+        {:ok, %{version: version}} -> %{options | yt_dlp_options_version: version}
+        _ -> options
+      end
+    else
+      options
+    end
+  end
+
+  defp media_item_inherited(media_item) do
+    source = Repo.preload(media_item, :source).source
+
+    %{
+      base: YtDlpConfigFile.present?(),
+      profile: YtDlpConfigFile.present_scope?(:profile, source.media_profile_id),
+      source: YtDlpConfigFile.present_scope?(:source, source.id)
+    }
+  end
+
+  defp render_media_item_edit(conn, media_item, changeset, options) do
+    render(conn, :edit, [media_item: media_item, changeset: changeset] ++ Map.to_list(options))
+  end
 
   defp tab_param(params, allowed_tabs, default_tab) do
     tab = params["tab"]

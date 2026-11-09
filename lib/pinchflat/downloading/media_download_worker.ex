@@ -34,20 +34,25 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   Returns {:ok, %Task{}} | {:error, :duplicate_job} | {:error, %Ecto.Changeset{}}
   """
   def kickoff_with_task(media_item, job_args \\ %{}, job_opts \\ []) do
-    Repo.transaction(fn ->
-      maybe_replace_existing_manual_retry(media_item, job_args)
+    case Repo.transaction(fn ->
+           maybe_replace_existing_manual_retry(media_item, job_args)
 
-      result =
-        %{id: media_item.id}
-        |> Map.merge(job_args)
-        |> MediaDownloadWorker.new(job_opts)
-        |> Tasks.create_job_with_task(media_item)
+           result =
+             %{id: media_item.id}
+             |> Map.merge(job_args)
+             |> MediaDownloadWorker.new(job_opts)
+             |> Tasks.create_job_with_task(media_item)
 
-      case result do
-        {:ok, task} -> task
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
+           case result do
+             {:ok, task} -> {:created, task}
+             {:error, :duplicate_job} -> {:duplicate, nil}
+             {:error, reason} -> Repo.rollback(reason)
+           end
+         end) do
+      {:ok, {:created, task}} -> {:ok, task}
+      {:ok, {:duplicate, _}} -> {:error, :duplicate_job}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """

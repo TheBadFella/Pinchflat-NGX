@@ -19,8 +19,10 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.YtDlpConfigFile
   alias PinchflatWeb.Schemas
   alias PinchflatWeb.Sources.SourceHTML
+  alias PinchflatWeb.YtDlpOptionsHelpers
 
   tags(["Sources"])
 
@@ -106,6 +108,8 @@ defmodule PinchflatWeb.Sources.SourceController do
         template_id -> Repo.get(Source, template_id) || default_source
       end
 
+    options = source_options_new(profiles, default_profile_id)
+
     render(
       conn,
       :new,
@@ -133,7 +137,7 @@ defmodule PinchflatWeb.Sources.SourceController do
             |> Sources.change_source(prefill_source_attrs(params))
             |> maybe_default_cookie_behaviour()
         ],
-        cookie_file_assigns()
+        cookie_file_assigns() ++ Map.to_list(options)
       )
     )
   end
@@ -149,59 +153,31 @@ defmodule PinchflatWeb.Sources.SourceController do
     ]
   )
 
-  def create(conn, %{"source" => source_params}) do
+  def create(conn, %{"source" => source_params} = params) do
     delay_automatic_download = truthy_param?(Map.get(source_params, "delay_automatic_download", false))
 
-    case Sources.create_source(source_params, delay_automatic_download: delay_automatic_download) do
+    opts =
+      if get_format(conn) == "json" do
+        [delay_automatic_download: delay_automatic_download]
+      else
+        Keyword.merge(
+          [delay_automatic_download: delay_automatic_download],
+          YtDlpOptionsHelpers.options_opts(params, :missing)
+        )
+      end
+
+    case Sources.create_source(source_params, opts) do
       {:ok, source} ->
-        case get_format(conn) do
-          "json" ->
-            source = Sources.preload_api_assocs(source)
-            conn |> put_status(:created) |> json(source)
+        respond_source_created(conn, source, [])
 
-          _ ->
-            redirect_location =
-              cond do
-                Settings.get!(:onboarding) ->
-                  ~p"/?onboarding=1"
-
-                source.collection_type == :playlist && source.selection_mode == :manual ->
-                  ~p"/sources/#{source}?#{[tab: "selection"]}"
-
-                true ->
-                  ~p"/sources/#{source}"
-              end
-
-            conn
-            |> put_flash(:info, "Source created successfully.")
-            |> redirect(to: redirect_location)
-        end
+      {:ok, source, warnings} ->
+        respond_source_created(conn, source, warnings)
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        case get_format(conn) do
-          "json" ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(%{errors: format_changeset_errors(changeset)})
+        source_create_error(conn, changeset, params, nil)
 
-          _ ->
-            render(
-              conn,
-              :new,
-              Keyword.merge(
-                [
-                  changeset: changeset,
-                  media_profiles: media_profiles(),
-                  available_folders: saved_source_folders(),
-                  current_path: ~p"/sources/new",
-                  layout: get_onboarding_layout(),
-                  new_source: true,
-                  show_delay_automatic_download: true
-                ],
-                cookie_file_assigns()
-              )
-            )
-        end
+      {:error, %Ecto.Changeset{} = changeset, reason} ->
+        source_create_error(conn, changeset, params, reason)
     end
   end
 
@@ -257,6 +233,8 @@ defmodule PinchflatWeb.Sources.SourceController do
   def edit(conn, %{"id" => id}) do
     source = Sources.get_source!(id)
     changeset = Sources.change_source(source)
+    profiles = media_profiles()
+    options = source_options_edit(source, profiles)
 
     render(
       conn,
@@ -265,11 +243,11 @@ defmodule PinchflatWeb.Sources.SourceController do
         [
           source: source,
           changeset: changeset,
-          media_profiles: media_profiles(),
+          media_profiles: profiles,
           available_folders: saved_source_folders(),
           current_path: ~p"/sources/#{source}/edit"
         ],
-        cookie_file_assigns()
+        cookie_file_assigns() ++ Map.to_list(options)
       )
     )
   end
@@ -640,44 +618,136 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp do_update(conn, source, source_params) do
-    case Sources.update_source(source, source_params) do
+    opts =
+      if get_format(conn) == "json" do
+        []
+      else
+        YtDlpOptionsHelpers.options_opts(conn.params, :any)
+      end
+
+    case Sources.update_source(source, source_params, opts) do
       {:ok, source} ->
-        Reconciliation.mark_ready_plans_stale()
+        respond_source_updated(conn, source, [])
 
-        case get_format(conn) do
-          "json" ->
-            source = Sources.preload_api_assocs(source)
-            conn |> put_status(:ok) |> json(source)
-
-          _ ->
-            conn
-            |> put_flash(:info, "Source updated successfully.")
-            |> redirect(to: ~p"/sources/#{source}")
-        end
+      {:ok, source, warnings} ->
+        respond_source_updated(conn, source, warnings)
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        case get_format(conn) do
-          "json" ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(%{errors: format_changeset_errors(changeset)})
+        source_update_error(conn, source, changeset, nil)
 
-          _ ->
-            render(
-              conn,
-              :edit,
-              Keyword.merge(
-                [
-                  source: source,
-                  changeset: changeset,
-                  media_profiles: media_profiles(),
-                  available_folders: saved_source_folders(),
-                  current_path: ~p"/sources/#{source}/edit"
-                ],
-                cookie_file_assigns()
-              )
-            )
-        end
+      {:error, %Ecto.Changeset{} = changeset, reason} ->
+        source_update_error(conn, source, changeset, reason)
+    end
+  end
+
+  defp respond_source_created(conn, source, warnings) do
+    case get_format(conn) do
+      "json" ->
+        source = Sources.preload_api_assocs(source)
+        conn |> put_status(:created) |> json(source)
+
+      _ ->
+        conn
+        |> source_flash(warnings, "Source created successfully.")
+        |> redirect(to: source_created_path(source))
+    end
+  end
+
+  defp respond_source_updated(conn, source, warnings) do
+    Reconciliation.mark_ready_plans_stale()
+
+    case get_format(conn) do
+      "json" ->
+        source = Sources.preload_api_assocs(source)
+        conn |> put_status(:ok) |> json(source)
+
+      _ ->
+        conn
+        |> source_flash(warnings, "Source updated successfully.")
+        |> redirect(to: ~p"/sources/#{source}")
+    end
+  end
+
+  defp source_created_path(source) do
+    cond do
+      Settings.get!(:onboarding) ->
+        ~p"/?onboarding=1"
+
+      source.collection_type == :playlist && source.selection_mode == :manual ->
+        ~p"/sources/#{source}?#{[tab: "selection"]}"
+
+      true ->
+        ~p"/sources/#{source}"
+    end
+  end
+
+  defp source_flash(conn, [], message), do: put_flash(conn, :info, message)
+
+  defp source_flash(conn, _warnings, _message) do
+    put_flash(
+      conn,
+      :error,
+      "Source saved with custom yt-dlp options, but indexing could not be queued. Use Check for new videos to retry."
+    )
+  end
+
+  defp source_create_error(conn, changeset, params, reason) do
+    case get_format(conn) do
+      "json" ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{errors: format_changeset_errors(changeset)})
+
+      _ ->
+        profiles = media_profiles()
+        source_params = Map.get(params, "source", %{})
+        profile_id = integer_id(source_params["media_profile_id"])
+        options = submitted_source_options(params, profiles, profile_id, nil, reason, :missing)
+
+        render(
+          conn,
+          :new,
+          Keyword.merge(
+            [
+              changeset: changeset,
+              media_profiles: profiles,
+              available_folders: saved_source_folders(),
+              current_path: ~p"/sources/new",
+              layout: get_onboarding_layout(),
+              new_source: true,
+              show_delay_automatic_download: true
+            ],
+            cookie_file_assigns() ++ Map.to_list(options)
+          )
+        )
+    end
+  end
+
+  defp source_update_error(conn, source, changeset, reason) do
+    case get_format(conn) do
+      "json" ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{errors: format_changeset_errors(changeset)})
+
+      _ ->
+        profiles = media_profiles()
+        options = submitted_source_options(conn.params, profiles, source.media_profile_id, source.id, reason, :any)
+
+        render(
+          conn,
+          :edit,
+          Keyword.merge(
+            [
+              source: source,
+              changeset: %{changeset | action: :update},
+              media_profiles: profiles,
+              available_folders: saved_source_folders(),
+              current_path: ~p"/sources/#{source}/edit"
+            ],
+            cookie_file_assigns() ++ Map.to_list(options)
+          )
+        )
     end
   end
 
@@ -719,27 +789,24 @@ defmodule PinchflatWeb.Sources.SourceController do
         do_update(conn, source, source_params)
 
       {:ok, directory_move_plan} ->
-        render(conn, :confirm_directory_move,
-          source: source,
-          source_params: source_params,
-          directory_move_plan: directory_move_plan
-        )
+        profiles = media_profiles()
+        options = submitted_source_options(conn.params, profiles, source.media_profile_id, source.id, nil, :any)
 
-      {:error, %Ecto.Changeset{} = changeset} ->
         render(
           conn,
-          :edit,
+          :confirm_directory_move,
           Keyword.merge(
             [
               source: source,
-              changeset: %{changeset | action: :update},
-              media_profiles: media_profiles(),
-              available_folders: saved_source_folders(),
-              current_path: ~p"/sources/#{source}/edit"
+              source_params: source_params,
+              directory_move_plan: directory_move_plan
             ],
-            cookie_file_assigns()
+            Map.to_list(options)
           )
         )
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        source_update_error(conn, source, %{changeset | action: :update}, nil)
     end
   end
 
@@ -758,6 +825,65 @@ defmodule PinchflatWeb.Sources.SourceController do
       _ -> fallback || ~p"/sources/#{source}"
     end
   end
+
+  defp source_options_new(profiles, default_profile_id) do
+    Map.merge(YtDlpOptionsHelpers.base_assigns(), %{
+      yt_dlp_options_inherited: source_inherited(default_profile_id, nil),
+      yt_dlp_options_profile_presence: profile_presence(profiles)
+    })
+  end
+
+  defp source_options_edit(source, profiles) do
+    inherited = source_inherited(source.media_profile_id, source.id)
+    YtDlpOptionsHelpers.load_assigns(:source, source.id, inherited, profile_presence(profiles))
+  end
+
+  defp source_inherited(profile_id, source_id) do
+    %{
+      base: YtDlpConfigFile.present?(),
+      profile: is_integer(profile_id) and YtDlpConfigFile.present_scope?(:profile, profile_id),
+      source: is_integer(source_id) and YtDlpConfigFile.present_scope?(:source, source_id)
+    }
+  end
+
+  defp profile_presence(profiles) do
+    Enum.into(profiles, %{}, fn profile ->
+      {profile.id, YtDlpConfigFile.present_scope?(:profile, profile.id)}
+    end)
+  end
+
+  defp submitted_source_options(params, profiles, profile_id, source_id, reason, default_version) do
+    error = if reason, do: YtDlpOptionsHelpers.message(reason)
+
+    options =
+      YtDlpOptionsHelpers.submitted_assigns(
+        params,
+        source_inherited(profile_id, source_id),
+        profile_presence(profiles),
+        error,
+        default_version
+      )
+
+    if reason == :stale_conflict and is_integer(source_id) do
+      case YtDlpConfigFile.read_scope(:source, source_id) do
+        {:ok, %{version: version}} -> %{options | yt_dlp_options_version: version}
+        _ -> options
+      end
+    else
+      options
+    end
+  end
+
+  defp integer_id(value) when is_integer(value), do: value
+
+  defp integer_id(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
+  defp integer_id(_value), do: nil
 
   defp media_profiles do
     MediaProfile

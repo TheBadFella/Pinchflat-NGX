@@ -35,6 +35,21 @@ defmodule PinchflatWeb.Api.AccessTest do
     assert json_response(conn, 200)["data"] != []
   end
 
+  test "Basic Auth rejects API option writes before any profile is created" do
+    Application.put_env(:pinchflat, :basic_auth_username, "operator")
+    Application.put_env(:pinchflat, :basic_auth_password, "fixture-password")
+    name = "API scoped profile #{System.unique_integer([:positive])}"
+
+    response =
+      post(build_conn(), "/api/media_profiles", %{
+        "media_profile" => %{"name" => name, "output_path_template" => "{{id}}.{{ext}}"},
+        "yt_dlp_options" => "--secret\n"
+      })
+
+    assert response.status == 401
+    refute Repo.get_by(Pinchflat.Profiles.MediaProfile, name: name)
+  end
+
   test "OIDC without API credentials fails closed without redirecting to browser login" do
     Application.put_env(:pinchflat, :oidc,
       issuer: "https://identity.example.test",
