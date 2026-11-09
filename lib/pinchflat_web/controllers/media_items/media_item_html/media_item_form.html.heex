@@ -20,5 +20,22 @@
     type="toggle"
     label="Prevent Automatic Deletion"
     help="Protect this video's files from both cutoff and retention cleanup. Manual deletion is still allowed"
-  /> <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" variant="primary">Save Media Item</.button>
+  />
+
+  <section x-show="advancedMode">
+    <.yt_dlp_options_editor
+      id_prefix="media-item"
+      scope_help="These options apply to this video only. The base, media profile, and source config files still apply."
+      contents={@yt_dlp_options}
+      version={@yt_dlp_options_version}
+      present={@yt_dlp_options_present}
+      readable={@yt_dlp_options_readable}
+      clearable={@yt_dlp_options_clearable}
+      inherited={@yt_dlp_options_inherited}
+      profile_presence={@yt_dlp_options_profile_presence}
+      error={@yt_dlp_error}
+    />
+  </section>
+
+  <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" variant="primary">Save Media Item</.button>
 </.simple_form>

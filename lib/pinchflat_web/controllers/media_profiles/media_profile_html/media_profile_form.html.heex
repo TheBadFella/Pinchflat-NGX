@@ -297,7 +297,7 @@
 
     <h3 class="mt-8 text-2xl text-theme-on-surface">Media Center Options</h3>
 
-    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
+    <p class="mt-2 text-sm text-theme-on-surface-muted">
       Everything in this section is experimental - please open a GitHub issue if you see something odd.
       <strong>
         These options only work if this Media Profile's output template is set to split media into seasons.
@@ -352,7 +352,24 @@
       type="checkbox_group"
       label="Mark These Segments as Chapters"
       help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal above. Leave everything unchecked to disable SponsorBlock"
-    /> <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" variant="primary">Save Media profile</.button>
+    />
+
+    <section x-show="advancedMode">
+      <.yt_dlp_options_editor
+        id_prefix="media-profile"
+        scope_help="These options apply to every download that uses this media profile. The base config still applies first, and a source or media item config can add its own options."
+        contents={@yt_dlp_options}
+        version={@yt_dlp_options_version}
+        present={@yt_dlp_options_present}
+        readable={@yt_dlp_options_readable}
+        clearable={@yt_dlp_options_clearable}
+        inherited={@yt_dlp_options_inherited}
+        profile_presence={@yt_dlp_options_profile_presence}
+        error={@yt_dlp_error}
+      />
+    </section>
+
+    <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" variant="primary">Save Media profile</.button>
   </section>
 
   <div class="theme-surface-accent mb-5 p-4 md:p-6"><.output_template_help /></div>

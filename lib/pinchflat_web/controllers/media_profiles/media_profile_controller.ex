@@ -9,6 +9,8 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Profiles.MediaProfileDeletionWorker
+  alias Pinchflat.Settings.YtDlpConfigFile
+  alias PinchflatWeb.YtDlpOptionsHelpers
 
   def index(conn, _params) do
     media_profiles_query =
@@ -37,20 +39,21 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
         template_id -> Repo.get(MediaProfile, template_id) || %MediaProfile{}
       end
 
-    render(conn, :new,
-      layout: get_onboarding_layout(),
-      changeset:
-        Profiles.change_media_profile(%MediaProfile{
-          cs_struct
-          | id: nil,
-            name: nil,
-            marked_for_deletion_at: nil
-        })
-    )
+    changeset =
+      Profiles.change_media_profile(%MediaProfile{
+        cs_struct
+        | id: nil,
+          name: nil,
+          marked_for_deletion_at: nil
+      })
+
+    render_profile(conn, :new, changeset, profile_options(), layout: get_onboarding_layout())
   end
 
-  def create(conn, %{"media_profile" => media_profile_params}) do
-    case Profiles.create_media_profile(media_profile_params) do
+  def create(conn, %{"media_profile" => media_profile_params} = params) do
+    opts = YtDlpOptionsHelpers.options_opts(params, :missing)
+
+    case Profiles.create_media_profile(media_profile_params, opts) do
       {:ok, media_profile} ->
         redirect_location =
           if Settings.get!(:onboarding), do: ~p"/?onboarding=1", else: ~p"/media_profiles/#{media_profile}"
@@ -60,7 +63,18 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
         |> redirect(to: redirect_location)
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :new, changeset: changeset, layout: get_onboarding_layout())
+        render_profile(conn, :new, changeset, submitted_profile_options(params, nil, nil, :missing),
+          layout: get_onboarding_layout()
+        )
+
+      {:error, %Ecto.Changeset{} = changeset, reason} ->
+        render_profile(
+          conn,
+          :new,
+          changeset,
+          submitted_profile_options(params, reason, nil, :missing),
+          layout: get_onboarding_layout()
+        )
     end
   end
 
@@ -85,14 +99,16 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
   def edit(conn, %{"id" => id}) do
     media_profile = Profiles.get_media_profile!(id)
     changeset = Profiles.change_media_profile(media_profile)
+    options = YtDlpOptionsHelpers.load_assigns(:profile, media_profile.id, profile_inherited())
 
-    render(conn, :edit, media_profile: media_profile, changeset: changeset)
+    render_profile(conn, :edit, changeset, options, media_profile: media_profile)
   end
 
-  def update(conn, %{"id" => id, "media_profile" => media_profile_params}) do
+  def update(conn, %{"id" => id, "media_profile" => media_profile_params} = params) do
     media_profile = Profiles.get_media_profile!(id)
+    opts = YtDlpOptionsHelpers.options_opts(params, :any)
 
-    case Profiles.update_media_profile(media_profile, media_profile_params) do
+    case Profiles.update_media_profile(media_profile, media_profile_params, opts) do
       {:ok, media_profile} ->
         # Profile changes can alter predicted paths, invalidating any staged reconcile plan
         Reconciliation.mark_ready_plans_stale()
@@ -102,7 +118,12 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
         |> redirect(to: ~p"/media_profiles/#{media_profile}")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :edit, media_profile: media_profile, changeset: changeset)
+        options = submitted_profile_options(params, nil, media_profile.id, :any)
+        render_profile(conn, :edit, changeset, options, media_profile: media_profile)
+
+      {:error, %Ecto.Changeset{} = changeset, reason} ->
+        options = submitted_profile_options(params, reason, media_profile.id, :any)
+        render_profile(conn, :edit, changeset, options, media_profile: media_profile)
     end
   end
 
@@ -125,6 +146,38 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       conn
       |> put_flash(:info, "Media Profile deletion started. This may take a while to complete.")
       |> redirect(to: ~p"/media_profiles")
+    end
+  end
+
+  defp render_profile(conn, template, changeset, options, extra) do
+    render(conn, template, Keyword.merge(extra, [changeset: changeset] ++ Map.to_list(options)))
+  end
+
+  defp profile_inherited, do: %{base: YtDlpConfigFile.present?()}
+
+  defp profile_options do
+    Map.put(YtDlpOptionsHelpers.base_assigns(), :yt_dlp_options_inherited, profile_inherited())
+  end
+
+  defp submitted_profile_options(params, reason, profile_id, default_version) do
+    error = if reason, do: YtDlpOptionsHelpers.message(reason)
+
+    options =
+      YtDlpOptionsHelpers.submitted_assigns(
+        params,
+        profile_inherited(),
+        %{},
+        error,
+        default_version
+      )
+
+    if reason == :stale_conflict and is_integer(profile_id) do
+      case YtDlpConfigFile.read_scope(:profile, profile_id) do
+        {:ok, %{version: version}} -> %{options | yt_dlp_options_version: version}
+        _ -> options
+      end
+    else
+      options
     end
   end
 

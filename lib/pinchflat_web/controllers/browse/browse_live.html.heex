@@ -277,6 +277,23 @@
             </div>
           <% end %>
 
+          <%= if @selected_video_detail.status && @selected_video_detail.status.can_download? do %>
+            <form id="detail-yt-dlp-form" phx-change="update_detail_options" phx-submit="update_detail_options">
+              <.yt_dlp_options_editor
+                id_prefix="detail-yt-dlp"
+                scope_help="These options apply to this video only. Base, media profile and source config files still apply."
+                contents={@detail_yt_dlp.yt_dlp_options}
+                version={@detail_yt_dlp.yt_dlp_options_version}
+                present={@detail_yt_dlp.yt_dlp_options_present}
+                readable={@detail_yt_dlp.yt_dlp_options_readable}
+                clearable={@detail_yt_dlp.yt_dlp_options_clearable}
+                inherited={@detail_yt_dlp.yt_dlp_options_inherited}
+                profile_presence={@detail_yt_dlp.yt_dlp_options_profile_presence}
+                error={@detail_yt_dlp.yt_dlp_error}
+              />
+            </form>
+          <% end %>
+
           <%!-- Action in Details --%>
           <div class="mt-auto flex items-center gap-3 pt-2">
             <%= if @selected_video_detail.status && @selected_video_detail.status.open_local_path do %>
@@ -295,6 +312,7 @@
                 type="button"
                 phx-click="download_video"
                 phx-value-id={@selected_video_detail.id}
+                phx-value-from-detail="true"
               >
                 <.icon name="hero-arrow-down-tray" class="mr-2 h-4 w-4" /> Download
               </.button>
@@ -625,6 +643,21 @@
           </ul>
         </div>
 
+        <form id="subscribe-yt-dlp-form" phx-change="update_subscribe_options" phx-submit="update_subscribe_options">
+          <.yt_dlp_options_editor
+            id_prefix="subscribe-yt-dlp"
+            scope_help="These options apply to every download for this new source. The base config and the selected media profile's config still apply."
+            contents={@subscribe_yt_dlp.yt_dlp_options}
+            version={@subscribe_yt_dlp.yt_dlp_options_version}
+            present={@subscribe_yt_dlp.yt_dlp_options_present}
+            readable={@subscribe_yt_dlp.yt_dlp_options_readable}
+            clearable={@subscribe_yt_dlp.yt_dlp_options_clearable}
+            inherited={@subscribe_yt_dlp.yt_dlp_options_inherited}
+            profile_presence={@subscribe_yt_dlp.yt_dlp_options_profile_presence}
+            error={@subscribe_yt_dlp.yt_dlp_error}
+          />
+        </form>
+
         <div class="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-theme-outline/40 pt-4">
           <.button
             variant="secondary"
@@ -815,6 +848,21 @@
                 <% end %>
               </div>
             </div>
+
+            <form id="paste-yt-dlp-form" phx-change="update_paste_options" phx-submit="update_paste_options">
+              <.yt_dlp_options_editor
+                id_prefix="paste-yt-dlp"
+                scope_help="These options apply to this video only. Base, media profile and source config files still apply."
+                contents={@paste_yt_dlp.yt_dlp_options}
+                version={@paste_yt_dlp.yt_dlp_options_version}
+                present={@paste_yt_dlp.yt_dlp_options_present}
+                readable={@paste_yt_dlp.yt_dlp_options_readable}
+                clearable={@paste_yt_dlp.yt_dlp_options_clearable}
+                inherited={@paste_yt_dlp.yt_dlp_options_inherited}
+                profile_presence={@paste_yt_dlp.yt_dlp_options_profile_presence}
+                error={@paste_yt_dlp.yt_dlp_error}
+              />
+            </form>
           <% end %>
         </div>
 
