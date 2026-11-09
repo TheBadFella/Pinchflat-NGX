@@ -28,6 +28,14 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :available_folders, :list, default: []
   attr :show_delay_automatic_download, :boolean, default: false
   attr :new_source, :boolean, default: false
+  attr :yt_dlp_options, :string, default: ""
+  attr :yt_dlp_options_version, :any, default: :missing
+  attr :yt_dlp_options_present, :boolean, default: false
+  attr :yt_dlp_options_readable, :boolean, default: true
+  attr :yt_dlp_options_clearable, :boolean, default: false
+  attr :yt_dlp_options_inherited, :map, default: %{}
+  attr :yt_dlp_options_profile_presence, :map, default: %{}
+  attr :yt_dlp_error, :string, default: nil
 
   def source_form(assigns)
 

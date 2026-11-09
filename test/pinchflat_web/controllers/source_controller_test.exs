@@ -1222,6 +1222,16 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  test "S02: CSRF token validation rejects forged tokens" do
+    conn = build_conn()
+    Plug.CSRFProtection.load_state(conn.secret_key_base, nil)
+    masked_token = Plug.CSRFProtection.get_csrf_token()
+    session_token = Plug.CSRFProtection.dump_state()
+
+    assert Plug.CSRFProtection.valid_state_and_csrf_token?(session_token, masked_token)
+    refute Plug.CSRFProtection.valid_state_and_csrf_token?(session_token, "forged-token")
+  end
+
   defp create_source(_) do
     source = source_fixture()
     media_item = media_item_with_attachments(%{source_id: source.id})

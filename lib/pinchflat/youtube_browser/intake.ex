@@ -12,6 +12,9 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Repo
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.ScopedYtDlpOptions
+  alias Pinchflat.Settings.YtDlpConfigFile
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Sources.Source
   alias Pinchflat.Tasks.Task
@@ -89,6 +92,72 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
     end
   end
 
+  @doc """
+  Previews the existing item-scoped options for a video under a profile.
+
+  Returns `{:ok, nil}` when no media item exists, `{:ok, preview}` for one
+  matching item, or an error for invalid/ambiguous input. This is read-only.
+  """
+  def preview_item_options(video_id, profile_id, _opts \\ []) do
+    with {:ok, clean_id} <- validate_video_id(video_id),
+         true <- is_integer(profile_id) or {:error, :invalid_profile},
+         %MediaProfile{} <- Repo.get(MediaProfile, profile_id) || {:error, :invalid_profile} do
+      case matching_items(clean_id, profile_id) do
+        [] ->
+          {:ok, nil}
+
+        [item] ->
+          case YtDlpConfigFile.read_scope(:media_item, item.id) do
+            {:ok, state} ->
+              {:ok,
+               %{
+                 item_id: item.id,
+                 source_id: item.source_id,
+                 media_id: item.media_id,
+                 contents: state.contents,
+                 version: state.version,
+                 present?: state.present?,
+                 too_large?: false,
+                 unreadable?: false
+               }}
+
+            {:error, :too_large, detail} ->
+              {:ok,
+               %{
+                 item_id: item.id,
+                 source_id: item.source_id,
+                 media_id: item.media_id,
+                 contents: "",
+                 version: :any,
+                 present?: true,
+                 too_large?: true,
+                 size: detail.size,
+                 unreadable?: false
+               }}
+
+            {:error, :unreadable, _path} ->
+              {:ok,
+               %{
+                 item_id: item.id,
+                 source_id: item.source_id,
+                 media_id: item.media_id,
+                 contents: "",
+                 version: :any,
+                 present?: false,
+                 too_large?: false,
+                 unreadable?: true
+               }}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+
+        _multiple_items ->
+          {:error, :ambiguous_copies}
+      end
+    end
+  end
+
   defp validate_video_id(video_id) when is_binary(video_id) do
     trimmed = String.trim(video_id)
 
@@ -103,15 +172,7 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
 
   defp handle_download_for_valid_profile(video_id, profile_id, opts) do
     # Check existing media items matching this video_id and profile_id
-    matching_items =
-      from(m in MediaItem,
-        join: s in assoc(m, :source),
-        where: m.media_id == ^video_id and s.media_profile_id == ^profile_id,
-        preload: [source: s]
-      )
-      |> Repo.all()
-
-    case matching_items do
+    case matching_items(video_id, profile_id) do
       [] ->
         # No media item yet; check if a single-video source already exists or create one
         handle_new_video_source(video_id, profile_id, opts)
@@ -126,8 +187,17 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
     end
   end
 
+  defp matching_items(video_id, profile_id) do
+    from(m in MediaItem,
+      join: s in assoc(m, :source),
+      where: m.media_id == ^video_id and s.media_profile_id == ^profile_id,
+      preload: [source: s]
+    )
+    |> Repo.all()
+  end
+
   defp enqueue_existing_item(%MediaItem{} = item, opts) do
-    oban_name = Keyword.get(opts, :oban_name, Oban)
+    oban_name = option(opts, :oban_name, Oban)
     item = Repo.preload(item, source: :media_profile)
     source = item.source
 
@@ -181,22 +251,72 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
         if active_jobs != [] do
           {:error, :already_queued}
         else
-          # Kick off single item download without force
-          case MediaDownloadWorker.kickoff_with_task(item, %{}, []) do
-            {:ok, _task} ->
-              if queue_paused?(:media_fetching, oban_name) do
-                {:ok, :queued_paused}
-              else
-                {:ok, :queued}
-              end
+          queue_existing_item(item, opts, oban_name)
+        end
+    end
+  end
 
-            {:error, :duplicate_job} ->
-              {:error, :already_queued}
+  defp queue_existing_item(item, opts, oban_name) do
+    case prepare_existing_item_options(item, opts) do
+      {:ok, :none} ->
+        kickoff_existing_item(item, oban_name)
 
-            {:error, reason} ->
-              {:error, reason}
+      {:ok, {:present, contents, prior}} ->
+        case kickoff_existing_item(item, oban_name) do
+          {:ok, outcome} ->
+            {:ok, outcome}
+
+          {:error, :already_queued} ->
+            ScopedYtDlpOptions.restore(:media_item, item.id, prior, {:present, contents})
+            {:error, :already_queued}
+
+          error ->
+            error
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp prepare_existing_item_options(item, opts) do
+    case normalize_options_payload(opts) do
+      {:ok, :absent} ->
+        {:ok, :none}
+
+      {:ok, {:present, contents}} ->
+        expected = expected_options_version(opts)
+        prior = ScopedYtDlpOptions.prior(:media_item, item.id)
+        PendingMediaItemOptions.supersede_for_item(item)
+
+        if String.trim(contents) == "" and prior == {:present, ""} do
+          {:ok, {:present, "", prior}}
+        else
+          case ScopedYtDlpOptions.save({:present, contents}, :media_item, item.id, expected) do
+            :ok -> {:ok, {:present, contents, prior}}
+            {:error, reason} -> {:error, reason}
           end
         end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp kickoff_existing_item(item, oban_name) do
+    case MediaDownloadWorker.kickoff_with_task(item, %{}, []) do
+      {:ok, _task} ->
+        if queue_paused?(:media_fetching, oban_name) do
+          {:ok, :queued_paused}
+        else
+          {:ok, :queued}
+        end
+
+      {:error, :duplicate_job} ->
+        {:error, :already_queued}
+
+      {:error, reason} ->
+        {:error, {:queue_failed, reason}}
     end
   end
 
@@ -216,14 +336,14 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
         create_and_kickoff_single_video_source(video_id, profile_id, opts)
 
       [single_source] ->
-        handle_single_video_source(single_source)
+        handle_single_video_source(single_source, opts)
 
       _multiple_sources ->
         {:error, :ambiguous_copies}
     end
   end
 
-  defp handle_single_video_source(%Source{} = source) do
+  defp handle_single_video_source(%Source{} = source, opts) do
     cond do
       source.enabled == false ->
         {:error, :source_disabled}
@@ -246,18 +366,63 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
         if active_source_jobs != [] do
           {:error, :already_queued}
         else
-          case MediaCollectionIndexingWorker.kickoff_with_task(source) do
-            {:ok, _task} -> {:ok, :indexing}
-            {:error, :duplicate_job} -> {:error, :already_queued}
-            {:error, reason} -> {:error, reason}
+          case normalize_options_payload(opts) do
+            {:ok, :absent} ->
+              kickoff_single_video_index(source)
+
+            {:ok, {:present, contents}} ->
+              persist_and_kickoff_single_video(source, contents)
+
+            {:error, reason} ->
+              {:error, reason}
           end
         end
     end
   end
 
-  defp create_and_kickoff_single_video_source(video_id, profile_id, opts) do
-    source_name = Keyword.get(opts, :video_title) || "YouTube Video #{video_id}"
+  defp kickoff_single_video_index(source) do
+    case MediaCollectionIndexingWorker.kickoff_with_task(source) do
+      {:ok, _task} -> {:ok, :indexing}
+      {:error, :duplicate_job} -> {:error, :already_queued}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
+  defp persist_and_kickoff_single_video(source, contents) do
+    result =
+      Repo.transaction(fn ->
+        case PendingMediaItemOptions.put(source, source.collection_id, contents) do
+          {:ok, _handoff} ->
+            case MediaCollectionIndexingWorker.kickoff_with_task(source) do
+              {:ok, _task} -> :ok
+              {:error, :duplicate_job} -> Repo.rollback(:already_queued)
+              {:error, reason} -> Repo.rollback(reason)
+            end
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, :ok} -> {:ok, :indexing}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp create_and_kickoff_single_video_source(video_id, profile_id, opts) do
+    source_name = option(opts, :video_title, nil) || "YouTube Video #{video_id}"
+
+    case normalize_options_payload(opts) do
+      {:ok, payload} ->
+        do_create_and_kickoff_single_video_source(video_id, profile_id, source_name, payload, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp do_create_and_kickoff_single_video_source(video_id, profile_id, source_name, payload, opts) do
     source_attrs = %{
       collection_type: :video,
       source_type: :video,
@@ -289,12 +454,18 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
 
           case Repo.insert(changeset) do
             {:ok, source} ->
-              case MediaCollectionIndexingWorker.kickoff_with_task(source) do
-                {:ok, _task} ->
-                  {:ok, :indexing}
+              case maybe_put_pending_handoff(source, video_id, payload) do
+                {:ok, _handoff} ->
+                  case MediaCollectionIndexingWorker.kickoff_with_task(source) do
+                    {:ok, _task} ->
+                      {:ok, :indexing}
 
-                {:error, :duplicate_job} ->
-                  {:ok, :indexing}
+                    {:error, :duplicate_job} ->
+                      {:ok, :indexing}
+
+                    {:error, reason} ->
+                      Repo.rollback(reason)
+                  end
 
                 {:error, reason} ->
                   Repo.rollback(reason)
@@ -400,10 +571,23 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
   end
 
   defp create_and_kickoff_channel_source(channel_id, profile_id, opts) do
-    channel_name = Keyword.get(opts, :channel_title) || "YouTube Channel #{channel_id}"
-    index_frequency_minutes = Keyword.get(opts, :index_frequency_minutes, 180)
-    download_media = Keyword.get(opts, :download_media, true)
-    download_cutoff_date = Keyword.get(opts, :download_cutoff_date, nil)
+    channel_name = option(opts, :channel_title, nil) || "YouTube Channel #{channel_id}"
+
+    case normalize_options_payload(opts) do
+      {:ok, payload} ->
+        do_create_and_kickoff_channel_source(channel_id, profile_id, opts, channel_name, payload)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp do_create_and_kickoff_channel_source(channel_id, profile_id, opts, channel_name, payload) do
+    index_frequency_minutes = option(opts, :index_frequency_minutes, 180)
+    download_media = option(opts, :download_media, true)
+    download_cutoff_date = option(opts, :download_cutoff_date, nil)
+    options_source_key = {__MODULE__, :channel_options_source_id}
+    Process.delete(options_source_key)
 
     source_attrs = %{
       collection_type: :channel,
@@ -437,29 +621,14 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
 
           case Repo.insert(changeset) do
             {:ok, source} ->
-              indexing_res =
-                case MediaCollectionIndexingWorker.kickoff_with_task(source) do
-                  {:ok, _task} -> :ok
-                  {:error, :duplicate_job} -> :ok
-                  {:error, reason} -> {:error, reason}
-                end
+              Process.put(options_source_key, source.id)
 
-              metadata_res =
-                case SourceMetadataStorageWorker.kickoff_with_task(source) do
-                  {:ok, _task} -> :ok
-                  {:error, :duplicate_job} -> :ok
-                  {:error, reason} -> {:error, reason}
-                end
-
-              case {indexing_res, metadata_res} do
-                {:ok, :ok} ->
-                  source
-
-                {{:error, reason}, _} ->
-                  Repo.rollback(reason)
-
-                {_, {:error, reason}} ->
-                  Repo.rollback(reason)
+              with :ok <- save_source_options(source, payload),
+                   :ok <- kickoff_channel_jobs(source) do
+                source
+              else
+                {:error, {:yt_dlp_options, reason}} -> Repo.rollback({:yt_dlp_options, reason})
+                {:error, reason} -> Repo.rollback(reason)
               end
 
             {:error, %Ecto.Changeset{} = err_cs} ->
@@ -478,9 +647,15 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
           {:error, :database_exception}
       end
 
+    options_source_id = Process.delete(options_source_key)
+
     case transaction_result do
       {:ok, %Source{} = source} ->
         {:ok, source}
+
+      {:error, {:yt_dlp_options, reason}} ->
+        ScopedYtDlpOptions.restore(:source, options_source_id, :missing, payload)
+        {:error, {:yt_dlp_options, reason}}
 
       {:error, :race_conflict} ->
         case from(s in Source,
@@ -496,7 +671,43 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
         end
 
       {:error, reason} ->
+        ScopedYtDlpOptions.restore(:source, options_source_id, :missing, payload)
         {:error, reason}
+    end
+  end
+
+  defp save_source_options(source, {:present, contents}) do
+    if String.trim(contents) == "" do
+      :ok
+    else
+      case ScopedYtDlpOptions.save({:present, contents}, :source, source.id, :missing) do
+        :ok -> :ok
+        {:error, reason} -> {:error, {:yt_dlp_options, reason}}
+      end
+    end
+  end
+
+  defp save_source_options(_source, :absent), do: :ok
+
+  defp kickoff_channel_jobs(source) do
+    indexing_res =
+      case MediaCollectionIndexingWorker.kickoff_with_task(source) do
+        {:ok, _task} -> :ok
+        {:error, :duplicate_job} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    metadata_res =
+      case SourceMetadataStorageWorker.kickoff_with_task(source) do
+        {:ok, _task} -> :ok
+        {:error, :duplicate_job} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    case {indexing_res, metadata_res} do
+      {:ok, :ok} -> :ok
+      {{:error, reason}, _} -> {:error, reason}
+      {_, {:error, reason}} -> {:error, reason}
     end
   end
 
@@ -510,6 +721,54 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
   end
 
   defp unique_error?(_), do: false
+
+  defp maybe_put_pending_handoff(_source, _video_id, :absent), do: {:ok, nil}
+
+  defp maybe_put_pending_handoff(source, video_id, {:present, contents}) do
+    PendingMediaItemOptions.put(source, video_id, contents)
+  end
+
+  defp normalize_options_payload(opts) do
+    case option(opts, :yt_dlp_options, :absent) do
+      :absent ->
+        {:ok, :absent}
+
+      nil ->
+        {:ok, :absent}
+
+      {:present, contents} when is_binary(contents) ->
+        validate_options_contents(contents)
+
+      contents when is_binary(contents) ->
+        validate_options_contents(contents)
+
+      _other ->
+        {:error, :invalid_yt_dlp_options}
+    end
+  end
+
+  defp validate_options_contents(contents) do
+    if byte_size(contents) > PendingMediaItemOptions.max_bytes() do
+      {:error, :yt_dlp_options_too_large}
+    else
+      {:ok, {:present, contents}}
+    end
+  end
+
+  defp expected_options_version(opts) do
+    case option(opts, :yt_dlp_options_version, :any) do
+      version when version in [:missing, :any] -> version
+      version when is_binary(version) -> version
+      _other -> :any
+    end
+  end
+
+  defp option(opts, key, default) when is_map(opts) do
+    Map.get(opts, key, Map.get(opts, Atom.to_string(key), default))
+  end
+
+  defp option(opts, key, default) when is_list(opts), do: Keyword.get(opts, key, default)
+  defp option(_opts, _key, default), do: default
 
   @doc """
   Checks if an Oban queue is currently paused.

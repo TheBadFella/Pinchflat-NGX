@@ -245,8 +245,8 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       profile = media_profile_fixture(%{download_thumbnail: false})
       source = source_fixture(%{media_profile_id: profile.id})
       item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
-      metadata = render_parsed_metadata(:media_metadata)
-      path = metadata["filepath"]
+      path = Path.join([System.tmp_dir!(), "test", "Pinchflat Example Video-ABC123.mkv"])
+      metadata = render_parsed_metadata(:media_metadata) |> Map.put("filepath", path)
       size = 3_650_722_202
       on_exit(fn -> File.rm(path) end)
 

@@ -26,6 +26,8 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.FastIndexing.FastIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.ScopedYtDlpOptions
 
   @automated_metadata_lock_fields %{
     custom_name: :custom_name_locked,
@@ -1207,32 +1209,142 @@ defmodule Pinchflat.Sources do
 
   defp commit_without_move(changeset, opts) do
     run_post_commit_tasks = Keyword.get(opts, :run_post_commit_tasks, true)
+    payload = ScopedYtDlpOptions.payload(opts)
+    prior = options_prior(changeset, payload)
 
-    case Repo.insert_or_update(changeset) do
+    {result, created_id} = transaction_with_source_options(changeset, opts, payload)
+
+    case result do
       {:ok, %Source{} = source} ->
         log_source_created(changeset, source)
 
-        if run_post_commit_tasks do
-          maybe_handle_media_tasks(changeset, source)
-          maybe_run_indexing_task(changeset, source)
-          maybe_run_metadata_storage_task(changeset, source)
-        end
+        warnings =
+          if run_post_commit_tasks do
+            schedule_after_commit(changeset, source, opts)
+          else
+            []
+          end
 
-        {:ok, source}
+        if warnings == [], do: {:ok, source}, else: {:ok, source, warnings}
 
-      err ->
-        err
+      {:error, {:changeset, %Ecto.Changeset{} = error_changeset}} ->
+        {:error, error_changeset}
+
+      {:error, {:yt_dlp_options, reason}} ->
+        restore_source_options(changeset, created_id, prior, payload)
+        {:error, %{changeset | action: source_changeset_action(changeset)}, reason}
+
+      {:error, reason} ->
+        restore_source_options(changeset, created_id, prior, payload)
+        {:error, reason}
     end
   end
 
+  defp transaction_with_source_options(changeset, opts, payload) do
+    key = {__MODULE__, :source_options_id}
+    Process.delete(key)
+    expected = ScopedYtDlpOptions.expected_version(opts, default_options_version(changeset))
+
+    result =
+      Repo.transaction(fn ->
+        case Repo.insert_or_update(changeset) do
+          {:ok, %Source{} = source} ->
+            Process.put(key, source.id)
+
+            if source_identity_changed?(changeset) do
+              PendingMediaItemOptions.supersede_for_source(source)
+            end
+
+            case ScopedYtDlpOptions.save(payload, :source, source.id, expected) do
+              :ok -> source
+              {:error, reason} -> Repo.rollback({:yt_dlp_options, reason})
+            end
+
+          {:error, error_changeset} ->
+            Repo.rollback({:changeset, error_changeset})
+        end
+      end)
+
+    {result, Process.delete(key)}
+  end
+
+  defp options_prior(%{data: %{__meta__: %{state: :built}}}, _payload), do: :missing
+  defp options_prior(_changeset, :absent), do: :missing
+  defp options_prior(changeset, _payload), do: ScopedYtDlpOptions.prior(:source, changeset.data.id)
+
+  defp default_options_version(%{data: %{__meta__: %{state: :built}}}), do: :missing
+  defp default_options_version(_changeset), do: :any
+
+  defp source_identity_changed?(%{changes: changes}) do
+    Enum.any?([:collection_type, :collection_id, :original_url, :media_profile_id], &Map.has_key?(changes, &1))
+  end
+
+  defp source_changeset_action(%{data: %{__meta__: %{state: :built}}}), do: :insert
+  defp source_changeset_action(_changeset), do: :update
+
+  defp restore_source_options(changeset, created_id, prior, payload) do
+    source_id = changeset.data.id || created_id
+
+    if is_integer(source_id) do
+      ScopedYtDlpOptions.restore(:source, source_id, prior, payload)
+    else
+      :ok
+    end
+  end
+
+  defp schedule_after_commit(changeset, source, opts) do
+    results = [
+      maybe_handle_media_tasks(changeset, source),
+      maybe_run_indexing_task(changeset, source),
+      maybe_run_metadata_storage_task(changeset, source)
+    ]
+
+    warnings =
+      results
+      |> Enum.flat_map(fn
+        :ok -> []
+        {:error, _reason} -> [:task_scheduling_failed]
+        {:error, _reason, _detail} -> [:task_scheduling_failed]
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    if Keyword.get(opts, :report_task_warnings, false), do: warnings, else: []
+  end
+
   defp commit_directory_move(changeset, plan, opts) do
+    payload = ScopedYtDlpOptions.payload(opts)
+    prior = options_prior(changeset, payload)
+
     # ponytail: serialize folder moves while sharing a queue pause; per-source reservations if needed.
-    :global.trans({__MODULE__.DirectoryMove, self()}, fn ->
-      case with_move_queues_paused(fn -> do_commit_directory_move(changeset, plan, opts) end) do
-        {:error, :queues_not_paused} -> {:error, directory_move_error(changeset, :queues_not_paused)}
-        result -> result
-      end
-    end)
+    result =
+      :global.trans({__MODULE__.DirectoryMove, self()}, fn ->
+        case with_move_queues_paused(fn ->
+               do_commit_directory_move(changeset, plan, opts, payload, prior)
+             end) do
+          {:error, :queues_not_paused} -> {:error, directory_move_error(changeset, :queues_not_paused)}
+          result -> result
+        end
+      end)
+
+    case result do
+      {:error, {:yt_dlp_options, reason}} ->
+        ScopedYtDlpOptions.restore(:source, changeset.data.id, prior, payload)
+        {:error, %{changeset | action: :update}, reason}
+
+      {:error, {:changeset, %Ecto.Changeset{} = error}} ->
+        {:error, error}
+
+      {:error, %Ecto.Changeset{} = error} ->
+        {:error, error}
+
+      {:error, reason} ->
+        ScopedYtDlpOptions.restore(:source, changeset.data.id, prior, payload)
+        {:error, directory_move_error(changeset, reason)}
+
+      result ->
+        result
+    end
   end
 
   defp with_move_queues_paused(callback) do
@@ -1267,42 +1379,13 @@ defmodule Pinchflat.Sources do
     end
   end
 
-  defp do_commit_directory_move(changeset, plan, opts) do
-    blocked =
-      cond do
-        active_source_jobs?(changeset.data) -> :busy
-        missing_source_files?(changeset.data, plan.old_directory) -> :missing_files
-        shared_directory_files?(changeset.data, plan.old_directory) -> :shared_files
-        shared_directory_files?(changeset.data, plan.new_directory) -> :shared_destination
-        true -> nil
-      end
+  defp do_commit_directory_move(changeset, plan, opts, payload, prior) do
+    case check_directory_move_blocked(changeset, plan) do
+      {:blocked, reason} ->
+        {:error, directory_move_error(changeset, reason)}
 
-    if blocked do
-      {:error, directory_move_error(changeset, blocked)}
-    else
-      DirectoryMove.with_moves(
-        plan,
-        fn ->
-          Repo.transaction(fn ->
-            case Repo.update(changeset) do
-              {:ok, source} ->
-                update_media_filepaths_for_source(source, plan.old_directory, plan.new_directory)
-                update_metadata_filepaths_for_source(source, plan.old_directory, plan.new_directory)
-                run_move_tasks(changeset, source, opts)
-                Repo.reload!(source)
-
-              {:error, error} ->
-                Repo.rollback(error)
-            end
-          end)
-        end,
-        source_id: changeset.data.id
-      )
-      |> case do
-        {:error, %Ecto.Changeset{} = error} -> {:error, error}
-        {:error, reason} -> {:error, directory_move_error(changeset, reason)}
-        result -> result
-      end
+      :ok ->
+        execute_directory_move(changeset, plan, opts, payload)
     end
   rescue
     _error in [
@@ -1312,7 +1395,55 @@ defmodule Pinchflat.Sources do
       Ecto.InvalidChangesetError,
       Ecto.StaleEntryError
     ] ->
+      ScopedYtDlpOptions.restore(:source, changeset.data.id, prior, payload)
       {:error, directory_move_error(changeset, :database_error)}
+  end
+
+  defp check_directory_move_blocked(changeset, plan) do
+    cond do
+      active_source_jobs?(changeset.data) -> {:blocked, :busy}
+      missing_source_files?(changeset.data, plan.old_directory) -> {:blocked, :missing_files}
+      shared_directory_files?(changeset.data, plan.old_directory) -> {:blocked, :shared_files}
+      shared_directory_files?(changeset.data, plan.new_directory) -> {:blocked, :shared_destination}
+      true -> :ok
+    end
+  end
+
+  defp execute_directory_move(changeset, plan, opts, payload) do
+    expected = ScopedYtDlpOptions.expected_version(opts, :any)
+
+    DirectoryMove.with_moves(
+      plan,
+      fn ->
+        Repo.transaction(fn ->
+          apply_directory_move(changeset, plan, opts, payload, expected)
+        end)
+      end,
+      source_id: changeset.data.id
+    )
+  end
+
+  defp apply_directory_move(changeset, plan, opts, payload, expected) do
+    case Repo.update(changeset) do
+      {:ok, source} ->
+        if source_identity_changed?(changeset) do
+          PendingMediaItemOptions.supersede_for_source(source)
+        end
+
+        case ScopedYtDlpOptions.save(payload, :source, source.id, expected) do
+          :ok ->
+            update_media_filepaths_for_source(source, plan.old_directory, plan.new_directory)
+            update_metadata_filepaths_for_source(source, plan.old_directory, plan.new_directory)
+            run_move_tasks(changeset, source, opts)
+            Repo.reload!(source)
+
+          {:error, reason} ->
+            Repo.rollback({:yt_dlp_options, reason})
+        end
+
+      {:error, error} ->
+        Repo.rollback({:changeset, error})
+    end
   end
 
   defp missing_source_files?(source, directory) do
@@ -1584,10 +1715,8 @@ defmodule Pinchflat.Sources do
     case changeset.data do
       # If the changeset is new (not persisted), attempt indexing no matter what
       %{__meta__: %{state: :built}} ->
-        SlowIndexingHelpers.kickoff_indexing_task(source)
-
-        if Ecto.Changeset.get_field(changeset, :fast_index) do
-          FastIndexingHelpers.kickoff_indexing_task(source)
+        with :ok <- normalize_task_result(SlowIndexingHelpers.kickoff_indexing_task(source)) do
+          maybe_kickoff_fast_indexing(changeset, source)
         end
 
       # If the record has been persisted, only run indexing if the
@@ -1595,24 +1724,47 @@ defmodule Pinchflat.Sources do
       %{__meta__: %{state: :loaded}} ->
         maybe_update_slow_indexing_task(changeset, source)
         maybe_update_fast_indexing_task(changeset, source)
+        :ok
     end
   end
+
+  defp maybe_kickoff_fast_indexing(changeset, source) do
+    if Ecto.Changeset.get_field(changeset, :fast_index) do
+      source
+      |> FastIndexingHelpers.kickoff_indexing_task()
+      |> normalize_task_result()
+    else
+      :ok
+    end
+  end
+
+  defp normalize_task_result({:ok, _task}), do: :ok
+  defp normalize_task_result({:error, :duplicate_job}), do: :ok
+  defp normalize_task_result({:error, reason}), do: {:error, reason}
+  defp normalize_task_result(:ok), do: :ok
+  defp normalize_task_result(other), do: {:error, other}
 
   defp maybe_run_metadata_storage_task(changeset, source) do
     case {changeset.data, changeset.changes} do
       # If the changeset is new (not persisted), fetch metadata no matter what
       {%{__meta__: %{state: :built}}, _} ->
-        SourceMetadataStorageWorker.kickoff_with_task(source)
+        source
+        |> SourceMetadataStorageWorker.kickoff_with_task()
+        |> normalize_task_result()
 
       # If the record has been persisted, only fetch metadata if the
       # original_url has changed
       {_, %{original_url: _}} ->
-        SourceMetadataStorageWorker.kickoff_with_task(source)
+        source
+        |> SourceMetadataStorageWorker.kickoff_with_task()
+        |> normalize_task_result()
 
       # If the media_profile_id has changed, re-fetch metadata to potentially
       # download source images if the new profile has download_source_images enabled
       {_, %{media_profile_id: _}} ->
-        SourceMetadataStorageWorker.kickoff_with_task(source)
+        source
+        |> SourceMetadataStorageWorker.kickoff_with_task()
+        |> normalize_task_result()
 
       _ ->
         :ok
