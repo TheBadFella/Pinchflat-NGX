@@ -652,6 +652,43 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
     end
   end
 
+  describe "thumbnails" do
+    test "renders stored thumbnails in list and grid views", %{conn: conn} do
+      source = source_fixture()
+
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: "/downloads/thumb.jpg"
+        )
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
+
+      assert render_element(view, "tbody") =~ ~s(src="/media/#{item.uuid}/episode_image")
+      assert render_element(view, "tbody") =~ ~s(loading="lazy")
+
+      render_click(view, "view_change", %{"view" => "grid"})
+      assert render_element(view, "article") =~ ~s(src="/media/#{item.uuid}/episode_image")
+    end
+
+    test "renders a placeholder when an item has no thumbnail", %{conn: conn} do
+      source = source_fixture()
+
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: nil
+        )
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
+
+      assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
+      refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
+    end
+  end
+
   defp indexed_fixture(source, title, indexed_at) do
     item = media_item_fixture(source_id: source.id, title: title)
     Repo.update_all(from(m in MediaItem, where: m.id == ^item.id), set: [inserted_at: indexed_at])
