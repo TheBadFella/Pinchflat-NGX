@@ -159,6 +159,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       if @view_mode == "grid", do: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3", else: "space-y-4 md:hidden"
     }>
       <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+        <.media_thumbnail media_item={media_item} size="card" />
+
         <div class="flex flex-col gap-3">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="flex flex-wrap items-start gap-2">
@@ -282,62 +284,66 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         <div class="overflow-x-auto overflow-y-hidden">
           <.table rows={@records} sort_key={@sort_key} sort_direction={@sort_direction}>
             <:col :let={media_item} label="Title" class="max-w-sm">
-              <section class="space-y-2">
-                <div class="flex items-start space-x-1 gap-2">
-                  <.icon
-                    :if={media_item.last_error}
-                    name="hero-exclamation-circle-solid"
-                    class="theme-status-error shrink-0"
-                  /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                  <.icon_button
-                    :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
-                    icon_name="hero-arrow-down-tray"
-                    class="h-10 w-10"
-                    phx-click="force_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm={MediaCleanupHelpers.download_confirmation(media_item, media_item.source)}
-                    tooltip="Force Download"
-                    tooltip_position="bottom-left"
-                  />
-                  <.icon_button
-                    :if={@media_state == "failed" and media_item.error_type != :permanent}
-                    icon_name="hero-arrow-path"
-                    class="h-10 w-10"
-                    phx-click="retry_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm={
-                      MediaCleanupHelpers.download_confirmation(media_item, media_item.source, "Retry this download now?")
-                    }
-                    tooltip="Retry Now"
-                    tooltip_position="bottom-left"
-                  />
-                  <.icon_button
-                    :if={@media_state == "failed" and media_item.error_type == :permanent}
-                    icon_name="hero-arrow-path"
-                    class="h-10 w-10"
-                    phx-click="force_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm={
-                      MediaCleanupHelpers.download_confirmation(
-                        media_item,
-                        media_item.source,
-                        "Force a retry of this permanent failure?"
-                      )
-                    }
-                    tooltip="Force Retry"
-                    tooltip_position="bottom-left"
-                  />
-                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                    <span class="block whitespace-normal break-words">{media_item.title}</span>
-                  </.subtle_link>
-                </div>
+              <div class="flex items-start gap-3">
+                <.media_thumbnail media_item={media_item} size="row" />
 
-                <.download_failure
-                  :if={media_item.last_error}
-                  media_item={media_item}
-                  task={Map.get(@tasks_by_media_item_id, media_item.id)}
-                />
-              </section>
+                <section class="min-w-0 flex-1 space-y-2">
+                  <div class="flex items-start space-x-1 gap-2">
+                    <.icon
+                      :if={media_item.last_error}
+                      name="hero-exclamation-circle-solid"
+                      class="theme-status-error shrink-0"
+                    /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                    <.icon_button
+                      :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
+                      icon_name="hero-arrow-down-tray"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm={MediaCleanupHelpers.download_confirmation(media_item, media_item.source)}
+                      tooltip="Force Download"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type != :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="retry_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm={
+                        MediaCleanupHelpers.download_confirmation(media_item, media_item.source, "Retry this download now?")
+                      }
+                      tooltip="Retry Now"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type == :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm={
+                        MediaCleanupHelpers.download_confirmation(
+                          media_item,
+                          media_item.source,
+                          "Force a retry of this permanent failure?"
+                        )
+                      }
+                      tooltip="Force Retry"
+                      tooltip_position="bottom-left"
+                    />
+                    <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                      <span class="block whitespace-normal break-words">{media_item.title}</span>
+                    </.subtle_link>
+                  </div>
+
+                  <.download_failure
+                    :if={media_item.last_error}
+                    media_item={media_item}
+                    task={Map.get(@tasks_by_media_item_id, media_item.id)}
+                  />
+                </section>
+              </div>
             </:col>
 
             <:col :let={media_item} :if={@media_state == "latest"} label="Status">
@@ -1095,6 +1101,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       [m],
       struct(m, [
         :id,
+        :uuid,
         :title,
         :uploaded_at,
         :inserted_at,
@@ -1105,7 +1112,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :prevent_culling,
         :error_type,
         :download_prevented_reason,
-        :media_size_bytes
+        :media_size_bytes,
+        :thumbnail_filepath
       ])
     )
   end
@@ -1118,6 +1126,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       [m],
       struct(m, [
         :id,
+        :uuid,
         :title,
         :uploaded_at,
         :inserted_at,
@@ -1128,7 +1137,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :prevent_culling,
         :error_type,
         :download_prevented_reason,
-        :media_size_bytes
+        :media_size_bytes,
+        :thumbnail_filepath
       ])
     )
   end
@@ -1141,6 +1151,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       [m],
       struct(m, [
         :id,
+        :uuid,
         :title,
         :uploaded_at,
         :inserted_at,
@@ -1151,7 +1162,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :prevent_culling,
         :error_type,
         :download_prevented_reason,
-        :media_size_bytes
+        :media_size_bytes,
+        :thumbnail_filepath
       ])
     )
   end

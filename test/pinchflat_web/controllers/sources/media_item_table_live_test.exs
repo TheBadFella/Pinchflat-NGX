@@ -475,6 +475,45 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
     end
   end
 
+  describe "thumbnails" do
+    test "renders stored thumbnails in the Videos list and grid views", %{conn: conn, source: source} do
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: "/downloads/thumb.jpg"
+        )
+
+      {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      assert render_element(view, "tbody") =~ ~s(src="/media/#{item.uuid}/episode_image")
+      assert render_element(view, "tbody") =~ ~s(loading="lazy")
+
+      render_click(view, "view_change", %{"view" => "grid"})
+      assert render_element(view, "article") =~ ~s(src="/media/#{item.uuid}/episode_image")
+    end
+
+    test "renders a placeholder when an item has no thumbnail", %{conn: conn, source: source} do
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: nil
+        )
+
+      {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
+      refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
+    end
+  end
+
+  defp render_element(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+  end
+
   defp downloaded_item(source, title) do
     media_item_fixture(%{source_id: source.id, title: title, media_filepath: "/media/#{title}.mp4"})
   end
