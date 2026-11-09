@@ -38,6 +38,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="table"
+        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'table'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
         aria-pressed={to_string(@view_mode == :table)}
         data-view-toggle="table"
       >
@@ -55,6 +56,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="grid"
+        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'grid'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
         aria-pressed={to_string(@view_mode == :grid)}
         data-view-toggle="grid"
       >

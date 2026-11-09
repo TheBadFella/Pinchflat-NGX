@@ -43,7 +43,8 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       _ ->
         source_type = if params["type"] == "videos", do: "videos", else: "channels"
-        render(conn, :index, source_type: source_type)
+        initial_view_mode = source_view_mode(params["view"])
+        render(conn, :index, source_type: source_type, initial_view_mode: initial_view_mode)
     end
   end
 
@@ -196,7 +197,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   def show(conn, %{"id" => id}) do
     source = Sources.get_source!(id) |> Sources.preload_api_assocs()
-    active_tab = tab_param(conn.params, allowed_tabs_for(source), "source")
+    active_tab = tab_param(conn.params, allowed_tabs_for(source), "videos")
 
     selection_media_items =
       if active_tab == "selection" do
@@ -664,7 +665,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       _ ->
         conn
         |> source_flash(warnings, "Source updated successfully.")
-        |> redirect(to: ~p"/sources/#{source}")
+        |> redirect(to: ~p"/sources/#{source}?#{[tab: "source"]}")
     end
   end
 
@@ -959,6 +960,10 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp maybe_put_source_type_prefill(attrs, _source_type), do: attrs
+
+  defp source_view_mode("grid"), do: :grid
+  defp source_view_mode("table"), do: :table
+  defp source_view_mode(_view), do: nil
 
   defp tab_param(params, allowed_tabs, default_tab) do
     tab =
