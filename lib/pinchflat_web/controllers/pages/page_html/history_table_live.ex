@@ -35,9 +35,21 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       sort_direction={@sort_direction}
       time_range={@time_range}
     />
-    <div class="mb-4 flex items-center">
+    <div class="mb-4 flex flex-wrap items-center gap-3">
       <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
-      <p class="ml-2">{if @media_state == "latest", do: "No media indexed in this time frame.", else: "Nothing Here!"}</p>
+      <p class="ml-2">
+        {cond do
+          @media_state != "latest" -> "Nothing Here!"
+          @time_range.range == "day" -> "Nothing was indexed in the past 24 hours."
+          true -> "No media indexed in this time frame."
+        end}
+      </p>
+    </div>
+    <div :if={@media_state == "latest" and @time_range.range == "day"} class="flex flex-wrap gap-2">
+      <.button href={~p"/?#{[tab: "latest", range: "week"]}"} variant="secondary" size="compact">
+        Show past 7 days
+      </.button>
+      <.button href={~p"/?tab=downloaded"} variant="secondary" size="compact">View downloaded</.button>
     </div>
     """
   end
