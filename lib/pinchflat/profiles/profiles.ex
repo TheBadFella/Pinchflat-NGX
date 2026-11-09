@@ -8,6 +8,7 @@ defmodule Pinchflat.Profiles do
   alias Pinchflat.Repo
   alias Pinchflat.Sources
   alias Pinchflat.Profiles.MediaProfile
+  alias Pinchflat.Settings.ScopedYtDlpOptions
 
   @doc """
   Returns the list of media_profiles.
@@ -26,25 +27,98 @@ defmodule Pinchflat.Profiles do
   def get_media_profile!(id), do: Repo.get!(MediaProfile, id)
 
   @doc """
-  Creates a media_profile.
+  Creates a media_profile, optionally saving its scoped yt-dlp options in the
+  same transaction. A file failure rolls back the profile.
 
-  Returns {:ok, %MediaProfile{}} | {:error, %Ecto.Changeset{}}
+  Returns {:ok, %MediaProfile{}} | {:error, %Ecto.Changeset{}} |
+  {:error, %Ecto.Changeset{}, reason}
   """
-  def create_media_profile(attrs) do
-    %MediaProfile{}
-    |> MediaProfile.changeset(attrs)
-    |> Repo.insert()
+  def create_media_profile(attrs, opts \\ []) do
+    payload = ScopedYtDlpOptions.payload(opts)
+    changeset = MediaProfile.changeset(%MediaProfile{}, attrs)
+
+    if payload == :absent do
+      Repo.insert(changeset)
+    else
+      expected = ScopedYtDlpOptions.expected_version(opts, :missing)
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.insert(:media_profile, changeset)
+        |> Ecto.Multi.run(:yt_dlp_options, fn _repo, %{media_profile: profile} ->
+          case ScopedYtDlpOptions.save(payload, :profile, profile.id, expected) do
+            :ok -> {:ok, :saved}
+            {:error, reason} -> {:error, reason}
+          end
+        end)
+
+      case Repo.transaction(multi) do
+        {:ok, %{media_profile: profile}} ->
+          {:ok, profile}
+
+        {:error, :media_profile, error_changeset, _changes} ->
+          {:error, error_changeset}
+
+        {:error, :yt_dlp_options, reason, %{media_profile: profile}} ->
+          ScopedYtDlpOptions.restore(:profile, profile.id, :missing, payload)
+          {:error, %{changeset | action: :insert}, reason}
+
+        {:error, :commit, reason, %{media_profile: profile}} ->
+          ScopedYtDlpOptions.restore(:profile, profile.id, :missing, payload)
+          {:error, %{changeset | action: :insert}, reason}
+
+        {:error, _step, reason, _changes} ->
+          {:error, reason}
+      end
+    end
   end
 
   @doc """
-  Updates a media_profile.
+  Updates a media_profile, optionally saving its scoped yt-dlp options in the
+  same transaction. A file failure rolls back the profile update.
 
-  Returns {:ok, %MediaProfile{}} | {:error, %Ecto.Changeset{}}
+  Returns {:ok, %MediaProfile{}} | {:error, %Ecto.Changeset{}} |
+  {:error, %Ecto.Changeset{}, reason}
   """
-  def update_media_profile(%MediaProfile{} = media_profile, attrs) do
-    media_profile
-    |> MediaProfile.changeset(attrs)
-    |> Repo.update()
+  def update_media_profile(%MediaProfile{} = media_profile, attrs, opts \\ []) do
+    payload = ScopedYtDlpOptions.payload(opts)
+    changeset = MediaProfile.changeset(media_profile, attrs)
+
+    if payload == :absent do
+      Repo.update(changeset)
+    else
+      expected = ScopedYtDlpOptions.expected_version(opts, :any)
+      prior = ScopedYtDlpOptions.prior(:profile, media_profile.id)
+
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.update(:media_profile, changeset)
+        |> Ecto.Multi.run(:yt_dlp_options, fn _repo, %{media_profile: updated} ->
+          case ScopedYtDlpOptions.save(payload, :profile, updated.id, expected) do
+            :ok -> {:ok, :saved}
+            {:error, reason} -> {:error, reason}
+          end
+        end)
+
+      case Repo.transaction(multi) do
+        {:ok, %{media_profile: updated}} ->
+          {:ok, updated}
+
+        {:error, :media_profile, error_changeset, _changes} ->
+          {:error, error_changeset}
+
+        {:error, :yt_dlp_options, reason, %{media_profile: updated}} ->
+          ScopedYtDlpOptions.restore(:profile, updated.id, prior, payload)
+          {:error, %{changeset | action: :update}, reason}
+
+        {:error, :commit, reason, %{media_profile: updated}} ->
+          ScopedYtDlpOptions.restore(:profile, updated.id, prior, payload)
+          {:error, %{changeset | action: :update}, reason}
+
+        {:error, _step, reason, _changes} ->
+          {:error, reason}
+      end
+    end
   end
 
   @doc """

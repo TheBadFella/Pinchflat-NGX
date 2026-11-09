@@ -5,9 +5,11 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   require Logger
 
   alias Pinchflat.Profiles
+  alias Pinchflat.Settings.YtDlpConfigFile
   alias Pinchflat.YoutubeBrowser
   alias Pinchflat.YoutubeBrowser.Status
   alias Pinchflat.YoutubeBrowser.UrlParser
+  alias PinchflatWeb.YtDlpOptionsHelpers
 
   @impl true
   def mount(_params, session, socket) do
@@ -47,6 +49,9 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       |> assign(:paste_downloading?, false)
       |> assign(:paste_selected_profile_id, selected_profile_id)
       |> assign(:paste_download_destination, nil)
+      |> assign(:detail_yt_dlp, YtDlpOptionsHelpers.base_assigns())
+      |> assign(:paste_yt_dlp, YtDlpOptionsHelpers.base_assigns())
+      |> assign(:subscribe_yt_dlp, YtDlpOptionsHelpers.base_assigns())
 
     socket =
       case session["prefill_url"] do
@@ -63,6 +68,21 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   @impl true
   def handle_event("restore_search", params, socket) do
     {:noreply, restore_search(params, socket)}
+  end
+
+  def handle_event("update_detail_options", params, socket) do
+    draft = update_options_draft(socket.assigns.detail_yt_dlp, params)
+    {:noreply, assign(socket, :detail_yt_dlp, draft)}
+  end
+
+  def handle_event("update_paste_options", params, socket) do
+    draft = update_options_draft(socket.assigns.paste_yt_dlp, params)
+    {:noreply, assign(socket, :paste_yt_dlp, draft)}
+  end
+
+  def handle_event("update_subscribe_options", params, socket) do
+    draft = update_options_draft(socket.assigns.subscribe_yt_dlp, params)
+    {:noreply, assign(socket, :subscribe_yt_dlp, draft)}
   end
 
   def handle_event(event, _params, %{assigns: %{loading?: true}} = socket)
@@ -203,6 +223,9 @@ defmodule PinchflatWeb.Browse.BrowseLive do
      |> assign(:results, updated_results)
      |> assign(:selected_video_detail, updated_detail)
      |> assign(:selected_channel_preview, updated_preview)
+     |> assign(:detail_yt_dlp, detail_options_for(updated_detail, new_profile_id))
+     |> assign(:paste_yt_dlp, paste_options_for(socket, socket.assigns.paste_selected_profile_id))
+     |> assign(:subscribe_yt_dlp, subscribe_options_for(socket, new_profile_id))
      |> remember_search()}
   end
 
@@ -215,13 +238,15 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
   @impl true
   def handle_event("view_video_details", %{"id" => video_id}, socket) do
-    socket = assign(socket, detail_loading?: true, error: nil)
-
     profile_id = socket.assigns.selected_profile_id
     caller = self()
 
     socket =
-      start_async(socket, :detail_task, fn ->
+      socket
+      |> assign(:detail_loading?, true)
+      |> assign(:error, nil)
+      |> assign(:detail_yt_dlp, item_options_assigns(profile_id, nil))
+      |> start_async(:detail_task, fn ->
         YoutubeBrowser.get_video_details(video_id, selected_profile_id: profile_id, caller: caller)
       end)
 
@@ -231,7 +256,12 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   @impl true
   def handle_event("close_video_details", _params, socket) do
     socket = cancel_async(socket, :detail_task)
-    {:noreply, assign(socket, selected_video_detail: nil, detail_loading?: false)}
+
+    {:noreply,
+     socket
+     |> assign(:selected_video_detail, nil)
+     |> assign(:detail_loading?, false)
+     |> assign(:detail_yt_dlp, YtDlpOptionsHelpers.base_assigns())}
   end
 
   @impl true
@@ -280,7 +310,8 @@ defmodule PinchflatWeb.Browse.BrowseLive do
      |> assign(:paste_resolved_video, nil)
      |> assign(:paste_resolving?, false)
      |> assign(:paste_downloading?, false)
-     |> assign(:paste_selected_profile_id, profile_id)}
+     |> assign(:paste_selected_profile_id, profile_id)
+     |> assign(:paste_yt_dlp, item_options_assigns(profile_id, nil))}
   end
 
   @impl true
@@ -298,7 +329,8 @@ defmodule PinchflatWeb.Browse.BrowseLive do
      |> assign(:paste_downloading?, false)
      |> assign(:paste_resolved_video, nil)
      |> assign(:paste_error, nil)
-     |> assign(:pasted_url, "")}
+     |> assign(:pasted_url, "")
+     |> assign(:paste_yt_dlp, YtDlpOptionsHelpers.base_assigns())}
   end
 
   @impl true
@@ -316,6 +348,13 @@ defmodule PinchflatWeb.Browse.BrowseLive do
      socket
      |> assign(:pasted_url, url)
      |> assign(:paste_resolved_video, resolved)
+     |> assign(
+       :paste_yt_dlp,
+       if(is_nil(resolved),
+         do: item_options_assigns(socket.assigns.paste_selected_profile_id, nil),
+         else: socket.assigns.paste_yt_dlp
+       )
+     )
      |> assign(:paste_error, nil)}
   end
 
@@ -339,7 +378,8 @@ defmodule PinchflatWeb.Browse.BrowseLive do
     {:noreply,
      socket
      |> assign(:paste_selected_profile_id, new_profile_id)
-     |> assign(:paste_resolved_video, updated_resolved)}
+     |> assign(:paste_resolved_video, updated_resolved)
+     |> assign(:paste_yt_dlp, paste_options_after_profile_change(updated_resolved, new_profile_id))}
   end
 
   @impl true
@@ -392,8 +432,9 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
       true ->
         socket = assign(socket, paste_downloading?: true, paste_error: nil)
+        opts = intake_options(socket.assigns.paste_yt_dlp)
 
-        case YoutubeBrowser.download_video(video.id, profile_id) do
+        case YoutubeBrowser.download_video(video.id, profile_id, opts) do
           {:ok, outcome} ->
             msg =
               case outcome do
@@ -412,6 +453,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
              |> assign(:paste_downloading?, false)
              |> assign(:paste_resolved_video, nil)
              |> assign(:pasted_url, "")
+             |> assign(:paste_yt_dlp, YtDlpOptionsHelpers.base_assigns())
              |> assign(:results, updated_results)}
 
           {:error, :migration_hold_active} ->
@@ -435,6 +477,25 @@ defmodule PinchflatWeb.Browse.BrowseLive do
              socket
              |> assign(:paste_downloading?, false)
              |> assign(:paste_error, "Video is already queued or downloading.")}
+
+          {:error, reason}
+          when reason in [:stale_conflict, :too_large, :yt_dlp_options_too_large, :invalid_yt_dlp_options] ->
+            {:noreply,
+             socket
+             |> assign(:paste_downloading?, false)
+             |> assign(:paste_error, options_error_message(reason))}
+
+          {:error, {:queue_failed, _reason}} ->
+            {:noreply,
+             socket
+             |> assign(:paste_downloading?, false)
+             |> assign(:paste_error, options_error_message({:queue_failed, nil}))}
+
+          {:error, {:file_failed, _reason}} ->
+            {:noreply,
+             socket
+             |> assign(:paste_downloading?, false)
+             |> assign(:paste_error, options_error_message({:file_failed, nil}))}
 
           {:error, :source_disabled} ->
             {:noreply,
@@ -482,13 +543,20 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   end
 
   @impl true
-  def handle_event("download_video", %{"id" => video_id}, socket) do
+  def handle_event("download_video", %{"id" => video_id} = params, socket) do
     profile_id = socket.assigns.selected_profile_id
 
     if is_nil(profile_id) do
       {:noreply, put_flash(socket, :error, "Please select a media profile first.")}
     else
-      case YoutubeBrowser.download_video(video_id, profile_id) do
+      opts =
+        if YtDlpOptionsHelpers.truthy?(params["from_detail"] || params["from-detail"]) do
+          intake_options(socket.assigns.detail_yt_dlp)
+        else
+          []
+        end
+
+      case YoutubeBrowser.download_video(video_id, profile_id, opts) do
         {:ok, outcome} ->
           msg =
             case outcome do
@@ -503,7 +571,8 @@ defmodule PinchflatWeb.Browse.BrowseLive do
            socket
            |> put_flash(:info, msg)
            |> assign(:results, updated_results)
-           |> assign(:selected_video_detail, nil)}
+           |> assign(:selected_video_detail, nil)
+           |> assign(:detail_yt_dlp, YtDlpOptionsHelpers.base_assigns())}
 
         {:error, :migration_hold_active} ->
           {:noreply,
@@ -550,6 +619,16 @@ defmodule PinchflatWeb.Browse.BrowseLive do
            socket
            |> put_flash(:info, "Video download is already in progress or queued.")}
 
+        {:error, reason}
+        when reason in [:stale_conflict, :too_large, :yt_dlp_options_too_large, :invalid_yt_dlp_options] ->
+          {:noreply, put_flash(socket, :error, options_error_message(reason))}
+
+        {:error, {:queue_failed, _reason}} ->
+          {:noreply, put_flash(socket, :error, options_error_message({:queue_failed, nil}))}
+
+        {:error, {:file_failed, _reason}} ->
+          {:noreply, put_flash(socket, :error, options_error_message({:file_failed, nil}))}
+
         {:error, :missing_file} ->
           {:noreply,
            socket
@@ -579,13 +658,19 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       title = Map.get(params, "title") || "YouTube Channel #{channel_id}"
       handle = Map.get(params, "handle")
 
-      {:noreply, assign(socket, :confirming_channel, %{id: channel_id, title: title, handle: handle})}
+      {:noreply,
+       socket
+       |> assign(:confirming_channel, %{id: channel_id, title: title, handle: handle})
+       |> assign(:subscribe_yt_dlp, source_options_assigns(socket.assigns.selected_profile_id))}
     end
   end
 
   @impl true
   def handle_event("cancel_subscribe_channel", _params, socket) do
-    {:noreply, assign(socket, :confirming_channel, nil)}
+    {:noreply,
+     socket
+     |> assign(:confirming_channel, nil)
+     |> assign(:subscribe_yt_dlp, YtDlpOptionsHelpers.base_assigns())}
   end
 
   @impl true
@@ -599,8 +684,9 @@ defmodule PinchflatWeb.Browse.BrowseLive do
        |> assign(:confirming_channel, nil)}
     else
       title = Map.get(params, "title") || "YouTube Channel #{channel_id}"
+      opts = [channel_title: title] ++ intake_options(socket.assigns.subscribe_yt_dlp)
 
-      case YoutubeBrowser.subscribe_channel(channel_id, profile_id, channel_title: title) do
+      case YoutubeBrowser.subscribe_channel(channel_id, profile_id, opts) do
         {:ok, _source} ->
           updated_results = re_enrich_results(socket.assigns.results, socket.assigns.active_tab, profile_id)
 
@@ -608,6 +694,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
            socket
            |> put_flash(:info, "Successfully subscribed to #{title}. Initial indexing scheduled.")
            |> assign(:confirming_channel, nil)
+           |> assign(:subscribe_yt_dlp, YtDlpOptionsHelpers.base_assigns())
            |> assign(:results, updated_results)}
 
         {:error, {:already_tracked, existing_source}} ->
@@ -624,7 +711,14 @@ defmodule PinchflatWeb.Browse.BrowseLive do
            socket
            |> put_flash(:info, msg)
            |> assign(:confirming_channel, nil)
+           |> assign(:subscribe_yt_dlp, YtDlpOptionsHelpers.base_assigns())
            |> assign(:results, updated_results)}
+
+        {:error, {:yt_dlp_options, reason}} ->
+          {:noreply, put_flash(socket, :error, options_error_message(reason))}
+
+        {:error, reason} when reason in [:yt_dlp_options_too_large, :invalid_yt_dlp_options] ->
+          {:noreply, put_flash(socket, :error, options_error_message(reason))}
 
         {:error, :ambiguous_copies} ->
           {:noreply,
@@ -799,6 +893,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       {:noreply,
        socket
        |> assign(:selected_video_detail, enriched_detail)
+       |> assign(:detail_yt_dlp, preview_options_for(detail.id, current_profile_id))
        |> assign(:detail_loading?, false)}
     else
       {:noreply, assign(socket, detail_loading?: false)}
@@ -859,9 +954,23 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       statuses = Status.enrich_videos([detail.id], selected_profile_id: current_profile_id)
       enriched_detail = Map.put(detail, :status, Map.get(statuses, detail.id))
 
+      previous_id =
+        case socket.assigns[:paste_resolved_video] do
+          nil -> nil
+          video -> video.id
+        end
+
+      paste_options =
+        if previous_id == detail.id do
+          socket.assigns.paste_yt_dlp
+        else
+          preview_options_for(detail.id, current_profile_id)
+        end
+
       {:noreply,
        socket
        |> assign(:paste_resolved_video, enriched_detail)
+       |> assign(:paste_yt_dlp, paste_options)
        |> assign(:paste_resolving?, false)
        |> assign(:paste_error, nil)}
     else
@@ -1154,6 +1263,151 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   defp friendly_url_error(:invalid_video_id), do: "Invalid YouTube video ID."
   defp friendly_url_error(:invalid_path), do: "Invalid YouTube URL path."
   defp friendly_url_error(_), do: "Invalid YouTube URL."
+
+  defp update_options_draft(draft, params) do
+    YtDlpOptionsHelpers.submitted_assigns(
+      params,
+      draft.yt_dlp_options_inherited,
+      draft.yt_dlp_options_profile_presence,
+      nil,
+      :missing
+    )
+  end
+
+  defp item_options_assigns(profile_id, preview) do
+    inherited = %{
+      base: YtDlpConfigFile.present?(),
+      profile: is_integer(profile_id) and YtDlpConfigFile.present_scope?(:profile, profile_id),
+      source: preview_source_present?(preview)
+    }
+
+    YtDlpOptionsHelpers.base_assigns()
+    |> Map.put(:yt_dlp_options_inherited, inherited)
+    |> apply_options_preview(preview)
+  end
+
+  defp apply_options_preview(options, nil), do: options
+
+  defp apply_options_preview(options, %{too_large?: true, size: size}) do
+    %{
+      options
+      | yt_dlp_options_present: true,
+        yt_dlp_options_readable: false,
+        yt_dlp_options_clearable: true,
+        yt_dlp_options_version: :any,
+        yt_dlp_error:
+          "This item config file is #{size} bytes, larger than the 64,000-byte editor limit. It is preserved and still used. Clear it to replace it."
+    }
+  end
+
+  defp apply_options_preview(options, %{unreadable?: true}) do
+    %{
+      options
+      | yt_dlp_options_readable: false,
+        yt_dlp_options_clearable: false,
+        yt_dlp_options_version: :any,
+        yt_dlp_error: "This item config file could not be read. It is preserved and still used."
+    }
+  end
+
+  defp apply_options_preview(options, %{contents: contents, version: version, present?: present?}) do
+    %{
+      options
+      | yt_dlp_options: contents,
+        yt_dlp_options_version: version,
+        yt_dlp_options_present: present?,
+        yt_dlp_options_clearable: present?
+    }
+  end
+
+  defp preview_source_present?(%{source_id: source_id}) when is_integer(source_id) do
+    YtDlpConfigFile.present_scope?(:source, source_id)
+  end
+
+  defp preview_source_present?(_preview), do: false
+
+  defp preview_options_for(video_id, profile_id) do
+    case YoutubeBrowser.preview_item_options(video_id, profile_id) do
+      {:ok, preview} -> item_options_assigns(profile_id, preview)
+      {:error, _reason} -> item_options_assigns(profile_id, nil)
+    end
+  end
+
+  defp detail_options_for(nil, _profile_id), do: YtDlpOptionsHelpers.base_assigns()
+  defp detail_options_for(detail, profile_id), do: preview_options_for(detail.id, profile_id)
+
+  defp paste_options_for(socket, profile_id) do
+    case socket.assigns.paste_resolved_video do
+      nil -> item_options_assigns(profile_id, nil)
+      video -> preview_options_for(video.id, profile_id)
+    end
+  end
+
+  defp subscribe_options_for(socket, profile_id) do
+    if socket.assigns.confirming_channel do
+      source_options_assigns(profile_id)
+    else
+      socket.assigns.subscribe_yt_dlp
+    end
+  end
+
+  defp paste_options_after_profile_change(nil, profile_id), do: item_options_assigns(profile_id, nil)
+  defp paste_options_after_profile_change(video, profile_id), do: preview_options_for(video.id, profile_id)
+
+  defp source_options_assigns(profile_id) do
+    inherited = %{
+      base: YtDlpConfigFile.present?(),
+      profile: is_integer(profile_id) and YtDlpConfigFile.present_scope?(:profile, profile_id),
+      source: false
+    }
+
+    Map.put(YtDlpOptionsHelpers.base_assigns(), :yt_dlp_options_inherited, inherited)
+  end
+
+  defp draft_payload(draft) do
+    cond do
+      draft.yt_dlp_options_clear? -> {:present, ""}
+      String.trim(draft.yt_dlp_options) != "" -> {:present, draft.yt_dlp_options}
+      draft.yt_dlp_options_edited? -> {:present, ""}
+      true -> :absent
+    end
+  end
+
+  defp intake_options(draft) do
+    [yt_dlp_options: draft_payload(draft), yt_dlp_options_version: draft.yt_dlp_options_version]
+  end
+
+  defp options_error_message(:stale_conflict) do
+    "Custom yt-dlp options changed after you opened them. Reload the preview and try again."
+  end
+
+  defp options_error_message(:stale), do: options_error_message(:stale_conflict)
+
+  defp options_error_message(reason) when reason in [:too_large, :yt_dlp_options_too_large] do
+    "Custom yt-dlp options are larger than 64,000 bytes."
+  end
+
+  defp options_error_message(:invalid_yt_dlp_options) do
+    "Custom yt-dlp options are invalid."
+  end
+
+  defp options_error_message({:queue_failed, _reason}) do
+    "Options were saved, but the download could not be queued. Try again."
+  end
+
+  defp options_error_message({:file_failed, _reason}) do
+    "Options could not be written before the download. No download was queued."
+  end
+
+  defp options_error_message({:yt_dlp_options, reason}), do: options_error_message(reason)
+
+  defp options_error_message(reason) when is_atom(reason) do
+    "Custom yt-dlp options could not be saved: #{reason}"
+  end
+
+  defp options_error_message(reason) do
+    "Custom yt-dlp options could not be saved: #{inspect(reason)}"
+  end
 
   defp friendly_download_error(:timeout), do: "Request timed out."
   defp friendly_download_error(:busy), do: "The YouTube provider is currently busy. Please try again shortly."

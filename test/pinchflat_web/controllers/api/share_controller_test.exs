@@ -5,8 +5,10 @@ defmodule PinchflatWeb.Api.ShareControllerTest do
   import Pinchflat.SourcesFixtures
   import Pinchflat.MediaFixtures
 
+  alias Pinchflat.Settings.PendingMediaItemOptions
   alias Pinchflat.ShareTokens
   alias Pinchflat.ShareTokens.RateLimiter
+  alias Pinchflat.Sources.Source
 
   setup %{conn: conn} do
     RateLimiter.reset!()
@@ -14,6 +16,22 @@ defmodule PinchflatWeb.Api.ShareControllerTest do
     {:ok, token, secret} = ShareTokens.create_token(%{name: "Test Token", media_profile_id: profile.id})
 
     %{conn: put_req_header(conn, "content-type", "application/json"), profile: profile, token: token, secret: secret}
+  end
+
+  test "share intake ignores extra yt-dlp option fields", %{conn: conn, profile: profile, secret: secret} do
+    video_id = "dQw4w9WgXcQ"
+
+    response =
+      conn
+      |> put_req_header("authorization", "Bearer #{secret}")
+      |> post("/api/share/intake", %{
+        "url" => "https://youtu.be/#{video_id}",
+        "yt_dlp_options" => "--share-injected\n"
+      })
+
+    assert json_response(response, 202)["status"] == "indexing"
+    source = Repo.get_by!(Source, collection_id: video_id, media_profile_id: profile.id)
+    assert {:ok, nil} = PendingMediaItemOptions.fetch(source, video_id)
   end
 
   for {kind, duration, ratio, shorts?} <- [{"regular video", 600, 1.7, false}, {"Short", 45, 0.56, true}] do

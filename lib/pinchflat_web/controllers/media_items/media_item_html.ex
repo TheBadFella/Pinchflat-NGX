@@ -10,6 +10,14 @@ defmodule PinchflatWeb.MediaItems.MediaItemHTML do
   """
   attr :changeset, Ecto.Changeset, required: true
   attr :action, :string, required: true
+  attr :yt_dlp_options, :string, default: ""
+  attr :yt_dlp_options_version, :any, default: :missing
+  attr :yt_dlp_options_present, :boolean, default: false
+  attr :yt_dlp_options_readable, :boolean, default: true
+  attr :yt_dlp_options_clearable, :boolean, default: false
+  attr :yt_dlp_options_inherited, :map, default: %{}
+  attr :yt_dlp_options_profile_presence, :map, default: %{}
+  attr :yt_dlp_error, :string, default: nil
 
   def media_item_form(assigns)
 

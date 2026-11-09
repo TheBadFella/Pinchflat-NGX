@@ -701,11 +701,22 @@
         </p>
       </details>
       <p class="mt-4 text-sm text-theme-on-surface-muted">
-        Need custom yt-dlp arguments for this source? After saving, add them to
-        <code>extras/yt-dlp-configs/source-123-config.txt</code>
-        using the saved source ID. Pinchflat already loads
-        per-source, per-profile, per-media-item, and base yt-dlp config files during downloads.
+        These options are saved to this source's managed config file and apply to its future downloads. Existing
+        manually maintained config files keep working.
       </p>
+
+      <.yt_dlp_options_editor
+        id_prefix="source"
+        scope_help="These options apply to every download for this source. The base config and the selected media profile's config still apply, and a media-item config can add its own options."
+        contents={@yt_dlp_options}
+        version={@yt_dlp_options_version}
+        present={@yt_dlp_options_present}
+        readable={@yt_dlp_options_readable}
+        clearable={@yt_dlp_options_clearable}
+        inherited={@yt_dlp_options_inherited}
+        profile_presence={@yt_dlp_options_profile_presence}
+        error={@yt_dlp_error}
+      />
     </section>
 
     <div class="my-10 w-full">
