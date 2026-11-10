@@ -6,6 +6,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
+  import Pinchflat.TasksFixtures
 
   alias PinchflatWeb.Sources.MediaItemTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
@@ -505,6 +506,24 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
 
       assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
       refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
+    end
+
+    test "P6a: action column header appears only when running tasks exist", %{conn: conn, source: source} do
+      item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+      refute has_element?(view, "th", "Action")
+      refute html =~ ~s(data-icon="hero-stop-solid")
+
+      {:ok, job} = Oban.insert(MediaDownloadWorker.new(%{"id" => item.id}))
+
+      task_fixture(%{media_item_id: item.id, source_id: source.id, job_id: job.id})
+
+      {:ok, view_with_task, html_with_task} =
+        live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+
+      assert has_element?(view_with_task, "th", "Action")
+      assert html_with_task =~ ~s(data-icon="hero-stop-solid")
     end
   end
 
