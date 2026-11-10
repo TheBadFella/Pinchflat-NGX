@@ -101,6 +101,7 @@ ARG BUILD_SHA=""
 
 COPY --from=builder ./usr/local/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder ./usr/local/bin/ffprobe /usr/bin/ffprobe
+COPY docker/install-quickjs-ng.sh /tmp/install-quickjs-ng.sh
 
 RUN set -eux; \
     if [ "${DATABASE_ADAPTER}" = "postgres" ]; then \
@@ -148,16 +149,14 @@ RUN set -eux; \
       if [ "$attempt" -eq 5 ]; then exit 1; fi; \
       sleep 5; \
     done && \
-    # Install Deno - required for YouTube downloads (See yt-dlp#14404)
-    case "${TARGETPLATFORM:-linux/amd64}" in \
-      "linux/amd64") DENO_ARCH="x86_64" ;; \
-      "linux/arm64") DENO_ARCH="aarch64" ;; \
-      *) echo "Unsupported platform: ${TARGETPLATFORM}" >&2; exit 1 ;; \
-    esac && \
-    curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-unknown-linux-gnu.zip" -o /tmp/deno.zip && \
-    unzip -q /tmp/deno.zip deno -d /usr/local/bin && \
-    chmod a+rx /usr/local/bin/deno && \
-    rm -f /tmp/deno.zip && \
+    # setpriv (util-linux) implements the optional PUID/PGID privilege drop.
+    if [ ! -x /usr/bin/setpriv ]; then \
+      apt-get install -y --no-install-recommends util-linux; \
+    fi && \
+    [ -x /usr/bin/setpriv ] || { echo "setpriv is required for PUID/PGID startup" >&2; exit 1; } && \
+    # Install QuickJS-NG for yt-dlp's JavaScript challenge solver
+    sh /tmp/install-quickjs-ng.sh && \
+    rm -f /tmp/install-quickjs-ng.sh && \
     # Apprise
     export PIPX_HOME=/opt/pipx && \
     export PIPX_BIN_DIR=/usr/local/bin && \
@@ -180,9 +179,9 @@ ENV LC_ALL=en_US.UTF-8
 
 WORKDIR "/app"
 
-# Set up data volumes
-RUN mkdir -p /config /downloads /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt /etc/elixir_tzdata_data /etc/yt-dlp/plugins && \
-  chmod ugo+rw /etc/elixir_tzdata_data /etc/yt-dlp /etc/yt-dlp/plugins /usr/local/bin /usr/local/bin/yt-dlp
+# Set up data volumes. System binaries and /etc/yt-dlp stay immutable; the
+# runtime copies yt-dlp into a private writable directory when it starts.
+RUN mkdir -p /config /downloads /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt /etc/elixir_tzdata_data /etc/yt-dlp/plugins
 
 # The official bgutil plugin is installed as a zip in a dedicated directory.
 # Pinchflat-ngx adds --plugin-dirs only when POT_PROVIDER_URL is valid, so the

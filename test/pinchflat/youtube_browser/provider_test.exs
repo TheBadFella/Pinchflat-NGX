@@ -66,4 +66,33 @@ defmodule Pinchflat.YoutubeBrowser.ProviderTest do
       assert {:error, :invalid_channel} = YtDlp.get_channel_preview(input)
     end
   end
+
+  test "passes the packaged QuickJS runtime to browse commands" do
+    capture = Path.join(System.tmp_dir!(), "browse-args-#{System.unique_integer([:positive])}.txt")
+    script = Path.join([File.cwd!(), "test", "support", "scripts", "yt-dlp-mocks", "browse_capture_args.py"])
+    File.chmod!(script, 0o755)
+
+    previous_qjs = Application.get_env(:pinchflat, :qjs_executable)
+    Application.put_env(:pinchflat, :yt_dlp_executable, script)
+    Application.put_env(:pinchflat, :qjs_executable, "/usr/local/bin/qjs")
+    System.put_env("BROWSE_ARGS_FILE", capture)
+
+    on_exit(fn ->
+      if previous_qjs,
+        do: Application.put_env(:pinchflat, :qjs_executable, previous_qjs),
+        else: Application.delete_env(:pinchflat, :qjs_executable)
+
+      System.delete_env("BROWSE_ARGS_FILE")
+      File.rm(capture)
+    end)
+
+    assert {:ok, []} = YtDlp.search_videos("anything")
+
+    args = capture |> File.read!() |> String.split("\n")
+    runtime_index = Enum.find_index(args, &(&1 == "--js-runtimes"))
+
+    assert "--no-js-runtimes" in args
+    assert is_integer(runtime_index)
+    assert Enum.at(args, runtime_index + 1) == "quickjs:/usr/local/bin/qjs"
+  end
 end
