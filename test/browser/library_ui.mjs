@@ -14,14 +14,15 @@ const browser = process.env.LIBRARY_UI_BROWSER_CLI || 'chrome-devtools-axi'
 
 function emitViewport(width, touch = false) {
   const spec = touch ? `${width}x1000x3,mobile,touch` : `${width}x1000x1`
-  execFileSync(browser, ['emulate', '--viewport', spec], { env: process.env })
+  execFileSync(browser, ['emulate', '--viewport', spec], { env: process.env, shell: true })
 }
 
 function screenshot(name) {
   if (!process.env.LIBRARY_UI_ARTIFACTS) return
   mkdirSync(process.env.LIBRARY_UI_ARTIFACTS, { recursive: true })
   execFileSync(browser, ['screenshot', join(process.env.LIBRARY_UI_ARTIFACTS, name)], {
-    env: process.env
+    env: process.env,
+    shell: true
   })
 }
 
@@ -82,35 +83,62 @@ async function assertThumbnails(width) {
   await open('/?tab=downloaded')
 
   const ids = JSON.stringify({
+    realId: fixture.real_thumbnail_item_id,
     realUuid: fixture.real_thumbnail_uuid,
     missingId: fixture.missing_thumbnail_item_id,
-    nilId: fixture.nil_thumbnail_item_id
+    nilId: fixture.nil_thumbnail_item_id,
+    realItems: fixture.real_thumbnail_items || [
+      { id: fixture.real_thumbnail_item_id, uuid: fixture.real_thumbnail_uuid }
+    ]
   })
 
   const result = await page.eval(
     new Function(`
       return (async () => {
         const ids = ${ids}
-        const rowFor = (id) =>
-          document.querySelector('a[href$="/media/' + id + '"]')?.closest('tr, article') || null
+        const rowFor = (id) => {
+          const links = [...document.querySelectorAll('a[href$="/media/' + id + '"]')]
+          return (
+            links
+              .map((a) => a.closest('tr, article'))
+              .find((el) => el && (el.offsetParent !== null || el.getBoundingClientRect().height > 0)) ||
+            links[0]?.closest('tr, article') ||
+            null
+          )
+        }
         const frameFor = (row) => row?.querySelector('div.aspect-video') || null
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+        const waitForImage = async (img) => {
+          if (!img) return
+          img.loading = 'eager'
+          const start = Date.now()
+          while (!img.complete && Date.now() - start < 3000) {
+            await wait(100)
+          }
+          await Promise.race([img.decode().catch(() => {}), wait(1000)])
+        }
 
         const realSrc = '/media/' + ids.realUuid + '/episode_image'
-        const realImg = document.querySelector('img[src="' + realSrc + '"]')
-        if (realImg) {
-          realImg.scrollIntoView({ block: 'center' })
-          await realImg.decode().catch(() => {})
-        }
+        const realRow = rowFor(ids.realId)
+        const realImg =
+          realRow?.querySelector('img') || document.querySelector('img[src="' + realSrc + '"]')
+        await waitForImage(realImg)
         await wait(200)
 
         const missingRow = rowFor(ids.missingId)
-        missingRow?.scrollIntoView({ block: 'center' })
-        await wait(400)
+        const missingFrame = frameFor(missingRow)
+        const missingImg = missingFrame?.querySelector('img')
+        if (missingImg) {
+          missingImg.loading = 'eager'
+          const start = Date.now()
+          while ((!missingImg.complete || getComputedStyle(missingImg).display !== 'none') && Date.now() - start < 3000) {
+            await wait(100)
+          }
+        }
+        await wait(200)
 
         const nilRow = rowFor(ids.nilId)
-        nilRow?.scrollIntoView({ block: 'center' })
-        await wait(200)
+        const nilFrame = frameFor(nilRow)
 
         const placeholderVisible = (frame) => {
           const icon = frame?.querySelector('[data-icon="hero-film"]')
@@ -119,25 +147,96 @@ async function assertThumbnails(width) {
           return rect.width > 0 && rect.height > 0 && getComputedStyle(icon).display !== 'none'
         }
 
-        const missingFrame = frameFor(missingRow)
-        const missingImg = missingFrame?.querySelector('img')
-
-        return {
+        const initial = {
           realLoaded: Boolean(realImg && realImg.naturalWidth > 0),
           missingImageHidden: Boolean(missingImg && getComputedStyle(missingImg).display === 'none'),
           missingPlaceholder: placeholderVisible(missingFrame),
           nilHasNoImage: Boolean(frameFor(nilRow) && !frameFor(nilRow).querySelector('img')),
           nilPlaceholder: placeholderVisible(frameFor(nilRow))
         }
+
+        // Sorting reuses row DOM nodes. A missing thumbnail in one row must not
+        // leave its Alpine failure state on a valid thumbnail that moves in.
+        const sortByUploadDate = () => {
+          const button = [...document.querySelectorAll('th button')].find((candidate) =>
+            (candidate.getAttribute('aria-label') || '').startsWith('Sort by Upload Date')
+          )
+          if (!button) return false
+          button.click()
+          return true
+        }
+
+        // Force the visible thumbnails to load so a missing file fails now
+        // rather than waiting for lazy loading to reach it.
+        const settleVisibleFailures = async () => {
+          const thumbnails = () => [...document.querySelectorAll('div.aspect-video img')]
+          thumbnails().forEach((img) => {
+            img.loading = 'eager'
+          })
+          const start = Date.now()
+          while (Date.now() - start < 3000) {
+            if (thumbnails().some((img) => getComputedStyle(img).display === 'none')) return true
+            await wait(100)
+          }
+          return false
+        }
+
+        const sortable = sortByUploadDate()
+        let sorted = { sortable }
+        if (sortable) {
+          await wait(300)
+          await settleVisibleFailures()
+          sortByUploadDate()
+          await wait(500)
+
+          const items = []
+          for (const item of ids.realItems) {
+            const row = rowFor(item.id)
+            if (!row) continue
+            const img =
+              row.querySelector('img[data-media-uuid="' + item.uuid + '"]') ||
+              row.querySelector('img')
+            await waitForImage(img)
+            items.push({
+              id: item.id,
+              rowFound: true,
+              imageFound: Boolean(img),
+              loaded: Boolean(img && img.naturalWidth > 0),
+              display: img ? getComputedStyle(img).display : null
+            })
+          }
+          sorted = { sortable, items }
+        }
+
+        return { initial, sorted }
       })()
     `)
   )
 
-  assert(result.realLoaded, `Real thumbnail did not load at ${width}px`)
-  assert(result.missingImageHidden, `Missing thumbnail image stayed visible at ${width}px`)
-  assert(result.missingPlaceholder, `Missing thumbnail placeholder is not visible at ${width}px`)
-  assert(result.nilHasNoImage, `Nil thumbnail unexpectedly rendered an image at ${width}px`)
-  assert(result.nilPlaceholder, `Nil thumbnail placeholder is not visible at ${width}px`)
+  assert(result.initial.realLoaded, `Real thumbnail did not load at ${width}px`)
+  assert(result.initial.missingImageHidden, `Missing thumbnail image stayed visible at ${width}px`)
+  assert(
+    result.initial.missingPlaceholder,
+    `Missing thumbnail placeholder is not visible at ${width}px`
+  )
+  assert(result.initial.nilHasNoImage, `Nil thumbnail unexpectedly rendered an image at ${width}px`)
+  assert(result.initial.nilPlaceholder, `Nil thumbnail placeholder is not visible at ${width}px`)
+
+  assert(result.sorted.sortable, `Upload Date sort control is missing at ${width}px`)
+  assert(result.sorted.items.length > 0, `No real thumbnail rows found after sorting at ${width}px`)
+  for (const item of result.sorted.items) {
+    assert(item.rowFound, `Real thumbnail row ${item.id} vanished after sorting at ${width}px`)
+    assert(
+      item.imageFound,
+      `Real thumbnail image ${item.id} is missing after sorting at ${width}px`
+    )
+    assert(item.loaded, `Real thumbnail ${item.id} did not load after sorting at ${width}px`)
+    assert.notEqual(
+      item.display,
+      'none',
+      `Real thumbnail ${item.id} is hidden after sorting at ${width}px`
+    )
+  }
   screenshot(`thumbnails-${width}.png`)
 }
 
@@ -194,7 +293,10 @@ async function assertTouchTargets(width) {
   }
 
   const menu = await page.eval(async () => {
-    const trigger = document.querySelector('button[aria-label^="More actions for"]')
+    const trigger =
+      [...document.querySelectorAll('button[aria-label^="More actions for"]')].find(
+        (el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0
+      ) || document.querySelector('button[aria-label^="More actions for"]')
     trigger.focus()
     trigger.click()
     await new Promise((resolve) => setTimeout(resolve, 150))
@@ -220,7 +322,10 @@ async function assertRowMenuKeyboard() {
   await open('/sources?view=table')
 
   await page.eval(() => {
-    const trigger = document.querySelector('button[aria-label^="More actions for"]')
+    const trigger =
+      [...document.querySelectorAll('button[aria-label^="More actions for"]')].find(
+        (el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0
+      ) || document.querySelector('button[aria-label^="More actions for"]')
     trigger.focus()
   })
   await page.press('Enter')
@@ -228,7 +333,10 @@ async function assertRowMenuKeyboard() {
 
   assert(
     await page.eval(() => {
-      const trigger = document.querySelector('button[aria-label^="More actions for"]')
+      const trigger =
+        [...document.querySelectorAll('button[aria-label^="More actions for"]')].find(
+          (el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0
+        ) || document.querySelector('button[aria-label^="More actions for"]')
       const menu = trigger.closest('div.relative').querySelector('ul')
       return getComputedStyle(menu).display !== 'none' && menu.getBoundingClientRect().height > 0
     }),
@@ -252,7 +360,10 @@ async function assertRowMenuKeyboard() {
   await page.wait(200)
   assert(
     await page.eval(() => {
-      const trigger = document.querySelector('button[aria-label^="More actions for"]')
+      const trigger =
+        [...document.querySelectorAll('button[aria-label^="More actions for"]')].find(
+          (el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0
+        ) || document.querySelector('button[aria-label^="More actions for"]')
       const menu = trigger.closest('div.relative').querySelector('ul')
       return (
         document.activeElement === trigger &&
@@ -270,7 +381,10 @@ async function assertRowMenuKeyboard() {
       window.__confirmCancelled = true
       return false
     }
-    const trigger = document.querySelector('button[aria-label^="More actions for"]')
+    const trigger =
+      [...document.querySelectorAll('button[aria-label^="More actions for"]')].find(
+        (el) => el.offsetParent !== null || el.getBoundingClientRect().height > 0
+      ) || document.querySelector('button[aria-label^="More actions for"]')
     trigger.focus()
     trigger.click()
   })
@@ -278,7 +392,9 @@ async function assertRowMenuKeyboard() {
 
   const paused = await page.eval(() => {
     const pause = [...document.querySelectorAll('button[type=submit]')].find(
-      (button) => button.textContent.trim() === 'Pause all'
+      (button) =>
+        button.textContent.trim() === 'Pause all' &&
+        (button.offsetParent !== null || button.getBoundingClientRect().height > 0)
     )
     if (!pause) return false
     pause.closest('form').addEventListener('submit', () => {
@@ -318,6 +434,8 @@ async function assertEmptyHome() {
   assert(!state.overflow, 'Empty Home overflows horizontally')
   screenshot('home-empty-390.png')
 }
+
+await open('/')
 
 if (fixture.mode === 'empty') {
   emitViewport(390, true)
