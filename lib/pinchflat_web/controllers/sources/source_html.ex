@@ -166,6 +166,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
               href={@source.original_url}
               target="_blank"
               rel="noopener noreferrer"
+              title={@source.original_url}
               class="text-theme-primary hover:underline"
             >
               {@url_label}
@@ -1074,17 +1075,16 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   @doc """
   A compact, human-friendly label for a source's original URL. YouTube handle and
   channel URLs collapse to just the `@handle` (e.g.
-  `https://www.youtube.com/@some-fake-channel` → `@some-fake-channel`) and playlist
-  URLs to `#` plus the playlist ID (e.g.
-  `https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` →
-  `#PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`); anything else drops the scheme/`www.` and
-  trailing slash. The value stays the link text — the `href` is still the full URL.
+  `https://www.youtube.com/@some-fake-channel` → `@some-fake-channel`), playlist
+  URLs use `Open playlist on YouTube`, and anything else drops the scheme/`www.`
+  and trailing slash. The value stays the link text — the `href` is still the
+  full URL.
   """
   def source_url_label(url) when is_binary(url) do
     # The playlist ID is checked first: a playlist can live under a channel URL
     # (`/@someone/...?list=PL…`), where the list is what identifies the source.
     case {Regex.run(~r{[?&]list=([^&#]+)}, url), Regex.run(~r{/(@[^/?#]+)}, url)} do
-      {[_, playlist_id], _} -> "##{playlist_id}"
+      {[_, _playlist_id], _} -> "Open playlist on YouTube"
       {_, [_, handle]} -> handle
       _ -> url |> String.replace(~r{^https?://(www\.)?}, "") |> String.trim_trailing("/")
     end

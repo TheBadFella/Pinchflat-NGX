@@ -6,6 +6,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
   import Pinchflat.ProfilesFixtures
+  import Pinchflat.TasksFixtures
 
   alias PinchflatWeb.Sources.MediaItemTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
@@ -473,6 +474,63 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
       html = render(view)
       assert html =~ "ONLY_TRANSIENT_ITEM"
     end
+  end
+
+  describe "thumbnails" do
+    test "renders stored thumbnails in the Videos list and grid views", %{conn: conn, source: source} do
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: "/downloads/thumb.jpg"
+        )
+
+      {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      assert render_element(view, "tbody") =~ ~s(src="/media/#{item.uuid}/episode_image")
+      assert render_element(view, "tbody") =~ ~s(loading="lazy")
+
+      render_click(view, "view_change", %{"view" => "grid"})
+      assert render_element(view, "article") =~ ~s(src="/media/#{item.uuid}/episode_image")
+    end
+
+    test "renders a placeholder when an item has no thumbnail", %{conn: conn, source: source} do
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: nil
+        )
+
+      {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
+      refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
+    end
+
+    test "P6a: action column header appears only when running tasks exist", %{conn: conn, source: source} do
+      item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      {:ok, view, html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+      refute has_element?(view, "th", "Action")
+      refute html =~ ~s(data-icon="hero-stop-solid")
+
+      {:ok, job} = Oban.insert(MediaDownloadWorker.new(%{"id" => item.id}))
+
+      task_fixture(%{media_item_id: item.id, source_id: source.id, job_id: job.id})
+
+      {:ok, view_with_task, html_with_task} =
+        live_isolated(conn, MediaItemTableLive, session: create_session(source, "pending"))
+
+      assert has_element?(view_with_task, "th", "Action")
+      assert html_with_task =~ ~s(data-icon="hero-stop-solid")
+    end
+  end
+
+  defp render_element(view, selector) do
+    view
+    |> element(selector)
+    |> render()
   end
 
   defp downloaded_item(source, title) do

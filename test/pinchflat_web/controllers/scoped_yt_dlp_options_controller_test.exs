@@ -115,7 +115,7 @@ defmodule PinchflatWeb.ScopedYtDlpOptionsControllerTest do
         yt_dlp_options_version: version
       )
 
-    assert redirected_to(conn) == ~p"/sources/#{source.id}"
+    assert redirected_to(conn) == ~p"/sources/#{source.id}?#{[tab: "source"]}"
     assert {:ok, %{contents: "--source-updated\n"}} = YtDlpConfigFile.read_scope(:source, source.id)
     assert {:ok, %{version: :missing}} = YtDlpConfigFile.read_scope(:source, sibling.id)
   end
@@ -193,7 +193,7 @@ defmodule PinchflatWeb.ScopedYtDlpOptionsControllerTest do
         yt_dlp_options_version: version
       )
 
-    assert redirected_to(conn) == ~p"/sources/#{source.id}"
+    assert redirected_to(conn) == ~p"/sources/#{source.id}?#{[tab: "source"]}"
 
     assert {:ok, %{contents: "", present?: false}} = YtDlpConfigFile.read_scope(:source, source.id)
     assert {:ok, %{contents: "--profile-b\n"}} = YtDlpConfigFile.read_scope(:profile, profile_b.id)
@@ -268,7 +268,7 @@ defmodule PinchflatWeb.ScopedYtDlpOptionsControllerTest do
         yt_dlp_options_version: current_version
       )
 
-    assert redirected_to(conn) == ~p"/sources/#{source.id}"
+    assert redirected_to(conn) == ~p"/sources/#{source.id}?#{[tab: "source"]}"
     assert {:ok, %{contents: "", present?: false}} = YtDlpConfigFile.read_scope(:source, source.id)
   end
 

@@ -35,100 +35,117 @@ async function clickButton(label) {
   assert(match, `Button missing: ${label}`)
   await page.click(`@${match[1]}`)
 }
-// Source action glyphs must sit at the centre of their button content box and
-// stay aligned with the neighbouring edit/delete controls in the same row.
-async function measureActions() {
-  return page.eval(() => {
-    const visible = (el) => {
-      const rect = el.getBoundingClientRect()
-      return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden'
-    }
-    const center = (rect) => ({
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    })
+// Row actions live behind the per-row "More actions" menu. Open it with the
+// keyboard, verify the destinations and touch targets, close it with Escape,
+// and never activate the destructive Delete option.
+async function assertRowMenus(width, { touch = false, minTarget = 0 } = {}) {
+  emitViewport(width, touch)
+  await page.wait(150)
 
-    const selector = ['Start all', 'Pause all', 'Stop all']
-      .map((label) => `button[aria-label="${label}"]`)
-      .join(', ')
-
-    return [...document.querySelectorAll(selector)].filter(visible).map((button) => {
-      const icon = button.querySelector('span[data-icon]')
-      const neighbours = [...button.closest('form').parentElement.children]
-        .filter((el) => el !== button.closest('form') && visible(el))
-        .map((el) => center(el.getBoundingClientRect()))
-
-      const row = button.closest('tr, article')
-      const rowControls = row
-        ? [...row.querySelectorAll('a[aria-label="Edit"], a[aria-label^="Delete"]')].filter(visible)
-        : []
-      const rowControlsCenter = rowControls.map((el) => center(el.getBoundingClientRect()))
-
-      const buttonRect = button.getBoundingClientRect()
-      const iconCenter = icon ? center(icon.getBoundingClientRect()) : null
-      const buttonCenter = center(buttonRect)
-
+  const triggerState = await page.eval(() => {
+    const triggers = [
+      ...document.querySelectorAll('button[aria-label^="More actions for"]')
+    ].filter((el) => el.getBoundingClientRect().width > 0)
+    return triggers.map((trigger) => {
+      const rect = trigger.getBoundingClientRect()
       return {
-        width: buttonRect.width,
-        height: buttonRect.height,
-        iconDeltaX: iconCenter ? Math.abs(iconCenter.x - buttonCenter.x) : null,
-        iconDeltaY: iconCenter ? Math.abs(iconCenter.y - buttonCenter.y) : null,
-        neighbourDeltaY: neighbours.length
-          ? Math.min(...neighbours.map((n) => Math.abs(n.y - buttonCenter.y)))
-          : 0,
-        rowControlDeltaY: rowControlsCenter.length
-          ? Math.min(...rowControlsCenter.map((n) => Math.abs(n.y - buttonCenter.y)))
-          : 0,
-        insideViewport: buttonRect.left >= -1 && buttonRect.right <= innerWidth + 1,
-        label: button.getAttribute('aria-label')
+        width: rect.width,
+        height: rect.height,
+        insideViewport: rect.left >= -1 && rect.right <= innerWidth + 1,
+        label: trigger.getAttribute('aria-label')
       }
     })
   })
-}
-async function assertActions(width, { touch = false, minTarget = 0 } = {}) {
-  emitViewport(width, touch)
-  await page.wait(150)
-  const actions = await measureActions()
-  assert(actions.length > 0, `No visible start actions at ${width}px`)
-  const labels = new Set(actions.map((action) => action.label))
-  for (const label of ['Start all', 'Pause all', 'Stop all']) {
-    assert(labels.has(label), `Missing ${label} action at ${width}px`)
-  }
-  for (const action of actions) {
-    assert(action.iconDeltaX !== null, `Missing icon for ${action.label}`)
-    assert(
-      action.iconDeltaX <= 2,
-      `Icon off-centre horizontally by ${action.iconDeltaX}px at ${width}px`
-    )
-    assert(
-      action.iconDeltaY <= 2,
-      `Icon off-centre vertically by ${action.iconDeltaY}px at ${width}px`
-    )
-    assert(
-      action.neighbourDeltaY <= 3,
-      `Action group not aligned with neighbours (${action.neighbourDeltaY}px) at ${width}px`
-    )
-    if (width >= 768) {
-      assert(
-        action.rowControlDeltaY <= 8,
-        `Action not aligned with row controls (${action.rowControlDeltaY}px) at ${width}px`
-      )
-    }
-    assert(action.insideViewport, `Action outside viewport at ${width}px`)
+  assert(triggerState.length > 0, `No row menus at ${width}px`)
+  for (const trigger of triggerState) {
+    assert(trigger.insideViewport, `${trigger.label} outside viewport at ${width}px`)
     if (minTarget) {
       assert(
-        action.width >= minTarget && action.height >= minTarget,
-        `${action.label} target ${action.width}x${action.height} below ${minTarget}px at ${width}px`
+        trigger.width >= minTarget && trigger.height >= minTarget,
+        `${trigger.label} target ${trigger.width}x${trigger.height} below ${minTarget}px at ${width}px`
       )
     }
   }
+
+  await page.eval(() => {
+    const trigger = document.querySelector('button[aria-label^="More actions for"]')
+    trigger.focus()
+    trigger.click()
+  })
+  await page.wait(150)
+
+  const menuState = await page.eval(() => {
+    const trigger = document.querySelector('button[aria-label^="More actions for"]')
+    const container = trigger.closest('div.relative')
+    const menu = container.querySelector('ul')
+    const menuRect = menu.getBoundingClientRect()
+    const options = [...menu.querySelectorAll('button[type="submit"]')].map((button) => {
+      const rect = button.getBoundingClientRect()
+      const form = button.closest('form')
+      return {
+        text: button.textContent.trim(),
+        width: rect.width,
+        height: rect.height,
+        action: form ? form.getAttribute('action') : null,
+        confirm: button.getAttribute('data-confirm'),
+        visible:
+          rect.width > 0 && rect.height > 0 && getComputedStyle(button).visibility !== 'hidden'
+      }
+    })
+    return {
+      menuLeft: menuRect.left,
+      menuRight: menuRect.right,
+      options
+    }
+  })
+
+  for (const [text, suffix] of [
+    ['Start all', '/start_all'],
+    ['Pause all', '/pause_all'],
+    ['Stop all', '/stop_all']
+  ]) {
+    const option = menuState.options.find((candidate) => candidate.text === text)
+    assert(option, `Missing ${text} in the row menu at ${width}px`)
+    assert(option.visible, `${text} hidden at ${width}px`)
+    assert(option.action && option.action.endsWith(suffix), `${text} posts to ${option.action}`)
+    assert(option.confirm, `${text} is missing its confirmation`)
+    if (minTarget) {
+      assert(
+        option.width >= minTarget && option.height >= minTarget,
+        `${text} target ${option.width}x${option.height} below ${minTarget}px at ${width}px`
+      )
+    }
+  }
+
+  assert(
+    menuState.options.some((option) => option.text === 'Delete source'),
+    `Missing Delete source in the row menu at ${width}px`
+  )
+  assert(
+    menuState.menuLeft >= -1 && menuState.menuRight <= innerWidth + 1,
+    `Row menu clipped (${menuState.menuLeft}-${menuState.menuRight}) at ${width}px`
+  )
   assert(
     await page.eval(() => document.documentElement.scrollWidth <= innerWidth + 1),
     `Page overflows horizontally at ${width}px`
   )
-  screenshot(`source-actions-${width}.png`)
+
+  await page.press('Escape')
+  await page.wait(150)
+  const closed = await page.eval(() => {
+    const trigger = document.querySelector('button[aria-label^="More actions for"]')
+    const menu = trigger.closest('div.relative').querySelector('ul')
+    const rect = menu.getBoundingClientRect()
+    return {
+      menuVisible: getComputedStyle(menu).display !== 'none' && rect.height > 0,
+      focused: document.activeElement === trigger
+    }
+  })
+  assert(!closed.menuVisible, `Row menu stayed open at ${width}px`)
+  assert(closed.focused, `Focus did not return to the row trigger at ${width}px`)
+  screenshot(`source-row-menu-${width}.png`)
 }
-await open('/sources')
+await open('/sources?view=table')
 const visibleNames = await page.eval(() =>
   [...document.querySelectorAll('article, tbody tr')].map((el) => el.textContent)
 )
@@ -152,7 +169,7 @@ assert(formActions.some((action) => action.endsWith('/stop_all')))
 
 for (const width of [320, 390, 768, 1440]) {
   const touch = width <= 390
-  await assertActions(width, { touch, minTarget: touch ? 44 : 0 })
+  await assertRowMenus(width, { touch, minTarget: touch ? 44 : 0 })
 }
 await open('/browse')
 const pasteState = await page.eval(() => {
