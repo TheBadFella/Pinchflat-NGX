@@ -17,6 +17,7 @@ ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
 RUN echo "Building for ${TARGETPLATFORM:?}"
 
 COPY --from=node /usr/local/ /usr/local/
+COPY docker/install-quickjs-ng.sh /tmp/install-quickjs-ng.sh
 
 # Install debian packages
 RUN set -eux; \
@@ -52,6 +53,9 @@ RUN set -eux; \
     if [ "$attempt" -eq 5 ]; then exit 1; fi; \
     sleep 5; \
   done && \
+  # setpriv (util-linux) implements the optional PUID/PGID privilege drop.
+  if [ ! -x /usr/bin/setpriv ]; then apt-get install -y --no-install-recommends util-linux; fi && \
+  [ -x /usr/bin/setpriv ] || { echo "setpriv is required for PUID/PGID startup" >&2; exit 1; } && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
@@ -74,16 +78,9 @@ RUN set -eux; \
   # Install baseline Elixir packages
   mix local.hex --force && \
   mix local.rebar --force && \
-  # Install Deno - required for YouTube downloads (See yt-dlp#14404)
-  case "${TARGETPLATFORM:-linux/amd64}" in \
-    "linux/amd64") DENO_ARCH="x86_64" ;; \
-    "linux/arm64") DENO_ARCH="aarch64" ;; \
-    *) echo "Unsupported platform: ${TARGETPLATFORM}" >&2; exit 1 ;; \
-  esac && \
-  curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-unknown-linux-gnu.zip" -o /tmp/deno.zip && \
-  unzip -q /tmp/deno.zip deno -d /usr/local/bin && \
-  chmod a+rx /usr/local/bin/deno && \
-  rm -f /tmp/deno.zip && \
+  # Install QuickJS-NG for yt-dlp's JavaScript challenge solver
+  sh /tmp/install-quickjs-ng.sh && \
+  rm -f /tmp/install-quickjs-ng.sh && \
   # Download yt-dlp nightly
   echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
   export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \

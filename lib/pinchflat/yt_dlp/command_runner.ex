@@ -17,6 +17,8 @@ defmodule Pinchflat.YtDlp.CommandRunner do
 
   @behaviour YtDlpCommandRunner
 
+  @default_qjs_executable "/usr/local/bin/qjs"
+
   # Stage markers tell us how far yt-dlp got when it exits without writing the
   # requested output. A video rejected by a metadata filter gets the pre_process
   # marker but never reaches after_filter, so no after_move JSON is written.
@@ -86,6 +88,31 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   end
 
   @doc """
+  Returns the QuickJS-NG executable yt-dlp uses to solve JavaScript challenges.
+  """
+  def qjs_executable do
+    Application.get_env(:pinchflat, :qjs_executable) || @default_qjs_executable
+  end
+
+  @doc """
+  Returns typed yt-dlp options that pin the packaged QuickJS runtime.
+
+  These are appended after user config locations so a scoped options file
+  cannot silently select an unavailable runtime or disable JavaScript solving.
+  """
+  def js_runtime_options do
+    [:no_js_runtimes, js_runtimes: "quickjs:#{qjs_executable()}"]
+  end
+
+  @doc """
+  Returns the same runtime selection as raw argv strings for callers that build
+  their own argument list, such as the YouTube browse provider.
+  """
+  def js_runtime_args do
+    CliUtils.parse_options(js_runtime_options())
+  end
+
+  @doc """
   Updates yt-dlp to the given target.
 
   The target can be:
@@ -105,6 +132,7 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       with :ok <- File.cp(command, candidate),
            :ok <- File.chmod(candidate, 0o755),
            {:ok, output} <- update_candidate(candidate, target),
+           :ok <- validate_update_candidate(candidate),
            :ok <- File.rename(candidate, command) do
         {:ok, output}
       else
@@ -260,7 +288,8 @@ defmodule Pinchflat.YtDlp.CommandRunner do
       cache_dir: Path.join(Application.get_env(:pinchflat, :tmpfile_directory), "yt-dlp-cache")
     ] ++
       quiet_opt ++
-      PoTokenProvider.plugin_options() ++ PluginDirectory.options() ++ PluginDirectory.config_locations()
+      PoTokenProvider.plugin_options() ++
+      PluginDirectory.options() ++ PluginDirectory.config_locations() ++ js_runtime_options()
   end
 
   defp cookie_file_options(addl_opts) do
@@ -512,19 +541,138 @@ defmodule Pinchflat.YtDlp.CommandRunner do
   end
 
   defp direct_download_latest_nightly(command) do
-    tmp_path = Path.join(System.tmp_dir!(), "yt-dlp-nightly-download")
+    candidate = "#{command}.download-#{Ecto.UUID.generate()}"
     download_url = "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp"
 
-    with {curl_output, 0} <- CliUtils.wrap_cmd("curl", ["-fL", download_url, "-o", tmp_path]),
-         :ok <- File.cp(tmp_path, command),
-         :ok <- File.chmod(command, 0o755),
-         :ok <- File.rm(tmp_path) do
-      _ = curl_output
+    try do
+      with {curl_output, 0} <- CliUtils.wrap_cmd(curl_executable(), ["-fL", download_url, "-o", candidate]),
+           :ok <- File.chmod(candidate, 0o755),
+           :ok <- validate_update_candidate(candidate),
+           :ok <- File.rename(candidate, command) do
+        _ = curl_output
+        :ok
+      else
+        {curl_output, status} when is_integer(status) -> {:error, String.trim(curl_output)}
+        {:error, reason} when is_binary(reason) -> {:error, reason}
+        {:error, reason} -> {:error, inspect(reason)}
+      end
+    after
+      File.rm(candidate)
+    end
+  end
+
+  defp curl_executable do
+    Application.get_env(:pinchflat, :curl_executable, "curl")
+  end
+
+  defp validate_update_candidate(candidate) do
+    qjs = qjs_executable()
+
+    with :ok <- validate_qjs(qjs),
+         :ok <- validate_candidate_version(candidate),
+         :ok <- validate_candidate_runtime(candidate, qjs) do
       :ok
     else
-      {curl_output, status} when is_integer(status) -> {:error, String.trim(curl_output)}
-      {:error, reason} -> {:error, inspect(reason)}
+      {:error, reason} ->
+        {:error,
+         "Refusing to replace yt-dlp: #{reason}. The existing executable was left unchanged. " <>
+           "Install QuickJS-NG at #{qjs} or pin a yt-dlp version that supports --js-runtimes."}
     end
+  end
+
+  defp validate_qjs(qjs) do
+    if File.exists?(qjs) do
+      case run_quietly(qjs, ["--version"]) do
+        {:ok, _output} ->
+          :ok
+
+        {:error, {127, output}} ->
+          {:error, "the JavaScript runtime #{qjs} could not run (exit 127: #{short_output(output)})"}
+
+        {:error, {status, output}} ->
+          {:error, "the JavaScript runtime #{qjs} exited #{status} (#{short_output(output)})"}
+
+        {:error, description} ->
+          {:error, "the JavaScript runtime #{qjs} could not run (#{description})"}
+      end
+    else
+      {:error, "the JavaScript runtime #{qjs} could not run (not found)"}
+    end
+  end
+
+  defp validate_candidate_version(candidate) do
+    if File.exists?(candidate) do
+      case run_quietly(candidate, ["--version"]) do
+        {:ok, output} ->
+          if String.trim(output) == "" do
+            {:error, "the downloaded candidate returned an empty version"}
+          else
+            :ok
+          end
+
+        {:error, {127, output}} ->
+          {:error, "the downloaded candidate could not run (exit 127: #{short_output(output)})"}
+
+        {:error, {status, output}} ->
+          {:error, "the downloaded candidate exited #{status} (#{short_output(output)})"}
+
+        {:error, description} ->
+          {:error, "the downloaded candidate could not run (#{description})"}
+      end
+    else
+      {:error, "the downloaded candidate could not run (not found)"}
+    end
+  end
+
+  defp validate_candidate_runtime(candidate, qjs) do
+    args = ["--ignore-config", "--no-js-runtimes", "--js-runtimes", "quickjs:#{qjs}"]
+
+    case run_quietly(candidate, args) do
+      {:ok, _output} ->
+        :ok
+
+      {:error, {2, output}} ->
+        validate_runtime_error_output(output)
+
+      {:error, {status, output}} ->
+        {:error, "the downloaded candidate exited #{status} while checking runtime options (#{short_output(output)})"}
+
+      {:error, description} ->
+        {:error, "the downloaded candidate could not run (#{description})"}
+    end
+  end
+
+  defp validate_runtime_error_output(output) do
+    normalized = String.downcase(output)
+
+    cond do
+      String.contains?(normalized, "no such option") ->
+        {:error, "the downloaded candidate does not support the packaged runtime options (#{short_output(output)})"}
+
+      String.contains?(normalized, "unsupported javascript runtime") ->
+        {:error, "the downloaded candidate rejected the QuickJS runtime (#{short_output(output)})"}
+
+      String.contains?(normalized, "you must provide at least one url") ->
+        :ok
+
+      true ->
+        {:error, "the downloaded candidate rejected the runtime selection (#{short_output(output)})"}
+    end
+  end
+
+  defp run_quietly(command, args) do
+    case CliUtils.wrap_cmd(command, args, stderr_to_stdout: true) do
+      {output, 0} -> {:ok, output}
+      {output, status} -> {:error, {status, output}}
+    end
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
+  defp short_output(output) do
+    output
+    |> String.trim()
+    |> String.slice(0, 300)
   end
 
   defp transient_update_error?(output) do
