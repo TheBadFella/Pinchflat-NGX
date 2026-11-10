@@ -520,19 +520,33 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "source action controls" do
-    test "start, pause and stop forms keep their destinations and accessible labels", %{conn: conn} do
+    test "row menus keep start, pause, stop and delete destinations", %{conn: conn} do
       source = source_fixture(custom_name: "Action source")
 
-      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       for action <- ["start_all", "pause_all", "stop_all"] do
         assert html =~ ~s(action="/sources/#{source.id}/#{action}")
       end
 
-      assert html =~ ~s(aria-label="Start all")
-      assert html =~ ~s(aria-label="Pause all")
-      assert html =~ ~s(aria-label="Stop all")
+      assert has_element?(view, ~s(button[aria-label="More actions for Action source"]))
       assert html =~ ~s(name="return_to" value="/sources")
+      assert html =~ ~s(action="/sources/#{source.id}")
+      assert has_element?(view, ~s(form[action="/sources/#{source.id}"] input[name="_method"][value="delete"]))
+      assert html =~ "Delete Action source? This deletes the source only and does not delete files."
+      assert html =~ "Start all"
+      assert html =~ "Pause all"
+      assert html =~ "Stop all"
+    end
+
+    test "keeps the selection checkbox accessible without visible Select label text", %{conn: conn} do
+      source_fixture(custom_name: "Selectable source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, "input[aria-label='Select Selectable source']")
+      assert has_element?(view, "label > span.sr-only", "Select")
+      refute has_element?(view, "label > span:not(.sr-only)", "Select")
     end
 
     test "keeps the individual-video return path on the action forms", %{conn: conn} do
