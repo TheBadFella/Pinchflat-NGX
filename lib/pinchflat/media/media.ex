@@ -322,15 +322,18 @@ defmodule Pinchflat.Media do
     else
       expected = ScopedYtDlpOptions.expected_version(opts, :any)
       prior = ScopedYtDlpOptions.prior(:media_item, media_item.id)
-      :ok = PendingMediaItemOptions.supersede_for_item(media_item)
 
       result =
         Repo.transaction(fn ->
           case update_media_item(media_item, attrs) do
             {:ok, updated} ->
               case ScopedYtDlpOptions.save(payload, :media_item, updated.id, expected) do
-                :ok -> updated
-                {:error, reason} -> Repo.rollback({:yt_dlp_options, reason})
+                :ok ->
+                  :ok = PendingMediaItemOptions.supersede_for_item(updated)
+                  updated
+
+                {:error, reason} ->
+                  Repo.rollback({:yt_dlp_options, reason})
               end
 
             {:error, changeset} ->

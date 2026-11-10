@@ -96,7 +96,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   Available options:
     - `was_forced`: Whether the indexing was forced by the user
 
-  Returns [%MediaItem{} | %Ecto.Changeset{}]
+  Returns [%MediaItem{} | %Ecto.Changeset{}] | {:error, reason}
   """
   def index_and_enqueue_download_for_media_items(source, opts \\ [])
 
@@ -164,23 +164,29 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
         end
       end)
 
-    update_source_after_indexing(source)
     materialized_items = Enum.filter(result, &match?(%MediaItem{}, &1))
 
-    enqueued_download_count =
-      case apply_pending_item_options(source, materialized_items) do
-        :ok -> DownloadingHelpers.enqueue_pending_download_tasks(source)
-        {:applied, count} -> count
-        {:error, _reason} -> 0
-      end
+    case apply_pending_item_options(source, materialized_items) do
+      {:error, reason} ->
+        {:error, {:pending_item_options, reason}}
 
-    Logger.info(
-      "indexing_completed source_id=#{source.id} indexed_media_count=#{length(media_attributes)} " <>
-        "created_media_count=#{Enum.count(result, &match?(%MediaItem{}, &1))} " <>
-        "pending_downloads_enqueued=#{enqueued_download_count} download_media=#{source.download_media}"
-    )
+      options_result ->
+        enqueued_download_count =
+          case options_result do
+            :ok -> DownloadingHelpers.enqueue_pending_download_tasks(source)
+            {:applied, count} -> count
+          end
 
-    result
+        update_source_after_indexing(source)
+
+        Logger.info(
+          "indexing_completed source_id=#{source.id} indexed_media_count=#{length(media_attributes)} " <>
+            "created_media_count=#{Enum.count(result, &match?(%MediaItem{}, &1))} " <>
+            "pending_downloads_enqueued=#{enqueued_download_count} download_media=#{source.download_media}"
+        )
+
+        result
+    end
   end
 
   defp apply_pending_item_options(%Source{collection_type: :video} = source, media_items) do
