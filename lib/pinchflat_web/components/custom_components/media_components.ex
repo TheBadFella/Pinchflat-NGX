@@ -21,6 +21,8 @@ defmodule PinchflatWeb.CustomComponents.MediaComponents do
 
     ~H"""
     <div
+      id={"media-thumbnail-#{@size}-#{@media_item.uuid}"}
+      data-media-uuid={@media_item.uuid}
       class={[
         "aspect-video overflow-hidden rounded-m3-md bg-theme-surface-4",
         @size == "row" && "w-28 shrink-0",
@@ -31,12 +33,15 @@ defmodule PinchflatWeb.CustomComponents.MediaComponents do
     >
       <%= if @has_thumbnail? do %>
         <img
+          id={"media-thumbnail-image-#{@size}-#{@media_item.uuid}"}
+          data-media-uuid={@media_item.uuid}
           src={~p"/media/#{@media_item.uuid}/episode_image"}
           alt=""
           loading="lazy"
           decoding="async"
           class="h-full w-full object-cover"
           x-show="!failed"
+          x-on:load="failed = false"
           x-on:error="failed = true"
         />
         <div

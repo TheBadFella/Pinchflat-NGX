@@ -103,6 +103,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   """
   attr :href, :string, required: true
   attr :target, :string, default: "_self"
+  attr :class, :string, default: nil
   slot :inner_block
 
   def subtle_link(assigns) do
@@ -110,7 +111,10 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     <.link
       href={@href}
       target={@target}
-      class="underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
+      class={[
+        "underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface",
+        @class
+      ]}
     >
       {render_slot(@inner_block)}
     </.link>

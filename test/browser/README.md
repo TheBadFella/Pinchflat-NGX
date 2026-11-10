@@ -54,10 +54,12 @@ packaged release behavior or live-provider downloads.
 ## Library UI regression
 
 This checks the refreshed library UI at 320, 390, 768 and 1440 CSS pixels: no
-horizontal page scroll, real thumbnails loading, the Alpine placeholder for a
-missing thumbnail file and for an item with no thumbnail, the conditional Action
-column, 44x44 source controls on phone widths, and the row menu's keyboard flow
-(Enter opens it, Tab reaches Start/Pause/Stop/Delete, Escape returns focus).
+horizontal page scroll, real thumbnails loading and staying visible after
+sorting reuses row nodes, the Alpine placeholder for a missing thumbnail file and
+for an item with no thumbnail, the conditional Action column, every link and
+button in source rows meeting 44x44 CSS pixels on phone widths, and the row
+menu's keyboard flow (Enter opens it, Tab reaches Start/Pause/Stop/Delete, Escape
+returns focus).
 It cancels the Pause confirmation and asserts nothing submitted. It never
 activates Delete.
 

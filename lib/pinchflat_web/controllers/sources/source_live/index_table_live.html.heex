@@ -229,11 +229,14 @@
               </span>
 
               <div class="min-w-0 flex-1">
-                <.subtle_link href={~p"/sources/#{source.id}"}>
+                <.subtle_link href={~p"/sources/#{source.id}"} class="flex min-h-11 items-center">
                   <span class="block text-pretty break-words font-medium text-theme-on-surface">{source.custom_name}</span>
                 </.subtle_link>
 
-                <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
+                <.subtle_link
+                  href={~p"/media_profiles/#{source.media_profile_id}"}
+                  class="flex min-h-11 items-center"
+                >
                   <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
                 </.subtle_link>
                 <SourceHTML.retention_summary source={source} />
@@ -257,7 +260,10 @@
             <dt class="text-theme-on-surface-muted">Pending</dt>
 
             <dd class="text-right text-theme-on-surface">
-              <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+              <.subtle_link
+                href={~p"/sources/#{source.id}/#tab-pending"}
+                class="inline-flex min-h-11 min-w-11 items-center justify-center"
+              >
                 <.localized_number number={source.pending_count} />
               </.subtle_link>
             </dd>
@@ -267,7 +273,10 @@
             <dt class="text-theme-on-surface-muted">Downloaded</dt>
 
             <dd class="text-right text-theme-on-surface">
-              <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+              <.subtle_link
+                href={~p"/sources/#{source.id}/#tab-downloaded"}
+                class="inline-flex min-h-11 min-w-11 items-center justify-center"
+              >
                 <.localized_number number={source.downloaded_count} />
               </.subtle_link>
             </dd>

@@ -288,6 +288,7 @@ else
       running_item_id: running_item.id,
       real_thumbnail_item_id: real_item.id,
       real_thumbnail_uuid: real_item.uuid,
+      real_thumbnail_items: Enum.map(real_thumb_items, &%{id: &1.id, uuid: &1.uuid}),
       missing_thumbnail_item_id: missing_item.id,
       nil_thumbnail_item_id: nil_item.id,
       long_title_item_id: hd(pending_items).id
