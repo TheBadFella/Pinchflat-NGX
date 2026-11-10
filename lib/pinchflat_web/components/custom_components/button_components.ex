@@ -96,7 +96,9 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
         <:option>TEST</:option>
       </.button_dropdown>
   """
-  attr :text, :string, required: true
+  attr :text, :string, default: nil
+  attr :icon_name, :string, default: nil
+  attr :aria_label, :string, default: nil
   attr :class, :string, default: ""
   attr :variant, :string, default: "primary"
   attr :size, :string, default: "default"
@@ -132,17 +134,24 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           dropdownOpen = !dropdownOpen;
         "
         class={[
-          "theme-button gap-2.5",
+          if(@icon_name, do: "theme-icon-button", else: "theme-button gap-2.5"),
           @size_class,
           @variant_class
         ]}
+        aria-label={@aria_label}
+        title={@aria_label}
       >
-        {@text}
-        <CoreComponents.icon
-          name="hero-chevron-down"
-          class="h-4 w-4 fill-current duration-200 ease-linear"
-          x-bind:class="dropdownOpen && 'rotate-180'"
-        />
+        <%= if @icon_name do %>
+          <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
+          <span class="sr-only">{@text || @aria_label}</span>
+        <% else %>
+          {@text}
+          <CoreComponents.icon
+            name="hero-chevron-down"
+            class="h-4 w-4 fill-current duration-200 ease-linear"
+            x-bind:class="dropdownOpen && 'rotate-180'"
+          />
+        <% end %>
       </button>
 
       <div

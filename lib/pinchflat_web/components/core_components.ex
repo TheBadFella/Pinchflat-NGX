@@ -286,6 +286,7 @@ defmodule PinchflatWeb.CoreComponents do
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
+  attr :label_class, :string, default: nil
   attr :label_suffix, :string, default: nil
   attr :value, :any
   attr :help, :string, default: nil
@@ -349,7 +350,8 @@ defmodule PinchflatWeb.CoreComponents do
           checked={@checked}
           class={["rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0", @inputclass]}
           {@rest}
-        /> {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+        /> <span class={@label_class}>{@label}</span>
+        <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </label>
 
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
