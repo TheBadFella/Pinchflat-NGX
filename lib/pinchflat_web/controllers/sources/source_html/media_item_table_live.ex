@@ -443,7 +443,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
                 </:col>
 
-                <:col :let={media_item} label="Action">
+                <:col :let={media_item} :if={@any_actions?} label="Action">
                   <.icon_button
                     :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                     icon_name="hero-stop-solid"
@@ -936,6 +936,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> Map.put(:records, ordered_records)
     |> Map.put(:grouped_records, group_records_by_year(ordered_records))
     |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
+    |> Map.put(:any_actions?, Enum.any?(ordered_records, &Map.has_key?(tasks_by_media_item_id, &1.id)))
     |> Map.put(:queue_positions, build_queue_positions(queue_base_query, ordered_records, media_state))
   end
 

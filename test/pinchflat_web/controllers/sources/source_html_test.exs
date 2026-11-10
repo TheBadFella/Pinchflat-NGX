@@ -91,16 +91,16 @@ defmodule PinchflatWeb.Sources.SourceHTMLTest do
       assert SourceHTML.source_url_label("https://www.youtube.com/@some-fake-channel/videos") == "@some-fake-channel"
     end
 
-    test "collapses a playlist URL to a hash-prefixed playlist ID" do
+    test "uses a readable label for a playlist URL" do
       assert SourceHTML.source_url_label("https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") ==
-               "#PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+               "Open playlist on YouTube"
     end
 
-    test "prefers the playlist ID when a playlist lives under a channel URL" do
+    test "prefers the playlist label when a playlist lives under a channel URL" do
       assert SourceHTML.source_url_label(
                "https://www.youtube.com/@some-fake-channel/videos?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
              ) ==
-               "#PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+               "Open playlist on YouTube"
     end
 
     test "strips the scheme, www, and trailing slash from anything else" do

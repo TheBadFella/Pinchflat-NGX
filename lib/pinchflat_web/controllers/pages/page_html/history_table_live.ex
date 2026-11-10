@@ -166,6 +166,13 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   attr :tasks_by_media_item_id, :map, required: true
 
   defp history_records(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :any_actions?,
+        Enum.any?(assigns.records, &Map.has_key?(assigns.tasks_by_media_item_id, &1.id))
+      )
+
     ~H"""
     <div class={
       if @view_mode == "grid", do: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3", else: "space-y-4 md:hidden"
@@ -384,7 +391,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               </.subtle_link>
             </:col>
 
-            <:col :let={media_item} label="Action">
+            <:col :let={media_item} :if={@any_actions?} label="Action">
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop-solid"
