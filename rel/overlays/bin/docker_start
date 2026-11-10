@@ -1,4 +1,30 @@
 #!/bin/sh
+script_path="$0"
+case "$script_path" in
+  */*) ;;
+  *)
+    script_path="$(command -v "$script_path")" || {
+      echo "Pinchflat-ngx startup error: could not resolve the startup script path." >&2
+      exit 1
+    }
+    ;;
+esac
+
+script_dir="$(cd -P -- "$(dirname -- "$script_path")" && pwd)"
+
+# Validates optional PUID/PGID, prepares permitted directories as root and
+# permanently drops privileges. This must run before runtime_setup, permission
+# checks, migrations and the application.
+# shellcheck source=rel/overlays/bin/startup_identity
+. "${script_dir}/startup_identity"
+pin_apply_startup_identity "$script_path" "$@"
+
+# Prepares a writable yt-dlp copy, PATH, HOME and TMPDIR before any Elixir
+# process loads runtime configuration. Fails hard instead of falling back to
+# root or repairing an unsafe pre-existing path.
+# shellcheck source=rel/overlays/bin/runtime_setup
+. "${script_dir}/runtime_setup"
+
 /app/bin/check_file_permissions
 
 if [ $? -ne 0 ]; then
@@ -14,5 +40,5 @@ if ! /app/bin/migrate; then
   exit 1
 fi
 
-cd -P -- "$(dirname -- "$0")"
+cd -P -- "$script_dir"
 PHX_SERVER=true exec ./pinchflat start

@@ -281,6 +281,23 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
       assert String.contains?(output, "--cache-dir /tmp/test/tmpfiles/yt-dlp-cache")
     end
+
+    test "selects the packaged QuickJS runtime explicitly" do
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--no-js-runtimes")
+      assert String.contains?(output, "--js-runtimes quickjs:/usr/local/bin/qjs")
+    end
+
+    test "uses a configured QuickJS executable path" do
+      previous = Application.get_env(:pinchflat, :qjs_executable)
+      Application.put_env(:pinchflat, :qjs_executable, "/opt/custom/qjs")
+      on_exit(fn -> restore_env(:qjs_executable, previous) end)
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      assert String.contains?(output, "--js-runtimes quickjs:/opt/custom/qjs")
+    end
   end
 
   describe "run/4 when testing plugin options" do
@@ -358,6 +375,24 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
       assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
 
       refute String.contains?(output, "--config-locations")
+    end
+
+    test "keeps the packaged QuickJS selection after plugin config locations" do
+      source = plugin_zip_file_fixture()
+      on_exit(fn -> File.rm(source) end)
+
+      assert {:ok, _entry} = PluginDirectory.install_archive(source, filename: "sample.zip")
+      assert :ok = PluginDirectory.save_config("sample.zip", "--js-runtimes deno\n")
+
+      assert {:ok, output} = Runner.run(@media_url, :foo, [], "")
+
+      args = String.split(output)
+      config_index = Enum.find_index(args, &(&1 == "--config-locations"))
+      runtime_index = Enum.find_index(args, &(&1 == "--js-runtimes"))
+
+      assert is_integer(config_index)
+      assert is_integer(runtime_index)
+      assert config_index < runtime_index
     end
   end
 
@@ -469,6 +504,73 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
       assert {:error, _} = Runner.update("stable")
       assert File.read!(executable) == script
     end
+
+    test "replaces the executable when the candidate accepts the QuickJS runtime", %{executable: executable} do
+      source = fixture("nightly_candidate.sh")
+      File.cp!(source, executable)
+      File.chmod!(executable, 0o755)
+
+      assert {:ok, _output} = Runner.update("stable")
+
+      assert File.read!(executable) == File.read!(source)
+      assert Path.wildcard(executable <> ".*") == []
+    end
+
+    test "keeps the current executable when the candidate rejects the QuickJS runtime", %{executable: executable} do
+      source = fixture("incompatible_js_runtime.sh")
+      File.cp!(source, executable)
+      File.chmod!(executable, 0o755)
+
+      assert {:error, message} = Runner.update("stable")
+
+      assert message =~ "Refusing to replace yt-dlp"
+      assert message =~ "no such option"
+      assert File.read!(executable) == File.read!(source)
+      assert Path.wildcard(executable <> ".*") == []
+    end
+
+    test "refuses the update when the configured JavaScript runtime cannot run", %{executable: executable} do
+      previous = Application.get_env(:pinchflat, :qjs_executable)
+      missing = Path.join(System.tmp_dir!(), "missing-qjs-#{System.unique_integer([:positive])}")
+      Application.put_env(:pinchflat, :qjs_executable, missing)
+      on_exit(fn -> restore_env(:qjs_executable, previous) end)
+
+      original = File.read!(executable)
+
+      assert {:error, message} = Runner.update("stable")
+
+      assert message =~ "Refusing to replace yt-dlp"
+      assert message =~ "could not run"
+      assert File.read!(executable) == original
+      assert Path.wildcard(executable <> ".*") == []
+    end
+
+    test "downloads a transient nightly failure into a sibling candidate", %{executable: executable} do
+      File.cp!(fixture("transient_update_failure.sh"), executable)
+      File.chmod!(executable, 0o755)
+      File.chmod!(fixture("fake_curl.sh"), 0o755)
+
+      log = Path.join(System.tmp_dir!(), "fake-curl-#{System.unique_integer([:positive])}.log")
+      previous_curl = Application.get_env(:pinchflat, :curl_executable)
+      Application.put_env(:pinchflat, :curl_executable, fixture("fake_curl.sh"))
+      System.put_env("FAKE_CURL_SOURCE", fixture("nightly_candidate.sh"))
+      System.put_env("FAKE_CURL_LOG", log)
+
+      on_exit(fn ->
+        restore_env(:curl_executable, previous_curl)
+        System.delete_env("FAKE_CURL_SOURCE")
+        System.delete_env("FAKE_CURL_LOG")
+        File.rm(log)
+      end)
+
+      assert {:ok, _output} = Runner.update("nightly")
+      assert File.read!(executable) =~ "downloaded nightly candidate"
+
+      downloaded_path = log |> File.read!() |> String.trim()
+      assert Path.dirname(downloaded_path) == Path.dirname(executable)
+      refute File.exists?(Path.join(System.tmp_dir!(), "yt-dlp-nightly-download"))
+      assert Path.wildcard(executable <> ".*") == []
+    end
   end
 
   defp with_debug_logs(fun) do
@@ -490,5 +592,12 @@ defmodule Pinchflat.YtDlp.CommandRunnerTest do
 
   def reset_executable do
     Application.put_env(:pinchflat, :yt_dlp_executable, @original_executable)
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:pinchflat, key)
+  defp restore_env(key, value), do: Application.put_env(:pinchflat, key, value)
+
+  defp fixture(name) do
+    Path.join([File.cwd!(), "test", "support", "scripts", "yt-dlp-mocks", name])
   end
 end
