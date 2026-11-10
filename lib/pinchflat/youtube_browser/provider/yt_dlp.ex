@@ -7,6 +7,8 @@ defmodule Pinchflat.YoutubeBrowser.Provider.YtDlp do
 
   @behaviour Pinchflat.YoutubeBrowser.Provider
 
+  alias Pinchflat.YtDlp.CommandRunner
+
   require Logger
 
   @max_buffer_bytes 8 * 1024 * 1024
@@ -94,7 +96,7 @@ defmodule Pinchflat.YoutubeBrowser.Provider.YtDlp do
       "--skip-download",
       "--dump-single-json",
       "--flat-playlist"
-    ]
+    ] ++ CommandRunner.js_runtime_args()
   end
 
   def execute_cmd(args, opts \\ []) do
