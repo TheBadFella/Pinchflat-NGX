@@ -102,6 +102,7 @@ defmodule PinchflatWeb do
       import PinchflatWeb.CustomComponents.TextComponents
       import PinchflatWeb.CustomComponents.TableComponents
       import PinchflatWeb.CustomComponents.ButtonComponents
+      import PinchflatWeb.CustomComponents.MediaComponents
       import PinchflatWeb.CustomComponents.YtDlpOptionsComponents
       import Pinchflat.Utils.StringUtils, only: [double_brace: 1]
 

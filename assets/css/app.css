@@ -254,7 +254,8 @@
   }
 
   .theme-dropdown-option > a,
-  .theme-dropdown-option > button {
+  .theme-dropdown-option > button,
+  .theme-dropdown-option > form > button {
     @apply flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm font-medium text-theme-on-surface-muted transition hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-theme-primary;
   }
 

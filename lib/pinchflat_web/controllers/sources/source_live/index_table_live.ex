@@ -15,7 +15,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   alias Pinchflat.Sources.Source
   alias PinchflatWeb.Sources.SourceHTML
 
-  @default_view_mode :table
+  @default_view_mode :grid
 
   def source_download_mode_label(%{selection_mode: :manual}), do: "Delayed Downloads"
   def source_download_mode_label(%{selection_mode: _selection_mode}), do: "Automatic Downloads"
@@ -48,6 +48,109 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   def source_progress(%{media_count: total, downloaded_count: downloaded}) when total > 0 do
     percent = min(div(downloaded * 100, total), 100)
     %{state: :known, label: "#{downloaded} of #{total} indexed items downloaded", percent: percent}
+  end
+
+  attr :source, :map, required: true
+  attr :return_to, :string, required: true
+
+  defp source_row_actions(assigns) do
+    ~H"""
+    <.button_dropdown
+      text="More actions"
+      icon_name="hero-ellipsis-vertical"
+      aria_label={"More actions for #{@source.custom_name}"}
+      variant="outline"
+      size="compact"
+      class="shrink-0"
+    >
+      <:option>
+        <.form
+          for={%{}}
+          as={:start_source}
+          action={~p"/sources/#{@source.id}/start_all"}
+          method="post"
+          class="w-full"
+          x-data="{ submitting: false }"
+          x-on:submit="submitting = true"
+        >
+          <input type="hidden" name="return_to" value={@return_to} />
+          <button
+            type="submit"
+            data-confirm={"Start downloads for #{@source.custom_name}?"}
+            x-bind:disabled="submitting"
+          >
+            <.icon name="hero-play-solid" class="h-4 w-4" /> Start all
+          </button>
+        </.form>
+      </:option>
+
+      <:option>
+        <.form
+          for={%{}}
+          as={:pause_source}
+          action={~p"/sources/#{@source.id}/pause_all"}
+          method="post"
+          class="w-full"
+          x-data="{ submitting: false }"
+          x-on:submit="submitting = true"
+        >
+          <input type="hidden" name="return_to" value={@return_to} />
+          <button
+            type="submit"
+            data-confirm={"Pause downloads for #{@source.custom_name}?"}
+            x-bind:disabled="submitting"
+          >
+            <.icon name="hero-pause-solid" class="h-4 w-4" /> Pause all
+          </button>
+        </.form>
+      </:option>
+
+      <:option>
+        <.form
+          for={%{}}
+          as={:stop_source}
+          action={~p"/sources/#{@source.id}/stop_all"}
+          method="post"
+          class="w-full"
+          x-data="{ submitting: false }"
+          x-on:submit="submitting = true"
+        >
+          <input type="hidden" name="return_to" value={@return_to} />
+          <button
+            type="submit"
+            data-confirm={"Stop downloads for #{@source.custom_name}?"}
+            x-bind:disabled="submitting"
+          >
+            <.icon name="hero-stop-solid" class="h-4 w-4" /> Stop all
+          </button>
+        </.form>
+      </:option>
+
+      <:option>
+        <div class="h-px w-full bg-theme-outline/70"></div>
+      </:option>
+
+      <:option>
+        <.form
+          for={%{}}
+          as={:delete_source}
+          action={~p"/sources/#{@source.id}"}
+          method="delete"
+          class="w-full"
+        >
+          <input type="hidden" name="return_to" value={@return_to} />
+          <button
+            type="submit"
+            class="theme-danger-text-button"
+            data-confirm={"Delete #{@source.custom_name}? This deletes the source only and does not delete files."}
+            aria-label={"Delete #{@source.custom_name}"}
+          >
+            <.icon name="hero-trash" class="h-4 w-4" /> Delete source
+          </button>
+        </.form>
+      </:option>
+    </.button_dropdown>
+    """
   end
 
   def mount(_params, session, socket) do
@@ -161,6 +264,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 
+  defp normalize_view_mode(mode) when mode in [:table, "table"], do: :table
   defp normalize_view_mode(mode) when mode in [:grid, "grid"], do: :grid
   defp normalize_view_mode(_mode), do: @default_view_mode
 

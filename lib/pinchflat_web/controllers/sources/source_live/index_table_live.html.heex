@@ -38,6 +38,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="table"
+        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'table'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
         aria-pressed={to_string(@view_mode == :table)}
         data-view-toggle="table"
       >
@@ -55,6 +56,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="grid"
+        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'grid'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
         aria-pressed={to_string(@view_mode == :grid)}
         data-view-toggle="grid"
       >
@@ -201,6 +203,7 @@
           id={"source-select-mobile-#{source.id}"}
           name="source_selection"
           label="Select"
+          label_class="sr-only"
           aria-label={"Select #{source.custom_name}"}
           checked={MapSet.member?(@selected_ids, to_string(source.id))}
           phx-click="toggle_source_selection"
@@ -226,11 +229,14 @@
               </span>
 
               <div class="min-w-0 flex-1">
-                <.subtle_link href={~p"/sources/#{source.id}"}>
+                <.subtle_link href={~p"/sources/#{source.id}"} class="flex min-h-11 items-center">
                   <span class="block text-pretty break-words font-medium text-theme-on-surface">{source.custom_name}</span>
                 </.subtle_link>
 
-                <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>
+                <.subtle_link
+                  href={~p"/media_profiles/#{source.media_profile_id}"}
+                  class="flex min-h-11 items-center"
+                >
                   <span class="mt-1 block text-sm text-theme-on-surface-muted">{source.media_profile.name}</span>
                 </.subtle_link>
                 <SourceHTML.retention_summary source={source} />
@@ -238,94 +244,14 @@
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="flex items-center gap-1.5">
-              <.form
-                for={%{}}
-                as={:start_source}
-                action={~p"/sources/#{source.id}/start_all"}
-                method="post"
-                class="inline-flex"
-                x-data="{ submitting: false }"
-                x-on:submit="submitting = true"
-              >
-                <input type="hidden" name="return_to" value={@return_to} />
-                <.icon_button
-                  icon_name="hero-play-solid"
-                  variant="primary"
-                  type="submit"
-                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                  icon_class="h-4 w-4"
-                  title="Start all"
-                  aria-label="Start all"
-                  data-confirm={"Start downloads for #{source.custom_name}?"}
-                  x-bind:disabled="submitting"
-                />
-              </.form>
-
-              <.form
-                for={%{}}
-                as={:pause_source}
-                action={~p"/sources/#{source.id}/pause_all"}
-                method="post"
-                class="inline-flex"
-                x-data="{ submitting: false }"
-                x-on:submit="submitting = true"
-              >
-                <input type="hidden" name="return_to" value={@return_to} />
-                <.icon_button
-                  icon_name="hero-pause-solid"
-                  variant="warning"
-                  type="submit"
-                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                  icon_class="h-4 w-4"
-                  title="Pause all"
-                  aria-label="Pause all"
-                  data-confirm={"Pause downloads for #{source.custom_name}?"}
-                  x-bind:disabled="submitting"
-                />
-              </.form>
-
-              <.form
-                for={%{}}
-                as={:stop_source}
-                action={~p"/sources/#{source.id}/stop_all"}
-                method="post"
-                class="inline-flex"
-                x-data="{ submitting: false }"
-                x-on:submit="submitting = true"
-              >
-                <input type="hidden" name="return_to" value={@return_to} />
-                <.icon_button
-                  icon_name="hero-stop-solid"
-                  variant="danger-solid"
-                  type="submit"
-                  class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                  icon_class="h-4 w-4"
-                  title="Stop all"
-                  aria-label="Stop all"
-                  data-confirm={"Stop downloads for #{source.custom_name}?"}
-                  x-bind:disabled="submitting"
-                />
-              </.form>
-            </div>
-            <div class="ml-auto flex items-center gap-1.5">
-              <.icon_link
-                href={~p"/sources/#{source.id}/edit"}
-                icon="hero-pencil-square"
-                aria-label="Edit"
-                class="mx-1"
-              />
-              <.icon_link
-                href={~p"/sources/#{source.id}?return_to=#{@return_to}"}
-                icon="hero-trash"
-                method="delete"
-                data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
-                aria-label={"Delete #{source.custom_name}"}
-                title="Delete source"
-                class="mx-1 hover:text-theme-error"
-              />
-            </div>
+          <div class="flex flex-wrap items-center justify-end gap-3">
+            <.icon_link
+              href={~p"/sources/#{source.id}/edit"}
+              icon="hero-pencil-square"
+              aria-label="Edit"
+              class="mx-1"
+            />
+            <.source_row_actions source={source} return_to={@return_to} />
           </div>
         </div>
 
@@ -334,7 +260,10 @@
             <dt class="text-theme-on-surface-muted">Pending</dt>
 
             <dd class="text-right text-theme-on-surface">
-              <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+              <.subtle_link
+                href={~p"/sources/#{source.id}/#tab-pending"}
+                class="inline-flex min-h-11 min-w-11 items-center justify-center"
+              >
                 <.localized_number number={source.pending_count} />
               </.subtle_link>
             </dd>
@@ -344,7 +273,10 @@
             <dt class="text-theme-on-surface-muted">Downloaded</dt>
 
             <dd class="text-right text-theme-on-surface">
-              <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+              <.subtle_link
+                href={~p"/sources/#{source.id}/#tab-downloaded"}
+                class="inline-flex min-h-11 min-w-11 items-center justify-center"
+              >
                 <.localized_number number={source.downloaded_count} />
               </.subtle_link>
             </dd>
@@ -385,6 +317,7 @@
                     id={"source-select-table-#{source.id}"}
                     name="source_selection"
                     label="Select"
+                    label_class="sr-only"
                     aria-label={"Select #{source.custom_name}"}
                     checked={MapSet.member?(@selected_ids, to_string(source.id))}
                     phx-click="toggle_source_selection"
@@ -417,74 +350,7 @@
                 </div>
 
                 <div class="ml-auto flex shrink-0 items-center gap-1.5">
-                  <.form
-                    for={%{}}
-                    as={:start_source}
-                    action={~p"/sources/#{source.id}/start_all"}
-                    method="post"
-                    class="inline-flex"
-                    x-data="{ submitting: false }"
-                    x-on:submit="submitting = true"
-                  >
-                    <input type="hidden" name="return_to" value={@return_to} />
-                    <.icon_button
-                      icon_name="hero-play-solid"
-                      variant="primary"
-                      type="submit"
-                      class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                      icon_class="h-4 w-4"
-                      title="Start all"
-                      aria-label="Start all"
-                      data-confirm={"Start downloads for #{source.custom_name}?"}
-                      x-bind:disabled="submitting"
-                    />
-                  </.form>
-
-                  <.form
-                    for={%{}}
-                    as={:pause_source}
-                    action={~p"/sources/#{source.id}/pause_all"}
-                    method="post"
-                    class="inline-flex"
-                    x-data="{ submitting: false }"
-                    x-on:submit="submitting = true"
-                  >
-                    <input type="hidden" name="return_to" value={@return_to} />
-                    <.icon_button
-                      icon_name="hero-pause-solid"
-                      variant="warning"
-                      type="submit"
-                      class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                      icon_class="h-4 w-4"
-                      title="Pause all"
-                      aria-label="Pause all"
-                      data-confirm={"Pause downloads for #{source.custom_name}?"}
-                      x-bind:disabled="submitting"
-                    />
-                  </.form>
-
-                  <.form
-                    for={%{}}
-                    as={:stop_source}
-                    action={~p"/sources/#{source.id}/stop_all"}
-                    method="post"
-                    class="inline-flex"
-                    x-data="{ submitting: false }"
-                    x-on:submit="submitting = true"
-                  >
-                    <input type="hidden" name="return_to" value={@return_to} />
-                    <.icon_button
-                      icon_name="hero-stop-solid"
-                      variant="danger-solid"
-                      type="submit"
-                      class="h-8 w-8 border active:brightness-90 disabled:opacity-60"
-                      icon_class="h-4 w-4"
-                      title="Stop all"
-                      aria-label="Stop all"
-                      data-confirm={"Stop downloads for #{source.custom_name}?"}
-                      x-bind:disabled="submitting"
-                    />
-                  </.form>
+                  <.source_row_actions source={source} return_to={@return_to} />
                 </div>
               </div>
             </:col>
@@ -529,15 +395,6 @@
                   aria-label="Edit"
                   class="mx-1"
                 />
-                <.icon_link
-                  href={~p"/sources/#{source.id}?return_to=#{@return_to}"}
-                  icon="hero-trash"
-                  method="delete"
-                  data-confirm={"Delete #{source.custom_name}? This deletes the source only and does not delete files."}
-                  aria-label={"Delete #{source.custom_name}"}
-                  title="Delete source"
-                  class="mx-1 hover:text-theme-error"
-                />
               </div>
             </:col>
           </.table>
@@ -577,6 +434,7 @@
               id={"source-select-grid-#{source.id}"}
               name="source_selection"
               label="Select"
+              label_class="sr-only"
               aria-label={"Select #{source.custom_name}"}
               checked={MapSet.member?(@selected_ids, to_string(source.id))}
               phx-click="toggle_source_selection"

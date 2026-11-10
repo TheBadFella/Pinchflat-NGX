@@ -73,6 +73,7 @@ defmodule PinchflatWeb.Router do
     pipe_through :browser
 
     get "/", Pages.PageController, :home
+    get "/activity", Pages.PageController, :activity
     post "/migration/confirm_review", Pages.PageController, :confirm_migration_review
     post "/migration/rescan", Pages.PageController, :rescan_migration_review
     get "/discovery", DiscoveryController, :index

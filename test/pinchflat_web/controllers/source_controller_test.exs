@@ -110,7 +110,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     assert Repo.get!(Pinchflat.Sources.Source, source.id).retention_period_days == nil
 
     {:ok, _} = Pinchflat.Profiles.update_media_profile(profile, %{retention_period_days: 7})
-    overview = conn |> get(~p"/sources/#{source.id}") |> html_response(200)
+    overview = conn |> get(~p"/sources/#{source.id}?#{[tab: "source"]}") |> html_response(200)
     assert overview =~ "7 days (profile default)"
   end
 
@@ -156,7 +156,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       source_fixture(%{custom_name: "Automatic Source", collection_type: :playlist, selection_mode: :all})
       source_fixture(%{custom_name: "Delayed Source", collection_type: :playlist, selection_mode: :manual})
 
-      conn = get(conn, ~p"/sources")
+      conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
       assert response =~ "Automatic Downloads"
@@ -166,7 +166,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders source row controls", %{conn: conn} do
       source_fixture(%{custom_name: "Controllable Source"})
 
-      conn = get(conn, ~p"/sources")
+      conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
       assert response =~ "Start all"
@@ -180,11 +180,23 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders source delete control with non-destructive confirmation copy", %{conn: conn} do
       source_fixture(%{custom_name: "Deletable Source"})
 
-      conn = get(conn, ~p"/sources")
+      conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
       assert response =~ "Delete Deletable Source? This deletes the source only and does not delete files."
       assert response =~ "Delete source"
+    end
+
+    test "defaults to the poster grid and honours an explicit table view", %{conn: conn} do
+      source_fixture(%{custom_name: "View mode source"})
+
+      default = conn |> get(~p"/sources") |> html_response(200)
+      assert default =~ ~s(data-view="poster-grid")
+      refute default =~ ~s(data-view="table")
+
+      table = conn |> get(~p"/sources?view=table") |> html_response(200)
+      assert table =~ ~s(data-view="table")
+      refute table =~ ~s(data-view="poster-grid")
     end
 
     test "renders channel discovery in the sidebar", %{conn: conn} do
@@ -661,7 +673,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
 
       conn = put(conn, ~p"/sources/#{source}", source: update_attrs)
-      assert redirected_to(conn) == ~p"/sources/#{source}"
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
 
       conn = get(conn, ~p"/sources/#{source}")
       assert html_response(conn, 200) =~ "https://www.youtube.com/playlist?list=PL1234567890ABCDEF"
@@ -691,7 +703,7 @@ defmodule PinchflatWeb.SourceControllerTest do
           source: %{download_public_media: "false", download_members_only_media: "false"}
         )
 
-      assert redirected_to(conn) == ~p"/sources/#{source}"
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
       updated_source = Repo.reload!(source)
       refute updated_source.download_public_media
       refute updated_source.download_members_only_media
@@ -774,8 +786,18 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert current_link =~ "<span>Podcast</span>"
       refute html =~ "Show unset fields"
 
-      source_html = conn |> get(~p"/sources/#{source}") |> html_response(200)
+      source_html = conn |> get(~p"/sources/#{source}?#{[tab: "source"]}") |> html_response(200)
       assert source_html =~ "Show unset fields"
+    end
+
+    test "defaults to the Videos tab and keeps the Source tab explicit", %{conn: conn} do
+      source = source_fixture()
+
+      default_html = conn |> get(~p"/sources/#{source}") |> html_response(200)
+      assert active_page_section(default_html) =~ "<span>Videos</span>"
+
+      source_html = conn |> get(~p"/sources/#{source}?#{[tab: "source"]}") |> html_response(200)
+      assert active_page_section(source_html) =~ "<span>Source</span>"
     end
 
     test "renders source media statistics with mutually exclusive counts", %{conn: conn} do
@@ -822,7 +844,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     test "renders grouped source details instead of a raw attribute dump", %{conn: conn} do
       source = source_fixture(%{custom_name: "Library Details Source", description: "A channel description"})
 
-      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+      response = conn |> get(~p"/sources/#{source}?#{[tab: "source"]}") |> html_response(200)
 
       assert response =~ ~s(id="source-library-header")
       assert response =~ ~s(id="source-info-panel")
@@ -1230,6 +1252,14 @@ defmodule PinchflatWeb.SourceControllerTest do
 
     assert Plug.CSRFProtection.valid_state_and_csrf_token?(session_token, masked_token)
     refute Plug.CSRFProtection.valid_state_and_csrf_token?(session_token, "forged-token")
+  end
+
+  defp active_page_section(html) do
+    assert [sections] =
+             Regex.run(~r/<nav\b[^>]*aria-label="Page sections"[^>]*>(.*?)<\/nav>/s, html, capture: :all_but_first)
+
+    assert [[current_link]] = Regex.scan(~r/<a\b[^>]*aria-current="page"[^>]*>.*?<\/a>/s, sections)
+    current_link
   end
 
   defp create_source(_) do

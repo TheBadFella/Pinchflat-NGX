@@ -14,6 +14,10 @@ defmodule PinchflatWeb.Pages.PageController do
     |> send_resp(200, "")
   end
 
+  def home(conn, %{"tab" => tab}) when tab in ~w(active-tasks job-queue system-health) do
+    redirect(conn, to: ~p"/activity?#{[tab: tab]}")
+  end
+
   def home(conn, params) do
     if LegacyMigration.legacy_migration_pending?() do
       render_migration_review_page(conn)
@@ -29,6 +33,15 @@ defmodule PinchflatWeb.Pages.PageController do
         render_home_page(conn, params)
       end
     end
+  end
+
+  def activity(conn, params) do
+    active_tab = tab_param(params, ~w(active-tasks job-queue system-health), "active-tasks")
+
+    render(conn, :activity,
+      active_tab: active_tab,
+      tab_href: fn tab -> ~p"/activity?#{[tab: tab]}" end
+    )
   end
 
   def confirm_migration_review(conn, _params) do
@@ -102,7 +115,7 @@ defmodule PinchflatWeb.Pages.PageController do
 
   defp render_home_page(conn, params) do
     downloaded_media_items = where(MediaQuery.new(), ^MediaQuery.downloaded())
-    active_tab = tab_param(params, ~w(latest pending failed active-tasks downloaded job-queue system-health), "latest")
+    active_tab = tab_param(params, ~w(latest pending failed downloaded), "latest")
     setting = Settings.record()
 
     conn

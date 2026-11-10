@@ -51,6 +51,57 @@ This is an explicit browser check alongside ExUnit. It is not silently run by
 `mix test` or the existing CI jobs, and it does not prove PostgreSQL behavior,
 packaged release behavior or live-provider downloads.
 
+## Library UI regression
+
+This checks the refreshed library UI at 320, 390, 768 and 1440 CSS pixels: no
+horizontal page scroll, real thumbnails loading and staying visible after
+sorting reuses row nodes, the Alpine placeholder for a missing thumbnail file and
+for an item with no thumbnail, the conditional Action column, every link and
+button in source rows meeting 44x44 CSS pixels on phone widths, and the row
+menu's keyboard flow (Enter opens it, Tab reaches Start/Pause/Stop/Delete, Escape
+returns focus).
+It cancels the Pause confirmation and asserts nothing submitted. It never
+activates Delete.
+
+The fixture writes synthetic sources, media items and a real JPEG thumbnail to a
+disposable test container. It refuses a non-test environment or a database that
+already contains sources. Use `LIBRARY_UI_FIXTURE=empty` for a single source with
+nothing indexed in the last 24 hours to check the P3 empty state.
+
+Build the repository's normal test image, then start a fresh container:
+
+```bash
+docker compose -f docker/docker-compose.ci.yml build phx
+docker run --rm --name pinchflat-library-ui \
+  -p 127.0.0.1:4004:4004 -e MIX_ENV=test -e LIBRARY_UI_FIXTURE=1 \
+  -e TEST_DATABASE_PATH=/tmp/pinchflat-library-ui.db \
+  -v "$PWD:/app" -v pinchflat_library_ui_deps:/app/deps \
+  -v pinchflat_library_ui_build:/app/_build \
+  --entrypoint sh pinchyt-phx -lc \
+  'mix ecto.create --quiet && mix ecto.migrate --quiet && mix assets.build && mix run --no-start test/support/library_ui_fixture.exs'
+```
+
+Wait for `LIBRARY_UI_READY`, copy its manifest and run the test with an installed
+Chrome DevTools AXI CLI:
+
+```bash
+docker cp pinchflat-library-ui:/tmp/pinchflat-library-ui.json /tmp/library-ui.json
+export LIBRARY_UI_BASE_URL=http://127.0.0.1:4004
+export LIBRARY_UI_FIXTURES=/tmp/library-ui.json
+export CHROME_DEVTOOLS_AXI_SESSION=library-ui-regression
+export LIBRARY_UI_BROWSER_CLI=/home/badfellawsl/.local/bin/browser-axi
+browser-axi run < test/browser/library_ui.mjs
+browser-axi stop
+docker stop pinchflat-library-ui
+```
+
+For the empty state, repeat with `-e LIBRARY_UI_FIXTURE=empty` and a fresh
+database path. Set `LIBRARY_UI_ARTIFACTS` to save screenshots named
+`<page>-<state>-<width>.png`. Use one named browser session for the run and stop
+it and the container after a failed assertion too. This is an explicit browser
+check; it is not run by `mix test` or CI and does not prove PostgreSQL or packaged
+release behavior.
+
 ## Source actions and Paste URL regression
 
 This checks the source play/pause/stop controls and the Browse YouTube Paste URL

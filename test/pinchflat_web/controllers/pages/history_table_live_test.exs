@@ -5,6 +5,7 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
   import Phoenix.LiveViewTest
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
+  import Pinchflat.TasksFixtures
 
   alias Pinchflat.Pages.HistoryTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
@@ -649,6 +650,80 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
 
       view |> element("th button", "Upload Date") |> render_click()
       assert pagination_text(view) == "Page 1 of 2"
+    end
+  end
+
+  describe "thumbnails" do
+    test "renders stored thumbnails in list and grid views", %{conn: conn} do
+      source = source_fixture()
+
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: "/downloads/thumb.jpg"
+        )
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
+
+      assert render_element(view, "tbody") =~ ~s(src="/media/#{item.uuid}/episode_image")
+      assert render_element(view, "tbody") =~ ~s(loading="lazy")
+
+      render_click(view, "view_change", %{"view" => "grid"})
+      assert render_element(view, "article") =~ ~s(src="/media/#{item.uuid}/episode_image")
+    end
+
+    test "renders a placeholder when an item has no thumbnail", %{conn: conn} do
+      source = source_fixture()
+
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: nil
+        )
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
+
+      assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
+      refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
+    end
+  end
+
+  describe "empty states and Polish" do
+    test "P3: empty state on latest 1-day range offers past 7 days and view downloaded", %{conn: conn} do
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+      assert html =~ "Nothing was indexed in the past 24 hours."
+      assert has_element?(view, "a", "Show past 7 days")
+      assert has_element?(view, "a[href='/?tab=downloaded']", "View downloaded")
+
+      {:ok, _view, html_week} =
+        live_isolated(conn, HistoryTableLive,
+          session: %{"media_state" => "latest", "latest_range" => %{"range" => "week"}}
+        )
+
+      assert html_week =~ "No media indexed in this time frame."
+      refute html_week =~ "Show past 7 days"
+      refute html_week =~ "View downloaded"
+    end
+
+    test "P6a: action column header appears only when running tasks exist", %{conn: conn} do
+      source = source_fixture()
+      item = indexed_fixture(source, "Idle item", DateTime.utc_now())
+
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+      refute has_element?(view, "th", "Action")
+      refute html =~ ~s(data-icon="hero-stop-solid")
+
+      {:ok, job} = Oban.insert(MediaDownloadWorker.new(%{"id" => item.id}))
+
+      task_fixture(%{media_item_id: item.id, source_id: source.id, job_id: job.id})
+
+      {:ok, view_with_task, html_with_task} =
+        live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+
+      assert has_element?(view_with_task, "th", "Action")
+      assert html_with_task =~ ~s(data-icon="hero-stop-solid")
     end
   end
 

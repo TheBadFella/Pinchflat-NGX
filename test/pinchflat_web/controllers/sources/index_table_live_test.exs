@@ -140,7 +140,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
     end
 
-    test "renders the table view by default and exposes an accessible grid toggle", %{conn: conn} do
+    test "renders the table view when selected and exposes the poster grid toggle", %{conn: conn} do
       source = source_fixture(custom_name: "Grid candidate")
 
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
@@ -446,6 +446,44 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
+  describe "view mode defaults" do
+    test "opens the poster grid by default", %{conn: conn} do
+      source_fixture(custom_name: "Default grid source")
+
+      session = %{
+        "initial_sort_key" => :custom_name,
+        "initial_sort_direction" => :asc,
+        "results_per_page" => 10
+      }
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert html =~ ~s(data-view="poster-grid")
+      assert has_element?(view, "#source-poster-grid")
+      refute has_element?(view, "#source-table")
+    end
+
+    test "renders the table when the initial view mode is table", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert html =~ ~s(data-view="table")
+      assert has_element?(view, "#source-table")
+      refute has_element?(view, "#source-poster-grid")
+    end
+
+    test "falls back to the grid for an unknown initial view mode", %{conn: conn} do
+      source_fixture()
+
+      session = Map.put(create_session(), "initial_view_mode", "sideways")
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert has_element?(view, "#source-poster-grid")
+      refute has_element?(view, "#source-table")
+    end
+  end
+
   defp click_element(view, selector, text_filter \\ nil) do
     view
     |> element(selector, text_filter)
@@ -482,19 +520,33 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "source action controls" do
-    test "start, pause and stop forms keep their destinations and accessible labels", %{conn: conn} do
+    test "row menus keep start, pause, stop and delete destinations", %{conn: conn} do
       source = source_fixture(custom_name: "Action source")
 
-      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       for action <- ["start_all", "pause_all", "stop_all"] do
         assert html =~ ~s(action="/sources/#{source.id}/#{action}")
       end
 
-      assert html =~ ~s(aria-label="Start all")
-      assert html =~ ~s(aria-label="Pause all")
-      assert html =~ ~s(aria-label="Stop all")
+      assert has_element?(view, ~s(button[aria-label="More actions for Action source"]))
       assert html =~ ~s(name="return_to" value="/sources")
+      assert html =~ ~s(action="/sources/#{source.id}")
+      assert has_element?(view, ~s(form[action="/sources/#{source.id}"] input[name="_method"][value="delete"]))
+      assert html =~ "Delete Action source? This deletes the source only and does not delete files."
+      assert html =~ "Start all"
+      assert html =~ "Pause all"
+      assert html =~ "Stop all"
+    end
+
+    test "keeps the selection checkbox accessible without visible Select label text", %{conn: conn} do
+      source_fixture(custom_name: "Selectable source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, "input[aria-label='Select Selectable source']")
+      assert has_element?(view, "label > span.sr-only", "Select")
+      refute has_element?(view, "label > span:not(.sr-only)", "Select")
     end
 
     test "keeps the individual-video return path on the action forms", %{conn: conn} do
