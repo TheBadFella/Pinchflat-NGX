@@ -268,6 +268,32 @@ defmodule Pinchflat.Settings.ScopedYtDlpConfigFileTest do
   end
 
   describe "F10 and F11: stale saves" do
+    test "concurrent editors cannot both save the same version", %{base_dir: base_dir} do
+      write_config!(base_dir, "source-1-config.txt", "original\n")
+      assert {:ok, %{version: version}} = YtDlpConfigFile.read_scope(:source, 1)
+      Application.put_env(:pinchflat, :yt_dlp_config_file_fs, BlockingRenameFS)
+      Application.put_env(:pinchflat, :test_blocking_rename_pid, self())
+
+      first = Task.async(fn -> YtDlpConfigFile.save_scope(:source, 1, "editor-a\n", version) end)
+      assert_receive {:rename_started, first_pid}, 5_000
+
+      owner = self()
+
+      second =
+        Task.async(fn ->
+          send(owner, :second_editor_started)
+          YtDlpConfigFile.save_scope(:source, 1, "editor-b\n", version)
+        end)
+
+      assert_receive :second_editor_started
+      refute_receive {:rename_started, _}, 200
+      send(first_pid, :continue_rename)
+
+      assert :ok = Task.await(first, 5_000)
+      assert {:error, :stale_conflict} = Task.await(second, 5_000)
+      assert File.read!(config_file(base_dir, "source-1-config.txt")) == "editor-a\n"
+    end
+
     test "a second editor with an old version is rejected and the first save survives", %{base_dir: base_dir} do
       assert :ok = YtDlpConfigFile.save_scope(:source, 1, "original\n", :missing)
       assert {:ok, %{version: version}} = YtDlpConfigFile.read_scope(:source, 1)

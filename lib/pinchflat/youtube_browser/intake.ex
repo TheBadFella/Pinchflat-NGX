@@ -259,7 +259,11 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
   defp queue_existing_item(item, opts, oban_name) do
     case prepare_existing_item_options(item, opts) do
       {:ok, :none} ->
-        kickoff_existing_item(item, oban_name)
+        case PendingMediaItemOptions.apply_for_item(item) do
+          {:ok, outcome} when outcome in [:queued, :already_queued] -> queued_result(oban_name)
+          {:ok, _outcome} -> kickoff_existing_item(item, oban_name)
+          {:error, reason} -> {:error, reason}
+        end
 
       {:ok, {:present, contents, prior}} ->
         case kickoff_existing_item(item, oban_name) do
@@ -287,15 +291,14 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
       {:ok, {:present, contents}} ->
         expected = expected_options_version(opts)
         prior = ScopedYtDlpOptions.prior(:media_item, item.id)
-        PendingMediaItemOptions.supersede_for_item(item)
 
-        if String.trim(contents) == "" and prior == {:present, ""} do
-          {:ok, {:present, "", prior}}
-        else
-          case ScopedYtDlpOptions.save({:present, contents}, :media_item, item.id, expected) do
-            :ok -> {:ok, {:present, contents, prior}}
-            {:error, reason} -> {:error, reason}
-          end
+        case ScopedYtDlpOptions.save({:present, contents}, :media_item, item.id, expected) do
+          :ok ->
+            :ok = PendingMediaItemOptions.supersede_for_item(item)
+            {:ok, {:present, contents, prior}}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, reason} ->
@@ -306,11 +309,7 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
   defp kickoff_existing_item(item, oban_name) do
     case MediaDownloadWorker.kickoff_with_task(item, %{}, []) do
       {:ok, _task} ->
-        if queue_paused?(:media_fetching, oban_name) do
-          {:ok, :queued_paused}
-        else
-          {:ok, :queued}
-        end
+        queued_result(oban_name)
 
       {:error, :duplicate_job} ->
         {:error, :already_queued}
@@ -318,6 +317,10 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
       {:error, reason} ->
         {:error, {:queue_failed, reason}}
     end
+  end
+
+  defp queued_result(oban_name) do
+    if queue_paused?(:media_fetching, oban_name), do: {:ok, :queued_paused}, else: {:ok, :queued}
   end
 
   defp handle_new_video_source(video_id, profile_id, opts) do

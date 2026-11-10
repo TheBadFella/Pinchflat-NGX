@@ -317,7 +317,7 @@ defmodule Pinchflat.Settings.YtDlpConfigFile do
   end
 
   defp with_path_lock(path, fun) do
-    case :global.trans({__MODULE__, path}, fun) do
+    case :global.trans({{__MODULE__, path}, self()}, fun) do
       :aborted -> {:error, :busy}
       result -> result
     end

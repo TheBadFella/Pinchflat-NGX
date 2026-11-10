@@ -244,6 +244,7 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
   end
 
   test "R02/R03/R05: pending options survive a failed write and replay without stale overwrite" do
+    stub(AppriseRunnerMock, :run, fn _, _ -> {:ok, ""} end)
     profile = media_profile_fixture()
     video_id = "dQw4w9WgXcQ"
 
@@ -254,14 +255,19 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
     stub_video_index(video_id, source)
 
     Application.put_env(:pinchflat, :yt_dlp_config_file_fs, FailingFS)
-    assert [_item] = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+    assert {:error, {:pending_item_options, {:file_failed, :eacces}}} =
+             perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+
     item = Repo.get_by!(MediaItem, source_id: source.id, media_id: video_id)
 
+    assert is_nil(Repo.reload!(source).last_indexed_at)
     assert {:ok, %{contents: "--pending\n"}} = PendingMediaItemOptions.fetch(source, video_id)
     refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => item.id})
 
     Application.delete_env(:pinchflat, :yt_dlp_config_file_fs)
-    assert [_item] = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    assert :ok = perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+    refute is_nil(Repo.reload!(source).last_indexed_at)
 
     assert {:ok, %{contents: "--pending\n"}} = YtDlpConfigFile.read_scope(:media_item, item.id)
     assert {:ok, nil} = PendingMediaItemOptions.fetch(source, video_id)
@@ -280,6 +286,84 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
 
     assert [_] = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     assert [_] = all_enqueued(worker: MediaDownloadWorker, args: %{"id" => item.id})
+  end
+
+  test "normal intake retries apply pending options before queueing an existing item" do
+    profile = media_profile_fixture()
+    video_id = "dQw4w9WgXcQ"
+
+    source =
+      source_fixture(%{
+        collection_type: :video,
+        source_type: :video,
+        collection_id: video_id,
+        media_profile_id: profile.id
+      })
+
+    item = media_item_fixture(%{source_id: source.id, media_id: video_id, media_filepath: nil})
+    assert {:ok, _handoff} = PendingMediaItemOptions.put(source, video_id, "--retries 5\n")
+
+    Application.put_env(:pinchflat, :yt_dlp_config_file_fs, FailingFS)
+    assert {:error, {:file_failed, :eacces}} = Intake.download_video(video_id, profile.id)
+    refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => item.id})
+    assert {:ok, %{contents: "--retries 5\n"}} = PendingMediaItemOptions.fetch(source, video_id)
+
+    Application.delete_env(:pinchflat, :yt_dlp_config_file_fs)
+    assert {:ok, :queued} = Intake.download_video(video_id, profile.id)
+    assert {:ok, %{contents: "--retries 5\n"}} = YtDlpConfigFile.read_scope(:media_item, item.id)
+    assert {:ok, nil} = PendingMediaItemOptions.fetch(source, video_id)
+    assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => item.id})
+
+    assert {:ok, path} = YtDlpConfigFile.scope_path(:media_item, item.id)
+    stub_download_success(fn opts -> assert path in config_locations(opts) end)
+    assert :ok = perform_job(MediaDownloadWorker, %{id: item.id})
+  end
+
+  test "rejected item edits and intake keep the pending handoff until a successful save" do
+    profile = media_profile_fixture()
+    video_id = "dQw4w9WgXcQ"
+
+    source =
+      source_fixture(%{
+        collection_type: :video,
+        source_type: :video,
+        collection_id: video_id,
+        media_profile_id: profile.id
+      })
+
+    item = media_item_fixture(%{source_id: source.id, media_id: video_id, media_filepath: nil})
+    assert {:ok, _handoff} = PendingMediaItemOptions.put(source, video_id, "--pending\n")
+    assert :ok = YtDlpConfigFile.save_scope(:media_item, item.id, "--current\n", :missing)
+
+    assert {:error, %Ecto.Changeset{}, :too_large} =
+             Media.update_media_item_with_yt_dlp_options(item, %{},
+               yt_dlp_options: {:present, String.duplicate("x", 64_001)}
+             )
+
+    assert {:ok, %{contents: "--pending\n"}} = PendingMediaItemOptions.fetch(source, video_id)
+
+    assert {:error, %Ecto.Changeset{}, :stale_conflict} =
+             Media.update_media_item_with_yt_dlp_options(item, %{},
+               yt_dlp_options: {:present, ""},
+               yt_dlp_options_version: :missing
+             )
+
+    assert {:ok, %{contents: "--pending\n"}} = PendingMediaItemOptions.fetch(source, video_id)
+
+    assert {:error, :stale_conflict} =
+             Intake.download_video(video_id, profile.id,
+               yt_dlp_options: "--draft\n",
+               yt_dlp_options_version: :missing
+             )
+
+    assert {:ok, %{contents: "--pending\n"}} = PendingMediaItemOptions.fetch(source, video_id)
+    refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => item.id})
+
+    assert {:ok, _item} =
+             Media.update_media_item_with_yt_dlp_options(item, %{}, yt_dlp_options: {:present, ""})
+
+    assert {:ok, nil} = PendingMediaItemOptions.fetch(source, video_id)
+    assert {:ok, %{contents: ""}} = YtDlpConfigFile.read_scope(:media_item, item.id)
   end
 
   test "R06: duplicate intake refuses without changing the first pending payload" do
