@@ -1,5 +1,5 @@
 defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
-  use Pinchflat.DataCase
+  use PinchflatWeb.ConnCase
 
   import Pinchflat.MediaFixtures
   import Pinchflat.ProfilesFixtures
@@ -456,7 +456,8 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert DateTime.diff(watch.ends_at, watch.started_at) == 14 * 86_400
   end
 
-  test "interrupted transfer intent holds the artifact without redownloading or claiming completion", %{
+  test "Force download resumes an interrupted first transfer without redownloading", %{
+    conn: conn,
     item: item,
     path: path
   } do
@@ -472,23 +473,29 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     assert Pinchflat.Downloading.FirstArtifact.pending?(started)
 
     stub(YtDlpRunnerMock, :run, fn
-      _, :download, _, _, _ -> flunk("uncertain transfer must not start another download")
+      _, :download, _, _, _ -> flunk("recovery must not start another download")
+      _, :download_thumbnail, _, _, _ -> {:ok, ""}
     end)
 
-    assert {:error, :first_artifact_needs_recovery} = run(item)
-    assert {:error, :first_artifact_needs_recovery} = run(item)
-    refute File.exists?(path)
-    assert File.read!(staged) == "first artifact"
-    assert Repo.reload!(item).media_downloaded_at == nil
-    assert Repo.aggregate(Watch, :count) == 0
+    conn = post(conn, ~p"/sources/#{item.source_id}/media/#{item.id}/force_download")
+    assert redirected_to(conn) == ~p"/sources/#{item.source_id}/media/#{item.id}"
+    assert [job] = all_enqueued(worker: MediaDownloadWorker)
+    assert :ok = perform_job(MediaDownloadWorker, job.args)
+    assert File.read!(path) == "first artifact"
+    completed = Repo.reload!(item)
+    assert completed.media_filepath == path
+    assert completed.media_downloaded_at
+    assert MediaWatch.get_watch_for_media_item(item.id)
+    refute Pinchflat.Downloading.FirstArtifact.pending?(completed)
   end
 
-  test "prepared transfer resumes only when the media and sidecar have both arrived", %{item: item, path: path} do
-    stage = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "staged-#{item.uuid}")
-    File.mkdir_p!(stage)
+  test "retry completes a partially moved transfer from its verified staging sidecars", %{item: item, path: path} do
+    alias Pinchflat.Downloading.DownloadStaging
+    root = DownloadStaging.replacement_directory()
+    {:ok, stage} = DownloadStaging.prepare(item.id, root: root)
     staged = Path.join(stage, Path.basename(path))
-    sidecar = Path.join(stage, "sidecar.info.json")
     destination_sidecar = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "sidecar-#{item.uuid}.json")
+    sidecar = Path.join(stage, Path.basename(destination_sidecar))
     File.write!(staged, "first artifact")
     File.write!(sidecar, "sidecar bytes")
     json = Jason.decode!(metadata(path)) |> Map.put("infojson_filename", destination_sidecar)
@@ -499,7 +506,7 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
       })
 
     artifact = Pinchflat.Downloading.FirstArtifact
-    assert :ok = artifact.remember(started, json, staged, %{staged => path, sidecar => destination_sidecar})
+    assert :ok = artifact.remember(started, json, staged, %{staged => path, sidecar => destination_sidecar}, stage)
     File.rename!(staged, path)
 
     stub(YtDlpRunnerMock, :run, fn
@@ -507,17 +514,51 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
       _, :download_thumbnail, _, _, _ -> {:ok, ""}
     end)
 
+    File.write!(sidecar, "edited sidecar")
     assert {:error, :first_artifact_needs_recovery} = run(item)
+    assert {:error, :first_artifact_needs_recovery} = run(item, %{"force" => true})
     assert File.read!(path) == "first artifact"
-    assert File.read!(sidecar) == "sidecar bytes"
+    assert File.read!(sidecar) == "edited sidecar"
+    refute File.exists?(destination_sidecar)
     refute Repo.reload!(item).media_downloaded_at
 
-    File.rename!(sidecar, destination_sidecar)
+    File.write!(sidecar, "sidecar bytes")
     assert :ok = run(item)
     assert File.read!(path) == "first artifact"
     assert File.read!(destination_sidecar) == "sidecar bytes"
     assert Repo.reload!(item).media_downloaded_at
     assert MediaWatch.get_watch_for_media_item(item.id)
+    refute File.exists?(stage)
+  end
+
+  for conflict <- [:edited_file, :symlink] do
+    @conflict conflict
+    test "prepared recovery preserves a destination with #{@conflict}", %{item: item, path: path} do
+      staged = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "prepared-#{item.uuid}.mkv")
+      File.write!(staged, "first artifact")
+
+      {:ok, started} =
+        Pinchflat.Media.update_media_item(item, %{
+          watch_download_started_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        })
+
+      artifact = Pinchflat.Downloading.FirstArtifact
+      assert :ok = artifact.remember(started, Jason.decode!(metadata(path)), staged)
+
+      if @conflict == :symlink do
+        File.write!(staged, "user edit")
+        File.ln_s!(staged, path)
+      else
+        File.write!(path, "user edit")
+      end
+
+      stub(YtDlpRunnerMock, :run, fn _, :download, _, _, _ -> flunk("recovery must not download") end)
+      assert {:error, :first_artifact_needs_recovery} = run(item, %{"force" => true})
+      assert File.read!(path) == "user edit"
+      assert artifact.pending?(started)
+      refute Repo.reload!(item).media_downloaded_at
+      refute MediaWatch.get_watch_for_media_item(item.id)
+    end
   end
 
   test "failed enrollment retains the first artifact and retries without yt-dlp", %{item: item, path: path} do

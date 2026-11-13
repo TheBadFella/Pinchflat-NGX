@@ -123,6 +123,17 @@ defmodule Pinchflat.Downloading.DownloadStagingTest do
     assert File.ls!(staging_root) == []
   end
 
+  test "returns a read-only destination directory error without raising" do
+    assert {:ok, stage} = DownloadStaging.prepare(213)
+    path = Path.join(stage, "pinchflat-#{Ecto.UUID.generate()}/video.mp4")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "saved media")
+    Application.put_env(:pinchflat, :media_directory, "/sys")
+
+    assert {:error, :erofs} = DownloadStaging.transfer(%{"filepath" => path}, stage)
+    assert File.read!(path) == "saved media"
+  end
+
   test "stale cleanup skips an active media item", %{staging_root: staging_root} do
     assert {:ok, active_directory} = DownloadStaging.prepare(24)
     assert {:ok, stale_directory} = DownloadStaging.prepare(25)

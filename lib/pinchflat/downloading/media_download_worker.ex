@@ -246,7 +246,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   end
 
   defp resume_first_artifact(item) do
-    with {:ok, metadata} <- FirstArtifact.recover(item),
+    with {:ok, metadata} <- FirstArtifact.resume(item),
          {:ok, recovered} <- MediaDownloader.restore_first_artifact(item, metadata) do
       finish_first_download_postprocessing(item, recovered, false)
     else
