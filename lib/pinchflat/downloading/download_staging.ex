@@ -405,9 +405,8 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   end
 
   defp move_file(source, destination, opts) do
-    :ok = File.mkdir_p(Path.dirname(destination))
-
-    with :ok <- stash_pre_image(destination, pre_image_for(destination, opts)) do
+    with :ok <- File.mkdir_p(Path.dirname(destination)),
+         :ok <- stash_pre_image(destination, pre_image_for(destination, opts)) do
       do_move_file(source, destination, opts)
     end
   end
