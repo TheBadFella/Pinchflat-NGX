@@ -97,10 +97,16 @@ defmodule Pinchflat.Downloading.FirstArtifact do
     end
   end
 
-  @doc "Restores only the same verified first artifact; a changed or missing path must be repaired manually."
-  def recover(%MediaItem{} = item) do
+  @doc "Verifies that the same first artifact and all sidecars reached their destinations."
+  def recover(%MediaItem{} = item), do: do_recover(item, false)
+
+  @doc "Resumes a prepared transfer from verified saved bytes without replacing existing files."
+  def resume(%MediaItem{} = item), do: do_recover(item, true)
+
+  defp do_recover(item, resume?) do
     dir = directory(item)
     journal = Path.join(dir, "intent.json")
+    stage = pending_staging_directory(item)
 
     with :ok <- safe_journal_directory(dir),
          {:ok, %{type: :regular}} <- File.lstat(journal),
@@ -110,16 +116,78 @@ defmodule Pinchflat.Downloading.FirstArtifact do
             entry} <-
            Jason.decode(bytes),
          true <-
-           phase in ["prepared", "transferred"] and uuid == item.uuid and files[path] == hash and
+           phase in ["prepared", "transferred"] and uuid == item.uuid and is_map(files) and files[path] == hash and
              metadata == Path.join(Path.dirname(dir), "metadata.json.gz"),
          {:ok, ^hash} <- hash_file(Path.join(dir, "media")),
-         :ok <- verify_files(files),
          {:ok, parsed_json} <- MetadataFileHelpers.read_compressed_metadata(metadata),
          true <- parsed_json["filepath"] == path,
+         :ok <- if(resume? and phase == "prepared", do: resume_files(entry, dir, stage), else: :ok),
+         :ok <- verify_files(files),
          :ok <- if(phase == "prepared", do: write_journal(journal, Map.put(entry, "phase", "transferred")), else: :ok) do
+      if resume? and stage, do: DownloadStaging.cleanup(stage, root: Path.dirname(stage))
       {:ok, parsed_json}
     else
       _ -> {:error, :first_artifact_needs_recovery}
+    end
+  end
+
+  defp resume_files(entry, dir, stage) do
+    # Validate the complete set before publishing any missing file.
+    entry["files"]
+    |> Enum.reduce_while({:ok, []}, fn {path, hash}, {:ok, pending} ->
+      case verify_files(%{path => hash}) do
+        :ok ->
+          {:cont, {:ok, pending}}
+
+        _ ->
+          with :ok <- safe_destination(path),
+               source when is_binary(source) <- recovery_source(entry, dir, stage, path),
+               {:ok, ^hash} <- hash_file(source) do
+            {:cont, {:ok, [{source, path, hash} | pending]}}
+          else
+            _ -> {:halt, {:error, :first_artifact_needs_recovery}}
+          end
+      end
+    end)
+    |> case do
+      {:ok, pending} ->
+        Enum.reduce_while(pending, :ok, fn {source, path, hash}, _ ->
+          case publish_missing_file(source, path, hash) do
+            :ok -> {:cont, :ok}
+            error -> {:halt, error}
+          end
+        end)
+
+      error ->
+        error
+    end
+  end
+
+  defp recovery_source(%{"path" => path}, dir, _stage, path), do: Path.join(dir, "media")
+
+  defp recovery_source(_entry, _dir, stage, path) when is_binary(stage) do
+    root = Application.fetch_env!(:pinchflat, :media_directory) |> Path.expand()
+    source = Path.join(stage, Path.relative_to(Path.expand(path), root))
+    if valid_media_path(source, :staged) == :ok, do: source
+  end
+
+  defp recovery_source(_entry, _dir, _stage, _path), do: nil
+
+  defp publish_missing_file(source, path, hash) do
+    temporary = path <> ".pinchflat-ngx-recovery-#{Ecto.UUID.generate()}"
+
+    try do
+      with :ok <- safe_destination(path),
+           :ok <- File.mkdir_p(Path.dirname(path)),
+           :ok <- safe_destination(path),
+           :ok <- File.cp(source, temporary),
+           :ok <- sync_file(temporary),
+           {:ok, ^hash} <- hash_file(temporary),
+           :ok <- File.ln(temporary, path) do
+        sync_file(Path.dirname(path))
+      end
+    after
+      _ = File.rm(temporary)
     end
   end
 
