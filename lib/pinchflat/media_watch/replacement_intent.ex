@@ -425,7 +425,13 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
           destination = Path.join(directory, name)
 
           if File.lstat(destination) == {:error, :enoent} do
-            case File.rename(expanded, destination) do
+            result =
+              case File.rename(expanded, destination) do
+                {:error, :exdev} -> copy_to_quarantine(expanded, destination)
+                result -> result
+              end
+
+            case result do
               :ok ->
                 _ = sync_directory(directory)
                 {:ok, destination}
@@ -453,6 +459,42 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
   end
 
   defp quarantine_one(nil, _directory), do: {:ok, nil}
+
+  defp copy_to_quarantine(source, destination) do
+    temporary = destination <> ".copy-#{Ecto.UUID.generate()}"
+
+    with :ok <- safe_active_path(source),
+         :ok <- no_symlink_ancestors(destination),
+         {:ok, stat} <- File.lstat(source),
+         {:ok, expected} <- fingerprint(source) do
+      copy_exclusive(source, temporary, fn ->
+        # Publish and sync the verified copy before removing bytes from the other device.
+        with {:ok, ^expected} <- fingerprint(temporary),
+             :ok <- quarantine_source_unchanged(source, stat, expected),
+             :ok <- File.ln(temporary, destination),
+             :ok <- sync_directory(Path.dirname(destination)),
+             :ok <- quarantine_source_unchanged(source, stat, expected),
+             {:ok, ^expected} <- fingerprint(destination),
+             :ok <- File.rm(source),
+             :ok <- sync_directory(Path.dirname(source)) do
+          :ok
+        else
+          {:ok, _} -> {:error, :quarantine_copy_mismatch}
+          {:error, :eexist} -> {:error, :quarantine_destination_exists}
+          error -> error
+        end
+      end)
+    end
+  end
+
+  defp quarantine_source_unchanged(source, %{inode: inode, major_device: major, minor_device: minor}, expected) do
+    with {:ok, %{type: :regular, inode: ^inode, major_device: ^major, minor_device: ^minor}} <- File.lstat(source),
+         {:ok, ^expected} <- fingerprint(source) do
+      :ok
+    else
+      _ -> {:error, :quarantine_source_changed}
+    end
+  end
 
   defp quarantine_root do
     Path.join(Application.fetch_env!(:pinchflat, :media_directory), ".pinchflat-replacements")
@@ -530,8 +572,17 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
             try do
               copied =
                 try do
-                  source |> File.stream!([], 1024 * 1024) |> Enum.each(&IO.binwrite(output, &1))
-                  :file.sync(output)
+                  result =
+                    source
+                    |> File.stream!([], 1024 * 1024)
+                    |> Enum.reduce_while(:ok, fn bytes, :ok ->
+                      case IO.binwrite(output, bytes) do
+                        :ok -> {:cont, :ok}
+                        error -> {:halt, error}
+                      end
+                    end)
+
+                  with :ok <- result, do: :file.sync(output)
                 after
                   File.close(output)
                 end
@@ -548,6 +599,8 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
         File.close(output)
       end
     end
+  rescue
+    error in File.Error -> {:error, error.reason}
   end
 
   defp remove_owned_temporary(path, %{inode: inode, major_device: major, minor_device: minor}) do
