@@ -1211,6 +1211,77 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "force_metadata_refresh" do
+    test "Refresh Metadata completes for a repaired legacy channel without changing user settings", %{conn: conn} do
+      migration = Pinchflat.Repo.Migrations.RepairChannelCollectionTypes
+
+      unless Code.ensure_loaded?(migration),
+        do: Code.require_file("priv/repo/migrations/20261115010000_repair_channel_collection_types.exs")
+
+      channel_id = "UCBR8-60-B28hp2BmDPdntcQ"
+      profile = media_profile_fixture(download_source_images: true, download_nfo: true)
+      directory = Path.join(Application.get_env(:pinchflat, :media_directory), "legacy-channel")
+      image = Path.join(Application.get_env(:pinchflat, :tmpfile_directory), "legacy-avatar.jpg")
+      File.mkdir_p!(Path.dirname(image))
+      File.cp!(Pinchflat.MediaFixtures.thumbnail_filepath_fixture(), image)
+
+      source =
+        source_fixture(
+          collection_type: :playlist,
+          collection_id: channel_id,
+          original_url: "https://www.youtube.com/@YouTube",
+          collection_name: "YouTube - Videos",
+          custom_name: "My chosen name",
+          custom_name_locked: true,
+          description: "My chosen description",
+          description_locked: true,
+          media_profile_id: profile.id,
+          download_media: false,
+          series_directory: directory
+        )
+
+      item = Pinchflat.MediaFixtures.media_item_fixture(source_id: source.id)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_source_details, _opts, _template, _addl ->
+          {:ok, source_details_return_fixture(%{filename: Path.join([directory, "Season 01", "video.mp4"])})}
+
+        _url, :get_source_metadata, opts, _template, _addl ->
+          metadata =
+            Jason.encode!(%{
+              id: channel_id,
+              title: "YouTube",
+              channel: "YouTube",
+              description: "Remote description",
+              thumbnails: [%{id: "avatar_uncropped", filepath: image}]
+            })
+
+          # Reproduce the nested playlist output unless the migrated source uses channel options.
+          {:ok, if(opts[:playlist_items] == 0, do: metadata, else: metadata <> "\n" <> metadata)}
+      end)
+
+      Ecto.Migration.Runner.run(Repo, Repo.config(), 20_261_115_010_000, migration, :forward, :up, :up, log: false)
+      response = post(conn, ~p"/sources/#{source.id}/force_metadata_refresh")
+      assert redirected_to(response) == ~p"/sources/#{source.id}"
+      assert [job] = all_enqueued(worker: SourceMetadataStorageWorker)
+      assert :ok = perform_job(SourceMetadataStorageWorker, job.args)
+      updated = Repo.preload(Repo.reload!(source), :metadata)
+
+      assert updated.collection_type == :channel
+      assert updated.collection_id == channel_id
+      assert updated.uuid == source.uuid
+      assert updated.custom_name == "My chosen name"
+      assert updated.description == "My chosen description"
+      refute updated.download_media
+      assert updated.series_directory == directory
+      assert Repo.reload!(item).source_id == source.id
+      assert File.exists?(updated.metadata.metadata_filepath)
+      assert File.exists?(updated.metadata.poster_filepath)
+      assert File.exists?(updated.poster_filepath)
+      assert File.exists?(updated.nfo_filepath)
+      assert updated.nfo_filepath == Path.join(directory, "tvshow.nfo")
+      assert File.read!(updated.poster_filepath) == File.read!(image)
+    end
+
     test "forces a metadata refresh", %{conn: conn} do
       source = source_fixture()
 
