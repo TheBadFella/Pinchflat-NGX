@@ -622,7 +622,127 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
     end
   end
 
-  defp watched_item do
+  describe "cross-filesystem quarantine and recovery" do
+    @describetag :destructive_watch
+
+    setup do
+      original = Application.fetch_env!(:pinchflat, :metadata_directory)
+      directory = Path.join("/dev/shm", "pinchflat-quarantine-#{Ecto.UUID.generate()}")
+      File.mkdir_p!(directory)
+      Application.put_env(:pinchflat, :metadata_directory, directory)
+
+      assert File.stat!(directory).major_device !=
+               File.stat!(Application.fetch_env!(:pinchflat, :media_directory)).major_device
+
+      on_exit(fn ->
+        Application.put_env(:pinchflat, :metadata_directory, original)
+        File.rm_rf!(directory)
+      end)
+
+      %{internal_thumbnail: Path.join(directory, "thumbnail.jpg")}
+    end
+
+    test "quarantines across devices without replacing an existing saved copy", %{internal_thumbnail: path} do
+      File.write!(path, "new thumbnail")
+      operation = Ecto.UUID.generate()
+      assert {:ok, [saved]} = ReplacementIntent.quarantine(219, operation, [path])
+      assert File.read!(saved) == "new thumbnail"
+      refute File.exists?(path)
+      assert Path.dirname(saved) |> File.ls!() == [Path.basename(saved)]
+
+      File.write!(path, "another thumbnail")
+      assert {:error, :quarantine_destination_exists} = ReplacementIntent.quarantine(219, operation, [path])
+      assert File.read!(saved) == "new thumbnail"
+      assert File.read!(path) == "another thumbnail"
+    end
+
+    test "a source changed after publication is retained beside the verified quarantine copy", %{
+      internal_thumbnail: path
+    } do
+      File.write!(path, "original thumbnail")
+      original_path = System.fetch_env!("PATH")
+      sync = System.find_executable("sync")
+      directory = Path.join(System.tmp_dir!(), "quarantine-sync-#{Ecto.UUID.generate()}")
+      File.mkdir_p!(directory)
+      executable = Path.join(directory, "sync")
+
+      File.write!(executable, "#!/bin/sh\nprintf 'edited thumbnail' > #{inspect(path)}\nexec #{inspect(sync)} \"$@\"\n")
+      File.chmod!(executable, 0o755)
+      System.put_env("PATH", directory <> ":" <> original_path)
+
+      try do
+        assert {:error, :quarantine_source_changed} = ReplacementIntent.quarantine(219, Ecto.UUID.generate(), [path])
+        assert File.read!(path) == "edited thumbnail"
+        [saved_directory] = File.ls!(quarantine_root())
+        [saved] = File.ls!(Path.join(quarantine_root(), saved_directory))
+        assert File.read!(Path.join([quarantine_root(), saved_directory, saved])) == "original thumbnail"
+        refute String.contains?(saved, ".copy-")
+      after
+        System.put_env("PATH", original_path)
+        File.rm_rf!(directory)
+      end
+    end
+
+    test "a failed replacement restores config thumbnails and can subsequently complete", %{internal_thumbnail: path} do
+      File.write!(path, "original thumbnail")
+      File.write!(path <> ".json.gz", :zlib.gzip("{}"))
+      {item, watch} = watched_item(%{metadata: %{thumbnail_filepath: path, metadata_filepath: path <> ".json.gz"}})
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:error, :transfer_failed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn _ ->
+                   File.write!(item.media_filepath, "incomplete replacement")
+                   File.write!(path, "incomplete thumbnail")
+                   {:error, :transfer_failed}
+                 end,
+                 fn _ -> flunk("failed transfers must not update the item") end
+               )
+
+      assert File.read!(item.media_filepath) == "first artifact"
+      assert File.read!(path) == "original thumbnail"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
+
+      [quarantine] = Enum.filter(File.ls!(quarantine_root()), &String.starts_with?(&1, "quarantine-"))
+
+      assert quarantine_root()
+             |> Path.join(quarantine)
+             |> File.ls!()
+             |> Enum.map(&File.read!(Path.join([quarantine_root(), quarantine, &1])))
+             |> Enum.sort() == ["incomplete replacement", "incomplete thumbnail"]
+
+      :ok = MediaWatch.finish_replacement(lease)
+      {:ok, retry_lease} = MediaWatch.prepare_replacement(Repo.preload(item, source: :media_profile))
+
+      assert {:ok, updated} =
+               MediaWatch.commit_replacement(
+                 retry_lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn _ ->
+                   File.rename!(staged, item.media_filepath)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _ ->
+                   File.write!(path, "completed thumbnail")
+                   Media.update_media_item(item, %{title: "Completed replacement"})
+                 end
+               )
+
+      assert Repo.reload!(updated).title == "Completed replacement"
+      assert File.read!(item.media_filepath) == "replacement artifact"
+      assert File.read!(path) == "completed thumbnail"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
+    end
+  end
+
+  defp watched_item(attrs \\ %{}) do
     profile =
       media_profile_fixture()
       |> Ecto.Changeset.change(watch_window_days: 14)
@@ -631,7 +751,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
     source = source_fixture(%{media_profile_id: profile.id})
 
     item =
-      media_item_with_attachments(%{source_id: source.id, metadata_filepath: nil, nfo_filepath: nil})
+      media_item_with_attachments(Map.merge(%{source_id: source.id, metadata_filepath: nil, nfo_filepath: nil}, attrs))
 
     File.write!(item.media_filepath, "first artifact")
 
