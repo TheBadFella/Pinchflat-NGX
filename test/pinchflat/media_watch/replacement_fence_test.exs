@@ -740,6 +740,32 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
       refute ReplacementIntent.pending?(watch.id)
     end
+
+    test "a full quarantine filesystem keeps the source and removes the partial copy", %{internal_thumbnail: path} do
+      original_media = Application.fetch_env!(:pinchflat, :media_directory)
+      destination_root = Path.dirname(path)
+      Application.put_env(:pinchflat, :media_directory, destination_root)
+      source = Path.join(Application.fetch_env!(:pinchflat, :extras_directory), "full-disk-#{Ecto.UUID.generate()}")
+
+      try do
+        {output, 0} = System.cmd("df", ["--output=avail", "-B1", destination_root])
+        available = output |> String.split() |> List.last() |> String.to_integer()
+        chunk = :binary.copy("x", 1024 * 1024)
+
+        File.open!(source, [:write, :binary], fn file ->
+          for _ <- 0..div(available, byte_size(chunk)), do: :ok = :file.write(file, chunk)
+        end)
+
+        assert {:ok, expected} = ReplacementIntent.fingerprint(source)
+        assert {:error, :enospc} = ReplacementIntent.quarantine(219, "full-disk", [source])
+        assert {:ok, ^expected} = ReplacementIntent.fingerprint(source)
+        [directory] = File.ls!(quarantine_root())
+        assert File.ls!(Path.join(quarantine_root(), directory)) == []
+      after
+        Application.put_env(:pinchflat, :media_directory, original_media)
+        File.rm(source)
+      end
+    end
   end
 
   defp watched_item(attrs \\ %{}) do
