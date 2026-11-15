@@ -576,7 +576,7 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
                     source
                     |> File.stream!([], 1024 * 1024)
                     |> Enum.reduce_while(:ok, fn bytes, :ok ->
-                      case IO.binwrite(output, bytes) do
+                      case :file.write(output, bytes) do
                         :ok -> {:cont, :ok}
                         error -> {:halt, error}
                       end
