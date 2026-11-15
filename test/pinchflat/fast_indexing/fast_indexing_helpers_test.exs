@@ -210,6 +210,111 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
   end
 
   describe "index_and_kickoff_downloads/1 when testing cookies" do
+    test "fast indexing completes the download after cookie recovery with artwork disabled" do
+      profile = media_profile_fixture(download_source_images: false, download_nfo: false)
+      source = source_fixture(cookie_behaviour: :when_needed, fast_index: true, media_profile_id: profile.id)
+      path = Path.join(Application.get_env(:pinchflat, :media_directory), "cookie-recovery/Recovered video.mp4")
+      metadata = render_parsed_metadata(:media_metadata)
+
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _template, addl ->
+        refute addl[:use_cookies]
+        {:error, "Sign in to confirm you're not a bot", 1}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _template, addl ->
+        assert addl[:use_cookies]
+        {:ok, media_attributes_return_fixture(%{id: "video1", title: "Recovered video", filename: path})}
+      end)
+
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+      stub(AppriseRunnerMock, :run, fn _server, _opts -> {:ok, ""} end)
+
+      assert {:ok, _} = perform_job(FastIndexingWorker, %{id: source.id})
+      assert [job] = all_enqueued(worker: MediaDownloadWorker)
+      item = Repo.get!(MediaItem, job.args["id"])
+      assert item.title == "Recovered video"
+      assert item.predicted_media_filepath == path
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :download, _opts, _template, _addl ->
+          File.mkdir_p!(Path.dirname(path))
+          File.cp!(media_filepath_fixture(), path)
+
+          {:ok,
+           Jason.encode!(Map.merge(metadata, %{"id" => "video1", "title" => "Recovered video", "filepath" => path}))}
+
+        _url, :download_thumbnail, _opts, _template, _addl ->
+          {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, job.args)
+      completed = Repo.reload!(item)
+      assert completed.title == "Recovered video"
+      assert completed.media_filepath == path
+      assert completed.media_downloaded_at
+      assert File.read!(path) == File.read!(media_filepath_fixture())
+
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+      assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Repo.aggregate(MediaItem, :count) == 1
+    end
+
+    test "retries authentication failures once with cookies and persists the new video" do
+      source = source_fixture(cookie_behaviour: :when_needed)
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes, opts, template, addl ->
+        refute addl[:use_cookies]
+        send(self(), {:metadata_request, url, opts, template})
+        {:error, "Sign in to confirm you're not a bot", 1}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes, opts, template, addl ->
+        assert addl[:use_cookies]
+        assert_received {:metadata_request, ^url, ^opts, ^template}
+        {:ok, media_attributes_return_fixture(%{filename: "/tmp/test/media/Video 1.mp4"})}
+      end)
+
+      assert [item] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Repo.reload!(item).title == "Video 1"
+      assert item.predicted_media_filepath == "/tmp/test/media/Video 1.mp4"
+      assert_enqueued(worker: MediaDownloadWorker, args: %{id: item.id})
+    end
+
+    for {policy, message} <- [
+          {:disabled, "Sign in to confirm you're not a bot"},
+          {:all_operations, "Sign in to confirm you're not a bot"},
+          {:when_needed, "HTTP Error 429: Too Many Requests"},
+          {:when_needed, "Video unavailable"}
+        ] do
+      test "does not retry #{policy} metadata requests after #{message}" do
+        source = source_fixture(cookie_behaviour: unquote(policy))
+        expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _template, addl ->
+          assert addl[:use_cookies] == (unquote(policy) == :all_operations)
+          {:error, unquote(message), 1}
+        end)
+
+        assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+        refute_enqueued(worker: MediaDownloadWorker)
+      end
+    end
+
+    test "does not loop when the authenticated retry also fails" do
+      source = source_fixture(cookie_behaviour: :when_needed)
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn _url, :get_media_attributes, _opts, _template, _addl ->
+        {:error, "This video is available to this channel's members", 1}
+      end)
+
+      assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "sets use_cookies if the source uses cookies" do
       expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
 
