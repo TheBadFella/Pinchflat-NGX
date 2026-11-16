@@ -147,6 +147,28 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert Repo.reload(media_item).metadata != nil
     end
 
+    test "omits requested subtitles without a filepath from persisted media item", %{media_item: media_item} do
+      subtitle_path = "/downloads/subtitles/video.en.srt"
+
+      custom_metadata =
+        render_parsed_metadata(:media_metadata)
+        |> Map.put("requested_subtitles", %{
+          "en" => %{"filepath" => subtitle_path},
+          "ko" => %{}
+        })
+        |> Phoenix.json_library().encode!()
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, _addl -> {:ok, custom_metadata}
+        _url, :download_thumbnail, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+      reloaded = Repo.reload!(media_item)
+
+      assert reloaded.subtitle_filepaths == [["en", subtitle_path]]
+    end
+
     test "won't double-schedule downloading jobs", %{media_item: media_item} do
       Oban.insert(MediaDownloadWorker.new(%{id: media_item.id}))
       Oban.insert(MediaDownloadWorker.new(%{id: media_item.id}))
