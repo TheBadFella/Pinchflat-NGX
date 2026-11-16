@@ -909,7 +909,7 @@ defmodule PinchflatWeb.CoreComponents do
           true
       end)
       |> Enum.map(fn
-        {k, v} when is_list(v) -> {k, Enum.join(v, ", ")}
+        {k, v} when is_list(v) -> {k, format_list_value(v)}
         rest -> rest
       end)
 
@@ -917,7 +917,7 @@ defmodule PinchflatWeb.CoreComponents do
 
     ~H"""
     <ul>
-      <li :for={{k, v} <- @iterable_attributes} class="mb-2 w-2/3">
+      <li :for={{k, v} <- @iterable_attributes} class="mb-2 w-full lg:w-2/3 [overflow-wrap:anywhere]">
         <strong>{k}:</strong>
         <code class="mx-0.5 inline-block p-0.5 font-mono text-sm text-theme-on-surface-muted">
           <%= if is_binary(v) && URI.parse(v).scheme && URI.parse(v).scheme =~ "http" do %>
@@ -1067,6 +1067,16 @@ defmodule PinchflatWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  defp format_list_value(values) do
+    Enum.map_join(values, ", ", &format_list_value_element/1)
+  end
+
+  defp format_list_value_element(nil), do: "nil"
+  defp format_list_value_element(value) when is_binary(value), do: value
+  defp format_list_value_element(value) when is_atom(value) or is_number(value), do: to_string(value)
+  defp format_list_value_element(values) when is_list(values), do: "[" <> format_list_value(values) <> "]"
+  defp format_list_value_element(value), do: inspect(value)
 
   defp normalize_select_options(options) do
     Enum.map(options, fn

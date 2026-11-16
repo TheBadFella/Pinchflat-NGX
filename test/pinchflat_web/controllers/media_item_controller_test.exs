@@ -75,6 +75,18 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
       assert html_response(conn, 200) =~ "#{media_item.title}"
     end
+
+    test "renders the page with a non-ASCII title and an incomplete subtitle pair", %{conn: conn} do
+      media_item =
+        media_item_fixture(%{
+          title: "한국어 / Korean Title",
+          subtitle_filepaths: [["en", nil]]
+        })
+
+      conn = get(conn, ~p"/sources/#{media_item.source_id}/media/#{media_item}")
+
+      assert html_response(conn, 200) =~ "한국어 / Korean Title"
+    end
   end
 
   describe "watch window" do

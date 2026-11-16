@@ -37,13 +37,21 @@ defmodule Pinchflat.Metadata.MetadataParser do
   defp parse_subtitle_metadata(metadata) do
     subtitle_filepaths =
       (metadata["requested_subtitles"] || %{})
-      |> Enum.map(fn {lang, attrs} -> [lang, attrs["filepath"]] end)
+      |> Enum.flat_map(fn {lang, attrs} ->
+        case subtitle_filepath(attrs) do
+          nil -> []
+          filepath -> [[lang, filepath]]
+        end
+      end)
       |> Enum.sort(fn [lang_a, _], [lang_b, _] -> lang_a < lang_b end)
 
     %{
       subtitle_filepaths: subtitle_filepaths
     }
   end
+
+  defp subtitle_filepath(%{"filepath" => filepath}) when is_binary(filepath) and filepath != "", do: filepath
+  defp subtitle_filepath(_attrs), do: nil
 
   defp parse_thumbnail_metadata(metadata) do
     thumbnail_filepath =
