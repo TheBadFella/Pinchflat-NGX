@@ -65,73 +65,58 @@
     </div>
   </div>
 
-  <div
-    :if={MapSet.size(@selected_ids) > 0}
-    class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-m3-sm border border-theme-outline/60 bg-theme-surface p-3"
-  >
-    <div class="flex flex-wrap items-center gap-2">
-      <.button type="button" variant="outline" size="compact" phx-click="select_page" disabled={@sources == []}>
-        Select page
-      </.button>
-
-      <.button
-        type="button"
-        variant="outline"
-        size="compact"
-        phx-click="clear_selection"
-        disabled={MapSet.size(@selected_ids) == 0}
-      >
-        Clear selection
-      </.button>
-
-      <span
-        class={[
-          "text-xs font-medium transition",
-          if(MapSet.size(@selected_ids) > 0,
-            do: "font-semibold text-theme-primary",
-            else: "text-theme-on-surface-muted"
-          )
-        ]}
-        role="status"
-      >
-        {MapSet.size(@selected_ids)} selected on this page
-      </span>
-    </div>
-  </div>
-
   <section
     :if={MapSet.size(@selected_ids) > 0}
     id="selected-source-actions"
     aria-label="Actions for selected sources"
-    class="mb-4 space-y-4 rounded-m3-sm border border-theme-outline bg-theme-surface p-3"
+    class="mb-4 overflow-hidden rounded-m3-sm border border-theme-outline/60 bg-theme-surface"
   >
-    <div class="flex flex-wrap items-end gap-3">
-      <div class="flex items-center gap-2">
-        <.form for={%{}} id="pause-selected-sources" action={~p"/sources/pause_selected"} method="post">
-          <input type="hidden" name="return_to" value={@return_to} />
-          <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-          <.icon_button
-            type="submit"
-            icon_name="hero-pause-solid"
-            variant="warning"
-            title="Pause selected downloads"
-            aria-label="Pause selected downloads"
-            data-confirm={"Pause downloads for #{MapSet.size(@selected_ids)} selected sources? Active downloads will stop. Monitoring stays enabled and files are kept."}
-          />
-        </.form>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/60 px-4 py-3">
+      <p class="text-sm font-medium text-theme-primary" role="status">
+        {MapSet.size(@selected_ids)} selected on this page
+      </p>
+      <div class="flex flex-wrap items-center gap-2">
+        <.button type="button" variant="outline" phx-click="select_page" disabled={@sources == []}>
+          Select page
+        </.button>
+        <.button type="button" variant="outline" phx-click="clear_selection">
+          Clear selection
+        </.button>
+      </div>
+    </div>
 
-        <.form for={%{}} id="resume-selected-sources" action={~p"/sources/resume_selected"} method="post">
-          <input type="hidden" name="return_to" value={@return_to} />
-          <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-          <.icon_button
-            type="submit"
-            icon_name="hero-play-solid"
-            variant="primary"
-            title="Resume selected downloads"
-            aria-label="Resume selected downloads"
-            data-confirm={"Resume downloads for #{MapSet.size(@selected_ids)} selected sources? Monitoring settings and existing files are kept."}
-          />
-        </.form>
+    <div class="grid gap-4 p-4 lg:grid-cols-2">
+      <div class="flex min-w-0 flex-col gap-1">
+        <p class="text-sm font-medium text-theme-on-surface-muted">Downloads</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <.form for={%{}} id="pause-selected-sources" action={~p"/sources/pause_selected"} method="post">
+            <input type="hidden" name="return_to" value={@return_to} />
+            <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+            <.button
+              type="submit"
+              variant="outline"
+              aria-label="Pause selected downloads"
+              class="gap-1.5"
+              data-confirm={"Pause downloads for #{MapSet.size(@selected_ids)} selected sources? Active downloads will stop. Monitoring stays enabled and files are kept."}
+            >
+              <.icon name="hero-pause-solid" class="h-4 w-4" /> Pause
+            </.button>
+          </.form>
+
+          <.form for={%{}} id="resume-selected-sources" action={~p"/sources/resume_selected"} method="post">
+            <input type="hidden" name="return_to" value={@return_to} />
+            <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+            <.button
+              type="submit"
+              variant="outline"
+              aria-label="Resume selected downloads"
+              class="gap-1.5"
+              data-confirm={"Resume downloads for #{MapSet.size(@selected_ids)} selected sources? Monitoring settings and existing files are kept."}
+            >
+              <.icon name="hero-play-solid" class="h-4 w-4" /> Resume
+            </.button>
+          </.form>
+        </div>
       </div>
 
       <.form
@@ -143,7 +128,7 @@
       >
         <input type="hidden" name="return_to" value={@return_to} />
         <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-        <div class="w-full min-w-0 sm:w-64">
+        <div class="min-w-0 flex-1">
           <.input
             type="select"
             id="selected-source-media-profile"
@@ -155,29 +140,25 @@
             required
           />
         </div>
-
         <.button
           type="submit"
           variant="outline"
-          size="compact"
           data-confirm={"Change the media profile for #{MapSet.size(@selected_ids)} selected sources? Existing files stay in place. Future downloads use the selected profile."}
         >
           Assign profile
         </.button>
       </.form>
-    </div>
 
-    <.form
-      for={%{}}
-      id="selected-source-cutoff"
-      action={~p"/sources/cutoff/preview"}
-      method="post"
-      class="space-y-2 border-t border-theme-outline/60 pt-3"
-    >
-      <input type="hidden" name="return_to" value={@return_to} />
-      <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-      <div class="flex flex-wrap items-end gap-2">
-        <div class="w-full min-w-0 sm:w-80">
+      <.form
+        for={%{}}
+        id="selected-source-cutoff"
+        action={~p"/sources/cutoff/preview"}
+        method="post"
+        class="flex min-w-0 flex-wrap items-end gap-2 lg:col-span-2"
+      >
+        <input type="hidden" name="return_to" value={@return_to} />
+        <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+        <div class="min-w-0 flex-1">
           <.date_picker
             id="selected-source-cutoff-date"
             name="cutoff_date"
@@ -186,13 +167,15 @@
             timezone={@timezone}
             required={false}
             presets={cutoff_date_presets()}
+            presets_inline
           />
         </div>
-        <.button type="submit" variant="outline" size="compact">Preview cutoff</.button>
-      </div>
-
-      <p class="text-xs text-theme-on-surface-muted">Leave blank to remove the cutoff. Preview before applying.</p>
-    </.form>
+        <.button type="submit" variant="outline">Preview cutoff</.button>
+        <p class="basis-full text-xs text-theme-on-surface-muted">
+          Leave blank to remove the cutoff. Preview before applying.
+        </p>
+      </.form>
+    </div>
   </section>
 
   <div :if={@view_mode == :table}>
