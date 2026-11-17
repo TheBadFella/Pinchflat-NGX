@@ -256,6 +256,26 @@ defmodule Pinchflat.ProfilesTest do
       end
     end
 
+    test "it checks padding widths in output templates" do
+      cs =
+        Profiles.change_media_profile(%MediaProfile{}, %{
+          name: "a",
+          output_path_template: "{{ media_playlist_index:3 }} - {{ title }}.{{ ext }}"
+        })
+
+      assert cs.valid?
+
+      cs =
+        Profiles.change_media_profile(%MediaProfile{}, %{
+          name: "a",
+          output_path_template: "{{ title:3 }}.{{ ext }}",
+          output_path_template_shorts: "{{ media_playlist_index:9 }}.{{ ext }}"
+        })
+
+      assert "sets a padding width on title" <> _ = errors_on(cs).output_path_template |> hd()
+      assert "sets media_playlist_index padding to 9" <> _ = errors_on(cs).output_path_template_shorts |> hd()
+    end
+
     test "it does not allow invalid output templates" do
       invalid_templates = [
         "output_template.{{ ext }}.something",

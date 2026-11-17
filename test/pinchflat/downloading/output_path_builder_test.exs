@@ -25,6 +25,55 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
     end
   end
 
+  describe "padded_integer/1" do
+    test "pads to 2 digits by default and to the template's width when given" do
+      options = %{"media_playlist_index" => OutputPathBuilder.padded_integer(7)}
+
+      assert {:ok, "07"} = OutputPathBuilder.build("{{ media_playlist_index }}", options)
+      assert {:ok, "007"} = OutputPathBuilder.build("{{ media_playlist_index:3 }}", options)
+      assert {:ok, "7"} = OutputPathBuilder.build("{{ media_playlist_index:1 }}", options)
+    end
+
+    test "never truncates a value wider than the padding" do
+      options = %{"media_playlist_index" => OutputPathBuilder.padded_integer(1234)}
+
+      assert {:ok, "1234"} = OutputPathBuilder.build("{{ media_playlist_index:3 }}", options)
+    end
+
+    test "keeps the default padding inside nested custom aliases" do
+      options = %{"media_playlist_index" => OutputPathBuilder.padded_integer(4)}
+
+      assert {:ok, "Season 1/s01e04"} = OutputPathBuilder.build("{{ static_season__episode_by_index }}", options)
+    end
+  end
+
+  describe "validate_template/1" do
+    test "accepts templates without widths and index widths from 1 to 6" do
+      for template <- [
+            "{{ title }}.{{ ext }}",
+            "{{ media_playlist_index:3 }} - {{ title }}.{{ ext }}",
+            "{{ media_upload_date_index : 6 }}.%(ext)s",
+            "{{media_playlist_index:1}}.{{ ext }}"
+          ] do
+        assert :ok = OutputPathBuilder.validate_template(template)
+      end
+    end
+
+    test "rejects out-of-range widths, widths on other variables and unreadable variables" do
+      assert {:error, "sets media_playlist_index padding to 7" <> _} =
+               OutputPathBuilder.validate_template("{{ media_playlist_index:7 }}.{{ ext }}")
+
+      assert {:error, "sets media_playlist_index padding to 0" <> _} =
+               OutputPathBuilder.validate_template("{{ media_playlist_index:0 }}.{{ ext }}")
+
+      assert {:error, "sets a padding width on title" <> _} =
+               OutputPathBuilder.validate_template("{{ title:3 }}.{{ ext }}")
+
+      assert {:error, "has a {{ }} variable that can't be read"} =
+               OutputPathBuilder.validate_template("{{ media_playlist_index:x }}.{{ ext }}")
+    end
+  end
+
   describe "build/2" do
     test "it expands 'standard' curly brace variables in the template" do
       assert {:ok, res} = OutputPathBuilder.build("/videos/{{ title }}.{{ ext }}")
