@@ -48,7 +48,7 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
           pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
           placeholder="YYYY-MM-DD"
           aria-label={@label}
-          class="min-h-11 min-w-0 w-full bg-transparent py-2 text-sm text-theme-on-surface outline-none"
+          class="min-h-11 min-w-0 w-full bg-transparent py-2 text-sm text-theme-on-surface outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
         />
         <button
           :if={!@required}
