@@ -374,31 +374,15 @@ if config_env() == :prod do
 
   config :pinchflat, Pinchflat.PromEx, disabled: !enable_prometheus
 
-  # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
+  # The secret key base signs and encrypts session cookies and LiveView tokens.
+  # Self-hosted installs without SECRET_KEY_BASE get a random key stored in the
+  # config directory on first boot (see Pinchflat.Boot.SecretKeyBase).
   secret_key_base =
-    if System.get_env("SECRET_KEY_BASE") do
-      System.get_env("SECRET_KEY_BASE")
-    else
-      if System.get_env("RUN_CONTEXT") == "selfhosted" do
-        # Using the default SECRET_KEY_BASE in a conventional production environment
-        # is dangerous. Please set the SECRET_KEY_BASE environment variable if you're
-        # deploying this to an internet-facing server. If you're running this in a
-        # private network, it's likely safe to use the default value. If you want
-        # to be extra safe, run `mix phx.gen.secret` and set the SECRET_KEY_BASE
-        # environment variable to the output of that command.
-
-        "ZkuQMStdmUzBv+gO3m3XZrtQW76e+AX3QIgTLajw3b/HkTLMEx+DOXr2WZsSS+n8"
-      else
-        raise """
-        environment variable SECRET_KEY_BASE is missing.
-        You can generate one by calling: mix phx.gen.secret
-        """
-      end
-    end
+    Pinchflat.Boot.SecretKeyBase.resolve(
+      System.get_env("SECRET_KEY_BASE"),
+      System.get_env("RUN_CONTEXT"),
+      config_path
+    )
 
   config :pinchflat, PinchflatWeb.Endpoint,
     http: [
