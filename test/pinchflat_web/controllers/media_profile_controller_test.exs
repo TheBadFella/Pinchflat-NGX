@@ -38,6 +38,8 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
   end
 
   describe "new media_profile" do
+    setup :isolate_extras_directory
+
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/media_profiles/new")
       html = html_response(conn, 200)

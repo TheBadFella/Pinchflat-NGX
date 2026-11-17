@@ -296,7 +296,7 @@ defmodule PinchflatWeb.MediaItemControllerTest do
   end
 
   describe "edit media" do
-    setup [:create_media_item]
+    setup [:isolate_extras_directory, :create_media_item]
 
     test "renders form for editing chosen media_item", %{conn: conn, media_item: media_item} do
       conn = get(conn, ~p"/sources/#{media_item.source_id}/media/#{media_item}/edit")
