@@ -14,6 +14,9 @@
       Copy OPML <span class="hidden sm:inline">Feed</span>
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </.link>
+    <.button href={~p"/browse?paste=1"} variant="outline" class="gap-1.5" id="sources-quick-download">
+      <.icon name="hero-arrow-down-tray" class="h-4 w-4" /> Download <span class="hidden sm:inline">video</span>
+    </.button>
     <.button href={~p"/sources/new"} variant="primary">
       <span class="font-bold mr-1.5 sm:mx-2">+</span> New <span class="hidden sm:inline pl-1">Source</span>
     </.button>

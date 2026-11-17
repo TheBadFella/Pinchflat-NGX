@@ -118,6 +118,16 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
     assert {Repo.aggregate(Source, :count), Repo.aggregate(Oban.Job, :count)} == before_counts
   end
 
+  test "paste=1 opens an empty Paste URL dialog with the only profile selected", %{conn: conn} do
+    profile = media_profile_fixture()
+    assert conn |> get(~p"/browse?paste=1") |> html_response(200) =~ "paste-url-dialog"
+    {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{"open_paste" => true})
+
+    assert has_element?(view, "#paste-url-dialog")
+    assert has_element?(view, "#paste_url_input[value='']")
+    assert has_element?(view, ~s(#paste_profile_select option[value="#{profile.id}"][selected]))
+  end
+
   test "browse keeps the application sidebar and header", %{conn: conn} do
     media_profile_fixture()
     html = conn |> get(~p"/browse") |> html_response(200)

@@ -58,7 +58,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     ~H"""
     <.button_dropdown
       text="More actions"
-      icon_name="hero-ellipsis-vertical"
+      icon_name="hero-ellipsis-vertical-solid"
       aria_label={"More actions for #{@source.custom_name}"}
       variant="outline"
       size="compact"
