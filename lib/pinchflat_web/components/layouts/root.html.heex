@@ -45,6 +45,11 @@
     data-sidebar-icon={~p"/images/icon-2024-03-20.png"}
   >
     {@inner_content} <.donate_modal conn={@conn} />
-    <template x-if="!proEnabled && !onboarding"><.upgrade_modal conn={@conn} /></template>
+    <template
+      :if={!PinchflatWeb.OIDC.enabled?() || Plug.Conn.get_session(@conn, PinchflatWeb.OIDC.session_key()) != nil}
+      x-if="!proEnabled && !onboarding"
+    >
+      <.upgrade_modal conn={@conn} />
+    </template>
   </body>
 </html>

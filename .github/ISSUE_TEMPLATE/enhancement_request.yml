@@ -2,6 +2,7 @@ name: Enhancement Request
 description: Suggest an improvement to Pinchflat-NGX.
 title: '[Enhancement] '
 labels: ['Enhancement']
+type: Feature
 body:
   - type: markdown
     attributes:

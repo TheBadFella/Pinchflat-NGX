@@ -60,6 +60,8 @@ defmodule PinchflatWeb do
       # Keep telemetry and application logs, but omit automatic payload logging.
       use Phoenix.LiveView, log: false
 
+      on_mount PinchflatWeb.LiveAuth
+
       alias Pinchflat.Settings
 
       unquote(html_helpers())
