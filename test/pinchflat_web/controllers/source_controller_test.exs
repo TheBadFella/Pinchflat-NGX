@@ -926,6 +926,14 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "show source" do
+    test "section tabs carry the scroll position to the next tab", %{conn: conn} do
+      source = source_fixture()
+      html = conn |> get(~p"/sources/#{source}?#{[tab: "pending"]}") |> html_response(200)
+
+      assert html =~ ~s|x-on:click="rememberScroll($event)"|
+      assert html =~ "restoreScroll();"
+    end
+
     test "marks the requested page section and keeps source-only controls out of other sections", %{conn: conn} do
       source = source_fixture()
       html = conn |> get(~p"/sources/#{source}?#{[tab: "podcast"]}") |> html_response(200)

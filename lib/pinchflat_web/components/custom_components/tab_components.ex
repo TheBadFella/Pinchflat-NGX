@@ -38,9 +38,29 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
             revealCurrent() {
               const tab = this.$el.querySelector('[aria-current=page]');
               this.$el.scrollLeft += tab.getBoundingClientRect().left - this.$el.getBoundingClientRect().left;
+            },
+            scroller() {
+              return this.$el.closest('.overflow-y-auto') || document.scrollingElement;
+            },
+            // Tabs are full page loads: keep the reader's place when switching between them.
+            rememberScroll(event) {
+              const link = event.target.closest('a[href]');
+              if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+              const url = new URL(link.href);
+              try {
+                sessionStorage.setItem('tabScroll', JSON.stringify({ path: url.pathname + url.search, top: this.scroller().scrollTop }));
+              } catch (_) {}
+            },
+            restoreScroll() {
+              try {
+                const saved = JSON.parse(sessionStorage.getItem('tabScroll') || 'null');
+                sessionStorage.removeItem('tabScroll');
+                if (saved && saved.path === location.pathname + location.search) this.scroller().scrollTop = saved.top;
+              } catch (_) {}
             }
           }"
-          x-init="$nextTick(() => revealCurrent())"
+          x-init="restoreScroll(); $nextTick(() => revealCurrent())"
+          x-on:click="rememberScroll($event)"
           x-on:resize.window.debounce.100ms="revealCurrent()"
           x-on:focusin="$event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })"
         >
