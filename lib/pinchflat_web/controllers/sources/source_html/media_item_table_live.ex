@@ -32,21 +32,23 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def watch_filter(assigns) do
     ~H"""
     <form id="source-watch-filter" phx-change="filter_watch_state" class="w-full min-w-0 sm:w-auto">
-      <label class="sr-only" for="source-watch-filter-select">Watch state</label>
-      <select
+      <.input
+        type="select"
         id="source-watch-filter-select"
         name="watch_filter"
-        class="theme-input w-full min-w-0 rounded-m3-sm text-sm sm:w-auto"
-      >
-        <option value="all" selected={@watch_filter == "all"}>All downloaded</option>
-        <option value="changed_or_unavailable" selected={@watch_filter == "changed_or_unavailable"}>
-          Changed or unavailable
-        </option>
-        <option value="changed" selected={@watch_filter == "changed"}>Changed or suspected</option>
-        <option value="unlisted" selected={@watch_filter == "unlisted"}>Unlisted now</option>
-        <option value="unavailable" selected={@watch_filter == "unavailable"}>Private or unavailable</option>
-        <option value="check_failed" selected={@watch_filter == "check_failed"}>Inconclusive remote check</option>
-      </select>
+        aria_label="Watch state"
+        align="right"
+        value={@watch_filter}
+        options={[
+          {"All downloaded", "all"},
+          {"Changed or unavailable", "changed_or_unavailable"},
+          {"Changed or suspected", "changed"},
+          {"Unlisted now", "unlisted"},
+          {"Private or unavailable", "unavailable"},
+          {"Inconclusive remote check", "check_failed"}
+        ]}
+        inputclass="min-h-10 w-full min-w-0 text-sm sm:w-auto"
+      />
     </form>
     """
   end
