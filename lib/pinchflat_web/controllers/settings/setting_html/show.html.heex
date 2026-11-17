@@ -1,135 +1,46 @@
-<div x-data="settingsPage()" class="flex flex-col gap-6">
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+<div x-data="settingsPage()">
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
     <h2 class="ml-4 text-title-md2 font-bold text-theme-on-surface">Settings</h2>
 
-    <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-      <div class="theme-surface-accent w-full rounded-m3-sm sm:w-80">
-        <div class="relative">
-          <span class="absolute left-3 top-1/2 flex -translate-y-1/2 text-theme-on-surface-muted">
-            <.icon name="hero-magnifying-glass" />
-          </span>
-          <input
-            type="search"
-            x-model="query"
-            x-on:keydown.escape.window="query = ''"
-            placeholder="Search settings..."
-            autocomplete="off"
-            class="w-full border-0 bg-transparent py-3 pl-10 pr-4 text-theme-on-surface placeholder:text-theme-on-surface-muted focus:outline-none focus:ring-0"
-          />
-        </div>
-      </div>
+    <button
+      type="button"
+      class="theme-filter-button rounded-m3-sm whitespace-nowrap text-theme-on-surface-muted hover:text-theme-on-surface hover:underline"
+      x-bind:aria-pressed="advancedMode"
+      x-on:click="advancedMode = !advancedMode"
+    >
+      Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
+    </button>
+  </div>
 
-      <button
-        type="button"
-        class="theme-filter-button rounded-m3-sm whitespace-nowrap text-theme-on-surface-muted hover:text-theme-on-surface hover:underline sm:text-right"
-        x-bind:aria-pressed="advancedMode"
-        x-on:click="advancedMode = !advancedMode"
-      >
-        Editing Mode: <span x-text="advancedMode ? 'Advanced' : 'Standard'"></span>
-      </button>
+  <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+    <.settings_nav
+      label="Settings sections"
+      placeholder="cookies, workers, plex"
+      bleed="-mx-4 bg-theme-bg px-4 md:-mx-6 md:px-6"
+      sections={[
+        {"settings-notifications", "Notifications", false},
+        {"settings-extractor", "Extractor", false},
+        {"database-migration", "Database", false},
+        {"settings-discovery", "Channel discovery", false},
+        {"settings-yt-dlp", "yt-dlp", false},
+        {"settings-codecs", "Codecs", true},
+        {"settings-storage", "Storage", false},
+        {"media-server-settings", "Media servers", false},
+        {"settings-yt-dlp-plugins", "yt-dlp plugins", false},
+        {"settings-cookies", "Cookies", false},
+        {"api-access-settings", "API and access", false}
+      ]}
+    />
+
+    <div data-settings class="mt-6 flex min-w-0 flex-col gap-6 lg:mt-0">
+      <.settings_no_match class="theme-surface-raised px-5 py-8 text-center sm:px-7.5" />
+
+      <.setting_form
+        conn={@conn}
+        changeset={@changeset}
+        action={~p"/settings"}
+        concurrency_fields={@concurrency_fields}
+      />
     </div>
   </div>
-
-  <div class="flex flex-wrap gap-2 px-1" role="group" aria-label="Settings groups">
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('')"
-      x-bind:class="!selectedGroup ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="!selectedGroup"
-    >
-      All
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('notifications')"
-      x-bind:class="selectedGroup === 'notifications' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'notifications'"
-    >
-      Notifications
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('extractor')"
-      x-bind:class="selectedGroup === 'extractor' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'extractor'"
-    >
-      Extractor
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('discovery')"
-      x-bind:class="selectedGroup === 'discovery' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'discovery'"
-    >
-      Channel Discovery
-    </button>
-
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('database')"
-      x-bind:class="selectedGroup === 'database' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'database'"
-    >
-      Database
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('ytdlp')"
-      x-bind:class="selectedGroup === 'ytdlp' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'ytdlp'"
-    >
-      yt-dlp
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('cookies')"
-      x-bind:class="selectedGroup === 'cookies' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'cookies'"
-    >
-      Cookies
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('media-servers')"
-      x-bind:class="selectedGroup === 'media-servers' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'media-servers'"
-    >
-      Media Servers
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-on:click="selectGroup('access')"
-      data-settings-group="access"
-      x-bind:class="selectedGroup === 'access' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'access'"
-    >
-      API &amp; Access
-    </button>
-    <button
-      type="button"
-      class="theme-filter-button rounded-full border"
-      x-show="advancedMode || query.trim()"
-      x-on:click="selectGroup('codec')"
-      x-bind:class="selectedGroup === 'codec' ? 'border-theme-primary bg-theme-primary text-theme-on-primary' : 'border-theme-outline text-theme-on-surface-muted hover:text-theme-on-surface'"
-      x-bind:aria-pressed="selectedGroup === 'codec'"
-    >
-      Codec Options
-    </button>
-  </div>
-
-  <.setting_form
-    conn={@conn}
-    changeset={@changeset}
-    action={~p"/settings"}
-    concurrency_fields={@concurrency_fields}
-  />
 </div>

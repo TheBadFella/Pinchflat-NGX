@@ -120,16 +120,13 @@ defmodule Pinchflat.Settings.CookieFileLive do
         <!-- Inline Monitoring Settings Form -->
         <form phx-submit="save_monitoring_config" class="mt-5 border-t border-theme-outline/40 pt-4">
           <div class="flex flex-col gap-4">
-            <label class="flex min-h-11 items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                name="cookie_health_monitoring_enabled"
-                value="true"
-                checked={@monitoring_enabled}
-                class="rounded border-theme-outline bg-theme-surface text-theme-primary focus:ring-theme-primary"
-              />
-              <span class="text-sm font-medium text-theme-on-surface">Enable Automatic Periodic Health Monitoring</span>
-            </label>
+            <.input
+              type="toggle"
+              id="cookie-health-monitoring-enabled"
+              name="cookie_health_monitoring_enabled"
+              value={@monitoring_enabled}
+              label="Enable Automatic Periodic Health Monitoring"
+            />
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>

@@ -49,6 +49,32 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       assert html =~ "Watch window (days)"
     end
 
+    test "renders section navigation, the settings search and a save bar", %{conn: conn} do
+      html = conn |> get(~p"/media_profiles/new") |> html_response(200)
+
+      for id <-
+            ~w(profile-preset profile-general profile-subtitles profile-thumbnails profile-metadata
+               profile-release-format profile-quality profile-retention profile-media-center profile-sponsorblock
+               profile-yt-dlp profile-template-help) do
+        assert html =~ ~s(id="#{id}")
+        assert html =~ ~s(href="##{id}")
+      end
+
+      assert html =~ ~s|x-data="settingsNav()"|
+      assert html =~ ~s(id="setting-search")
+      assert html =~ ~s(aria-label="Settings in Retention and redownload")
+      assert html =~ ~r/class="sticky bottom-0[^"]*">\s*<button[^>]*>\s*Save Media profile/
+    end
+
+    test "gives settings without a single field a jump target", %{conn: conn} do
+      html = conn |> get(~p"/media_profiles/new") |> html_response(200)
+
+      for id <-
+            ~w(profile-preset-picker profile-sponsorblock-remove profile-sponsorblock-mark media-profile-yt-dlp-options) do
+        assert html =~ ~r/id="#{id}"[^>]*data-setting[\s>]/
+      end
+    end
+
     test "renders correct layout when onboarding", %{conn: conn} do
       Settings.set(onboarding: true)
       conn = get(conn, ~p"/media_profiles/new")

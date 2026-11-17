@@ -7,17 +7,29 @@
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
-  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('notifications')">
+  <section
+    id="settings-notifications"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+  >
     <h3 class="text-2xl text-theme-on-surface">Notification Settings</h3>
 
-    {live_render(
-      @conn,
-      Pinchflat.Settings.AppriseServerLive,
-      session: %{"value" => f[:apprise_server].value}
-    )}
+    <%!-- A LiveView re-renders its own markup, so the setting wrapper sits outside it. --%>
+    <div
+      id="settings-apprise"
+      data-setting
+      data-setting-label="Apprise Server"
+      data-setting-keywords="notify webhook discord telegram email"
+    >
+      {live_render(
+        @conn,
+        Pinchflat.Settings.AppriseServerLive,
+        session: %{"value" => f[:apprise_server].value}
+      )}
+    </div>
     <.input
       field={f[:notification_include_video_titles]}
-      type="checkbox"
+      type="toggle"
       label="Include video titles"
       help="Include up to 10 video titles, newest first. Notifications with titles are limited to 1,024 characters."
     />
@@ -31,14 +43,20 @@
     />
   </section>
 
-  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('extractor')">
+  <section
+    id="settings-extractor"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+  >
     <h3 class="text-2xl text-theme-on-surface">Extractor Settings</h3>
 
-    {live_render(
-      @conn,
-      Pinchflat.Settings.YoutubeApiKeyLive,
-      session: %{"value" => f[:youtube_api_key].value}
-    )}
+    <div id="settings-youtube-api-key" data-setting data-setting-label="YouTube API Key(s)">
+      {live_render(
+        @conn,
+        Pinchflat.Settings.YoutubeApiKeyLive,
+        session: %{"value" => f[:youtube_api_key].value}
+      )}
+    </div>
     <.input
       field={f[:extractor_sleep_interval_seconds]}
       placeholder="0"
@@ -89,46 +107,13 @@
       label="Ignore Unavailable Media"
       help="Mark members-only, private, and removed videos as skipped instead of repeatedly erroring. They stay in the database but won't be retried"
     />
-    <div
-      x-data={"{ is12h: #{f[:time_format].value == "12h"} }"}
-      phx-update="ignore"
-      id="time-format-wrapper"
-    >
-      <.label for={"#{f[:time_format].id}-toggle"}>Time Format</.label>
-      <div class="relative flex flex-col">
-        <input
-          type="hidden"
-          id={f[:time_format].id}
-          name={f[:time_format].name}
-          x-bind:value="is12h ? '12h' : '24h'"
-        />
-        <button
-          type="button"
-          id={"#{f[:time_format].id}-toggle"}
-          role="switch"
-          aria-label="Use 12-hour time"
-          x-bind:aria-checked="is12h ? 'true' : 'false'"
-          class="inline-flex min-h-11 w-fit items-center gap-3 text-sm cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary focus-visible:ring-offset-2 focus-visible:ring-offset-theme-surface"
-          @click={"is12h = !is12h; dispatchFor('#{f[:time_format].id}', 'change')"}
-        >
-          <span x-bind:class="!is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">24hr</span>
-          <div class="theme-switch-target">
-            <div
-              x-bind:class="is12h ? 'border-theme-primary/70 bg-theme-primary-container' : 'border-theme-outline bg-theme-surface-5'"
-              class="theme-switch-track"
-            >
-            </div>
-            <div
-              x-bind:class="is12h ? 'translate-x-6 bg-theme-primary' : 'translate-x-0 bg-theme-on-surface-muted'"
-              class="theme-switch-thumb"
-            >
-            </div>
-          </div>
-          <span x-bind:class="is12h ? 'text-theme-on-surface font-medium' : 'text-theme-on-surface-muted opacity-60'">12hr</span>
-        </button>
-        <.help>Clock used when displaying timestamps in the UI</.help>
-      </div>
-    </div>
+    <.input
+      field={f[:time_format]}
+      options={[{"24-hour", "24h"}, {"12-hour", "12h"}]}
+      type="select"
+      label="Time Format"
+      help="Clock used when displaying timestamps in the UI"
+    />
 
     <.input
       field={f[:database_maintenance_enabled]}
@@ -140,18 +125,30 @@
 
   <section
     id="database-migration"
-    class="theme-surface-raised space-y-3 px-5 py-5 sm:px-7.5"
-    x-show="matchGroup('database')"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
   >
     <h3 class="text-2xl text-theme-on-surface">PostgreSQL Migration</h3>
-    <p class="text-sm text-theme-on-surface-muted">
-      Current database: <strong class="text-theme-on-surface">{if Pinchflat.Database.postgres?(), do: "PostgreSQL", else: "SQLite"}</strong>.
-      Review the setup requirements and migration status before transferring an existing SQLite library to PostgreSQL.
-    </p>
-    <.button href={~p"/postgres_migration"} variant="outline">Review PostgreSQL migration</.button>
+    <div
+      id="settings-postgres-migration"
+      data-setting
+      data-setting-label="PostgreSQL migration"
+      data-setting-keywords="database postgres migrate transfer"
+      class="mt-3 space-y-3"
+    >
+      <p class="text-sm text-theme-on-surface-muted">
+        Current database: <strong class="text-theme-on-surface">{if Pinchflat.Database.postgres?(), do: "PostgreSQL", else: "SQLite"}</strong>.
+        Review the setup requirements and migration status before transferring an existing SQLite library to PostgreSQL.
+      </p>
+      <.button href={~p"/postgres_migration"} variant="outline">Review PostgreSQL migration</.button>
+    </div>
   </section>
 
-  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('discovery')">
+  <section
+    id="settings-discovery"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+  >
     <h3 class="text-2xl text-theme-on-surface">Channel Discovery</h3>
 
     <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
@@ -183,26 +180,45 @@
     </div>
   </section>
 
-  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('ytdlp')">
+  <section
+    id="settings-yt-dlp"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+  >
     <h3 class="text-2xl text-theme-on-surface">yt-dlp</h3>
 
-    {live_render(
-      @conn,
-      Pinchflat.Settings.YtDlpVersionLive,
-      session: %{
-        "policy" => f[:yt_dlp_update_policy].value,
-        "pinned_version" => f[:yt_dlp_pinned_version].value
-      }
-    )}
+    <div
+      id="settings-yt-dlp-version"
+      data-setting
+      data-setting-label="Update Behavior"
+      data-setting-keywords="yt-dlp ytdlp version stable nightly pinned"
+    >
+      {live_render(
+        @conn,
+        Pinchflat.Settings.YtDlpVersionLive,
+        session: %{
+          "policy" => f[:yt_dlp_update_policy].value,
+          "pinned_version" => f[:yt_dlp_pinned_version].value
+        }
+      )}
+    </div>
 
-    <div class="mt-8 border-t border-theme-outline/60 pt-6">
+    <div
+      id="settings-yt-dlp-config"
+      data-setting
+      data-setting-label="Base yt-dlp Config"
+      data-setting-keywords="ytdlp options flags retries socket-timeout ipv4"
+      class="mt-8 border-t border-theme-outline/60 pt-6"
+    >
       {live_render(@conn, Pinchflat.Settings.YtDlpConfigLive, id: "yt-dlp-config-live")}
     </div>
   </section>
 
   <section
-    class="theme-surface-raised px-5 py-5 sm:px-7.5"
-    x-show="(advancedMode || query.trim()) && matchGroup('codec')"
+    id="settings-codecs"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+    x-show="advancedMode || settingQuery.trim()"
   >
     <h3 class="text-2xl text-theme-on-surface">Codec Options</h3>
 
@@ -211,24 +227,32 @@
       If none is available, yt-dlp chooses a fallback.
     </p>
 
-    <.ordered_codec_list
-      field={f[:video_codec_preference]}
-      kind={:video}
-      legend="Video codec preferences"
-      help="Ordered from most to least preferred. Video is remuxed into an MP4 container."
-    />
+    <div id="settings-video-codecs" data-setting data-setting-label="Video codec preferences">
+      <.ordered_codec_list
+        field={f[:video_codec_preference]}
+        kind={:video}
+        legend="Video codec preferences"
+        help="Ordered from most to least preferred. Video is remuxed into an MP4 container."
+      />
+    </div>
 
-    <.ordered_codec_list
-      field={f[:audio_codec_preference]}
-      kind={:audio}
-      legend="Audio codec preferences"
-      help="Ordered from most to least preferred. This picks the audio track's codec, not the final container."
-    />
+    <div id="settings-audio-codecs" data-setting data-setting-label="Audio codec preferences">
+      <.ordered_codec_list
+        field={f[:audio_codec_preference]}
+        kind={:audio}
+        legend="Audio codec preferences"
+        help="Ordered from most to least preferred. This picks the audio track's codec, not the final container."
+      />
+    </div>
 
     <div class="theme-surface-accent mt-5 p-4 md:p-6"><.codec_settings_help /></div>
   </section>
 
-  <section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('storage')">
+  <section
+    id="settings-storage"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+  >
     <h3 class="text-2xl text-theme-on-surface">Storage &amp; Space Protection</h3>
     <p class="mt-2 text-sm text-theme-on-surface-muted">
       Prevent downloads from filling the disk. When enabled, downloads pause if free space falls below this threshold. Blocked jobs snooze without failing.
@@ -275,18 +299,29 @@
   </section>
   <section
     id="media-server-settings"
-    class="theme-surface-raised px-5 py-5 sm:px-7.5"
-    x-show="matchGroup('media-servers')"
+    data-setting-group
+    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
   >
     <h3 class="text-2xl text-theme-on-surface mb-2">Media Server Integrations</h3>
-    <p class="text-sm text-theme-on-surface-muted mb-6">
+    <p class="text-sm text-theme-on-surface-muted">
       Automatically trigger library scans on local Plex, Jellyfin, or Emby servers when downloads finish.
     </p>
 
-    <%!-- Plex Media Server --%>
-    <div class="border-t border-theme-outline/50 pt-6 mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <h4 class="text-lg font-semibold text-theme-on-surface">Plex Media Server</h4>
+    <.form_disclosure
+      title="Plex Media Server"
+      open={
+        Enum.any?(
+          ~w(plex_enabled plex_url plex_token plex_library_section_id)a,
+          &Keyword.has_key?(@changeset.errors, &1)
+        )
+      }
+      data-setting-group
+      x-data={"{ refreshOn: #{f[:plex_enabled].value == true} }"}
+    >
+      <:status>
+        <span x-text="refreshOn ? 'Refresh on' : 'Off'">{if f[:plex_enabled].value, do: "Refresh on", else: "Off"}</span>
+      </:status>
+      <div class="mt-4">
         {live_render(@conn, Pinchflat.Settings.MediaServerTestLive,
           id: "plex-test-button",
           session: %{"server_type" => "plex"}
@@ -296,6 +331,7 @@
       <.input
         field={f[:plex_enabled]}
         type="toggle"
+        x-model="refreshOn"
         label="Enable Plex Refresh"
         help="Trigger a section scan on Plex after each completed media download"
       />
@@ -326,12 +362,18 @@
         help="Target section ID to refresh (e.g. '1', '2'), or 'all' to refresh all library sections"
         inputclass="font-mono text-sm mr-4"
       />
-    </div>
+    </.form_disclosure>
 
-    <%!-- Jellyfin --%>
-    <div class="border-t border-theme-outline/50 pt-6 mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <h4 class="text-lg font-semibold text-theme-on-surface">Jellyfin</h4>
+    <.form_disclosure
+      title="Jellyfin"
+      open={Enum.any?(~w(jellyfin_enabled jellyfin_url jellyfin_api_key)a, &Keyword.has_key?(@changeset.errors, &1))}
+      data-setting-group
+      x-data={"{ refreshOn: #{f[:jellyfin_enabled].value == true} }"}
+    >
+      <:status>
+        <span x-text="refreshOn ? 'Refresh on' : 'Off'">{if f[:jellyfin_enabled].value, do: "Refresh on", else: "Off"}</span>
+      </:status>
+      <div class="mt-4">
         {live_render(@conn, Pinchflat.Settings.MediaServerTestLive,
           id: "jellyfin-test-button",
           session: %{"server_type" => "jellyfin"}
@@ -341,6 +383,7 @@
       <.input
         field={f[:jellyfin_enabled]}
         type="toggle"
+        x-model="refreshOn"
         label="Enable Jellyfin Refresh"
         help="Trigger a full library refresh on Jellyfin after each completed media download (Jellyfin /Library/Refresh initiates a full library scan)"
       />
@@ -362,12 +405,23 @@
         help="API Key generated in Jellyfin Dashboard -> Advanced -> Keys."
         inputclass="font-mono text-sm mr-4"
       />
-    </div>
+    </.form_disclosure>
 
-    <%!-- Emby --%>
-    <div class="border-t border-theme-outline/50 pt-6 mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <h4 class="text-lg font-semibold text-theme-on-surface">Emby</h4>
+    <.form_disclosure
+      title="Emby"
+      open={
+        Enum.any?(
+          ~w(emby_enabled emby_confirm_full_scan emby_url emby_api_key)a,
+          &Keyword.has_key?(@changeset.errors, &1)
+        )
+      }
+      data-setting-group
+      x-data={"{ refreshOn: #{f[:emby_enabled].value == true} }"}
+    >
+      <:status>
+        <span x-text="refreshOn ? 'Refresh on' : 'Off'">{if f[:emby_enabled].value, do: "Refresh on", else: "Off"}</span>
+      </:status>
+      <div class="mt-4">
         {live_render(@conn, Pinchflat.Settings.MediaServerTestLive,
           id: "emby-test-button",
           session: %{"server_type" => "emby"}
@@ -377,6 +431,7 @@
       <.input
         field={f[:emby_enabled]}
         type="toggle"
+        x-model="refreshOn"
         label="Enable Emby Refresh"
         help="Trigger a library refresh on Emby after each completed media download"
       />
@@ -415,23 +470,57 @@
         help="API Key generated in Emby Server Settings -> Advanced -> Api Keys."
         inputclass="font-mono text-sm mr-4"
       />
-    </div>
+    </.form_disclosure>
   </section>
 </.simple_form>
 
-<section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('ytdlp')">
-  {live_render(@conn, Pinchflat.Settings.YtDlpPluginsLive, id: "yt-dlp-plugins-live")}
+<section
+  id="settings-yt-dlp-plugins"
+  data-setting-group
+  class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+>
+  <div
+    id="settings-plugins"
+    data-setting
+    data-setting-label="yt-dlp Plugins"
+    data-setting-keywords="ytdlp plugin extension extractor postprocessor"
+  >
+    {live_render(@conn, Pinchflat.Settings.YtDlpPluginsLive, id: "yt-dlp-plugins-live")}
+  </div>
 </section>
 
-<section class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('cookies')">
+<section
+  id="settings-cookies"
+  data-setting-group
+  class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+>
   <h3 class="text-2xl text-theme-on-surface">Cookies</h3>
-  {live_render(@conn, Pinchflat.Settings.CookieFileLive, id: "cookie-file-live")}
-  {live_render(@conn, Pinchflat.Settings.DefaultCookieBehaviourLive, id: "default-cookie-behaviour-live")}
+  <div
+    id="settings-cookie-file"
+    data-setting
+    data-setting-label="Cookies File"
+    data-setting-keywords="cookie cookies.txt netscape members-only age-restricted health"
+  >
+    {live_render(@conn, Pinchflat.Settings.CookieFileLive, id: "cookie-file-live")}
+  </div>
+  <div id="settings-default-cookie-behaviour" data-setting data-setting-label="Default Cookie Behavior for New Sources">
+    {live_render(@conn, Pinchflat.Settings.DefaultCookieBehaviourLive, id: "default-cookie-behaviour-live")}
+  </div>
 </section>
 
-<section id="api-access-settings" class="theme-surface-raised px-5 py-5 sm:px-7.5" x-show="matchGroup('access')">
+<section
+  id="api-access-settings"
+  data-setting-group
+  class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+>
   <h3 class="text-2xl text-theme-on-surface">API &amp; Access</h3>
-  <div class="mt-6">
+  <div
+    id="settings-share-tokens"
+    data-setting
+    data-setting-label="Share tokens and bookmarklet"
+    data-setting-keywords="api access sharing shortcuts credentials"
+    class="mt-6"
+  >
     {live_render(@conn, Pinchflat.Settings.ShareTokensLive,
       id: "share-tokens-live",
       session: %{"base_url" => url(@conn, ~p"/")}
@@ -439,21 +528,6 @@
   </div>
 </section>
 
-<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-  <.button
-    variant="primary"
-    class="w-full sm:w-auto"
-    form="settings-form"
-    x-show="matchGroup('media-servers') || matchGroup('notifications') || matchGroup('extractor') || matchGroup('storage') || matchGroup('discovery') || matchGroup('ytdlp') || ((advancedMode || query.trim()) && matchGroup('codec'))"
-  >
-    Save Settings
-  </.button>
+<div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">
+  <.button variant="primary" class="w-full sm:w-auto" form="settings-form">Save Settings</.button>
 </div>
-
-<p
-  class="theme-surface-raised px-5 py-8 text-center text-sm text-theme-on-surface-muted sm:px-7.5"
-  x-cloak
-  x-show="!matchGroup('media-servers') && !matchGroup('notifications') && !matchGroup('extractor') && !matchGroup('storage') && !matchGroup('discovery') && !matchGroup('ytdlp') && !matchGroup('cookies') && !matchGroup('database') && !matchGroup('access') && !((advancedMode || query.trim()) && matchGroup('codec'))"
->
-  No settings match "<span x-text="query.trim()"></span>".
-</p>

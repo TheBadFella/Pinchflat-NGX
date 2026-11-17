@@ -9,7 +9,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       html = html_response(conn, 200)
 
       assert html =~ "Settings"
-      assert html =~ "Search settings..."
+      assert html =~ ~s(id="setting-search")
       assert html =~ "Notification Settings"
       assert html =~ "Extractor Settings"
       assert html =~ "Cookies"
@@ -21,6 +21,59 @@ defmodule PinchflatWeb.SettingControllerTest do
       refute html =~ ~s(id="postgres-backups")
       assert html =~ "Review PostgreSQL migration"
       assert html =~ ~s(href="/postgres_migration")
+    end
+  end
+
+  describe "settings page layout" do
+    test "renders section navigation, the settings search and collapsed media servers", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      for id <-
+            ~w(settings-notifications settings-extractor database-migration settings-discovery settings-yt-dlp
+               settings-codecs settings-storage media-server-settings settings-yt-dlp-plugins settings-cookies
+               api-access-settings) do
+        assert html =~ ~s(id="#{id}")
+        assert html =~ ~s(href="##{id}")
+      end
+
+      assert html =~ ~s|x-data="settingsPage()"|
+      assert html =~ ~s(aria-label="Settings in Notifications")
+      refute html =~ "matchGroup"
+
+      for title <- ["Plex Media Server", "Jellyfin", "Emby"] do
+        assert html =~ ~r/<details[^>]*>\s*<summary[^>]*>.*?#{title}.*?Off.*?<\/summary>/s
+      end
+
+      refute html =~ ~r/<details[^>]*\sopen/
+    end
+
+    test "keeps every embedded LiveView reachable from the section list", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      for id <-
+            ~w(settings-apprise settings-youtube-api-key settings-yt-dlp-version settings-yt-dlp-config
+               settings-plugins settings-cookie-file settings-default-cookie-behaviour settings-share-tokens) do
+        assert html =~ ~r/<div[^>]*id="#{id}"[^>]*data-setting[^>]*>\s*<div[^>]*data-phx-session/
+      end
+    end
+
+    test "uses a toggle for on/off settings and a dropdown for the time format", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      assert html =~ ~s(id="settings-form_notification_include_video_titles-wrapper")
+      assert html =~ ~s(id="cookie-health-monitoring-enabled-wrapper")
+      assert html =~ ~r/<input[^>]*type="hidden"[^>]*name="setting\[time_format\]"[^>]*value="24h"/
+      assert html =~ "24-hour"
+      assert html =~ "12-hour"
+    end
+
+    test "opens a media server group when one of its fields has an error", %{conn: conn} do
+      conn = put(conn, ~p"/settings", setting: %{jellyfin_enabled: "true", jellyfin_url: ""})
+      html = html_response(conn, 200)
+
+      assert [opened] = Regex.scan(~r/<details[^>]*\sopen[^>]*>.*?<\/summary>/s, html)
+      assert hd(opened) =~ "Jellyfin"
+      assert hd(opened) =~ "Refresh on"
     end
   end
 
