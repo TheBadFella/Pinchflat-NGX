@@ -19,6 +19,11 @@ RUN echo "Building for ${TARGETPLATFORM:?}"
 COPY --from=node /usr/local/ /usr/local/
 COPY docker/install-quickjs-ng.sh /tmp/install-quickjs-ng.sh
 
+# Application-owned ordered-codec plugin. Baked into the image and kept separate from
+# the user-removable plugin directory so it cannot be deleted or replaced from the UI.
+COPY docker/yt-dlp-app-plugins /opt/pinchflat-ngx/yt-dlp-app-plugins
+RUN chmod -R a+rX /opt/pinchflat-ngx/yt-dlp-app-plugins
+
 # Install debian packages
 RUN set -eux; \
   if [ "${DATABASE_ADAPTER}" = "postgres" ]; then \

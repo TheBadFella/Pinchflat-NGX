@@ -3,17 +3,36 @@
 
   <section class="ml-2 md:ml-4 mb-2 max-w-prose text-sm leading-5 text-theme-on-surface-muted">
     <p>
-      Some users may want to specify the audio codec that <code class="text-sm">yt-dlp</code>
-      searches for when downloading content. For these users, you can specify one audio and video
-      codec to prefer above all others.
+      Resolution is chosen first. At the same resolution, codecs are tried in the order you
+      list them, so <code class="text-sm">VP9, AVC, AV1</code> prefers VP9 and falls back to AVC
+      and then AV1. Audio is ordered independently, after your audio-track and language choice.
     </p>
 
     <p class="mt-4">
       NOTE: this is a <em>soft</em>
-      preference. If the codec you specify is not available, <code class="text-sm">yt-dlp</code>
-      will download the next best available codec. This is expected and intended behavior.
-      <.inline_link href="https://github.com/yt-dlp/yt-dlp#sorting-formats">See here</.inline_link>
+      preference. If none of your listed codecs is available, <code class="text-sm">yt-dlp</code>
+      downloads its next best format. A preference is not an exclusion rule. An empty list means
+      no application codec preference for that stream, so yt-dlp's defaults or your custom
+      <code class="text-sm">-S</code>
+      sorting apply. <.inline_link href="https://github.com/yt-dlp/yt-dlp#sorting-formats">See here</.inline_link>
       for more information and a list of available codecs.
+    </p>
+
+    <p class="mt-4">
+      Supported names match yt-dlp's codec families, for example <code class="text-sm">avc</code>/<code class="text-sm">avc1</code>/<code class="text-sm">h264</code>, <code class="text-sm">vp9</code>/<code class="text-sm">vp09</code>, <code class="text-sm">av1</code>/<code class="text-sm">av01</code>
+      for video and <code class="text-sm">m4a</code>
+      (AAC in MP4, including <code class="text-sm">aac</code>
+      and <code class="text-sm">mp4a</code>), <code class="text-sm">opus</code>, <code class="text-sm">vorbis</code>, <code class="text-sm">flac</code>, <code class="text-sm">wav</code>/<code class="text-sm">aiff</code>
+      for audio. Aliases are saved as their canonical names (for example, <code class="text-sm">H264</code>
+      becomes <code class="text-sm">avc</code>, <code class="text-sm">aac</code>
+      becomes <code class="text-sm">m4a</code>, and <code class="text-sm">aiff</code>
+      becomes <code class="text-sm">wav</code>). A list may
+      hold up to 8 codecs.
+    </p>
+
+    <p class="mt-4">
+      A preferred audio codec is the codec of the source audio track. It is not the final
+      container, which still follows your profile's audio format and remux settings.
     </p>
   </section>
 </aside>

@@ -280,6 +280,114 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       assert stats["total_download_size_bytes"] == size
     end
 
+    test "C16: queued download with artwork disabled, failed attempt, settings edit, and retry", %{conn: conn} do
+      on_exit(fn ->
+        Pinchflat.Settings.set(video_codec_preference: "avc")
+        Pinchflat.Settings.set(audio_codec_preference: "m4a")
+      end)
+
+      # 1. Setup initial codec preferences and media with artwork disabled
+      Pinchflat.Settings.set(video_codec_preference: "vp9,avc")
+      Pinchflat.Settings.set(audio_codec_preference: "opus,m4a")
+
+      profile = media_profile_fixture(%{download_thumbnail: false, preferred_resolution: :"1080p"})
+      source = source_fixture(%{media_profile_id: profile.id})
+      item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      path = Path.join([System.tmp_dir!(), "test_c16", "Pinchflat_C16_Video.mp4"])
+      on_exit(fn -> File.rm_rf(Path.dirname(path)) end)
+      metadata = render_parsed_metadata(:media_metadata) |> Map.put("filepath", path)
+
+      # 2. Queue download through real API entry point
+      conn |> post("/api/media/#{item.id}/actions/download") |> json_response(200)
+      [job] = all_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker, args: %{"id" => item.id})
+
+      # 3. First attempt fails: verify initial preferences reach attempt 1
+      expect(UserScriptRunnerMock, :run, 1, fn :media_pre_download, data ->
+        assert data.id == item.id
+        {:ok, "", 0}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, opts, _template, _extra ->
+        assert Keyword.get(opts, :use_postprocessor) == "CodecOrder:when=pre_process;video=vp9,avc;audio=opus,m4a"
+        assert Keyword.get(opts, :format_sort) == "res:1080"
+        {:error, "HTTP Error 503: Service Unavailable", 1}
+      end)
+
+      # Thumbnail runner must NOT be called since artwork is disabled
+
+      assert {:error, :download_failed} = Pinchflat.Downloading.MediaDownloadWorker.perform(job)
+
+      item_after_fail = Repo.reload!(item)
+      refute item_after_fail.media_downloaded_at
+      refute item_after_fail.media_filepath
+      assert item_after_fail.prevent_download == false
+      assert item_after_fail.error_type == :transient
+      assert item_after_fail.last_error == "HTTP Error 503: Service Unavailable"
+
+      # 4. Change codec settings between attempts via settings controller
+      settings_conn =
+        put(conn, ~p"/settings", %{
+          setting: %{video_codec_preference: "av1,vp9,avc", audio_codec_preference: "m4a,opus"}
+        })
+
+      assert redirected_to(settings_conn) == ~p"/settings"
+      assert Pinchflat.Settings.get!(:video_codec_preference) == "av1,vp9,avc"
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == "m4a,opus"
+
+      # 5. Retry download through real API entry point
+      retry_conn = post(build_conn(), "/api/media/#{item.id}/actions/download")
+      assert json_response(retry_conn, 200)["message"] == "Download job created"
+
+      [retry_job] =
+        all_enqueued(worker: Pinchflat.Downloading.MediaDownloadWorker, args: %{"id" => item.id})
+        |> Enum.filter(&(&1.id != job.id))
+
+      # 6. Expect retry attempt to use the NEW codec preferences at the attempt boundary
+      expect(UserScriptRunnerMock, :run, 1, fn :media_pre_download, data ->
+        assert data.id == item.id
+        {:ok, "", 0}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, opts, _template, _extra ->
+        assert Keyword.get(opts, :use_postprocessor) ==
+                 "CodecOrder:when=pre_process;video=av1,vp9,avc;audio=m4a,opus"
+
+        assert Keyword.get(opts, :format_sort) == "res:1080"
+        refute Keyword.get(opts, :write_thumbnail)
+
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, "c16 completed download payload")
+        {:ok, Jason.encode!(metadata)}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download_thumbnail, _opts, _template, _extra ->
+        {:ok, ""}
+      end)
+
+      # User script runner must be invoked exactly once across the entire journey (no duplicate publication)
+      expect(UserScriptRunnerMock, :run, 1, fn :media_downloaded, data ->
+        assert data.id == item.id
+        {:ok, "", 0}
+      end)
+
+      assert :ok = Pinchflat.Downloading.MediaDownloadWorker.perform(retry_job)
+
+      # 7. Verify completed state, persisted path, size, and absence of staging damage
+      completed = Repo.reload!(item) |> Repo.preload(:metadata)
+      assert completed.media_downloaded_at != nil
+      assert completed.media_filepath == path
+      assert File.read!(path) == "c16 completed download payload"
+      assert completed.media_size_bytes == byte_size("c16 completed download payload")
+      assert completed.prevent_download == false
+      assert is_nil(completed.download_prevented_reason)
+      assert is_nil(completed.error_type)
+      assert is_nil(completed.thumbnail_filepath)
+      assert completed.metadata.thumbnail_filepath != nil
+
+      # Verify destination directory has only the final output file (no duplicate or damaged artifacts)
+      assert File.ls!(Path.dirname(path)) == ["Pinchflat_C16_Video.mp4"]
+    end
+
     test "reports an already queued download without claiming another job was created", %{conn: conn} do
       item = media_item_fixture()
       post(conn, "/api/media/#{item.id}/actions/download")

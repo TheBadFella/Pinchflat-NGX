@@ -6,6 +6,7 @@ defmodule Pinchflat.Settings.Setting do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Pinchflat.Settings.CodecPreferences
   alias Pinchflat.Sources.Source
   alias Pinchflat.YtDlp.UpdateManager
 
@@ -71,11 +72,11 @@ defmodule Pinchflat.Settings.Setting do
   @time_formats ~w(24h 12h)
   @cookie_behaviours ~w(disabled when_needed all_operations)
 
+  # Codec preferences are intentionally excluded: a blank value is meaningful
+  # (no application override for that stream) and is stored as an empty string.
   @required_fields [
     :onboarding,
     :pro_enabled,
-    :video_codec_preference,
-    :audio_codec_preference,
     :extractor_sleep_interval_seconds
   ]
 
@@ -159,6 +160,7 @@ defmodule Pinchflat.Settings.Setting do
   def changeset(setting, attrs) do
     setting
     |> cast(attrs, @allowed_fields)
+    |> normalize_codec_preferences(attrs)
     |> validate_required(@required_fields)
     |> validate_number(:extractor_sleep_interval_seconds, greater_than_or_equal_to: 0)
     |> validate_inclusion(:yt_dlp_update_policy, UpdateManager.policies())
@@ -176,6 +178,7 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_number(:cookie_health_check_interval_hours, greater_than_or_equal_to: 1, less_than_or_equal_to: 168)
     |> validate_canary_url()
     |> validate_media_server_settings()
+    |> validate_codec_preferences(attrs)
   end
 
   @doc """
@@ -240,6 +243,65 @@ defmodule Pinchflat.Settings.Setting do
     case Pinchflat.MediaServers.validate_server_url(get_field(changeset, field)) do
       {:ok, url} -> put_change(changeset, field, url)
       {:error, _} -> add_error(changeset, field, "must be an HTTP or HTTPS URL without credentials, query or fragment")
+    end
+  end
+
+  # The DB columns are NOT NULL and a blank list is meaningful, so normalize a
+  # blank submission to "" instead of letting Ecto turn it into nil. Unchanged
+  # preferences are left alone so unrelated saves never rewrite them.
+  # Submitted tokens are canonicalized to match select options (e.g. "H264" -> "avc", "aac" -> "m4a").
+  defp normalize_codec_preferences(changeset, attrs) do
+    Enum.reduce([:video_codec_preference, :audio_codec_preference], changeset, fn field, acc ->
+      case submitted_value(acc, attrs, field) do
+        :unchanged ->
+          acc
+
+        value ->
+          kind = if field == :video_codec_preference, do: :video, else: :audio
+
+          canonical =
+            value
+            |> CodecPreferences.parse()
+            |> CodecPreferences.canonical_tokens(kind)
+            |> CodecPreferences.format()
+
+          put_change(acc, field, canonical)
+      end
+    end)
+  end
+
+  # Ecto's `cast` turns a blank text input into nil, which the NOT NULL columns
+  # reject. Read the raw submitted value so a cleared list is stored as "" -
+  # the meaning the rest of the app relies on.
+  defp submitted_value(changeset, attrs, field) do
+    case attr_value(attrs, field) do
+      nil ->
+        if is_nil(get_change(changeset, field)), do: :unchanged, else: ""
+
+      value ->
+        value |> to_string() |> String.trim()
+    end
+  end
+
+  defp attr_value(attrs, field) when is_list(attrs), do: attrs |> Map.new() |> attr_value(field)
+  defp attr_value(attrs, field) when is_map(attrs), do: Map.get(attrs, field) || Map.get(attrs, to_string(field))
+
+  defp validate_codec_preferences(changeset, attrs) do
+    changeset
+    |> validate_codec_preference(:video_codec_preference, :video, attrs)
+    |> validate_codec_preference(:audio_codec_preference, :audio, attrs)
+  end
+
+  defp validate_codec_preference(changeset, field, kind, attrs) do
+    case submitted_value(changeset, attrs, field) do
+      :unchanged ->
+        changeset
+
+      value ->
+        case CodecPreferences.validate(kind, value) do
+          :ok -> changeset
+          {:error, message} -> add_error(changeset, field, message)
+        end
     end
   end
 end
