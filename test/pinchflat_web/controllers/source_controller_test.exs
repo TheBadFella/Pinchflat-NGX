@@ -583,6 +583,27 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "source form layout" do
+    test "shows every setting without an editing mode, advanced ones in closed groups", %{conn: conn} do
+      source = source_fixture(title_filter_regex: "(?i)live")
+      response = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      refute response =~ "advancedMode"
+      refute response =~ "Editing Mode"
+      assert response =~ ~s(name="source[min_duration_seconds]")
+      assert response =~ ~r/<summary[^>]*>.*?Title filter.*?\(\?i\)live.*?<\/summary>/s
+      assert response =~ ~r/<summary[^>]*>.*?Custom yt-dlp options.*?No local options.*?<\/summary>/s
+      refute response =~ ~r/<details[^>]*\sopen/
+    end
+
+    test "opens the title filter group when its regex is invalid", %{conn: conn} do
+      source = source_fixture()
+      conn = put(conn, ~p"/sources/#{source}", source: %{title_filter_regex: "(unclosed"})
+      response = html_response(conn, 200)
+
+      assert [opened] = Regex.scan(~r/<details[^>]*\sopen[^>]*>.*?<\/summary>/s, response)
+      assert hd(opened) =~ "Title filter"
+    end
+
     test "renders section navigation, the settings search and collapsed groups", %{conn: conn} do
       response = conn |> get(~p"/sources/new") |> html_response(200)
 

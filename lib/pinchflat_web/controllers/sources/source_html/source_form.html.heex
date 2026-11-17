@@ -60,12 +60,12 @@
         label="Source settings sections"
         placeholder="cutoff, cookies, folder"
         sections={[
-          {"source-general", "General", false},
-          {"source-metadata", "Name and description", false},
-          {"source-indexing", "Indexing", false},
-          {"source-downloading", "Downloading", false},
-          {"source-cleanup", "Cutoff and retention", false},
-          {"source-advanced", "Advanced", true}
+          {"source-general", "General"},
+          {"source-metadata", "Name and description"},
+          {"source-indexing", "Indexing"},
+          {"source-downloading", "Downloading"},
+          {"source-cleanup", "Cutoff and retention"},
+          {"source-advanced", "Advanced"}
         ]}
       />
 
@@ -73,34 +73,7 @@
         <.settings_no_match />
 
         <section id="source-general" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <section class="flex flex-wrap justify-between items-center gap-4 mt-4">
-            <h3 class="text-2xl text-theme-on-surface">General Options</h3>
-
-            <div class="flex items-center gap-3">
-              <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
-              <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
-                <button
-                  type="button"
-                  class="theme-filter-button rounded-full"
-                  x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
-                  x-on:click="advancedMode = false"
-                  x-bind:aria-pressed="!advancedMode"
-                >
-                  Standard
-                </button>
-
-                <button
-                  type="button"
-                  class="theme-filter-button rounded-full"
-                  x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
-                  x-on:click="advancedMode = true"
-                  x-bind:aria-pressed="advancedMode"
-                >
-                  Advanced
-                </button>
-              </div>
-            </div>
-          </section>
+          <h3 class="mt-4 text-2xl text-theme-on-surface">General Options</h3>
 
           <section :if={@new_source}>
             <.input
@@ -615,7 +588,7 @@
             </div>
           </section>
 
-          <section x-show="advancedMode || settingQuery.trim()">
+          <section>
             <.input
               field={f[:min_duration_seconds]}
               type="number"
@@ -717,14 +690,15 @@
           id="source-advanced"
           data-setting-group
           class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
-          x-show="advancedMode || settingQuery.trim()"
         >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
 
           <p class="mt-2 text-sm text-theme-on-surface-muted">Tread carefully</p>
 
-          <div
-            data-setting
+          <.form_disclosure
+            title="Title filter"
+            open={Keyword.has_key?(@changeset.errors, :title_filter_regex)}
+            data-setting-group
             x-data={
               """
               {
@@ -761,83 +735,88 @@
               """
             }
           >
-            <.input
-              field={f[:title_filter_regex]}
-              type="text"
-              inputclass="font-mono"
-              label="Title Filter Regex"
-              placeholder="(?i)^How to Bike$"
-              help={title_filter_regex_help()}
-              html_help={true}
-              x-model.fill="regex"
-            />
-            <.form_disclosure title="Test this filter">
-              <p class="mt-3 text-sm text-theme-on-surface-muted">
-                Titles are checked by the database, the same way downloads are filtered. Nothing is saved or
-                downloaded by a test.
-                <span :if={@changeset.data.id}>
-                  The 50 most recently published indexed titles of this source are checked too.
-                </span>
-              </p>
+            <:status>
+              <span x-text="regex.trim() || 'None'">{f[:title_filter_regex].value || "None"}</span>
+            </:status>
+            <div data-setting>
               <.input
-                type="textarea"
-                name="title_filter_samples"
-                id="title-filter-samples"
-                value=""
-                label="Sample titles, one per line"
-                x-model="titles"
+                field={f[:title_filter_regex]}
+                type="text"
+                inputclass="font-mono"
+                label="Title Filter Regex"
+                placeholder="(?i)^How to Bike$"
+                help={title_filter_regex_help()}
+                html_help={true}
+                x-model.fill="regex"
               />
-              <div class="mt-3">
-                <.button
-                  type="button"
-                  variant="secondary"
-                  x-on:click="test()"
-                  x-bind:disabled="busy || regex.trim() === ''"
-                >
-                  Test filter
-                </.button>
-              </div>
-
-              <div aria-live="polite">
-                <p
-                  x-cloak
-                  x-show="error"
-                  x-text="error"
-                  class="theme-status-card theme-status-card-warning mt-3 text-sm"
-                >
+              <.form_disclosure title="Test this filter">
+                <p class="mt-3 text-sm text-theme-on-surface-muted">
+                  Titles are checked by the database, the same way downloads are filtered. Nothing is saved or
+                  downloaded by a test.
+                  <span :if={@changeset.data.id}>
+                    The 50 most recently published indexed titles of this source are checked too.
+                  </span>
                 </p>
+                <.input
+                  type="textarea"
+                  name="title_filter_samples"
+                  id="title-filter-samples"
+                  value=""
+                  label="Sample titles, one per line"
+                  x-model="titles"
+                />
+                <div class="mt-3">
+                  <.button
+                    type="button"
+                    variant="secondary"
+                    x-on:click="test()"
+                    x-bind:disabled="busy || regex.trim() === ''"
+                  >
+                    Test filter
+                  </.button>
+                </div>
 
-                <template x-for="group in [{ label: 'Sample titles', results: samples }, { label: 'Recent indexed titles', results: indexed }]">
-                  <div x-show="tested && !error && group.results.length > 0" class="mt-4">
-                    <p class="text-sm font-medium text-theme-on-surface">
-                      <span x-text="group.label"></span>:
-                      <span x-text="matched(group.results) + ' of ' + group.results.length + ' would download'"></span>
-                    </p>
-                    <ul class="mt-2 space-y-1 text-sm">
-                      <template x-for="result in group.results">
-                        <li class="flex items-start gap-2">
-                          <span
-                            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-                            x-bind:class="result.match ? 'theme-badge-success' : 'theme-badge-warning'"
-                            x-text="result.match ? 'Matches' : 'Filtered out'"
-                          ></span>
-                          <span class="min-w-0 [overflow-wrap:anywhere] text-theme-on-surface" x-text="result.title"></span>
-                        </li>
-                      </template>
-                    </ul>
-                  </div>
-                </template>
+                <div aria-live="polite">
+                  <p
+                    x-cloak
+                    x-show="error"
+                    x-text="error"
+                    class="theme-status-card theme-status-card-warning mt-3 text-sm"
+                  >
+                  </p>
 
-                <p
-                  x-cloak
-                  x-show="tested && !error && samples.length === 0 && indexed.length === 0"
-                  class="mt-3 text-sm text-theme-on-surface-muted"
-                >
-                  The regex is valid. Add sample titles above to see which ones it matches.
-                </p>
-              </div>
-            </.form_disclosure>
-          </div>
+                  <template x-for="group in [{ label: 'Sample titles', results: samples }, { label: 'Recent indexed titles', results: indexed }]">
+                    <div x-show="tested && !error && group.results.length > 0" class="mt-4">
+                      <p class="text-sm font-medium text-theme-on-surface">
+                        <span x-text="group.label"></span>:
+                        <span x-text="matched(group.results) + ' of ' + group.results.length + ' would download'"></span>
+                      </p>
+                      <ul class="mt-2 space-y-1 text-sm">
+                        <template x-for="result in group.results">
+                          <li class="flex items-start gap-2">
+                            <span
+                              class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                              x-bind:class="result.match ? 'theme-badge-success' : 'theme-badge-warning'"
+                              x-text="result.match ? 'Matches' : 'Filtered out'"
+                            ></span>
+                            <span class="min-w-0 [overflow-wrap:anywhere] text-theme-on-surface" x-text="result.title"></span>
+                          </li>
+                        </template>
+                      </ul>
+                    </div>
+                  </template>
+
+                  <p
+                    x-cloak
+                    x-show="tested && !error && samples.length === 0 && indexed.length === 0"
+                    class="mt-3 text-sm text-theme-on-surface-muted"
+                  >
+                    The regex is valid. Add sample titles above to see which ones it matches.
+                  </p>
+                </div>
+              </.form_disclosure>
+            </div>
+          </.form_disclosure>
           <section
             x-data={
           """
@@ -906,14 +885,10 @@
               </details>
             </.form_disclosure>
           </section>
-          <p class="mt-4 text-sm text-theme-on-surface-muted">
-            These options are saved to this source's managed config file and apply to its future downloads. Existing
-            manually maintained config files keep working.
-          </p>
-
           <.yt_dlp_options_editor
+            collapsed
             id_prefix="source"
-            scope_help="These options apply to every download for this source. The base config and the selected media profile's config still apply, and a media-item config can add its own options."
+            scope_help="Saved to this source's managed config file; existing manually maintained config files keep working. These options apply to every download for this source. The base config and the selected media profile's config still apply, and a media-item config can add its own options."
             contents={@yt_dlp_options}
             version={@yt_dlp_options_version}
             present={@yt_dlp_options_present}

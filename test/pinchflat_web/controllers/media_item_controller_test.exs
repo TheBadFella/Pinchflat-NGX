@@ -303,6 +303,16 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
       assert html_response(conn, 200) =~ "Editing"
     end
+
+    test "shows custom yt-dlp options as a closed group, not behind an editing mode", %{
+      conn: conn,
+      media_item: media_item
+    } do
+      html = conn |> get(~p"/sources/#{media_item.source_id}/media/#{media_item}/edit") |> html_response(200)
+
+      refute html =~ "advancedMode"
+      assert html =~ ~r/<summary[^>]*>.*?Custom yt-dlp options.*?No local options.*?<\/summary>/s
+    end
   end
 
   describe "update media" do

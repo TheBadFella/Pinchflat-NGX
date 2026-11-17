@@ -13,18 +13,18 @@
         label="Media profile settings sections"
         placeholder="subtitles, resolution, retention"
         sections={[
-          {"profile-preset", "Preset", false},
-          {"profile-general", "General", false},
-          {"profile-subtitles", "Subtitles", false},
-          {"profile-thumbnails", "Thumbnails", false},
-          {"profile-metadata", "Metadata", false},
-          {"profile-release-format", "Shorts and livestreams", false},
-          {"profile-quality", "Quality", false},
-          {"profile-retention", "Retention and redownload", false},
-          {"profile-media-center", "Media center", false},
-          {"profile-sponsorblock", "SponsorBlock", false},
-          {"profile-yt-dlp", "yt-dlp options", true},
-          {"profile-template-help", "Template help", false}
+          {"profile-preset", "Preset"},
+          {"profile-general", "General"},
+          {"profile-subtitles", "Subtitles"},
+          {"profile-thumbnails", "Thumbnails"},
+          {"profile-metadata", "Metadata"},
+          {"profile-release-format", "Shorts and livestreams"},
+          {"profile-quality", "Quality"},
+          {"profile-retention", "Retention and redownload"},
+          {"profile-media-center", "Media center"},
+          {"profile-sponsorblock", "SponsorBlock"},
+          {"profile-yt-dlp", "Advanced"},
+          {"profile-template-help", "Template help"}
         ]}
       />
 
@@ -63,34 +63,7 @@
           data-setting-group
           class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
         >
-          <section class="mt-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h3 class="text-2xl text-theme-on-surface">General Options</h3>
-
-            <div class="flex flex-wrap items-center gap-3">
-              <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
-              <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
-                <button
-                  type="button"
-                  class="theme-filter-button rounded-full"
-                  x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
-                  x-on:click="advancedMode = false"
-                  x-bind:aria-pressed="!advancedMode"
-                >
-                  Standard
-                </button>
-
-                <button
-                  type="button"
-                  class="theme-filter-button rounded-full"
-                  x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
-                  x-on:click="advancedMode = true"
-                  x-bind:aria-pressed="advancedMode"
-                >
-                  Advanced
-                </button>
-              </div>
-            </div>
-          </section>
+          <h3 class="mt-8 text-2xl text-theme-on-surface">General Options</h3>
 
           <section x-data="{
         presets: {
@@ -191,7 +164,7 @@
             />
           </section>
 
-          <section x-show="advancedMode || settingQuery.trim()">
+          <section>
             <.input
               field={f[:audio_track]}
               placeholder="de"
@@ -316,7 +289,7 @@
             />
           </section>
 
-          <section x-show="advancedMode || settingQuery.trim()">
+          <section>
             <.input
               field={f[:media_container]}
               type="text"
@@ -444,9 +417,11 @@
           id="profile-yt-dlp"
           data-setting-group
           class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
-          x-show="advancedMode || settingQuery.trim()"
         >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
+
           <.yt_dlp_options_editor
+            collapsed
             id_prefix="media-profile"
             scope_help="These options apply to every download that uses this media profile. The base config still applies first, and a source or media item config can add its own options."
             contents={@yt_dlp_options}

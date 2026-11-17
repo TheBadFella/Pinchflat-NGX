@@ -79,6 +79,17 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       end
     end
 
+    test "shows every setting without an editing mode", %{conn: conn} do
+      html = conn |> get(~p"/media_profiles/new") |> html_response(200)
+
+      refute html =~ "advancedMode"
+      refute html =~ "Editing Mode"
+      assert html =~ ~s(name="media_profile[audio_track]")
+      assert html =~ ~s(name="media_profile[media_container]")
+      assert html =~ ~r/<summary[^>]*>.*?Custom yt-dlp options.*?No local options.*?<\/summary>/s
+      refute html =~ ~r/<details[^>]*\sopen/
+    end
+
     test "renders correct layout when onboarding", %{conn: conn} do
       Settings.set(onboarding: true)
       conn = get(conn, ~p"/media_profiles/new")
