@@ -116,7 +116,8 @@ defmodule PinchflatWeb.AuthController do
     # assent reports tampered/missing state via CallbackCSRFError and provider
     # error params via CallbackError; stale or partial session params surface
     # as KeyError from Map.fetch!/1 inside assent. All end at the login page.
-    error in [Assent.CallbackCSRFError, Assent.CallbackError, KeyError] ->
+    # Assent 0.4 moved both callback errors under Assent.Strategy.
+    error in [Assent.Strategy.CallbackCSRFError, Assent.Strategy.CallbackError, KeyError] ->
       {:error, error}
   end
 
