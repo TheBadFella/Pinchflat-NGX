@@ -288,14 +288,14 @@ defmodule Pinchflat.SettingsTest do
                changeset.errors[:audio_codec_preference]
     end
 
-    test "rejects more than eight codecs", %{setting: setting} do
+    test "rejects more than nine codecs", %{setting: setting} do
       changeset =
         Settings.change_setting(setting, %{
-          video_codec_preference: "avc,vp9,av1,hevc,mpeg4,theora,wmv3,flv1,vp8"
+          video_codec_preference: "avc,vp9,av1,hevc,mpeg4,theora,wmv3,flv1,vp8,h263"
         })
 
       refute changeset.valid?
-      assert {"must contain at most 8 codecs", _} = changeset.errors[:video_codec_preference]
+      assert {"must contain at most 9 codecs", _} = changeset.errors[:video_codec_preference]
     end
 
     test "rejects a list longer than 256 bytes", %{setting: setting} do

@@ -15,7 +15,7 @@ defmodule Pinchflat.Settings.CodecPreferences do
   count as duplicates instead of silently collapsing into one rank.
   """
 
-  @max_items 8
+  @max_items 9
   @max_bytes 256
 
   # Mirrors the vcodec/acodec order tables in yt-dlp's FormatSorter. Kept as explicit

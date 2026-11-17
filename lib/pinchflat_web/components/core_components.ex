@@ -1141,11 +1141,11 @@ defmodule PinchflatWeb.CoreComponents do
   @doc """
   Renders an ordered codec preference list backed by a hidden form field.
 
-  Each row is a select of supported codecs plus Move up / Move down / Remove
-  buttons. The list order is serialized as a comma-separated string into the
-  hidden input named after the form field, so the server receives exactly what
-  the user sees. Reordering is button-based (no drag and drop), so it is fully
-  keyboard accessible.
+  Every supported codec is listed once with a checkbox, so a codec cannot be
+  added twice. Ticked codecs, in the order shown, are serialized as a
+  comma-separated string into the hidden input named after the form field.
+  Unticked codecs follow in yt-dlp's own order. Rows reorder by dragging or with
+  the Move up / Move down buttons, which keep the list keyboard accessible.
   """
   attr :field, Phoenix.HTML.FormField, required: true
   attr :legend, :string, required: true
@@ -1153,91 +1153,99 @@ defmodule PinchflatWeb.CoreComponents do
   attr :help, :string, default: nil
 
   def ordered_codec_list(assigns) do
+    tokens =
+      assigns.field.value
+      |> Pinchflat.Settings.CodecPreferences.parse()
+      |> Pinchflat.Settings.CodecPreferences.canonical_tokens(assigns.kind)
+
     assigns =
       assign(assigns,
-        options: codec_select_options(assigns.kind),
         errors: codec_field_errors(assigns.field),
-        tokens:
-          assigns.field.value
-          |> Pinchflat.Settings.CodecPreferences.parse()
-          |> Pinchflat.Settings.CodecPreferences.canonical_tokens(assigns.kind)
+        rows: codec_rows(assigns.kind, tokens)
       )
 
     ~H"""
-    <div id={"#{@field.id}-list"} class="mt-5" x-data={ordered_codec_list_state(@tokens, @options)}>
-      <.label :if={@tokens != []} for={"#{@field.id}-first"}>{@legend}</.label>
-      <p :if={@tokens == []} class="mt-5 mb-2 text-sm font-medium text-theme-on-surface">{@legend}</p>
-
+    <fieldset id={"#{@field.id}-list"} class="mt-5" x-data={ordered_codec_list_state(@rows, @kind)}>
+      <legend class="mb-2 text-sm font-medium text-theme-on-surface">{@legend}</legend>
       <input type="hidden" id={@field.id} name={@field.name} x-bind:value="serialized()" />
-      <template x-if="rows.length === 0">
-        <p class="max-w-prose rounded-m3-sm border border-theme-outline/60 bg-theme-surface-2 px-4 py-3 text-sm text-theme-on-surface-muted">
-          No codecs are preferred for this stream. yt-dlp's default sorting, or any
-          custom options you configure, decide which codec is used.
-        </p>
-      </template>
 
-      <ol class="flex flex-col gap-2" x-show="rows.length > 0">
-        <template x-for="(row, index) in rows" x-bind:key="row.id">
-          <li class="flex flex-col gap-2 rounded-m3-sm border border-theme-outline/30 bg-theme-surface-1 p-2.5 sm:flex-row sm:items-center sm:border-0 sm:bg-transparent sm:p-0">
-            <select
-              class="theme-input min-h-11 w-full sm:flex-1 font-mono text-sm"
-              x-bind:id={"index === 0 ? '#{@field.id}-first' : '#{@field.id}-' + row.id"}
-              x-bind:aria-label={"'Codec ' + (index + 1) + ' for ' + '#{@legend}'"}
-              x-model="row.codec"
-              x-on:change={"sync('#{@field.id}')"}
+      <ol class="flex flex-col gap-1.5">
+        <template x-for="(row, index) in rows" x-bind:key="row.codec">
+          <li
+            class="flex min-h-11 items-center gap-2 rounded-m3-sm border px-2 transition"
+            x-bind:class="[
+              row.on ? 'border-theme-outline bg-theme-surface-2' : 'border-theme-outline/40',
+              dragging === index && 'opacity-50',
+              dropTarget === index && dragging !== index && 'ring-2 ring-theme-primary'
+            ]"
+            x-on:dragover.prevent="dropTarget = index"
+            x-on:drop.prevent="drop(index)"
+          >
+            <span
+              draggable="true"
+              class="hidden cursor-grab items-center self-stretch px-1 text-theme-on-surface-muted sm:flex"
+              title="Drag to reorder"
+              x-on:dragstart="dragging = index; $event.dataTransfer.effectAllowed = 'move'"
+              x-on:dragend="dragging = null; dropTarget = null"
             >
-              <option value="">Select a codec</option>
-              <template x-for="option in options" x-bind:key="option.value">
-                <option x-bind:value="option.value" x-text="option.label"></option>
-              </template>
-            </select>
-
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="inline-flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-m3-sm border border-theme-outline px-2 text-sm text-theme-on-surface hover:bg-theme-surface-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-3"
-                x-bind:disabled="index === 0"
-                x-bind:aria-label="'Move ' + (row.codec || 'codec') + ' up'"
-                x-on:click={"move('#{@field.id}', 'up', index)"}
-              >
-                Move up
-              </button>
-
-              <button
-                type="button"
-                class="inline-flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-m3-sm border border-theme-outline px-2 text-sm text-theme-on-surface hover:bg-theme-surface-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-3"
-                x-bind:disabled="index === rows.length - 1"
-                x-bind:aria-label="'Move ' + (row.codec || 'codec') + ' down'"
-                x-on:click={"move('#{@field.id}', 'down', index)"}
-              >
-                Move down
-              </button>
-
-              <button
-                type="button"
-                class="inline-flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-m3-sm border border-theme-error/50 px-2 text-sm text-theme-error hover:bg-theme-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary sm:flex-none sm:px-3"
-                x-bind:aria-label="'Remove ' + (row.codec || 'codec')"
-                x-on:click={"removeRow('#{@field.id}', index)"}
-              >
-                Remove
-              </button>
-            </div>
+              <.icon name="hero-bars-3" class="h-5 w-5" />
+            </span>
+            <label class="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                class="h-4 w-4 shrink-0 accent-theme-primary"
+                x-bind:id={"'#{@field.id}-' + row.codec"}
+                x-model="row.on"
+              />
+              <span
+                class="w-5 shrink-0 text-right font-mono text-xs text-theme-on-surface-muted"
+                x-text="row.on ? rank(index) + '.' : ''"
+              ></span>
+              <span class="min-w-0" x-bind:class="row.on ? 'text-theme-on-surface' : 'text-theme-on-surface-muted'">
+                <span x-text="row.name"></span>
+                <span class="hidden text-xs text-theme-on-surface-muted sm:inline" x-text="row.aliases"></span>
+              </span>
+            </label>
+            <button
+              type="button"
+              class="theme-field-action"
+              x-bind:disabled="index === 0"
+              x-bind:aria-label="'Move ' + row.label + ' up'"
+              x-bind:data-move="row.codec + '-up'"
+              x-on:click="move(index, index - 1, 'up')"
+            >
+              <.icon name="hero-chevron-up" class="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              class="theme-field-action"
+              x-bind:disabled="index === rows.length - 1"
+              x-bind:aria-label="'Move ' + row.label + ' down'"
+              x-bind:data-move="row.codec + '-down'"
+              x-on:click="move(index, index + 1, 'down')"
+            >
+              <.icon name="hero-chevron-down" class="h-5 w-5" />
+            </button>
           </li>
         </template>
       </ol>
 
-      <button
-        type="button"
-        class="mt-3 inline-flex min-h-11 items-center justify-center rounded-m3-sm border border-theme-outline px-4 text-sm font-medium text-theme-on-surface hover:bg-theme-surface-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary disabled:cursor-not-allowed disabled:opacity-40"
-        x-bind:disabled="rows.length >= maxItems"
-        x-on:click={"addRow('#{@field.id}')"}
-      >
-        Add codec
-      </button>
+      <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p class="text-sm text-theme-on-surface-muted" x-show="!rows.some((row) => row.on)">
+          Nothing ticked: yt-dlp's default sorting, or your custom options, choose the codec.
+        </p>
+        <button
+          type="button"
+          class="theme-outline-button inline-flex min-h-11 items-center rounded-m3-sm px-4 text-sm font-medium"
+          x-on:click="reset()"
+        >
+          Reset to yt-dlp order
+        </button>
+      </div>
 
       <.help :if={@help}>{@help}</.help>
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+    </fieldset>
     """
   end
 
@@ -1247,6 +1255,18 @@ defmodule PinchflatWeb.CoreComponents do
     else
       []
     end
+  end
+
+  # Ticked codecs in their saved order, then the rest in yt-dlp's order.
+  defp codec_rows(kind, tokens) do
+    labels = Map.new(codec_select_options(kind), &{&1.value, &1.label})
+    native = kind |> Pinchflat.Settings.CodecPreferences.families() |> Enum.map(&to_string/1)
+    ticked = Enum.filter(tokens, &Map.has_key?(labels, &1))
+
+    Enum.map(ticked ++ Enum.reject(native, &(&1 in ticked)), fn codec ->
+      [name, aliases] = String.split(labels[codec], " (", parts: 2)
+      %{codec: codec, label: labels[codec], name: name, aliases: "(" <> aliases, on: codec in ticked}
+    end)
   end
 
   defp codec_select_options(:video) do
@@ -1274,50 +1294,41 @@ defmodule PinchflatWeb.CoreComponents do
     ]
   end
 
-  defp ordered_codec_list_state(tokens, options) do
-    rows =
-      tokens
-      |> Enum.with_index()
-      |> Enum.map(fn {token, index} -> %{id: index + 1, codec: token} end)
+  defp ordered_codec_list_state(rows, kind) do
+    native = kind |> Pinchflat.Settings.CodecPreferences.families() |> Enum.map(&to_string/1)
 
     state = """
     {
       rows: #{Jason.encode!(rows)},
-      nextId: #{length(rows) + 1},
-      maxItems: #{Pinchflat.Settings.CodecPreferences.max_items()},
-      options: #{Jason.encode!(options)},
+      dragging: null,
+      dropTarget: null,
       serialized() {
-        return this.rows.map((row) => row.codec).filter((codec) => codec !== '').join(',');
+        return this.rows.filter((row) => row.on).map((row) => row.codec).join(',');
       },
-      sync(id) {
-        const field = document.getElementById(id);
-        if (field) { field.value = this.serialized(); }
+      rank(index) {
+        return this.rows.slice(0, index + 1).filter((row) => row.on).length;
       },
-      refocus(index) {
-        this.$nextTick(() => {
-          const selects = this.$root.querySelectorAll('select');
-          if (selects[index]) { selects[index].focus(); }
+      move(from, to, direction) {
+        if (to < 0 || to >= this.rows.length) { return; }
+        const [row] = this.rows.splice(from, 1);
+        this.rows.splice(to, 0, row);
+        if (!direction) { return; }
+        // Moving the row re-inserts its buttons, which drops focus: put it back.
+        setTimeout(() => {
+          const button = this.$root.querySelector(`[data-move="${row.codec}-${direction}"]`);
+          const other = this.$root.querySelector(`[data-move="${row.codec}-${direction === 'up' ? 'down' : 'up'}"]`);
+          (button && !button.disabled ? button : other)?.focus();
         });
       },
-      addRow(id) {
-        this.rows.push({ id: this.nextId++, codec: '' });
-        this.refocus(this.rows.length - 1);
-        this.sync(id);
+      drop(index) {
+        if (this.dragging !== null && this.dragging !== index) { this.move(this.dragging, index); }
+        this.dragging = null;
+        this.dropTarget = null;
       },
-      move(id, direction, index) {
-        const target = direction === 'up' ? index - 1 : index + 1;
-        if (target < 0 || target >= this.rows.length) { return; }
-        const moved = this.rows[index];
-        this.rows.splice(index, 1);
-        this.rows.splice(target, 0, moved);
-        this.sync(id);
-        this.refocus(target);
-      },
-      removeRow(id, index) {
-        const target = index > 0 ? index - 1 : 0;
-        this.rows.splice(index, 1);
-        this.sync(id);
-        this.refocus(target);
+      reset() {
+        const order = #{Jason.encode!(native)};
+        this.rows.forEach((row) => { row.on = false; });
+        this.rows.sort((a, b) => order.indexOf(a.codec) - order.indexOf(b.codec));
       }
     }
     """
