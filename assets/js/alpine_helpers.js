@@ -54,6 +54,7 @@ window.settingsNav = () => {
     settingQuery: '',
     settingMatches: 0,
     activeSection: '',
+    activeSetting: '',
     sectionSettings: {},
     sectionLocked: false,
     // Highlight a section and hold it briefly: the scroll a jump causes would otherwise let the
@@ -110,6 +111,10 @@ window.settingsNav = () => {
 
       // The phone chip row scrolls sideways: keep the current section's chip in view.
       this.$watch('activeSection', (id) => {
+        const inSection = (this.sectionSettings[id] || []).some(
+          (item) => item.target === this.activeSetting
+        )
+        if (!inSection) this.activeSetting = ''
         const link = root.querySelector(`nav a[href="#${id}"]`)
         const nav = link?.closest('nav')
         if (nav) {
@@ -141,16 +146,10 @@ window.settingsNav = () => {
           ?.focus({ preventScroll: true })
         history.replaceState(null, '', '#' + target)
         this.showSection(setting.closest('section[data-setting-group][id]')?.id)
-        // outline where the jump landed, long enough to find it
-        const outline = [
-          'rounded-m3-sm',
-          'ring-2',
-          'ring-theme-primary/70',
-          'ring-offset-8',
-          'ring-offset-theme-surface-2'
-        ]
-        setting.classList.add(...outline)
-        setTimeout(() => setting.classList.remove(...outline), 2000)
+        this.activeSetting = target
+        // mark where the jump landed, long enough to find it
+        setting.classList.add('theme-setting-jump')
+        setTimeout(() => setting.classList.remove('theme-setting-jump'), 2000)
       }, 50)
     },
     filterSettings() {
