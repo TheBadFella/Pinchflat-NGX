@@ -111,6 +111,11 @@ defmodule PinchflatWeb.Sources.SourceController do
 
     options = source_options_new(profiles, default_profile_id)
 
+    prefill_attrs =
+      params
+      |> prefill_source_attrs()
+      |> Sources.enrich_new_source_attrs_from_url(cookie_behaviour: default_cookie_behaviour())
+
     render(
       conn,
       :new,
@@ -135,7 +140,7 @@ defmodule PinchflatWeb.Sources.SourceController do
                 original_url: nil,
                 marked_for_deletion_at: nil
             }
-            |> Sources.change_source(prefill_source_attrs(params))
+            |> Sources.change_source(prefill_attrs)
             |> maybe_default_cookie_behaviour()
         ],
         cookie_file_assigns() ++ Map.to_list(options)
@@ -983,6 +988,8 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> maybe_put_prefill("original_url", params["original_url"])
     |> maybe_put_prefill("custom_name", params["custom_name"])
     |> maybe_put_source_type_prefill(params["source_type"])
+    |> maybe_put_prefill_boolean("custom_name_locked", params["custom_name_locked"])
+    |> maybe_put_prefill_boolean("download_members_only_media", params["download_members_only_media"])
   end
 
   defp maybe_put_prefill(attrs, key, value) when is_binary(value) and value != "" do
@@ -990,6 +997,33 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp maybe_put_prefill(attrs, _key, _value), do: attrs
+
+  defp maybe_put_prefill_boolean(attrs, _key, nil), do: attrs
+  defp maybe_put_prefill_boolean(attrs, _key, ""), do: attrs
+
+  defp maybe_put_prefill_boolean(attrs, key, value) when is_binary(value) do
+    case parse_prefill_boolean(value) do
+      :skip -> attrs
+      bool -> Map.put(attrs, key, bool)
+    end
+  end
+
+  defp maybe_put_prefill_boolean(attrs, key, value) when is_boolean(value), do: Map.put(attrs, key, value)
+  defp maybe_put_prefill_boolean(attrs, _key, _value), do: attrs
+
+  defp parse_prefill_boolean(value) do
+    case String.downcase(String.trim(value)) do
+      "1" -> true
+      "true" -> true
+      "yes" -> true
+      "on" -> true
+      "0" -> false
+      "false" -> false
+      "no" -> false
+      "off" -> false
+      _ -> :skip
+    end
+  end
 
   defp maybe_put_source_type_prefill(attrs, source_type) when is_binary(source_type) do
     case Enum.find_value(Source.source_type_options(), fn {_label, option} ->

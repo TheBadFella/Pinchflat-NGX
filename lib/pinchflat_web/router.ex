@@ -155,6 +155,7 @@ defmodule PinchflatWeb.Router do
     pipe_through :api
 
     get "/healthcheck", HealthController, :check, log: false
+    get "/browser/userscripts/youtube-quick-add-source.user", BrowserUserscriptController, :youtube_quick_add
   end
 
   # Sharing has its own scoped token authorization; the specification is public.

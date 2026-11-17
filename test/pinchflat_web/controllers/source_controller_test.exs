@@ -312,6 +312,44 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "sourceType: &#39;channel&#39;"
     end
 
+    test "enriches the source form when only original_url is provided", %{conn: conn} do
+      original_url = "https://www.youtube.com/@enriched-channel"
+
+      expect(YtDlpRunnerMock, :run, fn ^original_url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Pinchflat.SourcesFixtures.source_details_return_fixture(%{
+           channel: "Enriched Channel",
+           playlist_channel: "Enriched Channel",
+           playlist_channel_id: "UCenriched",
+           playlist_id: "UCenriched",
+           playlist_title: "Enriched Channel"
+         })}
+      end)
+
+      response = conn |> get(~p"/sources/new", %{"original_url" => original_url}) |> html_response(200)
+
+      assert response =~ ~s(value="#{original_url}")
+      assert response =~ ~s(value="Enriched Channel")
+      assert response =~ "sourceType: &#39;channel&#39;"
+    end
+
+    test "prefills boolean query params on the new source form", %{conn: conn} do
+      response =
+        conn
+        |> get(~p"/sources/new", %{
+          "original_url" => "https://www.youtube.com/watch?v=72maj9FLQZI",
+          "custom_name" => "Locked name",
+          "source_type" => "video",
+          "custom_name_locked" => "true",
+          "download_members_only_media" => "false"
+        })
+        |> html_response(200)
+
+      assert response =~ ~s(value="Locked name")
+      assert response =~ ~s(name="source[custom_name_locked]" value="true")
+      assert response =~ ~s(name="source[download_members_only_media]" value="false")
+    end
+
     test "ignores an invalid source type prefill", %{conn: conn} do
       response =
         conn

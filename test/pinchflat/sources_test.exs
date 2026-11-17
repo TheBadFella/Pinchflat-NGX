@@ -226,6 +226,52 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "enrich_new_source_attrs_from_url/2" do
+    test "adds a suggested name and detected source type for a channel" do
+      url = "https://www.youtube.com/@enriched"
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Enriched Channel",
+           channel_id: "UCenriched",
+           playlist_id: "UCenriched",
+           playlist_title: "Enriched Channel"
+         })}
+      end)
+
+      assert %{"custom_name" => "Enriched Channel", "source_type" => :channel, "original_url" => ^url} =
+               Sources.enrich_new_source_attrs_from_url(%{"original_url" => url})
+    end
+
+    test "formats playlist names with channel and title" do
+      url = "https://www.youtube.com/playlist?list=PLxyz"
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Owner",
+           channel_id: "UCowner",
+           playlist_id: "PLxyz",
+           playlist_title: "My Playlist"
+         })}
+      end)
+
+      assert %{"custom_name" => "Owner | My Playlist", "source_type" => :playlist} =
+               Sources.enrich_new_source_attrs_from_url(%{"original_url" => url})
+    end
+
+    test "leaves attrs unchanged when custom_name and source type are explicit" do
+      attrs = %{
+        "original_url" => "https://www.youtube.com/playlist?list=PLxyz",
+        "custom_name" => "My Label",
+        "source_type" => :playlist
+      }
+
+      assert attrs == Sources.enrich_new_source_attrs_from_url(attrs)
+    end
+  end
+
   describe "create_source/2" do
     test "automatically sets the UUID" do
       expect(YtDlpRunnerMock, :run, &channel_mock/5)

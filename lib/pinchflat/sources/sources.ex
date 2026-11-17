@@ -727,6 +727,58 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Enriches attrs for the New Source form using metadata from `original_url`.
+
+  Fills a missing `custom_name` and sets `source_type` when it is still
+  `:automatic` and yt-dlp inspection succeeds. Does not add changeset errors; returns attrs
+  unchanged when the URL is absent, enrichment is not needed, or lookup fails.
+
+  ## Options
+
+    * `:cookie_behaviour` — used to decide whether authenticated cookies are
+      sent to yt-dlp (same as create/update URL inspection)
+
+  """
+  @spec enrich_new_source_attrs_from_url(map(), keyword()) :: map()
+  def enrich_new_source_attrs_from_url(attrs, opts \\ []) when is_map(attrs) do
+    original_url = prefill_string(attrs["original_url"])
+
+    if is_binary(original_url) and should_enrich_new_source_from_url?(attrs) do
+      cookie_behaviour = Keyword.get(opts, :cookie_behaviour, :disabled)
+      source_type = enrichment_lookup_source_type(attrs)
+      should_use_cookies = cookie_behaviour == :all_operations and cookie_file_configured?()
+      watch_later? = watch_later_source?(original_url, source_type)
+
+      if watch_later? and not should_use_cookies do
+        attrs
+      else
+        command_opts =
+          DownloadOptionBuilder.player_client_options(nil) ++ Pinchflat.YtDlp.PoTokenProvider.options()
+
+        addl_opts = [use_cookies: should_use_cookies, skip_sleep_interval: true, source_type: source_type]
+
+        case MediaCollection.get_source_details(original_url, command_opts, addl_opts) do
+          {:ok, source_details} ->
+            apply_new_source_url_enrichment(attrs, source_details)
+
+          _ ->
+            attrs
+        end
+      end
+    else
+      attrs
+    end
+  end
+
+  @doc false
+  def should_enrich_new_source_from_url?(attrs) when is_map(attrs) do
+    original_url = prefill_string(attrs["original_url"])
+
+    is_binary(original_url) and
+      (blank_prefill_string?(attrs["custom_name"]) or automatic_prefill_source_type?(attrs["source_type"]))
+  end
+
+  @doc """
   Updates a source. May attempt to pull additional source details from the
   original_url (if changed). May attempt to start indexing the source's
   media if the indexing frequency has been changed.
@@ -956,6 +1008,92 @@ defmodule Pinchflat.Sources do
     |> Enum.filter(&is_binary/1)
     |> Enum.each(&FilesystemUtils.delete_file_and_remove_empty_directories/1)
   end
+
+  defp apply_new_source_url_enrichment(attrs, source_details) do
+    detected_type = detected_source_type(source_details)
+
+    attrs
+    |> maybe_put_enriched_custom_name(source_details, detected_type)
+    |> maybe_put_enriched_source_type(detected_type)
+  end
+
+  defp maybe_put_enriched_custom_name(attrs, _source_details, detected_type) when detected_type == :unknown, do: attrs
+
+  defp maybe_put_enriched_custom_name(attrs, source_details, detected_type) do
+    if blank_prefill_string?(attrs["custom_name"]) do
+      case enrichment_suggested_custom_name(source_details, detected_type) do
+        name when is_binary(name) and name != "" -> Map.put(attrs, "custom_name", name)
+        _ -> attrs
+      end
+    else
+      attrs
+    end
+  end
+
+  defp maybe_put_enriched_source_type(attrs, detected_type)
+       when detected_type in [:channel, :playlist, :video] do
+    if automatic_prefill_source_type?(attrs["source_type"]) do
+      Map.put(attrs, "source_type", detected_type)
+    else
+      attrs
+    end
+  end
+
+  defp maybe_put_enriched_source_type(attrs, _detected_type), do: attrs
+
+  defp enrichment_suggested_custom_name(source_details, :video) do
+    Map.get(source_details, :video_title)
+  end
+
+  defp enrichment_suggested_custom_name(source_details, :channel) do
+    Map.get(source_details, :channel_name)
+  end
+
+  defp enrichment_suggested_custom_name(source_details, :playlist) do
+    channel = Map.get(source_details, :channel_name)
+    playlist = Map.get(source_details, :playlist_name)
+
+    cond do
+      is_binary(channel) and channel != "" and is_binary(playlist) and playlist != "" and channel != playlist ->
+        "#{channel} | #{playlist}"
+
+      is_binary(playlist) and playlist != "" ->
+        playlist
+
+      is_binary(channel) and channel != "" ->
+        channel
+
+      true ->
+        nil
+    end
+  end
+
+  defp enrichment_suggested_custom_name(_source_details, _), do: nil
+
+  defp enrichment_lookup_source_type(attrs) do
+    case attrs["source_type"] do
+      type when type in [:automatic, :channel, :playlist, :video] -> type
+      "automatic" -> :automatic
+      "channel" -> :channel
+      "playlist" -> :playlist
+      "video" -> :video
+      _ -> :automatic
+    end
+  end
+
+  defp prefill_string(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: nil, else: trimmed
+  end
+
+  defp prefill_string(_), do: nil
+
+  defp blank_prefill_string?(value), do: is_nil(prefill_string(value))
+
+  defp automatic_prefill_source_type?(nil), do: true
+  defp automatic_prefill_source_type?(:automatic), do: true
+  defp automatic_prefill_source_type?("automatic"), do: true
+  defp automatic_prefill_source_type?(_), do: false
 
   defp add_source_details_to_changeset(source, changeset) do
     original_url = changeset.changes.original_url
