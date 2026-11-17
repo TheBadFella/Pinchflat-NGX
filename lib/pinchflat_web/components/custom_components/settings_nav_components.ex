@@ -26,9 +26,19 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
   attr :placeholder, :string, default: nil
   attr :bleed, :string, default: "-mx-5 bg-theme-surface-2 px-5 sm:-mx-7.5 sm:px-7.5"
 
+  attr :desktop_nav_surface, :atom,
+    default: :transparent,
+    values: [:transparent, :surface_2],
+    doc:
+      "Forms wrapped in theme-surface-raised keep :transparent so the sticky nav matches the card. Use :surface_2 on pages where the rail sits on theme-bg."
+
   def settings_nav(assigns) do
     ~H"""
-    <div class="contents lg:sticky lg:top-24 lg:block lg:self-start">
+    <div class={[
+      "contents lg:sticky lg:top-24 lg:block lg:self-start",
+      @desktop_nav_surface == :surface_2 &&
+        "lg:rounded-m3-lg lg:border lg:border-theme-outline/70 lg:bg-theme-surface-2 lg:p-4 lg:shadow-m3-1"
+    ]}>
       <.input
         type="search"
         name="setting_search"
