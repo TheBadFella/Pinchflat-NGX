@@ -54,8 +54,6 @@ window.settingsNav = () => {
     settingQuery: '',
     settingMatches: 0,
     activeSection: '',
-    activeSetting: '',
-    sectionSettings: {},
     sectionLocked: false,
     // Highlight a section and hold it briefly: the scroll a jump causes would otherwise let the
     // observer pick the section it passes through.
@@ -70,27 +68,14 @@ window.settingsNav = () => {
       root
         .querySelectorAll('[data-settings] label[for]:not(.theme-switch-target)')
         .forEach((label) => {
-          if (!label.closest('[data-setting]')) label.parentElement.dataset.setting = ''
+          if (label.closest('[data-setting]')) return
+          // a field whose label sits deeper than its input (toggle row) marks its own wrapper
+          ;(label.closest('[data-setting-field]') || label.parentElement).dataset.setting = ''
         })
       this.$watch('settingQuery', () => this.filterSettings())
 
       const sections = [...root.querySelectorAll('section[data-setting-group][id]')]
       this.activeSection = sections[0]?.id || ''
-      sections.forEach((section) => {
-        this.sectionSettings[section.id] = [...section.querySelectorAll('[data-setting]')].flatMap(
-          (setting) => {
-            const label = setting.querySelector('label[for]')
-            // prefer the field itself; a group label (checkbox group) points at no element
-            const target =
-              (label && document.getElementById(label.htmlFor) && label.htmlFor) || setting.id
-            const title =
-              setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ')
-            const help = setting.querySelector('p')?.textContent.trim().replace(/\s+/g, ' ')
-            const hint = help && !help.startsWith(title) ? title + ': ' + help : help || title
-            return target && title ? [{ target, title, hint }] : []
-          }
-        )
-      })
 
       window.addEventListener('hashchange', () => this.goToSetting(location.hash.slice(1)))
       if (location.hash.length > 1) this.$nextTick(() => this.goToSetting(location.hash.slice(1)))
@@ -111,10 +96,6 @@ window.settingsNav = () => {
 
       // The phone chip row scrolls sideways: keep the current section's chip in view.
       this.$watch('activeSection', (id) => {
-        const inSection = (this.sectionSettings[id] || []).some(
-          (item) => item.target === this.activeSetting
-        )
-        if (!inSection) this.activeSetting = ''
         const link = root.querySelector(`nav a[href="#${id}"]`)
         const nav = link?.closest('nav')
         if (nav) {
@@ -146,7 +127,6 @@ window.settingsNav = () => {
           ?.focus({ preventScroll: true })
         history.replaceState(null, '', '#' + target)
         this.showSection(setting.closest('section[data-setting-group][id]')?.id)
-        this.activeSetting = target
         // mark where the jump landed, long enough to find it
         setting.classList.add('theme-setting-jump')
         setTimeout(() => setting.classList.remove('theme-setting-jump'), 2000)

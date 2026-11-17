@@ -88,6 +88,13 @@ export const datePicker = (initialValue, today) => ({
       })
     })
   },
+  // Clicking the text field shows the calendar but leaves focus there, so typing still works.
+  show() {
+    if (this.open) return
+    this.syncMonth()
+    this.open = true
+    this.$nextTick(() => requestAnimationFrame(() => this.position()))
+  },
   close() {
     this.open = false
     this.$refs.trigger.focus()

@@ -55,10 +55,12 @@
     }
     """
   }>
-    <div class="lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
+    <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
       <.settings_nav
         label="Source settings sections"
         placeholder="cutoff, cookies, folder"
+        desktop_nav_surface={:surface_2}
+        bleed="-mx-4 bg-theme-surface-2 px-4 md:-mx-6 md:px-6"
         sections={[
           {"source-general", "General"},
           {"source-metadata", "Name and description"},
@@ -69,11 +71,15 @@
         ]}
       />
 
-      <div data-settings class="min-w-0">
-        <.settings_no_match />
+      <div data-settings class="mt-6 flex min-w-0 flex-col gap-6 lg:mt-0">
+        <.settings_no_match class="theme-surface-raised px-5 py-8 text-center sm:px-7.5" />
 
-        <section id="source-general" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-4 text-2xl text-theme-on-surface">General Options</h3>
+        <section
+          id="source-general"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
           <section :if={@new_source}>
             <.input
@@ -229,9 +235,9 @@
         <section
           id="source-metadata"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
+          <h3 class="text-2xl text-theme-on-surface">Source Metadata</h3>
 
           <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
             Name and description are refreshed from source metadata unless you lock the individual field. Locked fields
@@ -266,9 +272,9 @@
         <section
           id="source-indexing"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Indexing Options</h3>
 
           <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
             <.input
@@ -330,9 +336,9 @@
         <section
           id="source-downloading"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">
+          <h3 class="text-2xl text-theme-on-surface">
             Downloading Options
           </h3>
 
@@ -588,29 +594,22 @@
             </div>
           </section>
 
-          <section>
-            <.input
-              field={f[:min_duration_seconds]}
-              type="number"
-              label="Minimum Duration (seconds)"
-              min="0"
-              help="Minimum duration of the media to be downloaded. Can be blank"
-            />
-            <.input
-              field={f[:max_duration_seconds]}
-              type="number"
-              label="Maximum Duration (seconds)"
-              min="0"
-              help="Maximum duration of the media to be downloaded. Can be blank"
-            />
+          <section data-setting data-setting-keywords="minimum maximum duration length seconds">
+            <div class="grid gap-x-4 sm:grid-cols-2">
+              <.input field={f[:min_duration_seconds]} type="number" label="Minimum Duration (seconds)" min="0" />
+              <.input field={f[:max_duration_seconds]} type="number" label="Maximum Duration (seconds)" min="0" />
+            </div>
+            <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">
+              Only download media within this length. Leave either field blank for no limit.
+            </p>
           </section>
         </section>
         <section
           id="source-cleanup"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Cutoff and Retention</h3>
+          <h3 class="text-2xl text-theme-on-surface">Cutoff and Retention</h3>
 
           <section data-setting class="mt-5">
             <div class="sm:max-w-md">
@@ -689,9 +688,9 @@
         <section
           id="source-advanced"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Advanced Options</h3>
 
           <p class="mt-2 text-sm text-theme-on-surface-muted">Tread carefully</p>
 
@@ -899,11 +898,11 @@
             error={@yt_dlp_error}
           />
         </section>
-      </div>
-    </div>
 
-    <div class="theme-form-save-bar">
-      <.button class="w-full sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+        <div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">
+          <.button class="w-full sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+        </div>
+      </div>
     </div>
   </section>
 </.simple_form>

@@ -49,6 +49,7 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
             value={@value}
             x-model="value"
             x-on:change="syncMonth()"
+            x-on:click="show()"
             required={@required}
             pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
             placeholder="YYYY-MM-DD"

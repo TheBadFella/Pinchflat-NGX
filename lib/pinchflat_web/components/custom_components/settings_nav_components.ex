@@ -14,8 +14,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
 
   @doc """
   The "Find a setting" field plus the section list: a sticky rail on `lg` and
-  up, a sticky chip row below. On wide screens the section being read lists its
-  settings as links that scroll to and focus the field.
+  up, a sticky chip row below.
 
   `sections` is a list of `{section_id, title}`. `bleed` holds
   the classes that let the chip row span its container's padding on small
@@ -58,37 +57,16 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
           @bleed
         ]}
       >
-        <div :for={{id, title} <- @sections} class="contents lg:block">
-          <a
-            href={"##{id}"}
-            x-on:click={"showSection('#{id}')"}
-            x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
-            x-bind:class={"activeSection === '#{id}' ? 'theme-nav-current' : 'text-theme-on-surface-muted'"}
-            class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
-          >
-            {title}
-          </a>
-          <%!-- Settings of the section being read. Wide screens only: the phone row has no room for them. --%>
-          <ul
-            x-cloak
-            x-show={"activeSection === '#{id}'"}
-            aria-label={"Settings in #{title}"}
-            class="hidden border-l border-theme-outline/60 py-1 lg:ml-5 lg:block"
-          >
-            <template x-for={"item in sectionSettings['#{id}'] || []"} x-bind:key="item.target">
-              <li>
-                <a
-                  x-bind:href="'#' + item.target"
-                  x-text="item.title"
-                  x-on:click.prevent="goToSetting(item.target)"
-                  x-bind:aria-current="activeSetting === item.target ? 'true' : false"
-                  x-bind:class="activeSetting === item.target && 'theme-nav-current'"
-                  class="block rounded-m3-sm px-3 py-1.5 text-xs leading-snug text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 lg:whitespace-normal lg:[overflow-wrap:anywhere]"
-                ></a>
-              </li>
-            </template>
-          </ul>
-        </div>
+        <a
+          :for={{id, title} <- @sections}
+          href={"##{id}"}
+          x-on:click={"showSection('#{id}')"}
+          x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
+          x-bind:class={"activeSection === '#{id}' ? 'theme-nav-current' : 'text-theme-on-surface-muted'"}
+          class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
+        >
+          {title}
+        </a>
       </nav>
     </div>
     """

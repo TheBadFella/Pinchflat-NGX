@@ -399,13 +399,17 @@ defmodule PinchflatWeb.CoreComponents do
       end)
 
     ~H"""
-    <div id={"#{@id}-wrapper"}>
-      <.label :if={@label} for={@id}>
-        {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
-      </.label>
+    <div id={"#{@id}-wrapper"} class={@label && "mt-5"} data-setting-field>
+      <%!-- With a label: one row, label and help on the left, switch on the right. --%>
+      <div class={if @label, do: "flex items-start justify-between gap-4", else: "flex flex-col"}>
+        <div :if={@label} class="min-w-0 flex-1">
+          <label for={@id} class="block cursor-pointer text-sm font-medium text-theme-on-surface">
+            {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+          </label>
+          <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+        </div>
 
-      <div class="flex flex-col">
-        <label for={@id} class="theme-switch-target cursor-pointer">
+        <label for={@id} class={["theme-switch-target cursor-pointer", @label && "-mt-3 shrink-0"]}>
           <input
             type="hidden"
             name={@name}
@@ -433,10 +437,10 @@ defmodule PinchflatWeb.CoreComponents do
           </div>
         </label>
 
-        <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-
-        <.error :for={msg <- @errors}>{msg}</.error>
+        <.help :if={!@label && @help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
       </div>
+
+      <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
   end
@@ -496,7 +500,7 @@ defmodule PinchflatWeb.CoreComponents do
 
     ~H"""
     <div>
-      <.label for={@id}>
+      <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
 
