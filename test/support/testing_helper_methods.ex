@@ -81,4 +81,21 @@ defmodule Pinchflat.TestingHelperMethods do
     File.mkdir_p!(Application.get_env(:pinchflat, :extras_directory))
     File.mkdir_p!(Application.get_env(:pinchflat, :tmpfile_directory))
   end
+
+  @doc false
+  def isolate_extras_directory(context \\ %{}) do
+    extras_directory =
+      Path.join(System.tmp_dir!(), "pinchflat-extras-#{System.unique_integer([:positive])}")
+
+    original_directory = Application.get_env(:pinchflat, :extras_directory)
+    Application.put_env(:pinchflat, :extras_directory, extras_directory)
+    File.mkdir_p!(extras_directory)
+
+    on_exit(fn ->
+      Application.put_env(:pinchflat, :extras_directory, original_directory)
+      File.rm_rf!(extras_directory)
+    end)
+
+    Map.put(context, :extras_directory, extras_directory)
+  end
 end
