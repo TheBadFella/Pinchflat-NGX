@@ -33,6 +33,16 @@ defmodule Pinchflat.Settings.ShareTokensLiveTest do
         live_isolated(conn, Pinchflat.Settings.ShareTokensLive, session: %{"base_url" => "https://owned.example/pf/"})
 
       assert has_element?(view, "#intake-bookmarklet-link[href*='https://owned.example/pf/browse?url=']")
+
+      assert has_element?(
+               view,
+               "#new-source-bookmarklet-link[href*='https://owned.example/pf/sources/new?original_url=']"
+             )
+
+      assert has_element?(
+               view,
+               "#youtube-quick-add-userscript-link[href='https://owned.example/pf/browser/userscripts/youtube-quick-add-source.user.js']"
+             )
     end
 
     test "renders empty token state and bookmarklet link", %{conn: conn} do

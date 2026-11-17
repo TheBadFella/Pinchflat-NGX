@@ -10,7 +10,8 @@ defmodule Pinchflat.Settings.ShareTokensLive do
     tokens = ShareTokens.list_tokens()
     profiles = Profiles.list_media_profiles()
     default_profile_id = default_profile_id(profiles)
-    base_url = resolve_base_url(session["base_url"])
+    base_url = PinchflatWeb.DeploymentUrl.base_url(session["base_url"])
+    userscript_url = base_url <> PinchflatWeb.BrowserUserscripts.youtube_quick_add_route()
 
     socket =
       socket
@@ -22,7 +23,9 @@ defmodule Pinchflat.Settings.ShareTokensLive do
       |> assign(:created_token_secret, nil)
       |> assign(:error_message, nil)
       |> assign(:base_url, base_url)
+      |> assign(:youtube_userscript_url, userscript_url)
       |> assign(:bookmarklet_code, bookmarklet_js(base_url))
+      |> assign(:new_source_bookmarklet_code, new_source_bookmarklet_js(base_url))
 
     {:ok, socket}
   end
@@ -290,6 +293,71 @@ defmodule Pinchflat.Settings.ShareTokensLive do
         <p class="text-xs text-theme-on-surface-muted">
           Security note: The bookmarklet contains no credentials and performs no network requests or downloads on its own. It directs your browser to the authenticated Browse page with the URL prefilled.
         </p>
+
+        <div class="flex flex-col gap-3 pt-2">
+          <p class="text-sm text-theme-on-surface-muted max-w-prose">
+            To add a channel, playlist, or any YouTube page as a full source, use the New Source bookmarklet.
+            Pinchflat-ngx prefills the URL and can resolve the name and source type from that link.
+          </p>
+          <div class="flex flex-wrap items-center gap-3">
+            <a
+              id="new-source-bookmarklet-link"
+              href={@new_source_bookmarklet_code}
+              class="theme-button theme-outline-button gap-2 cursor-grab"
+              onclick="return false;"
+            >
+              <.icon name="hero-plus-circle" class="h-4 w-4" />
+              <span>Pinchflat-ngx New Source</span>
+            </a>
+          </div>
+          <div class="theme-surface-accent rounded-m3-sm p-3 flex flex-col gap-2">
+            <div class="flex items-center justify-between text-xs text-theme-on-surface-muted">
+              <span>New Source bookmarklet JavaScript</span>
+              <button
+                type="button"
+                class="theme-button theme-button-secondary gap-1"
+                data-copy-value={@new_source_bookmarklet_code}
+                onclick="copyTextToClipboard(this.dataset.copyValue)"
+              >
+                <.icon name="hero-clipboard-document" class="h-3.5 w-3.5" /> Copy Code
+              </button>
+            </div>
+            <code class="text-xs font-mono text-theme-on-surface break-all select-all">
+              {@new_source_bookmarklet_code}
+            </code>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3 pt-4 border-t border-theme-outline/40">
+          <div class="flex items-center gap-2">
+            <.icon name="hero-cursor-arrow-rays" class="h-5 w-5 text-theme-primary" />
+            <h4 class="text-lg font-medium text-theme-on-surface">YouTube quick add userscript</h4>
+          </div>
+          <p class="text-sm text-theme-on-surface-muted max-w-prose">
+            Install from your instance URL in Tampermonkey or Violentmonkey. The script is generated with your
+            External base URL so you do not edit <code class="text-xs">PINCHFLAT_BASE</code> by hand. Updates can be
+            checked from the same URL.
+          </p>
+          <div class="flex flex-wrap items-center gap-3">
+            <a
+              id="youtube-quick-add-userscript-link"
+              href={@youtube_userscript_url}
+              class="theme-button theme-outline-button gap-2"
+            >
+              <.icon name="hero-arrow-down-tray" class="h-4 w-4" />
+              <span>Install YouTube quick add</span>
+            </a>
+            <button
+              type="button"
+              class="theme-button theme-button-secondary gap-1"
+              data-copy-value={@youtube_userscript_url}
+              onclick="copyTextToClipboard(this.dataset.copyValue)"
+            >
+              <.icon name="hero-clipboard-document" class="h-3.5 w-3.5" /> Copy install URL
+            </button>
+          </div>
+          <code class="text-xs font-mono text-theme-on-surface break-all select-all">{@youtube_userscript_url}</code>
+        </div>
       </div>
 
       <%!-- iOS Shortcut / API Client Guide --%>
@@ -410,6 +478,12 @@ defmodule Pinchflat.Settings.ShareTokensLive do
     "javascript:(function(){var u=encodeURIComponent(window.location.href);window.open(#{target}+u,'_blank','noopener');})();"
   end
 
+  def new_source_bookmarklet_js(base_url) do
+    target = Jason.encode!(base_url <> "/sources/new?original_url=")
+
+    "javascript:(function(){var u=encodeURIComponent(window.location.href);window.open(#{target}+u,'_blank','noopener');})();"
+  end
+
   defp default_profile_id([first | _]), do: first.id
   defp default_profile_id([]), do: nil
 
@@ -424,14 +498,4 @@ defmodule Pinchflat.Settings.ShareTokensLive do
   end
 
   defp parse_profile_id(val) when is_integer(val), do: val
-
-  defp resolve_base_url(request_base_url) do
-    setting = Pinchflat.Settings.record()
-
-    if setting.external_base_url && String.trim(setting.external_base_url) != "" do
-      String.trim_trailing(setting.external_base_url, "/")
-    else
-      String.trim_trailing(request_base_url || PinchflatWeb.Endpoint.url(), "/")
-    end
-  end
 end
