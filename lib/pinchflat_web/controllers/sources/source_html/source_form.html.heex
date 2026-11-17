@@ -3,81 +3,7 @@
   for={@changeset}
   action={@action}
   method={@method}
-  x-data="{
-    advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')),
-    settingQuery: '',
-    settingMatches: 0,
-    activeSection: 'source-general',
-    sectionSettings: {},
-    sectionLocked: false,
-    showSection(id) {
-      this.activeSection = id || this.activeSection;
-      this.sectionLocked = true;
-      clearTimeout(this.sectionLockTimer);
-      this.sectionLockTimer = setTimeout(() => { this.sectionLocked = false }, 400);
-    },
-    collectSectionSettings(form) {
-      form.querySelectorAll('section[data-setting-group][id]').forEach(section => {
-        this.sectionSettings[section.id] = [...section.querySelectorAll('[data-setting]')].flatMap(setting => {
-          const label = setting.querySelector('label[for]');
-          const target = label?.htmlFor || setting.id;
-          const title = setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ');
-          const help = setting.querySelector('p')?.textContent.trim().replace(/\s+/g, ' ');
-          const advanced = !!setting.closest('[x-show*=advancedMode]');
-          return target && title ? [{ target, title, hint: help && !help.startsWith(title) ? title + ': ' + help : help || title, advanced }] : [];
-        });
-      });
-    },
-    goToSetting(target) {
-      const field = document.getElementById(target);
-      const setting = field?.closest('[data-setting]');
-      if (!setting) return;
-      this.settingQuery = '';
-      if (setting.closest('[x-show*=advancedMode]')) this.advancedMode = true;
-      for (let group = setting.closest('details'); group; group = group.parentElement.closest('details')) group.open = true;
-      // wait briefly so a just-revealed Advanced section has a layout to scroll to
-      setTimeout(() => {
-        setting.scrollIntoView({ block: 'center' });
-        setting.querySelector('input:not([type=hidden]), textarea, button')?.focus({ preventScroll: true });
-        history.replaceState(null, '', '#' + target);
-        this.showSection(setting.closest('section[data-setting-group][id]')?.id);
-        // outline where the jump landed, long enough to find it
-        const outline = ['rounded-m3-sm', 'ring-2', 'ring-theme-primary/70', 'ring-offset-8', 'ring-offset-theme-surface-2'];
-        setting.classList.add(...outline);
-        setTimeout(() => setting.classList.remove(...outline), 2000);
-      }, 50);
-    },
-    filterSettings(form) {
-      const query = this.settingQuery.trim().toLowerCase();
-      const settings = [...form.querySelectorAll('[data-setting]')];
-      settings.forEach(setting => { setting.hidden = !!query && !setting.textContent.toLowerCase().includes(query) });
-      this.settingMatches = settings.filter(setting => !setting.hidden).length;
-      form.querySelectorAll('[data-setting-group]').forEach(group => {
-        group.hidden = !!query && !group.querySelector('[data-setting]:not([hidden])');
-        if (query && !group.hidden && group.tagName === 'DETAILS') group.open = true;
-      });
-    }
-  }"
-  x-on:hashchange.window="if (!location.hash.startsWith('#source-')) goToSetting(location.hash.slice(1))"
-  x-init="
-    $watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)));
-    $el.querySelectorAll('[data-settings] label[for]:not(.theme-switch-target)').forEach(label => {
-      if (!label.closest('[data-setting]')) label.parentElement.dataset.setting = '';
-    });
-    $watch('settingQuery', () => filterSettings($el));
-    collectSectionSettings($el);
-    if (location.hash.length > 1 && !location.hash.startsWith('#source-')) $nextTick(() => goToSetting(location.hash.slice(1)));
-    const sections = [...$el.querySelectorAll('section[data-setting-group][id]')];
-    const inView = new Set();
-    const sectionObserver = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => entry.isIntersecting ? inView.add(entry.target.id) : inView.delete(entry.target.id));
-        if (!sectionLocked) activeSection = sections.find(section => inView.has(section.id))?.id || activeSection;
-      },
-      { rootMargin: '-25% 0px -65% 0px' }
-    );
-    sections.forEach(section => sectionObserver.observe(section));
-  "
+  x-data="settingsNav()"
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
@@ -130,72 +56,21 @@
     """
   }>
     <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
-      <div class="contents lg:sticky lg:top-24 lg:block lg:self-start">
-        <.input
-          type="search"
-          name="setting_search"
-          id="setting-search"
-          value=""
-          label="Find a setting"
-          placeholder="cutoff, cookies, folder"
-          autocomplete="off"
-          x-model="settingQuery"
-          x-on:keydown.enter.prevent
-        />
-        <nav
-          aria-label="Source settings sections"
-          class="sticky top-20 z-10 -mx-5 mt-3 flex gap-1 overflow-x-auto border-b border-theme-outline/60 bg-theme-surface-2 px-5 py-2 sm:-mx-7.5 sm:px-7.5 lg:static lg:mx-0 lg:flex-col lg:overflow-visible lg:border-0 lg:p-0"
-        >
-          <div
-            :for={
-              {id, title, advanced_only} <- [
-                {"source-general", "General", false},
-                {"source-metadata", "Name and description", false},
-                {"source-indexing", "Indexing", false},
-                {"source-downloading", "Downloading", false},
-                {"source-cleanup", "Cutoff and retention", false},
-                {"source-advanced", "Advanced", true}
-              ]
-            }
-            class="contents lg:block"
-            x-show={advanced_only && "advancedMode"}
-          >
-            <a
-              href={"##{id}"}
-              x-on:click={"showSection('#{id}')"}
-              x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
-              x-bind:class={"activeSection === '#{id}' ? 'bg-theme-surface-3 text-theme-on-surface' : 'text-theme-on-surface-muted'"}
-              class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
-            >
-              {title}
-            </a>
-            <%!-- Settings of the section being read. Wide screens only: the phone row has no room for them. --%>
-            <ul
-              x-cloak
-              x-show={"activeSection === '#{id}'"}
-              aria-label={"Settings in #{title}"}
-              class="hidden border-l border-theme-outline/60 py-1 lg:ml-5 lg:block"
-            >
-              <template x-for={"item in sectionSettings['#{id}'] || []"} x-bind:key="item.target">
-                <li x-show="!item.advanced || advancedMode">
-                  <a
-                    x-bind:href="'#' + item.target"
-                    x-bind:title="item.hint"
-                    x-text="item.title"
-                    x-on:click.prevent="goToSetting(item.target)"
-                    class="block truncate rounded-m3-sm px-3 py-1.5 text-xs text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"
-                  ></a>
-                </li>
-              </template>
-            </ul>
-          </div>
-        </nav>
-      </div>
+      <.settings_nav
+        label="Source settings sections"
+        placeholder="cutoff, cookies, folder"
+        sections={[
+          {"source-general", "General", false},
+          {"source-metadata", "Name and description", false},
+          {"source-indexing", "Indexing", false},
+          {"source-downloading", "Downloading", false},
+          {"source-cleanup", "Cutoff and retention", false},
+          {"source-advanced", "Advanced", true}
+        ]}
+      />
 
       <div data-settings class="min-w-0">
-        <p x-cloak x-show="settingQuery.trim() && settingMatches === 0" class="mt-6 text-sm text-theme-on-surface-muted">
-          No settings match "<span x-text="settingQuery.trim()"></span>". Try a shorter word, or clear the search to see every setting.
-        </p>
+        <.settings_no_match />
 
         <section id="source-general" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
           <section class="flex flex-wrap justify-between items-center gap-4 mt-4">

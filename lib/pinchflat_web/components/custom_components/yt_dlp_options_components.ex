@@ -22,7 +22,13 @@ defmodule PinchflatWeb.CustomComponents.YtDlpOptionsComponents do
 
   def yt_dlp_options_editor(assigns) do
     ~H"""
-    <section id={"#{@id_prefix}-yt-dlp-options"} class="mt-8">
+    <section
+      id={"#{@id_prefix}-yt-dlp-options"}
+      class="mt-8"
+      data-setting
+      data-setting-label="Custom yt-dlp options"
+      data-setting-keywords="config flags arguments"
+    >
       <div class="flex flex-wrap items-center gap-3">
         <h4 class="text-base font-semibold text-theme-on-surface">Custom yt-dlp options</h4>
         <span :if={@present} class="theme-badge-success rounded-full px-3 py-1 text-xs font-medium">

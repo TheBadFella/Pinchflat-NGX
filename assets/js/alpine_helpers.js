@@ -41,59 +41,163 @@ window.setSidebarCollapsed = (collapsed) => {
   }
 }
 
-window.settingsPage = () => ({
-  query: '',
-  selectedGroup: '',
-  advancedMode: JSON.parse(localStorage.getItem('advancedMode') || 'false'),
-  groups: {
-    'media-servers': 'media servers plex jellyfin emby refresh scan library integrations',
-    access: 'api access sharing share tokens bookmarklet shortcuts credentials',
-    notifications:
-      'notifications notify apprise server webhook discord telegram email external base url public pinchflat',
-    extractor:
-      'extractor youtube api key sleep interval throughput download workers indexing metadata concurrency restrict filenames ascii ignore unavailable members-only private time format 12h 24h clock database compaction vacuum sqlite',
-    discovery:
-      'discovery channel suggestions scheduled scan mention mentions metadata featured subscribed',
-    database: 'database postgresql postgres migration migrate transfer sqlite setup connection',
-    ytdlp:
-      'yt-dlp ytdlp youtube-dl update nightly stable pinned version base config force-ipv4 retries fragment-retries socket-timeout ipv4 plugin plugins extension extensions',
-    codec: 'codec video audio avc m4a remux preference mp4',
-    cookies:
-      'cookies cookie netscape cookies.txt members-only age-restricted default cookie behavior',
-    storage: 'storage disk space protection low space free threshold resume paused'
-  },
-  init() {
-    this.applyHash()
-    window.addEventListener('hashchange', () => this.applyHash())
-    this.$watch('advancedMode', (value) => {
-      localStorage.setItem('advancedMode', JSON.stringify(value))
-    })
-  },
-  applyHash() {
-    const hash = (window.location.hash || '').replace('#', '')
+// Section rail, "Find a setting" filter and field deep links for the long settings forms
+// (source, media profile, Settings). Markup contract, all inside the x-data root:
+// sections are `section[data-setting-group][id]` under `[data-settings]`, one setting is
+// `[data-setting]` (the parent of a field label is tagged automatically) and a collapsed
+// group is `details[data-setting-group]`. Advanced-only parts use x-show with advancedMode.
+window.settingsNav = () => {
+  let root
+  let sectionLockTimer
 
-    if (hash === 'postgres-backups' || hash === 'backups') {
-      window.location.replace(window.location.pathname.replace(/\/settings\/?$/, '/backups'))
+  return {
+    advancedMode: !!JSON.parse(localStorage.getItem('advancedMode') || 'false'),
+    settingQuery: '',
+    settingMatches: 0,
+    activeSection: '',
+    sectionSettings: {},
+    sectionLocked: false,
+    // Highlight a section and hold it briefly: the scroll a jump causes would otherwise let the
+    // observer pick the section it passes through.
+    showSection(id) {
+      this.activeSection = id || this.activeSection
+      this.sectionLocked = true
+      clearTimeout(sectionLockTimer)
+      sectionLockTimer = setTimeout(() => (this.sectionLocked = false), 400)
+    },
+    init() {
+      root = this.$el
+      this.$watch('advancedMode', (value) => {
+        localStorage.setItem('advancedMode', JSON.stringify(value))
+      })
+      root
+        .querySelectorAll('[data-settings] label[for]:not(.theme-switch-target)')
+        .forEach((label) => {
+          if (!label.closest('[data-setting]')) label.parentElement.dataset.setting = ''
+        })
+      this.$watch('settingQuery', () => this.filterSettings())
+
+      const sections = [...root.querySelectorAll('section[data-setting-group][id]')]
+      this.activeSection = sections[0]?.id || ''
+      sections.forEach((section) => {
+        this.sectionSettings[section.id] = [...section.querySelectorAll('[data-setting]')].flatMap(
+          (setting) => {
+            const label = setting.querySelector('label[for]')
+            // prefer the field itself; a group label (checkbox group) points at no element
+            const target =
+              (label && document.getElementById(label.htmlFor) && label.htmlFor) || setting.id
+            const title =
+              setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ')
+            const help = setting.querySelector('p')?.textContent.trim().replace(/\s+/g, ' ')
+            const hint = help && !help.startsWith(title) ? title + ': ' + help : help || title
+            const advanced = !!setting.closest('[x-show*=advancedMode]')
+            return target && title ? [{ target, title, hint, advanced }] : []
+          }
+        )
+      })
+
+      window.addEventListener('hashchange', () => this.goToSetting(location.hash.slice(1)))
+      if (location.hash.length > 1) this.$nextTick(() => this.goToSetting(location.hash.slice(1)))
+
+      const inView = new Set()
+      const sectionObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) =>
+            entry.isIntersecting ? inView.add(entry.target.id) : inView.delete(entry.target.id)
+          )
+          if (this.sectionLocked) return
+          this.activeSection =
+            sections.find((section) => inView.has(section.id))?.id || this.activeSection
+        },
+        { rootMargin: '-25% 0px -65% 0px' }
+      )
+      sections.forEach((section) => sectionObserver.observe(section))
+
+      // The phone chip row scrolls sideways: keep the current section's chip in view.
+      this.$watch('activeSection', (id) => {
+        const link = root.querySelector(`nav a[href="#${id}"]`)
+        const nav = link?.closest('nav')
+        if (nav) {
+          nav.scrollLeft +=
+            link.getBoundingClientRect().left - nav.getBoundingClientRect().left - 16
+        }
+      })
+    },
+    goToSetting(target) {
+      const element = document.getElementById(target)
+      if (!element || !root.contains(element)) return
+      if (element.matches('section[data-setting-group]')) return this.showSection(target)
+      const setting = element.closest('[data-setting]')
+      if (!setting) return
+
+      this.settingQuery = ''
+      if (setting.closest('[x-show*=advancedMode]')) this.advancedMode = true
+      for (
+        let group = setting.closest('details');
+        group;
+        group = group.parentElement.closest('details')
+      ) {
+        group.open = true
+      }
+      // wait briefly so a just-revealed Advanced section has a layout to scroll to
+      setTimeout(() => {
+        setting.scrollIntoView({ block: 'center' })
+        setting
+          .querySelector('input:not([type=hidden]), textarea, select, button')
+          ?.focus({ preventScroll: true })
+        history.replaceState(null, '', '#' + target)
+        this.showSection(setting.closest('section[data-setting-group][id]')?.id)
+        // outline where the jump landed, long enough to find it
+        const outline = [
+          'rounded-m3-sm',
+          'ring-2',
+          'ring-theme-primary/70',
+          'ring-offset-8',
+          'ring-offset-theme-surface-2'
+        ]
+        setting.classList.add(...outline)
+        setTimeout(() => setting.classList.remove(...outline), 2000)
+      }, 50)
+    },
+    filterSettings() {
+      const words = this.settingQuery.trim().toLowerCase().split(/\s+/).filter(Boolean)
+      const settings = [...root.querySelectorAll('[data-setting]')]
+      settings.forEach((setting) => {
+        // the section heading counts too, so a section's name finds all of its settings
+        const heading = setting.closest('section[data-setting-group][id]')?.querySelector('h3')
+        const text = [setting.textContent, setting.dataset.settingKeywords, heading?.textContent]
+          .join(' ')
+          .toLowerCase()
+        setting.hidden = !words.every((word) => text.includes(word))
+      })
+      this.settingMatches = settings.filter((setting) => !setting.hidden).length
+      root.querySelectorAll('[data-setting-group]').forEach((group) => {
+        group.hidden = words.length > 0 && !group.querySelector('[data-setting]:not([hidden])')
+        if (words.length > 0 && !group.hidden && group.tagName === 'DETAILS') group.open = true
+      })
     }
-  },
-  selectGroup(id) {
-    this.selectedGroup = this.selectedGroup === id ? '' : id
-
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
-  },
-  match(text) {
-    const query = this.query.trim().toLowerCase()
-    if (!query) return true
-
-    const haystack = String(text || '').toLowerCase()
-    return query.split(/\s+/).every((word) => haystack.includes(word))
-  },
-  matchGroup(id) {
-    if (this.selectedGroup && this.selectedGroup !== id) return false
-
-    return this.match(this.groups[id])
   }
-})
+}
+
+window.settingsPage = () => {
+  const nav = window.settingsNav()
+
+  return {
+    ...nav,
+    init() {
+      this.applyHash()
+      window.addEventListener('hashchange', () => this.applyHash())
+      nav.init.call(this)
+    },
+    applyHash() {
+      const hash = (window.location.hash || '').replace('#', '')
+
+      if (hash === 'postgres-backups' || hash === 'backups') {
+        window.location.replace(window.location.pathname.replace(/\/settings\/?$/, '/backups'))
+      }
+    }
+  }
+}
 
 window.dispatchFor = (elementOrId, eventName, detail = {}) => {
   const element =

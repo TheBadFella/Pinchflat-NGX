@@ -104,6 +104,7 @@ defmodule PinchflatWeb do
       import PinchflatWeb.CustomComponents.ButtonComponents
       import PinchflatWeb.CustomComponents.MediaComponents
       import PinchflatWeb.CustomComponents.YtDlpOptionsComponents
+      import PinchflatWeb.CustomComponents.SettingsNavComponents
       import Pinchflat.Utils.StringUtils, only: [double_brace: 1]
 
       alias Pinchflat.Settings
