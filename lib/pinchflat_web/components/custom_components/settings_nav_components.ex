@@ -53,7 +53,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
             href={"##{id}"}
             x-on:click={"showSection('#{id}')"}
             x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
-            x-bind:class={"activeSection === '#{id}' ? 'theme-nav-current bg-theme-surface-3' : 'text-theme-on-surface-muted'"}
+            x-bind:class={"activeSection === '#{id}' ? 'theme-nav-current' : 'text-theme-on-surface-muted'"}
             class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
           >
             {title}

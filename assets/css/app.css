@@ -185,9 +185,9 @@
     animation: setting-jump-fade 2s ease-out forwards;
   }
 
-  /* The section-list entry for where you are: same accent line as the jump bar. */
+  /* The section-list entry for where you are: the main menu's selected tint. */
   .theme-nav-current {
-    @apply text-theme-on-surface! underline decoration-theme-primary decoration-[3px] underline-offset-[6px];
+    @apply bg-theme-primary-container/25! text-theme-on-primary-container!;
   }
 
   .theme-setting-jump label[for] {
