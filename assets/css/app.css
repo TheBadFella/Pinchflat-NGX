@@ -174,6 +174,26 @@
     @apply rounded-m3-md border border-theme-outline/80 bg-theme-surface-3 text-theme-on-surface shadow-m3-1;
   }
 
+  /* Marks the setting a jump link landed on: a bar in the gutter, so no neighbouring text is covered. */
+  .theme-setting-jump {
+    position: relative;
+  }
+
+  .theme-setting-jump::before {
+    content: '';
+    @apply absolute inset-y-0 -left-3 w-[3px] rounded-full bg-theme-primary;
+    animation: setting-jump-fade 2s ease-out forwards;
+  }
+
+  /* The section-list entry for where you are: same accent line as the jump bar. */
+  .theme-nav-current {
+    @apply text-theme-on-surface! underline decoration-theme-primary decoration-[3px] underline-offset-[6px];
+  }
+
+  .theme-setting-jump label[for] {
+    @apply text-theme-primary!;
+  }
+
   .theme-input {
     @apply min-h-11 rounded-m3-sm border-0 bg-theme-surface-2 text-sm leading-5 text-theme-on-surface placeholder:text-theme-on-surface-muted;
   }
@@ -431,6 +451,16 @@
   .no-scrollbar {
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
+  }
+}
+
+@keyframes setting-jump-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
   }
 }
 
