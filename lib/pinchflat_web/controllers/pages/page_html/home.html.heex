@@ -30,31 +30,41 @@
   </div>
 <% end %>
 
-<div class="theme-surface-raised grid grid-cols-2 md:grid-cols-4 md:divide-x md:divide-theme-outline/60">
-  <a href={~p"/media_profiles"} class="flex flex-col gap-1 px-5 py-4 transition hover:bg-theme-surface-2">
+<div class="theme-surface-raised theme-dashboard-stats grid grid-cols-2 md:grid-cols-4 md:divide-x md:divide-theme-outline/60">
+  <a
+    href={~p"/media_profiles"}
+    class="theme-surface-raised flex flex-col gap-1 px-4 py-4 transition max-md:hover:bg-theme-surface-3 md:px-5"
+  >
     <span class="text-sm font-medium text-theme-on-surface-muted">
       Media <.pluralize count={@media_profile_count} word="Profile" />
     </span>
-    <span class="text-title-md font-bold text-theme-on-surface"><.localized_number number={@media_profile_count} /></span>
+    <span class="text-xl font-bold text-theme-on-surface sm:text-title-md"><.localized_number number={
+      @media_profile_count
+    } /></span>
   </a>
 
-  <a href={~p"/sources"} class="flex flex-col gap-1 px-5 py-4 transition hover:bg-theme-surface-2">
+  <a
+    href={~p"/sources"}
+    class="theme-surface-raised flex flex-col gap-1 px-4 py-4 transition max-md:hover:bg-theme-surface-3 md:px-5"
+  >
     <span class="text-sm font-medium text-theme-on-surface-muted">
       <.pluralize count={@source_count} word="Source" />
     </span>
-    <span class="text-title-md font-bold text-theme-on-surface"><.localized_number number={@source_count} /></span>
+    <span class="text-xl font-bold text-theme-on-surface sm:text-title-md"><.localized_number number={@source_count} /></span>
   </a>
 
-  <span class="flex flex-col gap-1 px-5 py-4">
+  <span class="theme-surface-raised flex flex-col gap-1 px-4 py-4 md:px-5">
     <span class="text-sm font-medium text-theme-on-surface-muted">
       <.pluralize count={@media_item_count} word="Download" />
     </span>
-    <span class="text-title-md font-bold text-theme-on-surface"><.localized_number number={@media_item_count} /></span>
+    <span class="text-xl font-bold text-theme-on-surface sm:text-title-md"><.localized_number number={@media_item_count} /></span>
   </span>
 
-  <span class="flex flex-col gap-1 px-5 py-4">
+  <span class="theme-surface-raised flex flex-col gap-1 px-4 py-4 md:px-5">
     <span class="text-sm font-medium text-theme-on-surface-muted">Library Size</span>
-    <span class="text-title-md font-bold text-theme-on-surface"><.readable_filesize byte_size={@media_item_size} /></span>
+    <span class="text-xl font-bold text-theme-on-surface sm:text-title-md"><.readable_filesize byte_size={
+      @media_item_size
+    } /></span>
   </span>
 </div>
 

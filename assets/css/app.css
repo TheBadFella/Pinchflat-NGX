@@ -170,6 +170,18 @@
     @apply rounded-m3-lg border border-theme-outline/80 bg-theme-surface-2 text-theme-on-surface shadow-m3-2;
   }
 
+  .theme-dashboard-stats {
+    @variant max-md {
+      @apply gap-3 border-0 bg-transparent shadow-none;
+    }
+
+    @variant md {
+      & > .theme-surface-raised {
+        @apply rounded-none border-0 bg-transparent shadow-none;
+      }
+    }
+  }
+
   .theme-surface-accent {
     @apply rounded-m3-md border border-theme-outline/80 bg-theme-surface-3 text-theme-on-surface shadow-m3-1;
   }
