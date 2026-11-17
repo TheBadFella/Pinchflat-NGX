@@ -167,6 +167,9 @@ defmodule PinchflatWeb.DownloadFailureGuidanceTest do
           payload: %{media_item_id: item.id, source_id: source.id}
         })
 
+        # The source media table throttles bursts; its trailing refresh applies the later change
+        if view.module == PinchflatWeb.Sources.MediaItemTableLive, do: send(view.pid, :throttled_refresh)
+
         assert has_element?(view, ".download-failure", message)
       end
     end

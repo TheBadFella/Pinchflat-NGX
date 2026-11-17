@@ -23,7 +23,7 @@ defmodule PinchflatWeb.SourceFolderLoadingTest do
     for url <- [~p"/sources/new", ~p"/sources/#{source.id}/edit"] do
       response = conn |> recycle() |> get(url) |> html_response(200)
       assert response =~ "Pick existing source folder"
-      assert response =~ "Choose from folders already under your media root"
+      assert response =~ "Click the field to pick a folder that already exists"
       assert length(Regex.scan(~r/data-folder="Archive\/日本語\/Deep folder"/, response)) == 1
       refute response =~ "Not-a-saved-folder"
     end

@@ -1,6 +1,8 @@
 defmodule PinchflatWeb.Sources.SourceHTML do
   use PinchflatWeb, :html
 
+  import PinchflatWeb.CustomComponents.DatePicker, only: [date_picker: 1]
+
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Sources.Source
@@ -38,6 +40,38 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :yt_dlp_error, :string, default: nil
 
   def source_form(assigns)
+
+  @doc """
+  A collapsed group of source form settings or help text. The optional status
+  slot shows the current value so a closed group still says what is set.
+  """
+  attr :title, :string, required: true
+  attr :open, :boolean, default: false
+  attr :rest, :global
+
+  slot :status
+  slot :inner_block, required: true
+
+  def form_disclosure(assigns) do
+    ~H"""
+    <details class="group theme-surface-accent mt-4 px-5" open={@open} {@rest}>
+      <summary class="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-m3-sm py-3 text-sm font-medium text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 [&::-webkit-details-marker]:hidden">
+        <span class="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <span>{@title}</span>
+          <span :if={@status != []} class="truncate font-normal text-theme-on-surface-muted">
+            {render_slot(@status)}
+          </span>
+        </span>
+        <.icon
+          name="hero-chevron-down"
+          class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition group-open:rotate-180"
+        />
+      </summary>
+
+      <div class="border-t border-theme-outline/60 pb-5 pt-1">{render_slot(@inner_block)}</div>
+    </details>
+    """
+  end
 
   @doc """
   A source's collection type as an icon plus label, for places that list sources

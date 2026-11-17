@@ -582,6 +582,88 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "source form layout" do
+    test "renders section navigation, the settings search and collapsed groups", %{conn: conn} do
+      response = conn |> get(~p"/sources/new") |> html_response(200)
+
+      for id <- ~w(source-general source-metadata source-indexing source-downloading source-cleanup source-advanced) do
+        assert response =~ ~s(id="#{id}")
+        assert response =~ ~s(href="##{id}")
+      end
+
+      assert response =~ ~s(id="setting-search")
+      assert response =~ ~s(aria-label="Settings in General")
+      assert response =~ ~s(id="source-shared-cookies")
+      assert response =~ "YouTube player client"
+      assert response =~ "Retention and watch window"
+      assert response =~ "Output path template overrides"
+      refute response =~ ~r/<details[^>]*\sopen/
+    end
+
+    test "renders both cutoff dates as date pickers", %{conn: conn} do
+      source = source_fixture(download_cutoff_date: ~D[2026-10-17], index_cutoff_date: ~D[2026-10-10])
+      response = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert response =~ ~r/<input[^>]*id="source_download_cutoff_date"[^>]*value="2026-10-17"/
+      assert response =~ ~r/<input[^>]*id="source_index_cutoff_date"[^>]*value="2026-10-10"/
+      assert response =~ ~s(aria-controls="source_download_cutoff_date-calendar")
+      assert response =~ ~s(aria-controls="source_index_cutoff_date-calendar")
+    end
+
+    test "opens a collapsed group when one of its fields has an error", %{conn: conn} do
+      source = source_fixture()
+      conn = put(conn, ~p"/sources/#{source}", source: %{watch_window_days: 9999})
+      response = html_response(conn, 200)
+
+      assert [opened] = Regex.scan(~r/<details[^>]*\sopen[^>]*>.*?<\/summary>/s, response)
+      assert hd(opened) =~ "Retention and watch window"
+    end
+  end
+
+  describe "title filter test" do
+    test "reports which sample and indexed titles the regex matches", %{conn: conn} do
+      source = source_fixture()
+      media_item_fixture(source_id: source.id, title: "How to Bike")
+
+      conn =
+        post(conn, ~p"/sources/title_filter/test", %{
+          "regex" => "(?i)bike",
+          "titles" => "Bike repair\n\nCooking pasta",
+          "source_id" => to_string(source.id)
+        })
+
+      assert json_response(conn, 200) == %{
+               "samples" => [
+                 %{"title" => "Bike repair", "match" => true},
+                 %{"title" => "Cooking pasta", "match" => false}
+               ],
+               "indexed" => [%{"title" => "How to Bike", "match" => true}]
+             }
+    end
+
+    test "checks only sample titles for a source that is not saved yet", %{conn: conn} do
+      conn =
+        post(conn, ~p"/sources/title_filter/test", %{"regex" => "^Live", "titles" => "Live at five", "source_id" => ""})
+
+      assert json_response(conn, 200) == %{
+               "samples" => [%{"title" => "Live at five", "match" => true}],
+               "indexed" => []
+             }
+    end
+
+    test "asks for a regex when it is blank", %{conn: conn} do
+      conn = post(conn, ~p"/sources/title_filter/test", %{"regex" => "  ", "titles" => "Anything"})
+
+      assert json_response(conn, 422) == %{"error" => "Enter a regex to test."}
+    end
+
+    test "explains a regex the database cannot use", %{conn: conn} do
+      conn = post(conn, ~p"/sources/title_filter/test", %{"regex" => "(unclosed", "titles" => "Anything"})
+
+      assert %{"error" => "The database could not use this regex" <> _} = json_response(conn, 422)
+    end
+  end
+
   describe "cookie file actions" do
     test "save_cookies writes cookie contents and redirects back", %{conn: conn, extras_directory: extras_directory} do
       conn =

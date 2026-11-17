@@ -16,6 +16,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   alias PinchflatWeb.Sources.SourceHTML
 
   @default_view_mode :grid
+  @media_total_sort_keys [:pending_count, :downloaded_count, :media_size_bytes]
 
   def source_download_mode_label(%{selection_mode: :manual}), do: "Delayed Downloads"
   def source_download_mode_label(%{selection_mode: _selection_mode}), do: "Automatic Downloads"
@@ -156,7 +157,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   def mount(_params, session, socket) do
     if connected?(socket) do
       PinchflatWeb.Endpoint.subscribe("job:state")
-      PinchflatWeb.Endpoint.subscribe("job:progress")
     end
 
     limit = session["results_per_page"]
@@ -175,7 +175,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           media_profiles: Enum.reject(Profiles.list_media_profiles(), & &1.marked_for_deletion_at),
           timezone: Application.fetch_env!(:pinchflat, :timezone)
         },
-        get_pagination_attributes(sources_query(source_type), 1, limit)
+        get_pagination_attributes(base_sources_query(source_type), 1, limit)
       )
 
     socket
@@ -189,7 +189,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     socket
     |> assign(:selected_ids, MapSet.new())
-    |> assign(get_pagination_attributes(sources_query(assigns.source_type), new_page, assigns.limit))
+    |> assign(get_pagination_attributes(base_sources_query(assigns.source_type), new_page, assigns.limit))
     |> set_sources()
     |> then(&{:noreply, &1})
   end
@@ -236,10 +236,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     {:noreply, throttled_set_sources(socket)}
   end
 
-  def handle_info(%{topic: "job:progress", event: "update"}, socket) do
-    {:noreply, throttled_set_sources(socket)}
-  end
-
   def handle_info(:throttled_refresh, socket) do
     {:noreply, socket |> assign(:refresh_pending, false) |> set_sources()}
   end
@@ -272,19 +268,37 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp source_struct(source), do: struct(Source, source)
 
   defp set_sources(%{assigns: assigns} = socket) do
+    order = [{assigns.sort_direction, sort_attr(assigns.sort_key)}, asc: :id]
+
     sources =
-      sources_query(assigns.source_type)
-      |> order_by(^[{assigns.sort_direction, sort_attr(assigns.sort_key)}, asc: :id])
-      |> limit(^assigns.limit)
-      |> offset(^assigns.offset)
-      |> Repo.all()
+      if assigns.sort_key in @media_total_sort_keys do
+        # Ordering by a media total needs that total for every source before the page is cut.
+        sources_query(assigns.source_type, nil)
+        |> order_by(^order)
+        |> limit(^assigns.limit)
+        |> offset(^assigns.offset)
+        |> Repo.all()
+      else
+        page_ids =
+          base_sources_query(assigns.source_type)
+          |> order_by(^order)
+          |> limit(^assigns.limit)
+          |> offset(^assigns.offset)
+          |> select([s], s.id)
+          |> Repo.all()
+
+        sources_query(assigns.source_type, page_ids)
+        |> where([s], s.id in ^page_ids)
+        |> order_by(^order)
+        |> Repo.all()
+      end
 
     visible_ids = MapSet.new(sources, &to_string(&1.id))
 
     assign(socket, %{sources: sources, selected_ids: MapSet.intersection(assigns.selected_ids, visible_ids)})
   end
 
-  @refresh_throttle_ms 500
+  @refresh_throttle_ms 3_000
 
   defp throttled_set_sources(socket) do
     if Map.get(socket.assigns, :refresh_pending, false) do
@@ -298,7 +312,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
-  defp sources_query(source_type) do
+  defp base_sources_query(source_type) do
+    from s in Source,
+      as: :source,
+      inner_join: mp in assoc(s, :media_profile),
+      where: ^source_type_filter(source_type),
+      where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at)
+  end
+
+  # `source_ids` limits the media totals to the sources on the current page; nil totals every source.
+  defp sources_query(source_type, source_ids) do
+    for_sources = if source_ids, do: dynamic([m], m.source_id in ^source_ids), else: true
+
     downloaded_subquery =
       from(
         m in MediaItem,
@@ -308,6 +333,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           media_size_bytes: type(sum(m.media_size_bytes), :integer)
         },
         where: ^MediaQuery.downloaded(),
+        where: ^for_sources,
         group_by: m.source_id
       )
 
@@ -318,6 +344,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
         inner_join: mp in assoc(s, :media_profile),
         select: %{pending_count: count(m.id), source_id: m.source_id},
         where: ^MediaQuery.pending(),
+        where: ^for_sources,
         group_by: m.source_id
       )
 
@@ -325,12 +352,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       from(
         m in MediaItem,
         select: %{media_count: count(m.id), source_id: m.source_id},
+        where: ^for_sources,
         group_by: m.source_id
       )
 
-    from s in Source,
-      as: :source,
-      inner_join: mp in assoc(s, :media_profile),
+    from [s, mp] in base_sources_query(source_type),
       left_join: d in subquery(downloaded_subquery),
       on: d.source_id == s.id,
       left_join: p in subquery(pending_subquery),
@@ -338,8 +364,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       left_join: i in subquery(indexed_subquery),
       on: i.source_id == s.id,
       left_join: md in assoc(s, :metadata),
-      where: ^source_type_filter(source_type),
-      where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at),
       preload: [media_profile: mp, metadata: md],
       select: map(s, ^Source.__schema__(:fields)),
       select_merge: %{

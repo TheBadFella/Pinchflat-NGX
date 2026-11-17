@@ -11,6 +11,7 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
   attr :timezone, :string, required: true
   attr :required, :boolean, default: true
   attr :presets, :list, default: []
+  attr :rest, :global, doc: "extra attributes for the picker root, such as x-modelable to share its value"
 
   @doc """
   Renders a date field and calendar. Submits a YYYY-MM-DD string.
@@ -31,6 +32,7 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
       x-on:focusout="if (!$el.contains($event.relatedTarget)) open = false"
       x-on:resize.window="if (open) position()"
       x-on:scroll.window.capture="if (open) position()"
+      {@rest}
     >
       <label for={@id} class="mb-1 block text-sm font-medium text-theme-on-surface-muted">{@label}</label>
       <div class="theme-field-shell theme-input flex min-h-11 items-center gap-2 rounded-m3-sm px-3">

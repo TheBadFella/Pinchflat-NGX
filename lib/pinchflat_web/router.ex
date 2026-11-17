@@ -80,6 +80,7 @@ defmodule PinchflatWeb.Router do
 
     post "/sources/cookies/upload", Sources.SourceController, :upload_cookies
     post "/sources/cookies/save", Sources.SourceController, :save_cookies
+    post "/sources/title_filter/test", Sources.SourceController, :test_title_filter
     get "/sources/import", Sources.SourceController, :import_new
     post "/sources/import", Sources.SourceController, :import_create
     get "/sources/:id/import_downloads", Sources.LocalImportController, :new

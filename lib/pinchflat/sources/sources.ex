@@ -214,6 +214,41 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Checks titles against a title filter regex with the database matcher that
+  decides which media is downloaded, so the answer matches real behaviour on
+  both SQLite and PostgreSQL.
+
+  Returns {:ok, [%{title: binary(), match: boolean()}]} | {:error, binary()}
+  """
+  def test_title_filter(regex, titles) when is_binary(regex) and is_list(titles) do
+    sql = if Pinchflat.Database.postgres?(), do: "SELECT $1::text ~ $2::text", else: "SELECT regexp_like(?1, ?2)"
+
+    # shortcut: one query per title, fine for the capped lists the form sends; batch if the caps grow
+    {:ok,
+     Enum.map(titles, fn title ->
+       %{rows: [[match]]} = Repo.query!(sql, [title, regex])
+       %{title: title, match: match in [true, 1]}
+     end)}
+  rescue
+    error in [Exqlite.Error, Postgrex.Error] -> {:error, Exception.message(error)}
+  end
+
+  @doc """
+  Returns the titles of a source's most recently published indexed media.
+
+  Returns [binary()]
+  """
+  def recent_media_titles(source_id, limit) do
+    from(mi in MediaItem,
+      where: mi.source_id == ^source_id and not is_nil(mi.title),
+      order_by: [desc: mi.uploaded_at, desc: mi.id],
+      limit: ^limit,
+      select: mi.title
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Writes contents to the shared cookie file, creating parent directories as needed.
 
   Returns :ok | {:error, any()}

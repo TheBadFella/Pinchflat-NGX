@@ -112,6 +112,7 @@ defmodule PinchflatWeb.ApiSpec do
               :import_create,
               :upload_cookies,
               :save_cookies,
+              :test_title_filter,
               :restore_automatic_downloads,
               :start_all,
               :pause_all,

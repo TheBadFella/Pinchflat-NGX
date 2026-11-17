@@ -16,6 +16,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   alias PinchflatWeb.Helpers.MediaCleanupHelpers
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
+  @refresh_throttle_ms 1_000
   @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
   @watch_filters %{
     "all" => :all,
@@ -483,9 +484,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   end
 
   def mount(_params, session, socket) do
-    PinchflatWeb.Endpoint.subscribe("media_table")
-    PinchflatWeb.Endpoint.subscribe("job:state")
-    PinchflatWeb.Endpoint.subscribe("job:progress")
+    if connected?(socket) do
+      PinchflatWeb.Endpoint.subscribe(reload_topic(session["source_id"]))
+      PinchflatWeb.Endpoint.subscribe("job:state")
+      PinchflatWeb.Endpoint.subscribe("job:progress")
+    end
 
     page = 1
     media_state = session["media_state"]
@@ -611,7 +614,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("force_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
     result = MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(result))}
   end
@@ -619,21 +622,21 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("retry_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
     result = MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(result))}
   end
 
   def handle_event("retry_all_failed", _params, socket) do
     results = DownloadingHelpers.retry_failed_download_tasks(socket.assigns.source)
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
   end
 
   def handle_event("force_retry_permanent", _params, socket) do
     results = DownloadingHelpers.force_retry_permanent_download_tasks(socket.assigns.source)
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
   end
@@ -643,62 +646,41 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
     if task do
       {:ok, _task} = Tasks.delete_task(task)
-      PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+      broadcast_reload(socket)
     end
 
     {:noreply, socket}
   end
 
   # This, along with the handle_info below, is a pattern to reload _all_
-  # tables on page rather than just the one that triggered the reload.
+  # tables for this source rather than just the one that triggered the reload.
   def handle_event("reload_page", _params, socket) do
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, socket}
   end
 
-  def handle_info(%{topic: "media_table", event: "reload"}, %{assigns: assigns} = socket) do
-    new_assigns =
-      fetch_pagination_attributes(
-        assigns.base_query,
-        assigns.page,
-        assigns.search_term,
-        assigns.media_state,
-        assigns.source
-      )
-
-    {:noreply, assign(socket, new_assigns)}
+  def handle_info(%{topic: "media_table:" <> _source_id, event: "reload"}, socket) do
+    {:noreply, refresh_records(socket)}
   end
 
   def handle_info(%{topic: "job:state", event: "change", payload: payload}, %{assigns: assigns} = socket)
       when is_map(payload) do
-    if refresh_required?(assigns, payload) do
-      new_assigns =
-        fetch_pagination_attributes(
-          assigns.base_query,
-          assigns.page,
-          assigns.search_term,
-          assigns.media_state,
-          assigns.source
-        )
+    if refresh_required?(assigns, payload), do: {:noreply, throttled_refresh(socket)}, else: {:noreply, socket}
+  end
 
-      {:noreply, assign(socket, new_assigns)}
+  def handle_info(%{topic: "job:state", event: "change"}, socket) do
+    {:noreply, throttled_refresh(socket)}
+  end
+
+  def handle_info(:throttled_refresh, socket) do
+    socket = assign(socket, :refresh_pending, false)
+
+    if socket.assigns[:refresh_stale] do
+      {:noreply, socket |> assign(:refresh_stale, false) |> refresh_records()}
     else
       {:noreply, socket}
     end
-  end
-
-  def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
-    new_assigns =
-      fetch_pagination_attributes(
-        assigns.base_query,
-        assigns.page,
-        assigns.search_term,
-        assigns.media_state,
-        assigns.source
-      )
-
-    {:noreply, assign(socket, new_assigns)}
   end
 
   def handle_info(%{topic: "job:progress", event: "update", payload: payload}, socket) when is_map(payload) do
@@ -710,6 +692,38 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_info(%{topic: "job:progress", event: "update"}, socket) do
     {:noreply, socket}
+  end
+
+  defp reload_topic(source_id), do: "media_table:#{source_id}"
+
+  defp broadcast_reload(socket) do
+    PinchflatWeb.Endpoint.broadcast(reload_topic(socket.assigns.source.id), "reload", nil)
+  end
+
+  defp refresh_records(%{assigns: assigns} = socket) do
+    assign(
+      socket,
+      fetch_pagination_attributes(
+        assigns.base_query,
+        assigns.page,
+        assigns.search_term,
+        assigns.media_state,
+        assigns.source
+      )
+    )
+  end
+
+  # Refreshes at once, then at most once more when the window ends, so a burst of job events costs two refetches.
+  defp throttled_refresh(socket) do
+    if socket.assigns[:refresh_pending] do
+      assign(socket, :refresh_stale, true)
+    else
+      Process.send_after(self(), :throttled_refresh, @refresh_throttle_ms)
+
+      socket
+      |> assign(refresh_pending: true, refresh_stale: false)
+      |> refresh_records()
+    end
   end
 
   defp fetch_pagination_attributes(base_query, page, "", media_state, source),
