@@ -58,7 +58,11 @@
           </section>
         </section>
 
-        <section id="profile-general" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="profile-general"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <section class="mt-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
@@ -140,8 +144,12 @@
           </details>
         </section>
 
-        <section id="profile-subtitles" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Subtitle Options</h3>
+        <section
+          id="profile-subtitles"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Subtitle Options</h3>
 
           <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
             <.input
@@ -194,8 +202,12 @@
           </section>
         </section>
 
-        <section id="profile-thumbnails" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Thumbnail Options</h3>
+        <section
+          id="profile-thumbnails"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Thumbnail Options</h3>
 
           <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
             <.input
@@ -218,8 +230,12 @@
           </section>
         </section>
 
-        <section id="profile-metadata" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Metadata Options</h3>
+        <section
+          id="profile-metadata"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Metadata Options</h3>
 
           <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: true } }">
             <.input
@@ -242,8 +258,12 @@
           </section>
         </section>
 
-        <section id="profile-release-format" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Release Format Options</h3>
+        <section
+          id="profile-release-format"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Release Format Options</h3>
 
           <section x-data="{ presets: { default: 'include', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
             <.input
@@ -268,8 +288,12 @@
           </section>
         </section>
 
-        <section id="profile-quality" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Quality Options</h3>
+        <section
+          id="profile-quality"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Quality Options</h3>
 
           <section x-data="{ presets: { default: '1080p', media_center: '1080p', audio: 'audio', archiving: '2160p' } }">
             <.input
@@ -303,8 +327,12 @@
           </section>
         </section>
 
-        <section id="profile-retention" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Retention and Redownload</h3>
+        <section
+          id="profile-retention"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Retention and Redownload</h3>
 
           <.input
             field={f[:retention_period_days]}
@@ -336,8 +364,12 @@
           </section>
         </section>
 
-        <section id="profile-media-center" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">Media Center Options</h3>
+        <section
+          id="profile-media-center"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Media Center Options</h3>
 
           <p class="mt-2 text-sm text-theme-on-surface-muted">
             Everything in this section is experimental - please open a GitHub issue if you see something odd.
@@ -372,8 +404,12 @@
           </section>
         </section>
 
-        <section id="profile-sponsorblock" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="mt-10 text-2xl text-theme-on-surface">SponsorBlock Options</h3>
+        <section
+          id="profile-sponsorblock"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">SponsorBlock Options</h3>
 
           <p class="mb-4 text-sm text-theme-on-surface-muted">
             Not sure what a category covers? See the
@@ -407,7 +443,7 @@
         <section
           id="profile-yt-dlp"
           data-setting-group
-          class="scroll-mt-36 lg:scroll-mt-24"
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
           x-show="advancedMode || settingQuery.trim()"
         >
           <.yt_dlp_options_editor
@@ -424,8 +460,12 @@
           />
         </section>
 
-        <section id="profile-template-help" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <div class="theme-surface-accent mt-10 p-4 md:p-6"><.output_template_help /></div>
+        <section
+          id="profile-template-help"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
+          <div class="theme-surface-accent mt-8 p-4 md:p-6"><.output_template_help /></div>
         </section>
       </div>
     </div>

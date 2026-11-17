@@ -64,6 +64,10 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       assert html =~ ~s(id="setting-search")
       assert html =~ ~s(aria-label="Settings in Retention and redownload")
       assert html =~ ~r/class="sticky bottom-0[^"]*">\s*<button[^>]*>\s*Save Media profile/
+
+      separated = Regex.scan(~r/<section\s+id="(profile-[a-z-]+)"[^>]*border-t/, html, capture: :all_but_first)
+      assert length(separated) == 11
+      refute ["profile-preset"] in separated
     end
 
     test "gives settings without a single field a jump target", %{conn: conn} do

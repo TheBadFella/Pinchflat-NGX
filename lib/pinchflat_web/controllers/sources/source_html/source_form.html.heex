@@ -253,7 +253,11 @@
             </.form_disclosure>
           </div>
         </section>
-        <section id="source-metadata" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-metadata"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
 
           <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
@@ -286,7 +290,11 @@
             help="Keep the current description when automated metadata refreshes run."
           />
         </section>
-        <section id="source-indexing" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-indexing"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
 
           <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
@@ -346,7 +354,11 @@
             Date.
           </p>
         </section>
-        <section id="source-downloading" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-downloading"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">
             Downloading Options
           </h3>
@@ -620,7 +632,11 @@
             />
           </section>
         </section>
-        <section id="source-cleanup" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-cleanup"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Cutoff and Retention</h3>
 
           <section data-setting class="mt-5">
@@ -700,7 +716,7 @@
         <section
           id="source-advanced"
           data-setting-group
-          class="scroll-mt-36 lg:scroll-mt-24"
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
           x-show="advancedMode || settingQuery.trim()"
         >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>

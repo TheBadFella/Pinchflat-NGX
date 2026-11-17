@@ -55,6 +55,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
         >
           <a
             href={"##{id}"}
+            x-on:click={"showSection('#{id}')"}
             x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
             x-bind:class={"activeSection === '#{id}' ? 'bg-theme-surface-3 text-theme-on-surface' : 'text-theme-on-surface-muted'"}
             class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
@@ -72,7 +73,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
               <li x-show="!item.advanced || advancedMode">
                 <a
                   x-bind:href="'#' + item.target"
-                  x-bind:title="item.title"
+                  x-bind:title="item.hint"
                   x-text="item.title"
                   x-on:click.prevent="goToSetting(item.target)"
                   class="block truncate rounded-m3-sm px-3 py-1.5 text-xs text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"

@@ -48,14 +48,7 @@ window.setSidebarCollapsed = (collapsed) => {
 // group is `details[data-setting-group]`. Advanced-only parts use x-show with advancedMode.
 window.settingsNav = () => {
   let root
-  // After a jump the scroll observer would hand the highlight to whichever section crosses its
-  // band (a short or last section never does), so it is held until the reader scrolls on.
-  // Scroll events within 300 ms of the jump are the jump's own.
-  let heldAt = 0
-  const holdActiveSection = () => (heldAt = Date.now())
-  const releaseOnScroll = () => {
-    if (heldAt && Date.now() - heldAt > 300) heldAt = 0
-  }
+  let sectionLockTimer
 
   return {
     advancedMode: !!JSON.parse(localStorage.getItem('advancedMode') || 'false'),
@@ -63,6 +56,15 @@ window.settingsNav = () => {
     settingMatches: 0,
     activeSection: '',
     sectionSettings: {},
+    sectionLocked: false,
+    // Highlight a section and hold it briefly: the scroll a jump causes would otherwise let the
+    // observer pick the section it passes through.
+    showSection(id) {
+      this.activeSection = id || this.activeSection
+      this.sectionLocked = true
+      clearTimeout(sectionLockTimer)
+      sectionLockTimer = setTimeout(() => (this.sectionLocked = false), 400)
+    },
     init() {
       root = this.$el
       this.$watch('advancedMode', (value) => {
@@ -81,11 +83,15 @@ window.settingsNav = () => {
         this.sectionSettings[section.id] = [...section.querySelectorAll('[data-setting]')].flatMap(
           (setting) => {
             const label = setting.querySelector('label[for]')
-            const target = setting.id || label?.htmlFor
+            // prefer the field itself; a group label (checkbox group) points at no element
+            const target =
+              (label && document.getElementById(label.htmlFor) && label.htmlFor) || setting.id
             const title =
               setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ')
+            const help = setting.querySelector('p')?.textContent.trim().replace(/\s+/g, ' ')
+            const hint = help && !help.startsWith(title) ? title + ': ' + help : help || title
             const advanced = !!setting.closest('[x-show*=advancedMode]')
-            return target && title ? [{ target, title, advanced }] : []
+            return target && title ? [{ target, title, hint, advanced }] : []
           }
         )
       })
@@ -93,14 +99,13 @@ window.settingsNav = () => {
       window.addEventListener('hashchange', () => this.goToSetting(location.hash.slice(1)))
       if (location.hash.length > 1) this.$nextTick(() => this.goToSetting(location.hash.slice(1)))
 
-      window.addEventListener('scroll', releaseOnScroll, { capture: true, passive: true })
       const inView = new Set()
       const sectionObserver = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) =>
             entry.isIntersecting ? inView.add(entry.target.id) : inView.delete(entry.target.id)
           )
-          if (heldAt) return
+          if (this.sectionLocked) return
           this.activeSection =
             sections.find((section) => inView.has(section.id))?.id || this.activeSection
         },
@@ -121,11 +126,7 @@ window.settingsNav = () => {
     goToSetting(target) {
       const element = document.getElementById(target)
       if (!element || !root.contains(element)) return
-      if (element.matches('section[data-setting-group]')) {
-        // a section link: the browser scrolls, only the highlight needs setting
-        this.activeSection = target
-        return holdActiveSection()
-      }
+      if (element.matches('section[data-setting-group]')) return this.showSection(target)
       const setting = element.closest('[data-setting]')
       if (!setting) return
 
@@ -145,9 +146,17 @@ window.settingsNav = () => {
           .querySelector('input:not([type=hidden]), textarea, select, button')
           ?.focus({ preventScroll: true })
         history.replaceState(null, '', '#' + target)
-        this.activeSection =
-          setting.closest('section[data-setting-group][id]')?.id || this.activeSection
-        holdActiveSection()
+        this.showSection(setting.closest('section[data-setting-group][id]')?.id)
+        // outline where the jump landed, long enough to find it
+        const outline = [
+          'rounded-m3-sm',
+          'ring-2',
+          'ring-theme-primary/70',
+          'ring-offset-8',
+          'ring-offset-theme-surface-2'
+        ]
+        setting.classList.add(...outline)
+        setTimeout(() => setting.classList.remove(...outline), 2000)
       }, 50)
     },
     filterSettings() {
