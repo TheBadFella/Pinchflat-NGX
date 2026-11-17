@@ -145,9 +145,10 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Sources"
     end
 
-    test "links Download video to the Paste URL dialog", %{conn: conn} do
+    test "links Quick Download to the Paste URL dialog", %{conn: conn} do
       html = conn |> get(~p"/sources") |> html_response(200)
       assert html =~ ~s(id="sources-quick-download")
+      assert html =~ "Quick Download"
       assert html =~ ~s(href="/browse?paste=1")
     end
 
