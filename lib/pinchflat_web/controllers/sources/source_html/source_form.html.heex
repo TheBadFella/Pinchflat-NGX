@@ -9,13 +9,22 @@
     settingMatches: 0,
     activeSection: 'source-general',
     sectionSettings: {},
+    sectionLocked: false,
+    showSection(id) {
+      this.activeSection = id || this.activeSection;
+      this.sectionLocked = true;
+      clearTimeout(this.sectionLockTimer);
+      this.sectionLockTimer = setTimeout(() => { this.sectionLocked = false }, 400);
+    },
     collectSectionSettings(form) {
       form.querySelectorAll('section[data-setting-group][id]').forEach(section => {
         this.sectionSettings[section.id] = [...section.querySelectorAll('[data-setting]')].flatMap(setting => {
           const label = setting.querySelector('label[for]');
-          const target = setting.id || label?.htmlFor;
+          const target = label?.htmlFor || setting.id;
           const title = setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ');
-          return target && title ? [{ target, title, advanced: !!setting.closest('[x-show*=advancedMode]') }] : [];
+          const help = setting.querySelector('p')?.textContent.trim().replace(/\s+/g, ' ');
+          const advanced = !!setting.closest('[x-show*=advancedMode]');
+          return target && title ? [{ target, title, hint: help && !help.startsWith(title) ? title + ': ' + help : help || title, advanced }] : [];
         });
       });
     },
@@ -31,7 +40,11 @@
         setting.scrollIntoView({ block: 'center' });
         setting.querySelector('input:not([type=hidden]), textarea, button')?.focus({ preventScroll: true });
         history.replaceState(null, '', '#' + target);
-        this.activeSection = setting.closest('section[data-setting-group][id]')?.id || this.activeSection;
+        this.showSection(setting.closest('section[data-setting-group][id]')?.id);
+        // outline where the jump landed, long enough to find it
+        const outline = ['rounded-m3-sm', 'ring-2', 'ring-theme-primary/70', 'ring-offset-8', 'ring-offset-theme-surface-2'];
+        setting.classList.add(...outline);
+        setTimeout(() => setting.classList.remove(...outline), 2000);
       }, 50);
     },
     filterSettings(form) {
@@ -59,7 +72,7 @@
     const sectionObserver = new IntersectionObserver(
       entries => {
         entries.forEach(entry => entry.isIntersecting ? inView.add(entry.target.id) : inView.delete(entry.target.id));
-        activeSection = sections.find(section => inView.has(section.id))?.id || activeSection;
+        if (!sectionLocked) activeSection = sections.find(section => inView.has(section.id))?.id || activeSection;
       },
       { rootMargin: '-25% 0px -65% 0px' }
     );
@@ -149,6 +162,7 @@
           >
             <a
               href={"##{id}"}
+              x-on:click={"showSection('#{id}')"}
               x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
               x-bind:class={"activeSection === '#{id}' ? 'bg-theme-surface-3 text-theme-on-surface' : 'text-theme-on-surface-muted'"}
               class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
@@ -166,7 +180,7 @@
                 <li x-show="!item.advanced || advancedMode">
                   <a
                     x-bind:href="'#' + item.target"
-                    x-bind:title="item.title"
+                    x-bind:title="item.hint"
                     x-text="item.title"
                     x-on:click.prevent="goToSetting(item.target)"
                     class="block truncate rounded-m3-sm px-3 py-1.5 text-xs text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"
@@ -364,7 +378,11 @@
             </.form_disclosure>
           </div>
         </section>
-        <section id="source-metadata" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-metadata"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
 
           <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
@@ -397,7 +415,11 @@
             help="Keep the current description when automated metadata refreshes run."
           />
         </section>
-        <section id="source-indexing" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-indexing"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
 
           <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
@@ -457,7 +479,11 @@
             Date.
           </p>
         </section>
-        <section id="source-downloading" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-downloading"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">
             Downloading Options
           </h3>
@@ -731,7 +757,11 @@
             />
           </section>
         </section>
-        <section id="source-cleanup" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+        <section
+          id="source-cleanup"
+          data-setting-group
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+        >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Cutoff and Retention</h3>
 
           <section data-setting class="mt-5">
@@ -811,7 +841,7 @@
         <section
           id="source-advanced"
           data-setting-group
-          class="scroll-mt-36 lg:scroll-mt-24"
+          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
           x-show="advancedMode || settingQuery.trim()"
         >
           <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
