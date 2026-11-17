@@ -145,6 +145,12 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Sources"
     end
 
+    test "links Download video to the Paste URL dialog", %{conn: conn} do
+      html = conn |> get(~p"/sources") |> html_response(200)
+      assert html =~ ~s(id="sources-quick-download")
+      assert html =~ ~s(href="/browse?paste=1")
+    end
+
     test "returns 200 when a source has stored metadata", %{conn: conn} do
       source_with_metadata(%{custom_name: "Indexed Source"})
 

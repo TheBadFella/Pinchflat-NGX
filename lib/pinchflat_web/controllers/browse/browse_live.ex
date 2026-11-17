@@ -59,7 +59,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
           assign(socket, paste_url_modal_open?: true, pasted_url: String.slice(url, 0, 2049))
 
         _ ->
-          socket
+          if session["open_paste"], do: open_paste_url_modal(socket), else: socket
       end
 
     {:ok, socket}
@@ -290,28 +290,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
   @impl true
   def handle_event("open_paste_url_modal", _params, socket) do
-    profile_id =
-      cond do
-        length(socket.assigns.profiles) == 1 ->
-          hd(socket.assigns.profiles).id
-
-        not is_nil(socket.assigns.selected_profile_id) ->
-          socket.assigns.selected_profile_id
-
-        true ->
-          nil
-      end
-
-    {:noreply,
-     socket
-     |> assign(:paste_url_modal_open?, true)
-     |> assign(:pasted_url, "")
-     |> assign(:paste_error, nil)
-     |> assign(:paste_resolved_video, nil)
-     |> assign(:paste_resolving?, false)
-     |> assign(:paste_downloading?, false)
-     |> assign(:paste_selected_profile_id, profile_id)
-     |> assign(:paste_yt_dlp, item_options_assigns(profile_id, nil))}
+    {:noreply, open_paste_url_modal(socket)}
   end
 
   @impl true
@@ -1272,6 +1251,30 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       nil,
       :missing
     )
+  end
+
+  defp open_paste_url_modal(socket) do
+    profile_id =
+      cond do
+        length(socket.assigns.profiles) == 1 ->
+          hd(socket.assigns.profiles).id
+
+        not is_nil(socket.assigns.selected_profile_id) ->
+          socket.assigns.selected_profile_id
+
+        true ->
+          nil
+      end
+
+    socket
+    |> assign(:paste_url_modal_open?, true)
+    |> assign(:pasted_url, "")
+    |> assign(:paste_error, nil)
+    |> assign(:paste_resolved_video, nil)
+    |> assign(:paste_resolving?, false)
+    |> assign(:paste_downloading?, false)
+    |> assign(:paste_selected_profile_id, profile_id)
+    |> assign(:paste_yt_dlp, item_options_assigns(profile_id, nil))
   end
 
   defp item_options_assigns(profile_id, preview) do

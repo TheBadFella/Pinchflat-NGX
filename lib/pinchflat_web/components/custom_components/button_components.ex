@@ -116,8 +116,10 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
 
     ~H"""
     <div
-      x-data="{ dropdownOpen: false, openUpwards: false, menuHeight: 480 }"
+      x-data="{ dropdownOpen: false, menuStyle: {} }"
       x-on:keydown.escape.prevent.stop="dropdownOpen = false; $refs.trigger.focus()"
+      x-on:scroll.window.capture="if (!$refs.menu.contains($event.target)) dropdownOpen = false"
+      x-on:resize.window="dropdownOpen = false"
       class={["relative flex", @class]}
     >
       <button
@@ -129,13 +131,15 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           const top = Math.max(8, (document.querySelector('header')?.getBoundingClientRect().bottom || 0) + 8);
           const above = Math.max(0, rect.top - top - 8);
           const below = Math.max(0, window.innerHeight - rect.bottom - 16);
-          openUpwards = above > below;
-          menuHeight = Math.min(480, openUpwards ? above : below);
+          const openUpwards = above > below;
+          const right = document.documentElement.clientWidth - rect.right;
+          menuStyle = openUpwards
+            ? { bottom: (window.innerHeight - rect.top + 8) + 'px', right: right + 'px', maxHeight: Math.min(480, above) + 'px' }
+            : { top: (rect.bottom + 8) + 'px', right: right + 'px', maxHeight: Math.min(480, below) + 'px' };
           dropdownOpen = !dropdownOpen;
         "
         class={[
-          if(@icon_name, do: "theme-icon-button", else: "theme-button gap-2.5"),
-          @size_class,
+          if(@icon_name, do: "theme-icon-button", else: ["theme-button gap-2.5", @size_class]),
           @variant_class
         ]}
         aria-label={@aria_label}
@@ -157,9 +161,9 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       <div
         x-show="dropdownOpen"
         x-on:click.outside="dropdownOpen = false"
-        x-bind:class="openUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
-        x-bind:style="{ maxHeight: menuHeight + 'px' }"
-        class="absolute right-0 z-40 min-w-full w-max max-w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-2 text-theme-on-surface shadow-m3-2"
+        x-ref="menu"
+        x-bind:style="menuStyle"
+        class="fixed z-40 min-w-40 w-max max-w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-2 text-theme-on-surface shadow-m3-2"
       >
         <ul class="flex flex-col">
           <li :for={option <- @option} class="theme-dropdown-option">

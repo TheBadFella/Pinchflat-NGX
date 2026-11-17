@@ -47,7 +47,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                 <button
                   :if={col[:sort_key]}
                   type="button"
-                  class="theme-filter-button -my-2 rounded-m3-xs text-left"
+                  class="theme-filter-button -mx-3 -my-2 rounded-m3-xs text-left"
                   phx-click="sort_update"
                   phx-value-sort_key={col[:sort_key]}
                   aria-label={sort_button_label(col[:label], @sort_key, @sort_direction, col[:sort_key])}

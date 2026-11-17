@@ -306,100 +306,91 @@
     </div>
 
     <div id="source-table" data-view="table" class="hidden md:block">
-      <div class="overflow-x-auto">
-        <div class="min-w-max">
-          <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
-            <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
-              <div data-source-id={source.id} class="flex min-w-0 items-center gap-3">
-                <div class="flex min-w-0 flex-1 flex-col gap-2">
-                  <.input
-                    type="checkbox"
-                    id={"source-select-table-#{source.id}"}
-                    name="source_selection"
-                    label="Select"
-                    label_class="sr-only"
-                    aria-label={"Select #{source.custom_name}"}
-                    checked={MapSet.member?(@selected_ids, to_string(source.id))}
-                    phx-click="toggle_source_selection"
-                    phx-value-id={source.id}
-                  />
-                  <div class="flex min-w-0 items-center gap-3">
-                    <div class="flex min-w-0 flex-1 items-center gap-2">
-                      <span
-                        class={[
-                          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                          if(source.selection_mode == :manual,
-                            do: "theme-badge-warning",
-                            else: "theme-badge-success"
-                          )
-                        ]}
-                        title={source_download_mode_label(source)}
-                      >
-                        <.icon
-                          name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
-                          class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
-                        /> <span class="sr-only">{source_download_mode_label(source)}</span>
-                      </span>
+      <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction}>
+        <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
+          <div data-source-id={source.id} class="flex min-w-0 items-center gap-3">
+            <.input
+              type="checkbox"
+              id={"source-select-table-#{source.id}"}
+              name="source_selection"
+              label="Select"
+              label_class="sr-only"
+              aria-label={"Select #{source.custom_name}"}
+              checked={MapSet.member?(@selected_ids, to_string(source.id))}
+              phx-click="toggle_source_selection"
+              phx-value-id={source.id}
+            />
+            <span
+              class={[
+                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                if(source.selection_mode == :manual,
+                  do: "theme-badge-warning",
+                  else: "theme-badge-success"
+                )
+              ]}
+              title={source_download_mode_label(source)}
+            >
+              <.icon
+                name={if source.selection_mode == :manual, do: "hero-clock", else: "hero-bolt"}
+                class={"h-4 w-4 #{if(source.selection_mode == :manual, do: "theme-status-warning", else: "theme-status-success")}"}
+              /> <span class="sr-only">{source_download_mode_label(source)}</span>
+            </span>
 
-                      <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
-                        <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
-                        <SourceHTML.retention_summary source={source} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            <div class="min-w-0 flex-1 leading-6 text-pretty break-words whitespace-normal">
+              <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
+              <SourceHTML.retention_summary source={source} />
+            </div>
+          </div>
+        </:col>
 
-                <div class="ml-auto flex shrink-0 items-center gap-1.5">
-                  <.source_row_actions source={source} return_to={@return_to} />
-                </div>
-              </div>
-            </:col>
+        <:col :let={source} label="Type" sort_key="collection_type">
+          <PinchflatWeb.Sources.SourceHTML.collection_type_badge collection_type={source.collection_type} />
+        </:col>
 
-            <:col :let={source} label="Type" sort_key="collection_type">
-              <PinchflatWeb.Sources.SourceHTML.collection_type_badge collection_type={source.collection_type} />
-            </:col>
+        <:col :let={source} label="Pending" sort_key="pending_count">
+          <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
+            <.localized_number number={source.pending_count} />
+          </.subtle_link>
+        </:col>
 
-            <:col :let={source} label="Pending" sort_key="pending_count">
-              <.subtle_link href={~p"/sources/#{source.id}/#tab-pending"}>
-                <.localized_number number={source.pending_count} />
-              </.subtle_link>
-            </:col>
+        <:col :let={source} label="Downloaded" sort_key="downloaded_count">
+          <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
+            <.localized_number number={source.downloaded_count} />
+          </.subtle_link>
+        </:col>
 
-            <:col :let={source} label="Downloaded" sort_key="downloaded_count">
-              <.subtle_link href={~p"/sources/#{source.id}/#tab-downloaded"}>
-                <.localized_number number={source.downloaded_count} />
-              </.subtle_link>
-            </:col>
+        <:col :let={source} label="Size" sort_key="media_size_bytes">
+          <.readable_filesize byte_size={source.media_size_bytes} />
+        </:col>
 
-            <:col :let={source} label="Size" sort_key="media_size_bytes">
-              <.readable_filesize byte_size={source.media_size_bytes} />
-            </:col>
+        <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="truncate max-w-xs">
+          <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
+        </:col>
 
-            <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="truncate max-w-xs">
-              <.subtle_link href={~p"/media_profiles/#{source.media_profile_id}"}>{source.media_profile.name}</.subtle_link>
-            </:col>
+        <:col :let={source} label="Enabled?" sort_key="enabled">
+          <.live_component
+            module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+            source={source}
+            id={"source_#{source.id}_enabled"}
+          />
+        </:col>
 
-            <:col :let={source} label="Enabled?" sort_key="enabled">
-              <.live_component
-                module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-                source={source}
-                id={"source_#{source.id}_enabled"}
-              />
-            </:col>
-
-            <:col :let={source} label="" class="align-middle">
-              <div class="flex h-full items-center justify-center">
-                <.icon_link
-                  href={~p"/sources/#{source.id}/edit"}
-                  icon="hero-pencil-square"
-                  aria-label="Edit"
-                  class="mx-1"
-                />
-              </div>
-            </:col>
-          </.table>
-        </div>
-      </div>
+        <:col
+          :let={source}
+          label=""
+          class="sticky right-0 bg-theme-surface-1 align-middle has-[[aria-expanded=true]]:z-10 [tr:hover_&]:bg-theme-surface-2"
+        >
+          <div class="flex h-full items-center justify-end gap-2">
+            <.icon_link
+              href={~p"/sources/#{source.id}/edit"}
+              icon="hero-pencil-square"
+              aria-label="Edit"
+              class="mx-1"
+            />
+            <.source_row_actions source={source} return_to={@return_to} />
+          </div>
+        </:col>
+      </.table>
 
       <section class="my-5 flex justify-center">
         <.live_pagination_controls page_number={@page} total_pages={@total_pages} />
