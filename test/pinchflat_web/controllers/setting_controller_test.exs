@@ -211,31 +211,37 @@ defmodule PinchflatWeb.SettingControllerTest do
       :ok
     end
 
-    test "renders interpolated codec list ids and labels", %{conn: conn} do
+    test "lists every codec once, ticked ones first in saved order", %{conn: conn} do
       Pinchflat.Settings.set(video_codec_preference: "vp9,avc")
       Pinchflat.Settings.set(audio_codec_preference: "opus,m4a")
 
-      conn = get(conn, ~p"/settings")
-      html = html_response(conn, 200)
+      html = conn |> get(~p"/settings") |> html_response(200)
 
       refute html =~ "@{"
-      assert html =~ ~s(for="settings-form_video_codec_preference-first")
-      assert html =~ ~s(for="settings-form_audio_codec_preference-first")
-      assert html =~ ~s(x-bind:id="index === 0 ? &#39;settings-form_video_codec_preference-first&#39;)
-      assert html =~ "&#39; for &#39; + &#39;Video codec preferences&#39;"
-      assert html =~ "&#39; for &#39; + &#39;Audio codec preferences&#39;"
+      refute html =~ "Add codec"
+      assert html =~ ~s(<legend class="mb-2 text-sm font-medium text-theme-on-surface">Video codec preferences</legend>)
+      assert html =~ ~s(x-bind:id="&#39;settings-form_video_codec_preference-&#39; + row.codec")
+
+      video_rows = html |> state_rows("settings-form_video_codec_preference-list")
+      assert Enum.take(video_rows, 2) == [{"vp9", true}, {"avc", true}]
+      assert length(video_rows) == 6
+      assert Enum.count(video_rows, &elem(&1, 1)) == 2
+
+      audio_rows = html |> state_rows("settings-form_audio_codec_preference-list")
+      assert Enum.take(audio_rows, 2) == [{"opus", true}, {"m4a", true}]
+      assert length(audio_rows) == 9
     end
 
-    test "labels the codec lists without a dangling for attribute when empty", %{conn: conn} do
+    test "shows every codec unticked when no preference is set", %{conn: conn} do
       Pinchflat.Settings.set(video_codec_preference: "")
       Pinchflat.Settings.set(audio_codec_preference: "")
 
       html = conn |> get(~p"/settings") |> html_response(200)
 
-      refute html =~ ~s(for="settings-form_video_codec_preference-first")
-      refute html =~ ~s(for="settings-form_audio_codec_preference-first")
-      assert html =~ "Video codec preferences"
-      assert html =~ "Audio codec preferences"
+      rows = state_rows(html, "settings-form_video_codec_preference-list")
+      assert length(rows) == 6
+      refute Enum.any?(rows, &elem(&1, 1))
+      assert html =~ "Reset to yt-dlp order"
     end
 
     test "saves ordered codec preferences", %{conn: conn} do
@@ -407,6 +413,15 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert redirected_to(conn) == ~p"/settings"
       assert conn.assigns[:flash]["error"] =~ "still below the recovery threshold"
       assert Pinchflat.Settings.get!(:download_space_protection_blocked) == true
+    end
+  end
+
+  defp state_rows(html, list_id) do
+    [_, state] = Regex.run(~r/id="#{list_id}"[^>]*x-data="([^"]*)"/, html)
+
+    for [row] <- Regex.scan(~r/\{[^{}]*codec&quot;[^{}]*\}/, state) do
+      [_, codec] = Regex.run(~r/codec&quot;:&quot;([a-z0-9]+)/, row)
+      {codec, row =~ "on&quot;:true"}
     end
   end
 end

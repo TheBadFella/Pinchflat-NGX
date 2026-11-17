@@ -81,7 +81,7 @@ defmodule Pinchflat.Settings.CodecPreferencesTest do
 
     test "rejects more than the maximum number of codecs" do
       assert {:error, message} =
-               CodecPreferences.validate(:video, "avc,vp9,av1,hevc,vp8,mp4v,theora,foo,bar")
+               CodecPreferences.validate(:video, "avc,vp9,av1,hevc,vp8,mp4v,theora,foo,bar,baz")
 
       assert message =~ "at most"
     end
