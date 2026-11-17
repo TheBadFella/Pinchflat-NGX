@@ -125,7 +125,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
     assert has_element?(view, "#paste-url-dialog")
     assert has_element?(view, "#paste_url_input[value='']")
-    assert has_element?(view, ~s(#paste_profile_select option[value="#{profile.id}"][selected]))
+    assert has_element?(view, ~s(#paste_profile_select[value="#{profile.id}"]))
   end
 
   test "browse keeps the application sidebar and header", %{conn: conn} do
@@ -325,9 +325,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
 
       # With 2 profiles, explicit selection is required (R216-8)
-      view
-      |> form("#profile_selector_form", %{"profile_id" => to_string(profile_a.id)})
-      |> render_change()
+      render_change(view, "select_profile", %{"profile_id" => to_string(profile_a.id)})
 
       view
       |> form("#browse_search_form", %{"query" => "profile_test"})
@@ -338,9 +336,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       assert html_alpha =~ "In other profile (Profile Beta)"
 
       # Switch to Profile Beta
-      view
-      |> form("#profile_selector_form", %{"profile_id" => to_string(profile_b.id)})
-      |> render_change()
+      render_change(view, "select_profile", %{"profile_id" => to_string(profile_b.id)})
 
       # Now under Profile Beta, it shows "Indexed"
       html_beta = render(view)

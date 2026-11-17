@@ -214,25 +214,31 @@ defmodule Pinchflat.Settings.ShareTokensLive do
             <label for="new-token-profile" class="text-xs font-medium text-theme-on-surface-muted">
               Bound Media Profile
             </label>
-            <select
+            <.input
+              type="select"
               id="new-token-profile"
               name="media_profile_id"
-              class="theme-input text-sm py-2 px-3 rounded-m3-sm w-full"
-            >
-              <%= for profile <- @profiles do %>
-                <option value={profile.id} selected={profile.id == @selected_profile_id}>
-                  {profile.name}
-                </option>
-              <% end %>
-            </select>
+              aria_label="Bound media profile"
+              value={if @selected_profile_id, do: to_string(@selected_profile_id), else: ""}
+              options={Enum.map(@profiles, &{&1.name, &1.id})}
+              inputclass="text-sm w-full"
+            />
           </div>
 
           <div class="w-full xl:w-40 flex flex-col gap-1.5">
             <label for="new-token-expiry" class="text-xs font-medium text-theme-on-surface-muted">Expires after</label>
-            <select id="new-token-expiry" name="expiry_days" class="theme-input text-sm py-2 px-3 rounded-m3-sm w-full">
-              <option value="" selected={@expiry_days == ""}>Never</option>
-              <option value="30" selected={@expiry_days == "30"}>30 days</option>
-            </select>
+            <.input
+              type="select"
+              id="new-token-expiry"
+              name="expiry_days"
+              aria_label="Token expiry"
+              value={@expiry_days}
+              options={[
+                {"Never", ""},
+                {"30 days", "30"}
+              ]}
+              inputclass="text-sm w-full"
+            />
           </div>
 
           <button

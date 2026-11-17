@@ -36,20 +36,17 @@
             phx-auto-recover="ignore"
             class="m-0 min-w-0 flex-1"
           >
-            <select
+            <.input
+              type="select"
               id="profile_selector"
               name="profile_id"
-              class="theme-select min-h-11 w-full min-w-0 max-w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 px-3 py-2 text-sm text-theme-on-surface focus:outline-none"
-            >
-              <%= if is_nil(@selected_profile_id) do %>
-                <option value="" selected>Select a media profile...</option>
-              <% end %>
-              <%= for profile <- @profiles do %>
-                <option value={profile.id} selected={profile.id == @selected_profile_id}>
-                  {profile.name}
-                </option>
-              <% end %>
-            </select>
+              aria_label="Media profile"
+              align="right"
+              value={if @selected_profile_id, do: to_string(@selected_profile_id), else: ""}
+              prompt="Select a media profile..."
+              options={Enum.map(@profiles, &{&1.name, &1.id})}
+              inputclass="min-h-11 w-full min-w-0 max-w-full text-sm"
+            />
           </form>
         <% else %>
           <.button
@@ -735,20 +732,16 @@
             </label>
             <%= if @profiles != [] do %>
               <form id="paste_profile_form" phx-change="select_paste_profile" class="m-0">
-                <select
+                <.input
+                  type="select"
                   id="paste_profile_select"
                   name="profile_id"
-                  class="theme-select min-h-[44px] w-full rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 px-3 py-2 text-sm text-theme-on-surface focus:outline-none"
-                >
-                  <%= if is_nil(@paste_selected_profile_id) do %>
-                    <option value="" selected>Select a media profile...</option>
-                  <% end %>
-                  <%= for profile <- @profiles do %>
-                    <option value={profile.id} selected={profile.id == @paste_selected_profile_id}>
-                      {profile.name}
-                    </option>
-                  <% end %>
-                </select>
+                  aria_label="Media profile"
+                  value={if @paste_selected_profile_id, do: to_string(@paste_selected_profile_id), else: ""}
+                  prompt="Select a media profile..."
+                  options={Enum.map(@profiles, &{&1.name, &1.id})}
+                  inputclass="min-h-11 w-full text-sm"
+                />
               </form>
             <% else %>
               <p class="text-xs text-theme-error">No media profiles configured. Please create a profile first.</p>

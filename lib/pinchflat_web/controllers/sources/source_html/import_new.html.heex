@@ -38,18 +38,16 @@
       label="Source file"
       required
     />
-    <div>
-      <label for="import_media_profile_id" class="block text-sm font-medium text-theme-on-surface">Media Profile</label>
-      <select
-        id="import_media_profile_id"
-        name="import[media_profile_id]"
-        required
-        class="theme-input theme-select mt-2 w-full rounded-m3-sm px-3 py-2 text-theme-on-surface"
-      >
-        <option value="">Choose a profile</option>
-        <option :for={profile <- @media_profiles} value={profile.id}>{profile.name}</option>
-      </select>
-    </div>
+    <.input
+      type="select"
+      id="import_media_profile_id"
+      name="import[media_profile_id]"
+      label="Media Profile"
+      value=""
+      prompt="Choose a profile"
+      options={Enum.map(@media_profiles, &{&1.name, &1.id})}
+      required
+    />
     <.button rounding="rounded-m3-sm">Preview Sources</.button>
   </.form>
 
