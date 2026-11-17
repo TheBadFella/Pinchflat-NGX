@@ -67,6 +67,14 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ "12-hour"
     end
 
+    test "shows the codec preferences without an editing mode", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      refute html =~ "advancedMode"
+      refute html =~ "Editing Mode"
+      assert html =~ ~r/<section\s+id="settings-codecs"\s+data-setting-group\s+class="[^"]*"\s*>/
+    end
+
     test "opens a media server group when one of its fields has an error", %{conn: conn} do
       conn = put(conn, ~p"/settings", setting: %{jellyfin_enabled: "true", jellyfin_url: ""})
       html = html_response(conn, 200)

@@ -45,13 +45,12 @@ window.setSidebarCollapsed = (collapsed) => {
 // (source, media profile, Settings). Markup contract, all inside the x-data root:
 // sections are `section[data-setting-group][id]` under `[data-settings]`, one setting is
 // `[data-setting]` (the parent of a field label is tagged automatically) and a collapsed
-// group is `details[data-setting-group]`. Advanced-only parts use x-show with advancedMode.
+// group is `details[data-setting-group]`.
 window.settingsNav = () => {
   let root
   let sectionLockTimer
 
   return {
-    advancedMode: !!JSON.parse(localStorage.getItem('advancedMode') || 'false'),
     settingQuery: '',
     settingMatches: 0,
     activeSection: '',
@@ -67,9 +66,6 @@ window.settingsNav = () => {
     },
     init() {
       root = this.$el
-      this.$watch('advancedMode', (value) => {
-        localStorage.setItem('advancedMode', JSON.stringify(value))
-      })
       root
         .querySelectorAll('[data-settings] label[for]:not(.theme-switch-target)')
         .forEach((label) => {
@@ -90,8 +86,7 @@ window.settingsNav = () => {
               setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ')
             const help = setting.querySelector('p')?.textContent.trim().replace(/\s+/g, ' ')
             const hint = help && !help.startsWith(title) ? title + ': ' + help : help || title
-            const advanced = !!setting.closest('[x-show*=advancedMode]')
-            return target && title ? [{ target, title, hint, advanced }] : []
+            return target && title ? [{ target, title, hint }] : []
           }
         )
       })
@@ -131,7 +126,6 @@ window.settingsNav = () => {
       if (!setting) return
 
       this.settingQuery = ''
-      if (setting.closest('[x-show*=advancedMode]')) this.advancedMode = true
       for (
         let group = setting.closest('details');
         group;
@@ -139,7 +133,7 @@ window.settingsNav = () => {
       ) {
         group.open = true
       }
-      // wait briefly so a just-revealed Advanced section has a layout to scroll to
+      // wait briefly so a just-opened group has a layout to scroll to
       setTimeout(() => {
         setting.scrollIntoView({ block: 'center' })
         setting

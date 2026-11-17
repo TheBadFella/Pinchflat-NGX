@@ -2,8 +2,6 @@
   :let={f}
   for={@changeset}
   action={@action}
-  x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
-  x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
@@ -22,8 +20,9 @@
     help="Protect this video's files from both cutoff and retention cleanup. Manual deletion is still allowed"
   />
 
-  <section x-show="advancedMode">
+  <section>
     <.yt_dlp_options_editor
+      collapsed
       id_prefix="media-item"
       scope_help="These options apply to this video only. The base, media profile, and source config files still apply."
       contents={@yt_dlp_options}

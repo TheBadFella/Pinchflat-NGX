@@ -17,7 +17,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
   up, a sticky chip row below. On wide screens the section being read lists its
   settings as links that scroll to and focus the field.
 
-  `sections` is a list of `{section_id, title, advanced_only?}`. `bleed` holds
+  `sections` is a list of `{section_id, title}`. `bleed` holds
   the classes that let the chip row span its container's padding on small
   screens; the default fits a form inside a raised card.
   """
@@ -48,11 +48,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
           @bleed
         ]}
       >
-        <div
-          :for={{id, title, advanced_only} <- @sections}
-          class="contents lg:block"
-          x-show={advanced_only && "advancedMode"}
-        >
+        <div :for={{id, title} <- @sections} class="contents lg:block">
           <a
             href={"##{id}"}
             x-on:click={"showSection('#{id}')"}
@@ -70,7 +66,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
             class="hidden border-l border-theme-outline/60 py-1 lg:ml-5 lg:block"
           >
             <template x-for={"item in sectionSettings['#{id}'] || []"} x-bind:key="item.target">
-              <li x-show="!item.advanced || advancedMode">
+              <li>
                 <a
                   x-bind:href="'#' + item.target"
                   x-bind:title="item.hint"

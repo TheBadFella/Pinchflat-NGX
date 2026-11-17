@@ -9,6 +9,8 @@ defmodule PinchflatWeb.CustomComponents.YtDlpOptionsComponents do
 
   use Phoenix.Component
 
+  import PinchflatWeb.CustomComponents.SettingsNavComponents, only: [form_disclosure: 1]
+
   attr :id_prefix, :string, required: true
   attr :scope_help, :string, required: true
   attr :contents, :string, default: ""
@@ -20,16 +22,31 @@ defmodule PinchflatWeb.CustomComponents.YtDlpOptionsComponents do
   attr :profile_presence, :map, default: %{}
   attr :error, :string, default: nil
 
+  attr :collapsed, :boolean,
+    default: false,
+    doc: "render as a closed group whose header says whether local options are set; it opens on an error"
+
+  attr :heading, :boolean, default: true, doc: "false when a surrounding group already names the editor"
+
+  def yt_dlp_options_editor(%{collapsed: true} = assigns) do
+    ~H"""
+    <.form_disclosure title="Custom yt-dlp options" open={@error != nil} data-setting-group>
+      <:status>{if @present, do: "Local options active", else: "No local options"}</:status>
+      <.yt_dlp_options_editor {Map.drop(assigns, [:collapsed, :__changed__])} collapsed={false} heading={false} />
+    </.form_disclosure>
+    """
+  end
+
   def yt_dlp_options_editor(assigns) do
     ~H"""
     <section
       id={"#{@id_prefix}-yt-dlp-options"}
-      class="mt-8"
+      class={if @heading, do: "mt-8", else: "mt-4"}
       data-setting
       data-setting-label="Custom yt-dlp options"
       data-setting-keywords="config flags arguments"
     >
-      <div class="flex flex-wrap items-center gap-3">
+      <div :if={@heading} class="flex flex-wrap items-center gap-3">
         <h4 class="text-base font-semibold text-theme-on-surface">Custom yt-dlp options</h4>
         <span :if={@present} class="theme-badge-success rounded-full px-3 py-1 text-xs font-medium">
           Local options active
