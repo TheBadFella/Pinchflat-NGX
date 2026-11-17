@@ -5,6 +5,10 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
 
   alias Pinchflat.Downloading.OutputPath.Parser, as: TemplateParser
 
+  @padded_identifiers ~w(media_playlist_index media_upload_date_index)
+  @default_padding_width 2
+  @max_padding_width 6
+
   @doc """
   Encodes a display name as one literal filename component, without interpreting
   template syntax or allowing directory separators.
@@ -18,6 +22,37 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
       |> String.replace("%", "%%")
 
     {:literal, if(component == "", do: "_", else: component)}
+  end
+
+  @doc """
+  Wraps an integer so templates render it zero-padded: two digits by default,
+  or the width given with `{{ identifier:N }}`.
+  """
+  def padded_integer(value), do: {:padded_integer, value}
+
+  @doc """
+  Checks that a template parses and only sets a padding width on the numeric
+  index variables, within the supported range.
+
+  Returns `:ok` or `{:error, binary()}`.
+  """
+  def validate_template(template_string) do
+    case TemplateParser.interpolations(template_string) do
+      {:ok, interpolations} -> Enum.find_value(interpolations, :ok, &validate_interpolation/1)
+      {:error, _message} -> {:error, "has a {{ }} variable that can't be read"}
+    end
+  end
+
+  defp validate_interpolation({_identifier, nil}), do: nil
+
+  defp validate_interpolation({identifier, width}) when identifier in @padded_identifiers do
+    if width in 1..@max_padding_width,
+      do: nil,
+      else: {:error, "sets #{identifier} padding to #{width}; use a width from 1 to #{@max_padding_width}"}
+  end
+
+  defp validate_interpolation({identifier, _width}) do
+    {:error, "sets a padding width on #{identifier}; only #{Enum.join(@padded_identifiers, " and ")} accept one"}
   end
 
   @doc """
@@ -39,6 +74,9 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
           {:literal, literal} ->
             {key, literal}
 
+          {:padded_integer, _} ->
+            {key, value}
+
           template ->
             {:ok, parse_result} = TemplateParser.parse(template, combined_options, &identifier_fn/2)
             {key, parse_result}
@@ -54,12 +92,26 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   #
   # For all "custom" variables, we use the `Map.get/3` function to look up the value in the provided.
   # See `custom_yt_dlp_option_map` for a list of those.
+  defp identifier_fn({identifier, width}, variables) do
+    case Map.get(variables, identifier) do
+      {:padded_integer, value} -> pad_integer(value, width)
+      _ -> identifier_fn(identifier, variables)
+    end
+  end
+
   defp identifier_fn(identifier, variables) do
     case Map.get(variables, identifier) do
       nil -> "%(#{identifier})S"
       {:literal, literal} -> literal
+      {:padded_integer, value} -> pad_integer(value, @default_padding_width)
       value -> value
     end
+  end
+
+  defp pad_integer(value, width) do
+    value
+    |> to_string()
+    |> String.pad_leading(width, "0")
   end
 
   # This isn't the only source for custom options, since they can be passed in my the caller.

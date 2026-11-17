@@ -226,6 +226,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),
       message: "must end with .{{ ext }}"
     )
+    |> MediaProfile.validate_output_path_template(:output_path_template_override)
+    |> MediaProfile.validate_output_path_template(:output_path_template_shorts_override)
     |> cast_assoc(:metadata, with: &SourceMetadata.changeset/2, required: false)
     |> unique_constraint([:collection_id, :media_profile_id, :title_filter_regex], error_key: :original_url)
   end

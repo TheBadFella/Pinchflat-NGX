@@ -297,8 +297,8 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
       "source_collection_id" => source.collection_id,
       "source_collection_name" => OutputPathBuilder.literal_component(source.collection_name),
       "source_collection_type" => to_string(source.collection_type),
-      "media_playlist_index" => pad_int(media_item_with_preloads.playlist_index),
-      "media_upload_date_index" => pad_int(media_item_with_preloads.upload_date_index)
+      "media_playlist_index" => OutputPathBuilder.padded_integer(media_item_with_preloads.playlist_index),
+      "media_upload_date_index" => OutputPathBuilder.padded_integer(media_item_with_preloads.upload_date_index)
     }
   end
 
@@ -317,12 +317,6 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     else
       {:ok, nil}
     end
-  end
-
-  defp pad_int(integer, count \\ 2, padding \\ "0") do
-    integer
-    |> to_string()
-    |> String.pad_leading(count, padding)
   end
 
   defp base_directory do

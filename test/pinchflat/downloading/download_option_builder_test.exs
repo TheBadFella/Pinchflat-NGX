@@ -50,6 +50,19 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:output, "/tmp/test/media/99.%(ext)s"} in res
     end
 
+    test "pads the playlist index to the width set in the template", %{media_item: media_item} do
+      media_item = Repo.update!(Ecto.Changeset.change(media_item, playlist_index: 7))
+
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          output_path_template: "{{ media_playlist_index }}-{{ media_playlist_index:3 }}.%(ext)s"
+        })
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/07-007.%(ext)s"} in res
+    end
+
     test "rejects a template that escapes the media root even without staging", %{media_item: item} do
       source = %{item.source | output_path_template_override: "../outside/{{ title }}.{{ ext }}"}
 

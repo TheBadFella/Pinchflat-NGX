@@ -34,17 +34,24 @@ defmodule Pinchflat.Downloading.OutputPath.Base do
         |> reduce({Enum, :join, []})
         |> unwrap_and_tag(:identifier)
 
-      defparsecp(:expression, identifier)
+      # an optional `:N` after the identifier sets a zero-padding width, eg: `{{ media_playlist_index:3 }}`
+      width =
+        ignore(concat(optional_whitespaces, string(":")))
+        |> ignore(optional_whitespaces)
+        |> integer(min: 1, max: 2)
+        |> unwrap_and_tag(:width)
+
+      defparsecp(:expression, identifier |> optional(width))
 
       # when spotting interpolation, ignore the opening tag and any whitespace
       interpolation =
         ignore(concat(opening_tag, optional_whitespaces))
-        # ... then parse the expression (identifier)
+        # ... then parse the expression (identifier and optional width)
         |> parsec(:expression)
         # ... then ignore any whitespace and the closing tags after the expression
         |> ignore(concat(optional_whitespaces, closing_tag))
         # ... once again we bag it and tag it
-        |> unwrap_and_tag(:interpolation)
+        |> tag(:interpolation)
 
       defparsec(:do_parse, choice([interpolation, text]) |> repeat() |> eos())
     end
