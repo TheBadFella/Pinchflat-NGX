@@ -407,7 +407,13 @@ defmodule Pinchflat.Downloading.QualityOptionBuilderTest do
     File.mkdir_p!(nested)
     File.write!(Path.join(nested, "codec_order.py"), "class CodecOrderPP:\n    pass\n")
     Application.put_env(:pinchflat, :yt_dlp_app_plugin_dir, dir)
-    on_exit(fn -> File.rm_rf(dir) end)
+
+    # Reset the setting too: leaving it on the deleted directory makes later
+    # tests with ordered codecs see the plugin as missing and snooze.
+    on_exit(fn ->
+      Application.delete_env(:pinchflat, :yt_dlp_app_plugin_dir)
+      File.rm_rf(dir)
+    end)
 
     dir
   end
