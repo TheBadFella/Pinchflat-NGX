@@ -22,6 +22,36 @@ defmodule PinchflatWeb.Sources.MediaItemTableLiveTest do
     {:ok, source: source}
   end
 
+  describe "job state refreshes" do
+    test "a burst of job changes refreshes at once and then once more", %{conn: conn, source: source} do
+      {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      media_item_fixture(source_id: source.id, title: "First arrival")
+      PinchflatWeb.Endpoint.broadcast("job:state", "change", nil)
+      assert render(view) =~ "First arrival"
+
+      # Inside the throttle window further job changes must wait for the trailing refresh
+      media_item_fixture(source_id: source.id, title: "Second arrival")
+      Enum.each(1..5, fn _ -> PinchflatWeb.Endpoint.broadcast("job:state", "change", nil) end)
+      refute render(view) =~ "Second arrival"
+
+      send(view.pid, :throttled_refresh)
+      assert render(view) =~ "Second arrival"
+    end
+
+    test "a reload reaches tables of the same source only", %{conn: conn, source: source} do
+      other_source = source_fixture()
+      {:ok, view, _html} = live_isolated(conn, MediaItemTableLive, session: create_session(source, "downloaded"))
+
+      media_item_fixture(source_id: source.id, title: "Reloaded item")
+      PinchflatWeb.Endpoint.broadcast("media_table:#{other_source.id}", "reload", nil)
+      refute render(view) =~ "Reloaded item"
+
+      PinchflatWeb.Endpoint.broadcast("media_table:#{source.id}", "reload", nil)
+      assert render(view) =~ "Reloaded item"
+    end
+  end
+
   describe "initial rendering" do
     test "cutoff download confirmations respect persisted protection", %{conn: conn} do
       source = source_fixture(download_cutoff_date: ~D[2026-10-17])

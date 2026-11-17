@@ -312,6 +312,47 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  @title_filter_test_limit 50
+
+  @doc """
+  Tests a title filter regex against pasted sample titles and, for a saved
+  source, its most recent indexed titles.
+
+  Returns JSON %{samples: [...], indexed: [...]} or a 422 with %{error: binary()}
+  """
+  def test_title_filter(conn, params) do
+    regex = params |> Map.get("regex", "") |> to_string() |> String.trim()
+
+    samples =
+      params
+      |> Map.get("titles", "")
+      |> to_string()
+      |> String.split(["\r\n", "\n"], trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.take(@title_filter_test_limit)
+
+    indexed =
+      case Integer.parse(to_string(params["source_id"])) do
+        {source_id, ""} -> Sources.recent_media_titles(source_id, @title_filter_test_limit)
+        _ -> []
+      end
+
+    with false <- regex == "",
+         {:ok, sample_results} <- Sources.test_title_filter(regex, samples),
+         {:ok, indexed_results} <- Sources.test_title_filter(regex, indexed) do
+      json(conn, %{samples: sample_results, indexed: indexed_results})
+    else
+      true ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: "Enter a regex to test."})
+
+      {:error, message} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{error: "The database could not use this regex: #{message}"})
+    end
+  end
+
   def upload_poster(conn, %{"source_id" => id, "poster" => %{"file" => %Plug.Upload{} = upload}}) do
     source = Sources.get_source!(id)
     finish_poster_action(conn, source, CustomPoster.set_from_upload(source, upload))

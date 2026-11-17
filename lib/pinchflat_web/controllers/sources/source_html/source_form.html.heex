@@ -3,8 +3,34 @@
   for={@changeset}
   action={@action}
   method={@method}
-  x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
-  x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
+  x-data="{
+    advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')),
+    settingQuery: '',
+    settingMatches: 0,
+    activeSection: 'source-general',
+    filterSettings(form) {
+      const query = this.settingQuery.trim().toLowerCase();
+      const settings = [...form.querySelectorAll('[data-setting]')];
+      settings.forEach(setting => { setting.hidden = !!query && !setting.textContent.toLowerCase().includes(query) });
+      this.settingMatches = settings.filter(setting => !setting.hidden).length;
+      form.querySelectorAll('[data-setting-group]').forEach(group => {
+        group.hidden = !!query && !group.querySelector('[data-setting]:not([hidden])');
+        if (query && !group.hidden && group.tagName === 'DETAILS') group.open = true;
+      });
+    }
+  }"
+  x-init="
+    $watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)));
+    $el.querySelectorAll('[data-settings] label[for]:not(.theme-switch-target)').forEach(label => {
+      if (!label.closest('[data-setting]')) label.parentElement.dataset.setting = '';
+    });
+    $watch('settingQuery', () => filterSettings($el));
+    const sectionObserver = new IntersectionObserver(
+      entries => entries.forEach(entry => { if (entry.isIntersecting) activeSection = entry.target.id }),
+      { rootMargin: '-25% 0px -65% 0px' }
+    );
+    $el.querySelectorAll('section[data-setting-group][id]').forEach(section => sectionObserver.observe(section));
+  "
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
@@ -56,763 +82,887 @@
     }
     """
   }>
-    <section class="flex flex-wrap justify-between items-center gap-4 mt-4">
-      <h3 class="text-2xl text-theme-on-surface">General Options</h3>
-
-      <div class="flex items-center gap-3">
-        <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
-        <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
-          <button
-            type="button"
-            class="theme-filter-button rounded-full"
-            x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
-            x-on:click="advancedMode = false"
-            x-bind:aria-pressed="!advancedMode"
-          >
-            Standard
-          </button>
-
-          <button
-            type="button"
-            class="theme-filter-button rounded-full"
-            x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
-            x-on:click="advancedMode = true"
-            x-bind:aria-pressed="advancedMode"
-          >
-            Advanced
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section :if={@new_source}>
-      <.input
-        field={f[:source_type]}
-        options={Source.source_type_options()}
-        type="select"
-        label="Source Type"
-        help="Choose Automatic to keep Pinchflat-ngx's existing URL detection, or select the type you expect before inspection."
-        x-model="sourceType"
-      />
-      <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-sm font-medium text-theme-on-surface">
-        <span x-text="sourceTypeLabel"></span>
-      </label>
-
-      <.input
-        field={f[:original_url]}
-        type="text"
-        x-init="$el.focus()"
-        x-model.fill="sourceUrl"
-      />
-      <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted" x-text="sourceTypeHelp"></p>
-      <p
-        x-cloak
-        x-show="/[?&]list=WL(?:&|$)/.test(sourceUrl) && sourceType !== 'video' && (sourceType !== 'automatic' || sourceUrl.includes('/playlist?'))"
-        class="mt-2 text-sm text-theme-on-surface-muted"
-      >
-        Watch Later is private. Upload cookies from the YouTube account that owns it and set
-        Cookie Behaviour to All Operations below. A playlist can be added without videos when YouTube returns its details.
-      </p>
-    </section>
-
-    <.input
-      :if={!@new_source}
-      field={f[:original_url]}
-      type="text"
-      label="Source URL"
-      help="URL of a channel, playlist, or single video (required). Single video sources are indexed once and fast indexing is disabled automatically"
-      x-init="$el.focus()"
-      x-model.fill="sourceUrl"
-    />
-    <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
-
-    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
-      Name and description are refreshed from source metadata unless you lock the individual field. Locked fields
-      can still be edited and saved here; the lock only affects automated refreshes.
-    </p>
-
-    <.input
-      field={f[:custom_name]}
-      type="text"
-      label="Source Name"
-      help="The name shown throughout Pinchflat-ngx. It will be refreshed from source metadata unless locked."
-    />
-    <.input
-      field={f[:custom_name_locked]}
-      type="toggle"
-      label="Lock Source Name"
-      help="Keep the current name when automated metadata refreshes run."
-    />
-    <.input
-      field={f[:description]}
-      type="textarea"
-      label="Description"
-      help="The source description shown in Pinchflat-ngx. It will be refreshed from source metadata unless locked."
-    />
-    <.input
-      field={f[:description_locked]}
-      type="toggle"
-      label="Lock Description"
-      help="Keep the current description when automated metadata refreshes run."
-    />
-    <.input
-      field={f[:media_profile_id]}
-      options={Enum.map(@media_profiles, &{&1.name, &1.id})}
-      type="select"
-      label="Media Profile"
-      help="Sets your preferences for what media to look for and how to store it"
-      x-model.fill="mediaProfileId"
-    />
-    <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
-
-    <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
-      <.input
-        field={f[:index_frequency_minutes]}
-        options={friendly_index_frequencies()}
-        type="select"
-        label="Index Frequency"
-        x-bind:disabled="fastIndexingEnabled == true"
-        x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60, $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-        help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
-      />
-      <div phx-click={show_modal("upgrade-modal")}>
+    <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+      <div class="contents lg:sticky lg:top-24 lg:block lg:self-start">
         <.input
-          field={f[:fast_index]}
-          type="toggle"
-          label="Use Fast Indexing"
-          label_suffix="(pro)"
-          help="Not recommended for playlists. Single video sources always disable this option. Overrides 'Index Frequency'. See below for more details (seriously, there's a TL;DR that's worth reading)"
-          x-model="fastIndexingEnabled"
+          type="search"
+          name="setting_search"
+          id="setting-search"
+          value=""
+          label="Find a setting"
+          placeholder="cutoff, cookies, folder"
+          autocomplete="off"
+          x-model="settingQuery"
+          x-on:keydown.enter.prevent
         />
+        <nav
+          aria-label="Source settings sections"
+          class="sticky top-20 z-10 -mx-5 mt-3 flex gap-1 overflow-x-auto border-b border-theme-outline/60 bg-theme-surface-2 px-5 py-2 sm:-mx-7.5 sm:px-7.5 lg:static lg:mx-0 lg:flex-col lg:overflow-visible lg:border-0 lg:p-0"
+        >
+          <a
+            :for={
+              {id, title, advanced_only} <- [
+                {"source-general", "General", false},
+                {"source-metadata", "Name and description", false},
+                {"source-indexing", "Indexing", false},
+                {"source-downloading", "Downloading", false},
+                {"source-cleanup", "Cutoff and retention", false},
+                {"source-advanced", "Advanced", true}
+              ]
+            }
+            href={"##{id}"}
+            x-show={advanced_only && "advancedMode"}
+            x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
+            x-bind:class={"activeSection === '#{id}' ? 'bg-theme-surface-3 text-theme-on-surface' : 'text-theme-on-surface-muted'"}
+            class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:justify-start"
+          >
+            {title}
+          </a>
+        </nav>
       </div>
-    </section>
 
-    <.input
-      field={f[:index_cutoff_date]}
-      type="text"
-      label="Indexing Cutoff Date"
-      placeholder="YYYY-MM-DD"
-      maxlength="10"
-      pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
-      title="YYYY-MM-DD"
-      help="Stop indexing a channel once it reaches videos uploaded before this date — big time-saver for channels with a large back catalog. Set it a few days <em>before</em> the Download Cutoff Date for safety. Only applies to YouTube channels; ignored for playlists. A few videos from before this date may still be indexed (but not downloaded) — especially on channels with few videos or when Fast Indexing is enabled, since those checks look at the most recent videos regardless of date. Leave blank to index everything"
-      html_help={true}
-      x-model="indexCutoffDate"
-      x-bind:disabled="looksLikePlaylist"
-    />
-    <p x-cloak x-show="looksLikePlaylist" class="mt-1 text-sm text-theme-warning">
-      The Indexing Cutoff Date doesn't apply to playlists — they aren't ordered by upload date, so
-      indexing can't safely stop early.
-    </p>
+      <div data-settings class="min-w-0">
+        <p x-cloak x-show="settingQuery.trim() && settingMatches === 0" class="mt-6 text-sm text-theme-on-surface-muted">
+          No settings match "<span x-text="settingQuery.trim()"></span>". Try a shorter word, or clear the search to see every setting.
+        </p>
 
-    <p x-cloak x-show="indexCutoffAfterDownloadCutoff" class="mt-1 text-sm text-theme-warning">
-      The Indexing Cutoff Date is after the Download Cutoff Date — media between the two dates would
-      never be indexed, so it could never be downloaded. Set it on or before the Download Cutoff
-      Date.
-    </p>
+        <section id="source-general" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+          <section class="flex flex-wrap justify-between items-center gap-4 mt-4">
+            <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
-    <h3 class="mt-8 text-2xl text-theme-on-surface">
-      Downloading Options
-    </h3>
-
-    <section
-      class="space-y-3"
-      x-data={
-        Phoenix.json_library().encode!(%{
-          downloadMembersOnlyMedia: Ecto.Changeset.get_field(@changeset, :download_members_only_media),
-          cookieBehaviour: to_string(Ecto.Changeset.get_field(@changeset, :cookie_behaviour)),
-          playerClient: to_string(Ecto.Changeset.get_field(@changeset, :player_client) || ""),
-          fallbacks: (Ecto.Changeset.get_field(@changeset, :player_client_fallbacks) || []) |> Enum.map(&to_string/1),
-          candidateFallback: ""
-        })
-      }
-    >
-      <.input
-        field={f[:download_media]}
-        type="toggle"
-        label="Download Media"
-        help="Unchecking still indexes media but it won't be downloaded until you enable this option"
-      />
-      <.input
-        field={f[:download_public_media]}
-        type="toggle"
-        label="Download Public and Unlisted Media"
-        help="Controls media that yt-dlp reports as public or unlisted"
-      />
-      <.input
-        field={f[:download_members_only_media]}
-        type="toggle"
-        label="Download Members-only Media"
-        help="Includes subscriber-only, premium-only, and media that requires authentication"
-        x-model="downloadMembersOnlyMedia"
-      />
-      <section :if={@show_delay_automatic_download} class="mt-3">
-        <.input
-          field={f[:delay_automatic_download]}
-          type="toggle"
-          label="Delay Automatic Download"
-          help="For playlists only. Index first, then send me to a selection screen so I can choose which items to download."
-        />
-      </section>
-
-      <.input
-        field={f[:cookie_behaviour]}
-        options={friendly_cookie_behaviours()}
-        type="select"
-        label="Cookie Behaviour"
-        help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
-        x-model="cookieBehaviour"
-      />
-      <.input
-        field={f[:player_client]}
-        options={friendly_player_clients()}
-        type="select"
-        label="Primary YouTube Player Client"
-        help="Overrides yt-dlp's default YouTube player-client selection for this source. Default is recommended unless you need a specific client."
-        x-model="playerClient"
-      />
-      <div class="mt-4 rounded-m3-sm border border-theme-outline/40 bg-theme-surface-2 p-4">
-        <div class="mb-3">
-          <h4 class="text-sm font-semibold text-theme-on-surface">Client Fallback Chain</h4>
-
-          <p class="text-xs text-theme-on-surface-muted mt-1">
-            If the primary client encounters an HTTP 403 or bot check, Pinchflat will sequentially try these fallback clients in order (up to 4 total clients).
-          </p>
-        </div>
-        <input type="hidden" name="source[player_client_fallbacks][]" value="" />
-        <div x-show="fallbacks.length > 0" class="space-y-2 mb-3">
-          <template x-for="(fb, idx) in fallbacks" x-bind:key="fb">
-            <div class="flex items-center justify-between rounded-m3-xs border border-theme-outline/30 bg-theme-surface-1 px-3 py-2 text-xs">
-              <input type="hidden" name="source[player_client_fallbacks][]" x-bind:value="fb" />
-              <div class="flex items-center gap-2">
-                <span class="font-mono text-theme-on-surface-muted" x-text="`#${idx + 1}`"></span>
-                <span class="font-medium text-theme-on-surface font-mono" x-text="fb"></span>
-              </div>
-
-              <div class="flex items-center gap-1">
+            <div class="flex items-center gap-3">
+              <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
+              <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
                 <button
                   type="button"
-                  class="theme-icon-button theme-outline-button text-xs"
-                  x-bind:disabled="idx === 0"
-                  @click="
+                  class="theme-filter-button rounded-full"
+                  x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
+                  x-on:click="advancedMode = false"
+                  x-bind:aria-pressed="!advancedMode"
+                >
+                  Standard
+                </button>
+
+                <button
+                  type="button"
+                  class="theme-filter-button rounded-full"
+                  x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
+                  x-on:click="advancedMode = true"
+                  x-bind:aria-pressed="advancedMode"
+                >
+                  Advanced
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section :if={@new_source}>
+            <.input
+              field={f[:source_type]}
+              options={Source.source_type_options()}
+              type="select"
+              label="Source Type"
+              help="Choose Automatic to keep Pinchflat-ngx's existing URL detection, or select the type you expect before inspection."
+              x-model="sourceType"
+            />
+            <div data-setting>
+              <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-sm font-medium text-theme-on-surface">
+                <span x-text="sourceTypeLabel"></span>
+              </label>
+
+              <.input
+                field={f[:original_url]}
+                type="text"
+                x-init="$el.focus()"
+                x-model.fill="sourceUrl"
+              />
+              <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted" x-text="sourceTypeHelp"></p>
+              <p
+                x-cloak
+                x-show="/[?&]list=WL(?:&|$)/.test(sourceUrl) && sourceType !== 'video' && (sourceType !== 'automatic' || sourceUrl.includes('/playlist?'))"
+                class="mt-2 text-sm text-theme-on-surface-muted"
+              >
+                Watch Later is private. Upload cookies from the YouTube account that owns it and set
+                Cookie Behaviour to All Operations below. A playlist can be added without videos when YouTube returns its details.
+              </p>
+            </div>
+          </section>
+
+          <.input
+            :if={!@new_source}
+            field={f[:original_url]}
+            type="text"
+            label="Source URL"
+            help="URL of a channel, playlist, or single video (required). Single video sources are indexed once and fast indexing is disabled automatically"
+            x-init="$el.focus()"
+            x-model.fill="sourceUrl"
+          />
+          <.input
+            field={f[:media_profile_id]}
+            options={Enum.map(@media_profiles, &{&1.name, &1.id})}
+            type="select"
+            label="Media Profile"
+            help="Sets your preferences for what media to look for and how to store it"
+            x-model.fill="mediaProfileId"
+          />
+          <div
+            data-setting
+            x-data={
+        """
+        {
+          sourceFolderValue: #{Phoenix.json_library().encode!(Phoenix.HTML.Form.normalize_value("text", f[:download_subdirectory].value) || "")},
+          sourceFolderOpen: false,
+          get folderOptions() { return [...this.$root.querySelectorAll('[data-folder]')] },
+          folderMatches(folder) { return folder.toLowerCase().includes(this.sourceFolderValue.trim().toLowerCase()) },
+          get hasFolderMatch() { return this.folderOptions.some(option => this.folderMatches(option.dataset.folder)) },
+          moveFolderFocus(step) {
+            const visible = this.folderOptions.filter(option => this.folderMatches(option.dataset.folder));
+            const next = visible[visible.indexOf(document.activeElement) + step];
+            (next || this.$root.querySelector('input[type=text]')).focus();
+          }
+        }
+        """
+      }
+            x-on:click.outside="sourceFolderOpen = false"
+            x-on:focusout="if (!$el.contains($event.relatedTarget)) sourceFolderOpen = false"
+            x-on:keydown.escape="sourceFolderOpen = false"
+          >
+            <div class="relative">
+              <.input
+                field={f[:download_subdirectory]}
+                type="text"
+                inputclass="font-mono"
+                label="Source folder"
+                placeholder="Kids/Bluey"
+                autocomplete="off"
+                aria-controls="source-folder-options"
+                x-model="sourceFolderValue"
+                x-on:click="sourceFolderOpen = true"
+                x-on:input="sourceFolderOpen = true"
+                x-on:keydown.arrow-down.prevent="sourceFolderOpen = true; $nextTick(() => moveFolderFocus(1))"
+              />
+              <div
+                :if={Enum.any?(@available_folders)}
+                id="source-folder-options"
+                x-cloak
+                x-show="sourceFolderOpen && hasFolderMatch"
+                role="group"
+                aria-label="Pick existing source folder"
+                class="theme-surface-raised absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto p-1"
+                x-on:keydown.arrow-down.prevent="moveFolderFocus(1)"
+                x-on:keydown.arrow-up.prevent="moveFolderFocus(-1)"
+              >
+                <div
+                  :for={folder <- @available_folders}
+                  class="theme-dropdown-option"
+                  x-show={"folderMatches(#{Phoenix.json_library().encode!(folder)})"}
+                >
+                  <button
+                    type="button"
+                    data-folder={folder}
+                    class="font-mono"
+                    x-on:click="sourceFolderValue = $el.dataset.folder; sourceFolderOpen = false; $root.querySelector('input[type=text]').focus()"
+                  >
+                    <span class="min-w-0 flex-1 truncate">{folder}</span>
+                    <.icon
+                      name="hero-check"
+                      class="h-4 w-4 shrink-0 text-theme-primary"
+                      x-show={"sourceFolderValue === #{Phoenix.json_library().encode!(folder)}"}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <.help>
+              {download_subdirectory_help()}
+              <span :if={Enum.any?(@available_folders)}>Click the field to pick a folder that already exists, or type a new one.</span>
+            </.help>
+            <.form_disclosure title="How source folders work?">
+              <div class="text-sm text-theme-on-surface">
+                <p>
+                  Pinchflat saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
+                </p>
+
+                <p class="mt-3">
+                  Use <strong class="text-theme-on-surface">Source folder</strong>
+                  for the main folder, then keep your template focused on file naming or
+                  subfolders inside it.
+                </p>
+
+                <p class="mt-3">
+                  If both the source folder and the template point to the same folder name, it will be duplicated.
+                  Example: source folder <code class="text-theme-on-surface">Kids</code>
+                  plus template <code class="text-theme-on-surface">{~S(Kids/{{ title }}.{{ ext }})}</code>
+                  becomes <code class="text-theme-on-surface">Kids/Kids/...</code>.
+                </p>
+
+                <p class="mt-3">Good examples:</p>
+
+                <ul class="mt-2 list-disc pl-5">
+                  <li :for={example <- download_subdirectory_examples()}>
+                    <code class="text-theme-on-surface">{example}</code>
+                  </li>
+                </ul>
+              </div>
+            </.form_disclosure>
+          </div>
+        </section>
+        <section id="source-metadata" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Source Metadata</h3>
+
+          <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
+            Name and description are refreshed from source metadata unless you lock the individual field. Locked fields
+            can still be edited and saved here; the lock only affects automated refreshes.
+          </p>
+
+          <.input
+            field={f[:custom_name]}
+            type="text"
+            label="Source Name"
+            help="The name shown throughout Pinchflat-ngx. It will be refreshed from source metadata unless locked."
+          />
+          <.input
+            field={f[:custom_name_locked]}
+            type="toggle"
+            label="Lock Source Name"
+            help="Keep the current name when automated metadata refreshes run."
+          />
+          <.input
+            field={f[:description]}
+            type="textarea"
+            label="Description"
+            help="The source description shown in Pinchflat-ngx. It will be refreshed from source metadata unless locked."
+          />
+          <.input
+            field={f[:description_locked]}
+            type="toggle"
+            label="Lock Description"
+            help="Keep the current description when automated metadata refreshes run."
+          />
+        </section>
+        <section id="source-indexing" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Indexing Options</h3>
+
+          <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
+            <.input
+              field={f[:index_frequency_minutes]}
+              options={friendly_index_frequencies()}
+              type="select"
+              label="Index Frequency"
+              x-bind:disabled="fastIndexingEnabled == true"
+              x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60, $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+              help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
+            />
+            <div phx-click={show_modal("upgrade-modal")}>
+              <.input
+                field={f[:fast_index]}
+                type="toggle"
+                label="Use Fast Indexing"
+                label_suffix="(pro)"
+                help="Not recommended for playlists. Single video sources always disable this option. Overrides 'Index Frequency'. Read 'What is fast indexing?' below before turning this on."
+                x-model="fastIndexingEnabled"
+              />
+            </div>
+            <.form_disclosure title="What is fast indexing?" data-setting>
+              <.fast_indexing_help />
+            </.form_disclosure>
+          </section>
+
+          <div data-setting class="mt-5">
+            <.date_picker
+              id={f[:index_cutoff_date].id}
+              name={f[:index_cutoff_date].name}
+              label="Indexing Cutoff Date"
+              value={to_string(f[:index_cutoff_date].value || "")}
+              timezone={Application.fetch_env!(:pinchflat, :timezone)}
+              required={false}
+              x-modelable="value"
+              x-model="indexCutoffDate"
+            />
+            <.error :for={error <- f[:index_cutoff_date].errors}>{translate_error(error)}</.error>
+            <.help>
+              Stop indexing a channel once it reaches videos uploaded before this date. This saves a lot of time on
+              channels with a large back catalog. Set it a few days <em>before</em>
+              the Download Cutoff Date for safety. It only applies to YouTube channels and is ignored for playlists. A few
+              videos from before this date may still be indexed (but not downloaded), especially on channels with few
+              videos or when Fast Indexing is enabled, since those checks look at the most recent videos regardless of
+              date. Leave blank to index everything.
+            </.help>
+          </div>
+          <p x-cloak x-show="looksLikePlaylist" class="mt-1 text-sm text-theme-warning">
+            The Indexing Cutoff Date doesn't apply to playlists — they aren't ordered by upload date, so
+            indexing can't safely stop early.
+          </p>
+
+          <p x-cloak x-show="indexCutoffAfterDownloadCutoff" class="mt-1 text-sm text-theme-warning">
+            The Indexing Cutoff Date is after the Download Cutoff Date — media between the two dates would
+            never be indexed, so it could never be downloaded. Set it on or before the Download Cutoff
+            Date.
+          </p>
+        </section>
+        <section id="source-downloading" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+          <h3 class="mt-8 text-2xl text-theme-on-surface">
+            Downloading Options
+          </h3>
+
+          <section
+            class="space-y-3"
+            x-data={
+              Phoenix.json_library().encode!(%{
+                downloadMembersOnlyMedia: Ecto.Changeset.get_field(@changeset, :download_members_only_media),
+                cookieBehaviour: to_string(Ecto.Changeset.get_field(@changeset, :cookie_behaviour)),
+                playerClient: to_string(Ecto.Changeset.get_field(@changeset, :player_client) || ""),
+                fallbacks:
+                  (Ecto.Changeset.get_field(@changeset, :player_client_fallbacks) || []) |> Enum.map(&to_string/1),
+                candidateFallback: ""
+              })
+            }
+          >
+            <.input
+              field={f[:download_media]}
+              type="toggle"
+              label="Download Media"
+              help="Unchecking still indexes media but it won't be downloaded until you enable this option"
+            />
+            <.input
+              field={f[:download_public_media]}
+              type="toggle"
+              label="Download Public and Unlisted Media"
+              help="Controls media that yt-dlp reports as public or unlisted"
+            />
+            <.input
+              field={f[:download_members_only_media]}
+              type="toggle"
+              label="Download Members-only Media"
+              help="Includes subscriber-only, premium-only, and media that requires authentication"
+              x-model="downloadMembersOnlyMedia"
+            />
+            <section :if={@show_delay_automatic_download} class="mt-3">
+              <.input
+                field={f[:delay_automatic_download]}
+                type="toggle"
+                label="Delay Automatic Download"
+                help="For playlists only. Index first, then send me to a selection screen so I can choose which items to download."
+              />
+            </section>
+
+            <.input
+              field={f[:cookie_behaviour]}
+              options={friendly_cookie_behaviours()}
+              type="select"
+              label="Cookie Behaviour"
+              help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
+              x-model="cookieBehaviour"
+            />
+            <div data-setting class="theme-surface-accent flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm">
+              <p class="min-w-0 flex-1 basis-60 text-theme-on-surface-muted">
+                <span class="font-medium text-theme-on-surface">Shared cookies.txt:</span>
+                <%= cond do %>
+                  <% @cookie_file_configured -> %>
+                    Cookie file is configured and ready to use.
+                  <% @cookie_file_exists -> %>
+                    Cookie file exists but is currently blank.
+                  <% true -> %>
+                    Cookie file does not exist yet.
+                <% end %>
+                Cookie health checks are in <.link href={~p"/settings"} class="underline">Settings</.link>.
+              </p>
+
+              <div class="flex flex-wrap gap-2">
+                <.button type="button" variant="secondary" size="compact" phx-click={show_modal("cookie-upload-modal")}>
+                  Upload cookies.txt
+                </.button>
+                <.button type="button" variant="secondary" size="compact" phx-click={show_modal("cookie-paste-modal")}>
+                  Paste contents
+                </.button>
+                <.button
+                  :if={@cookie_file_exists}
+                  type="button"
+                  variant="secondary"
+                  size="compact"
+                  phx-click={show_modal("cookie-inspect-modal")}
+                >
+                  Inspect
+                </.button>
+              </div>
+            </div>
+            <.form_disclosure
+              title="YouTube player client"
+              open={Enum.any?([:player_client, :player_client_fallbacks], &Keyword.has_key?(@changeset.errors, &1))}
+              data-setting-group
+            >
+              <:status>
+                <span x-text="(playerClient || 'yt-dlp default') + (fallbacks.length ? ', then ' + fallbacks.join(', ') : '')"></span>
+              </:status>
+              <.input
+                field={f[:player_client]}
+                options={friendly_player_clients()}
+                type="select"
+                label="Primary YouTube Player Client"
+                help="Overrides yt-dlp's default YouTube player-client selection for this source. Default is recommended unless you need a specific client."
+                x-model="playerClient"
+              />
+              <div data-setting class="mt-4 rounded-m3-sm border border-theme-outline/40 bg-theme-surface-2 p-4">
+                <div class="mb-3">
+                  <h4 class="text-sm font-semibold text-theme-on-surface">Client Fallback Chain</h4>
+
+                  <p class="text-xs text-theme-on-surface-muted mt-1">
+                    If the primary client encounters an HTTP 403 or bot check, Pinchflat will sequentially try these fallback clients in order (up to 4 total clients).
+                  </p>
+                </div>
+                <input type="hidden" name="source[player_client_fallbacks][]" value="" />
+                <div x-show="fallbacks.length > 0" class="space-y-2 mb-3">
+                  <template x-for="(fb, idx) in fallbacks" x-bind:key="fb">
+                    <div class="flex items-center justify-between rounded-m3-xs border border-theme-outline/30 bg-theme-surface-1 px-3 py-2 text-xs">
+                      <input type="hidden" name="source[player_client_fallbacks][]" x-bind:value="fb" />
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono text-theme-on-surface-muted" x-text="`#${idx + 1}`"></span>
+                        <span class="font-medium text-theme-on-surface font-mono" x-text="fb"></span>
+                      </div>
+
+                      <div class="flex items-center gap-1">
+                        <button
+                          type="button"
+                          class="theme-icon-button theme-outline-button text-xs"
+                          x-bind:disabled="idx === 0"
+                          @click="
                     const temp = fallbacks[idx - 1];
                     fallbacks[idx - 1] = fallbacks[idx];
                     fallbacks[idx] = temp;
                     fallbacks = [...fallbacks];
                   "
-                  title="Move Up"
-                  aria-label="Move Up"
-                >
-                  ↑
-                </button>
+                          title="Move Up"
+                          aria-label="Move Up"
+                        >
+                          ↑
+                        </button>
 
-                <button
-                  type="button"
-                  class="theme-icon-button theme-outline-button text-xs"
-                  x-bind:disabled="idx === fallbacks.length - 1"
-                  @click="
+                        <button
+                          type="button"
+                          class="theme-icon-button theme-outline-button text-xs"
+                          x-bind:disabled="idx === fallbacks.length - 1"
+                          @click="
                     const temp = fallbacks[idx + 1];
                     fallbacks[idx + 1] = fallbacks[idx];
                     fallbacks[idx] = temp;
                     fallbacks = [...fallbacks];
                   "
-                  title="Move Down"
-                  aria-label="Move Down"
-                >
-                  ↓
-                </button>
+                          title="Move Down"
+                          aria-label="Move Down"
+                        >
+                          ↓
+                        </button>
 
-                <button
-                  type="button"
-                  class="theme-icon-button theme-outline-button text-xs text-theme-error hover:border-theme-error"
-                  @click="
+                        <button
+                          type="button"
+                          class="theme-icon-button theme-outline-button text-xs text-theme-error hover:border-theme-error"
+                          @click="
                     fallbacks.splice(idx, 1);
                     fallbacks = [...fallbacks];
                   "
-                  title="Remove"
-                  aria-label="Remove"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          </template>
-        </div>
+                          title="Remove"
+                          aria-label="Remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
 
-        <div x-show="fallbacks.length === 0" class="text-xs text-theme-on-surface-muted italic mb-3">
-          No fallback clients configured. Only the primary client (or yt-dlp default) will be used.
-        </div>
+                <div x-show="fallbacks.length === 0" class="text-xs text-theme-on-surface-muted italic mb-3">
+                  No fallback clients configured. Only the primary client (or yt-dlp default) will be used.
+                </div>
 
-        <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-          <select
-            x-model="candidateFallback"
-            x-bind:disabled="!playerClient || (playerClient ? 1 : 0) + fallbacks.length >= 4"
-            class="theme-input rounded-m3-xs px-3 py-1.5 text-xs text-theme-on-surface focus:ring-0"
-          >
-            <option value="">Select fallback client to add...</option>
+                <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                  <select
+                    x-model="candidateFallback"
+                    x-bind:disabled="!playerClient || (playerClient ? 1 : 0) + fallbacks.length >= 4"
+                    class="theme-input rounded-m3-xs px-3 py-1.5 text-xs text-theme-on-surface focus:ring-0"
+                  >
+                    <option value="">Select fallback client to add...</option>
 
-            <%= for {label, val} <- Source.player_client_options() do %>
-              <option
-                value={to_string(val)}
-                x-show={
+                    <%= for {label, val} <- Source.player_client_options() do %>
+                      <option
+                        value={to_string(val)}
+                        x-show={
                   "playerClient !== '#{to_string(val)}' && !fallbacks.includes('#{to_string(val)}')"
                 }
-              >
-                {label} ({to_string(val)})
-              </option>
-            <% end %>
-          </select>
+                      >
+                        {label} ({to_string(val)})
+                      </option>
+                    <% end %>
+                  </select>
 
-          <button
-            type="button"
-            class="theme-button theme-outline-button"
-            x-bind:disabled="!candidateFallback || (playerClient ? 1 : 0) + fallbacks.length >= 4"
-            @click="
+                  <button
+                    type="button"
+                    class="theme-button theme-outline-button"
+                    x-bind:disabled="!candidateFallback || (playerClient ? 1 : 0) + fallbacks.length >= 4"
+                    @click="
               if (candidateFallback && !fallbacks.includes(candidateFallback) && candidateFallback !== playerClient) {
                 fallbacks.push(candidateFallback);
                 fallbacks = [...fallbacks];
                 candidateFallback = '';
               }
             "
-          >
-            + Add Fallback
-          </button>
-        </div>
+                  >
+                    + Add Fallback
+                  </button>
+                </div>
 
-        <p x-show="!playerClient" class="text-xs text-theme-on-surface-muted mt-2">
-          Select a primary YouTube Player Client above to enable fallback chains.
-        </p>
+                <p x-show="!playerClient" class="text-xs text-theme-on-surface-muted mt-2">
+                  Select a primary YouTube Player Client above to enable fallback chains.
+                </p>
 
-        <p
-          x-show="playerClient && (playerClient ? 1 : 0) + fallbacks.length >= 4"
-          class="text-xs text-theme-on-surface-muted mt-2"
-        >
-          Maximum of 4 total clients reached (1 primary + 3 fallbacks).
-        </p>
-      </div>
+                <p
+                  x-show="playerClient && (playerClient ? 1 : 0) + fallbacks.length >= 4"
+                  class="text-xs text-theme-on-surface-muted mt-2"
+                >
+                  Maximum of 4 total clients reached (1 primary + 3 fallbacks).
+                </p>
+              </div>
+            </.form_disclosure>
 
-      <div
-        x-cloak
-        x-show="downloadMembersOnlyMedia && cookieBehaviour === 'disabled'"
-        class="theme-status-card theme-status-card-warning text-sm"
-        role="alert"
-      >
-        Members-only media may fail without cookies. Configure a cookies.txt file and select a cookie behaviour if
-        you want Pinchflat-ngx to access it; this setting will not enable cookies automatically.
-      </div>
-
-      <div
-        x-cloak
-        x-show="[playerClient, ...fallbacks].includes('web_creator') && cookieBehaviour !== 'all_operations'"
-        class="theme-status-card theme-status-card-warning text-sm"
-        role="alert"
-      >
-        Web Creator requires account cookies. Select All Operations to use this client reliably.
-      </div>
-
-      <div
-        x-cloak
-        x-show="[playerClient, ...fallbacks].some(c => ['android', 'ios', 'tv_simply'].includes(c)) && cookieBehaviour !== 'disabled'"
-        class="theme-status-card theme-status-card-warning text-sm"
-        role="alert"
-      >
-        One or more configured player clients (Android, iOS, TV Simply) do not support account cookies. Set Cookie Behaviour to Disabled before saving.
-      </div>
-    </section>
-
-    <section class="theme-surface-accent mt-3 px-6 py-5">
-      <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_max-content] lg:items-start">
-        <div class="space-y-3">
-          <div class="flex flex-wrap items-center gap-3">
-            <p class="text-sm font-medium text-theme-on-surface">Shared `cookies.txt` file</p>
-
-            <span
-              :if={@cookie_file_exists}
-              class="theme-field-shell theme-field-shell-active inline-flex w-auto rounded-full"
+            <div
+              x-cloak
+              x-show="downloadMembersOnlyMedia && cookieBehaviour === 'disabled'"
+              class="theme-status-card theme-status-card-warning text-sm"
+              role="alert"
             >
-              <span class={[
-                "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium",
-                if(@cookie_file_configured,
-                  do: "bg-theme-primary-container/25 text-theme-on-primary-container",
-                  else: "bg-theme-surface-2 text-theme-on-surface-muted"
-                )
-              ]}>
-                {if @cookie_file_configured, do: "Ready", else: "Needs Contents"}
-              </span>
-            </span>
+              Members-only media may fail without cookies. Configure a cookies.txt file and select a cookie behaviour if
+              you want Pinchflat-ngx to access it; this setting will not enable cookies automatically.
+            </div>
+
+            <div
+              x-cloak
+              x-show="[playerClient, ...fallbacks].includes('web_creator') && cookieBehaviour !== 'all_operations'"
+              class="theme-status-card theme-status-card-warning text-sm"
+              role="alert"
+            >
+              Web Creator requires account cookies. Select All Operations to use this client reliably.
+            </div>
+
+            <div
+              x-cloak
+              x-show="[playerClient, ...fallbacks].some(c => ['android', 'ios', 'tv_simply'].includes(c)) && cookieBehaviour !== 'disabled'"
+              class="theme-status-card theme-status-card-warning text-sm"
+              role="alert"
+            >
+              One or more configured player clients (Android, iOS, TV Simply) do not support account cookies. Set Cookie Behaviour to Disabled before saving.
+            </div>
+          </section>
+
+          <section x-show="advancedMode || settingQuery.trim()">
+            <.input
+              field={f[:min_duration_seconds]}
+              type="number"
+              label="Minimum Duration (seconds)"
+              min="0"
+              help="Minimum duration of the media to be downloaded. Can be blank"
+            />
+            <.input
+              field={f[:max_duration_seconds]}
+              type="number"
+              label="Maximum Duration (seconds)"
+              min="0"
+              help="Maximum duration of the media to be downloaded. Can be blank"
+            />
+          </section>
+        </section>
+        <section id="source-cleanup" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Cutoff and Retention</h3>
+
+          <section data-setting class="mt-5">
+            <div class="sm:max-w-md">
+              <.date_picker
+                id={f[:download_cutoff_date].id}
+                name={f[:download_cutoff_date].name}
+                label="Download Cutoff Date"
+                value={to_string(f[:download_cutoff_date].value || "")}
+                timezone={Application.fetch_env!(:pinchflat, :timezone)}
+                required={false}
+                presets={cutoff_date_presets()}
+                x-modelable="value"
+                x-model="cutoffDate"
+              />
+            </div>
+            <.error :for={error <- f[:download_cutoff_date].errors}>{translate_error(error)}</.error>
+            <p class="mt-2 text-sm text-theme-on-surface-muted">
+              Automatically download media published on or after this date. Scheduled cleanup also deletes unprotected
+              downloaded media from before this date, including manual downloads, even within their retention period.
+              Leave blank for no cutoff. Prevent Automatic Deletion on a media item's Edit page overrides both cutoff
+              and retention cleanup.
+            </p>
+          </section>
+
+          <.form_disclosure
+            title="Retention and watch window"
+            open={Enum.any?([:retention_period_days, :watch_window_days], &Keyword.has_key?(@changeset.errors, &1))}
+            data-setting-group
+          >
+            <:status>
+              <span x-text="'Retention: ' + retentionPolicySummary">Retention: {retention_form_preview(
+                @changeset,
+                @media_profiles
+              )}</span>
+            </:status>
+            <div data-setting>
+              <.input
+                field={f[:retention_period_days]}
+                type="number"
+                label="Retention override (days)"
+                placeholder="Inherit media profile"
+                x-model="retentionOverride"
+                min="0"
+                help="Leave blank to follow the selected media profile. Enter 0 to disable age-based cleanup for this source."
+                html_help={true}
+              />
+              <div class="theme-surface-accent rounded-m3-sm p-4">
+                <p class="text-sm font-medium text-theme-on-surface">Effective retention</p>
+                <p
+                  id="source-retention-effective"
+                  class="mt-1 text-sm text-theme-on-surface"
+                  aria-live="polite"
+                  x-text="retentionPolicySummary"
+                >
+                  {retention_form_preview(@changeset, @media_profiles)}
+                </p>
+                <p class="mt-2 text-sm text-theme-on-surface-muted">
+                  Age is counted from download time. Saving a shorter period or changing the profile can make existing
+                  downloads eligible at the next cleanup. A publication-date cutoff can delete files sooner.
+                  Prevent Automatic Deletion overrides both cleanup rules.
+                </p>
+              </div>
+            </div>
+
+            <.input
+              field={f[:watch_window_days]}
+              type="number"
+              label="Watch window (days)"
+              min="0"
+              max="365"
+              help="Leave blank to use the media profile setting. Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain."
+              html_help={true}
+            />
+          </.form_disclosure>
+        </section>
+        <section
+          id="source-advanced"
+          data-setting-group
+          class="scroll-mt-36 lg:scroll-mt-24"
+          x-show="advancedMode || settingQuery.trim()"
+        >
+          <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
+
+          <p class="mt-2 text-sm text-theme-on-surface-muted">Tread carefully</p>
+
+          <div
+            data-setting
+            x-data={
+              """
+              {
+                regex: '',
+                titles: '',
+                sourceId: #{Phoenix.json_library().encode!(@changeset.data.id)},
+                busy: false,
+                tested: false,
+                error: '',
+                samples: [],
+                indexed: [],
+                matched(results) { return results.filter(result => result.match).length },
+                async test() {
+                  this.busy = true;
+                  this.error = '';
+                  try {
+                    const body = new URLSearchParams({ regex: this.regex, titles: this.titles, source_id: this.sourceId ?? '' });
+                    const response = await fetch('/sources/title_filter/test', {
+                      method: 'POST',
+                      headers: { 'x-csrf-token': document.querySelector('meta[name=csrf-token]').content },
+                      body
+                    });
+                    const data = await response.json();
+                    this.error = response.ok ? '' : data.error;
+                    this.samples = response.ok ? data.samples : [];
+                    this.indexed = response.ok ? data.indexed : [];
+                  } catch (_error) {
+                    this.error = 'The test could not reach Pinchflat-ngx. Check the connection and try again.';
+                  }
+                  this.tested = true;
+                  this.busy = false;
+                }
+              }
+              """
+            }
+          >
+            <.input
+              field={f[:title_filter_regex]}
+              type="text"
+              inputclass="font-mono"
+              label="Title Filter Regex"
+              placeholder="(?i)^How to Bike$"
+              help={title_filter_regex_help()}
+              html_help={true}
+              x-model.fill="regex"
+            />
+            <.form_disclosure title="Test this filter">
+              <p class="mt-3 text-sm text-theme-on-surface-muted">
+                Titles are checked by the database, the same way downloads are filtered. Nothing is saved or
+                downloaded by a test.
+                <span :if={@changeset.data.id}>
+                  The 50 most recently published indexed titles of this source are checked too.
+                </span>
+              </p>
+              <.input
+                type="textarea"
+                name="title_filter_samples"
+                id="title-filter-samples"
+                value=""
+                label="Sample titles, one per line"
+                x-model="titles"
+              />
+              <div class="mt-3">
+                <.button
+                  type="button"
+                  variant="secondary"
+                  x-on:click="test()"
+                  x-bind:disabled="busy || regex.trim() === ''"
+                >
+                  Test filter
+                </.button>
+              </div>
+
+              <div aria-live="polite">
+                <p
+                  x-cloak
+                  x-show="error"
+                  x-text="error"
+                  class="theme-status-card theme-status-card-warning mt-3 text-sm"
+                >
+                </p>
+
+                <template x-for="group in [{ label: 'Sample titles', results: samples }, { label: 'Recent indexed titles', results: indexed }]">
+                  <div x-show="tested && !error && group.results.length > 0" class="mt-4">
+                    <p class="text-sm font-medium text-theme-on-surface">
+                      <span x-text="group.label"></span>:
+                      <span x-text="matched(group.results) + ' of ' + group.results.length + ' would download'"></span>
+                    </p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                      <template x-for="result in group.results">
+                        <li class="flex items-start gap-2">
+                          <span
+                            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                            x-bind:class="result.match ? 'theme-badge-success' : 'theme-badge-warning'"
+                            x-text="result.match ? 'Matches' : 'Filtered out'"
+                          ></span>
+                          <span class="min-w-0 [overflow-wrap:anywhere] text-theme-on-surface" x-text="result.title"></span>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                </template>
+
+                <p
+                  x-cloak
+                  x-show="tested && !error && samples.length === 0 && indexed.length === 0"
+                  class="mt-3 text-sm text-theme-on-surface-muted"
+                >
+                  The regex is valid. Add sample titles above to see which ones it matches.
+                </p>
+              </div>
+            </.form_disclosure>
           </div>
-
-          <p class="max-w-2xl text-sm leading-6 text-theme-on-surface-muted">
-            <%= cond do %>
-              <% @cookie_file_configured -> %>
-                Cookie file is configured and ready to use.
-              <% @cookie_file_exists -> %>
-                Cookie file exists but is currently blank.
-              <% true -> %>
-                Cookie file does not exist yet.
-            <% end %>
-          </p>
-
-          <p class="break-all font-mono text-xs leading-6 text-theme-on-surface-muted">{@cookie_file_path}</p>
-        </div>
-
-        <div class="flex flex-wrap items-start content-start gap-3 self-start lg:flex-nowrap lg:justify-end lg:self-start lg:justify-self-end">
-          <.button
-            type="button"
-            class="w-auto px-5 py-3 text-sm"
-            color="bg-theme-primary text-theme-on-primary"
-            phx-click={show_modal("cookie-upload-modal")}
-          >
-            Upload cookies.txt
-          </.button>
-
-          <.button
-            type="button"
-            class="w-auto px-5 py-3 text-sm"
-            color="theme-outline-button"
-            phx-click={show_modal("cookie-paste-modal")}
-          >
-            Paste Cookie Contents
-          </.button>
-
-          <.button
-            :if={@cookie_file_exists}
-            type="button"
-            class="w-auto px-5 py-3 text-sm"
-            color="theme-outline-button"
-            phx-click={show_modal("cookie-inspect-modal")}
-          >
-            Inspect Cookie File
-          </.button>
-        </div>
-      </div>
-    </section>
-
-    <section x-show="advancedMode">
-      <.input
-        field={f[:min_duration_seconds]}
-        type="number"
-        label="Minimum Duration (seconds)"
-        min="0"
-        help="Minimum duration of the media to be downloaded. Can be blank"
-      />
-      <.input
-        field={f[:max_duration_seconds]}
-        type="number"
-        label="Maximum Duration (seconds)"
-        min="0"
-        help="Maximum duration of the media to be downloaded. Can be blank"
-      />
-    </section>
-
-    <section>
-      <div class="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
-        <.input
-          field={f[:download_cutoff_date]}
-          type="text"
-          label="Download Cutoff Date"
-          placeholder="YYYY-MM-DD"
-          maxlength="10"
-          pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
-          title="YYYY-MM-DD"
-          x-model="cutoffDate"
-        />
-        <.input
-          label="Cutoff preset"
-          prompt="Select preset"
-          name="download_cutoff_date_preset"
-          value=""
-          options={cutoff_date_presets()}
-          type="select"
-          inputclass="w-full"
-          x-on:change={"cutoffDate = $event.target.value || '#{f[:download_cutoff_date].value}'"}
-        />
-      </div>
-      <p class="mt-2 text-sm text-theme-on-surface-muted">
-        Automatically download media published on or after this date. Scheduled cleanup also deletes unprotected
-        downloaded media from before this date, including manual downloads, even within their retention period.
-        Leave blank for no cutoff. Prevent Automatic Deletion on a media item's Edit page overrides both cutoff
-        and retention cleanup.
-      </p>
-    </section>
-
-    <.input
-      field={f[:retention_period_days]}
-      type="number"
-      label="Retention override (days)"
-      placeholder="Inherit media profile"
-      x-model="retentionOverride"
-      min="0"
-      help="Leave blank to follow the selected media profile. Enter 0 to disable age-based cleanup for this source."
-      html_help={true}
-    />
-    <div class="theme-surface-accent rounded-m3-sm p-4">
-      <p class="text-sm font-medium text-theme-on-surface">Effective retention</p>
-      <p
-        id="source-retention-effective"
-        class="mt-1 text-sm text-theme-on-surface"
-        aria-live="polite"
-        x-text="retentionPolicySummary"
-      >
-        {retention_form_preview(@changeset, @media_profiles)}
-      </p>
-      <p class="mt-2 text-sm text-theme-on-surface-muted">
-        Age is counted from download time. Saving a shorter period or changing the profile can make existing
-        downloads eligible at the next cleanup. A publication-date cutoff can delete files sooner.
-        Prevent Automatic Deletion overrides both cleanup rules.
-      </p>
-    </div>
-
-    <.input
-      field={f[:watch_window_days]}
-      type="number"
-      label="Watch window (days)"
-      min="0"
-      max="365"
-      help="Leave blank to use the media profile setting. Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain."
-      html_help={true}
-    />
-    <section x-show="advancedMode">
-      <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
-
-      <p class="mt-2 text-sm text-theme-on-surface-muted">Tread carefully</p>
-
-      <.input
-        field={f[:title_filter_regex]}
-        type="text"
-        label="Title Filter Regex"
-        placeholder="(?i)^How to Bike$"
-        help={title_filter_regex_help()}
-        html_help={true}
-      />
-      <section
-        x-data={
+          <section
+            x-data={
           """
           {
             placeholders: JSON.parse('#{output_path_template_override_placeholders(@media_profiles)}'),
-            inputValue: null,
-            sourceFolderValue: #{Phoenix.json_library().encode!(Phoenix.HTML.Form.normalize_value("text", f[:download_subdirectory].value) || "")},
-            sourceFolderPickerOpen: false
+            inputValue: null
           }
           """
         }
-        x-on:load-template="inputValue = placeholders[mediaProfileId]"
-      >
-        <.input
-          field={f[:download_subdirectory]}
-          type="text"
-          inputclass="font-mono"
-          label="Source folder"
-          placeholder="Kids/Bluey"
-          help={download_subdirectory_help()}
-          x-model="sourceFolderValue"
-        />
-        <section
-          :if={Enum.any?(@available_folders)}
-          class="theme-surface-accent mt-3 overflow-hidden rounded-m3-lg"
-          x-bind:class="sourceFolderPickerOpen ? 'ring-1 ring-theme-primary/40' : ''"
-        >
-          <button
-            type="button"
-            class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
-            x-on:click="sourceFolderPickerOpen = !sourceFolderPickerOpen"
-            x-bind:aria-expanded="sourceFolderPickerOpen"
+            x-on:load-template="inputValue = placeholders[mediaProfileId]"
           >
-            <div>
-              <h3 class="text-base font-semibold text-theme-on-surface">Pick existing source folder</h3>
-
-              <p class="mt-1 text-sm text-theme-on-surface-muted">
-                Choose from folders already under your media root instead of typing the path manually.
-              </p>
-            </div>
-
-            <.icon
-              name="hero-folder-open"
-              class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
-              x-bind:class="sourceFolderPickerOpen ? 'text-theme-primary' : ''"
-            />
-          </button>
-
-          <div
-            x-cloak
-            x-show="sourceFolderPickerOpen"
-            x-transition.opacity.duration.150ms
-            class="border-t border-theme-outline/60 px-4 py-4 md:px-6"
-          >
-            <div class="max-h-60 space-y-2 overflow-y-auto pr-1">
-              <button
-                :for={folder <- @available_folders}
-                type="button"
-                data-folder={folder}
-                class="flex w-full items-center justify-between rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-4 py-3 text-left font-mono text-sm text-theme-on-surface transition hover:bg-theme-surface-3"
-                x-bind:class="$el.dataset.folder === sourceFolderValue ? 'border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container' : ''"
-                x-on:click="sourceFolderValue = $el.dataset.folder; sourceFolderPickerOpen = false"
+            <.form_disclosure
+              title="Output path template overrides"
+              open={
+                Enum.any?(
+                  [:output_path_template_override, :output_path_template_shorts_override],
+                  &Keyword.has_key?(@changeset.errors, &1)
+                )
+              }
+              data-setting-group
+            >
+              <:status>
+                {if f[:output_path_template_override].value || f[:output_path_template_shorts_override].value,
+                  do: "Customized for this source",
+                  else: "Using the media profile templates"}
+              </:status>
+              <.input
+                field={f[:output_path_template_override]}
+                type="text"
+                inputclass="font-mono"
+                label="Output path template override"
+                help={output_path_template_override_help()}
+                html_help={true}
+                x-bind:placeholder="placeholders[mediaProfileId]"
+                x-model.fill="inputValue"
               >
-                <span class="truncate">{folder}</span>
-                <.icon
-                  name="hero-check"
-                  class="h-4 w-4 shrink-0 text-theme-primary"
-                  x-show="$el.parentElement.dataset.folder === sourceFolderValue"
-                />
-              </button>
-            </div>
-          </div>
+                <:input_append>
+                  <button
+                    type="button"
+                    class="ml-3 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-3 py-3 text-sm font-medium text-theme-on-surface transition hover:bg-theme-surface-3 sm:px-4 md:ml-4"
+                    title="Start from the media profile template, then tweak only what you need for this source."
+                    aria-label="Insert media profile template. Start from the media profile template, then tweak only what you need for this source."
+                    x-on:click="inputValue = placeholders[mediaProfileId]"
+                  >
+                    <span class="sm:hidden"><.icon name="hero-document-duplicate" class="h-5 w-5" /></span>
+                    <span class="hidden sm:inline">Insert media profile template</span>
+                  </button>
+                </:input_append>
+              </.input>
+
+              <.input
+                field={f[:output_path_template_shorts_override]}
+                type="text"
+                inputclass="font-mono"
+                label="Shorts output path template override (optional)"
+                help="Used for this source's YouTube Shorts. Leave blank to use the media profile's Shorts template, or the primary output path template if neither is set. Must end with .{{ ext }}. Saving leaves existing files in place; later re-downloads and quality upgrades use the new path."
+              />
+              <details class="mt-2 text-sm text-theme-on-surface-muted">
+                <summary class="cursor-pointer py-3 font-medium text-theme-on-surface">
+                  How Shorts are identified
+                </summary>
+                <p class="mt-2">
+                  Channel tabs identify Shorts directly. Mixed playlists and fast indexing use the URL and existing
+                  duration/aspect-ratio detection, which can misclassify short vertical videos.
+                </p>
+              </details>
+            </.form_disclosure>
+          </section>
+          <p class="mt-4 text-sm text-theme-on-surface-muted">
+            These options are saved to this source's managed config file and apply to its future downloads. Existing
+            manually maintained config files keep working.
+          </p>
+
+          <.yt_dlp_options_editor
+            id_prefix="source"
+            scope_help="These options apply to every download for this source. The base config and the selected media profile's config still apply, and a media-item config can add its own options."
+            contents={@yt_dlp_options}
+            version={@yt_dlp_options_version}
+            present={@yt_dlp_options_present}
+            readable={@yt_dlp_options_readable}
+            clearable={@yt_dlp_options_clearable}
+            inherited={@yt_dlp_options_inherited}
+            profile_presence={@yt_dlp_options_profile_presence}
+            error={@yt_dlp_error}
+          />
         </section>
-
-        <div class="mt-4">
-          <.input
-            field={f[:output_path_template_override]}
-            type="text"
-            inputclass="font-mono"
-            label="Output path template override"
-            help={output_path_template_override_help()}
-            html_help={true}
-            x-bind:placeholder="placeholders[mediaProfileId]"
-            x-model.fill="inputValue"
-          >
-            <:input_append>
-              <button
-                type="button"
-                class="ml-3 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-3 py-3 text-sm font-medium text-theme-on-surface transition hover:bg-theme-surface-3 sm:px-4 md:ml-4"
-                title="Start from the media profile template, then tweak only what you need for this source."
-                aria-label="Insert media profile template. Start from the media profile template, then tweak only what you need for this source."
-                x-on:click="inputValue = placeholders[mediaProfileId]"
-              >
-                <span class="sm:hidden"><.icon name="hero-document-duplicate" class="h-5 w-5" /></span>
-                <span class="hidden sm:inline">Insert media profile template</span>
-              </button>
-            </:input_append>
-          </.input>
-        </div>
-      </section>
-
-      <.input
-        field={f[:output_path_template_shorts_override]}
-        type="text"
-        inputclass="font-mono"
-        label="Shorts output path template override (optional)"
-        help="Used for this source's YouTube Shorts. Leave blank to use the media profile's Shorts template, or the primary output path template if neither is set. Must end with .{{ ext }}. Saving leaves existing files in place; later re-downloads and quality upgrades use the new path."
-      />
-      <details class="mt-2 text-sm text-theme-on-surface-muted">
-        <summary class="cursor-pointer py-3 font-medium text-theme-on-surface">How Shorts are identified</summary>
-        <p class="mt-2">
-          Channel tabs identify Shorts directly. Mixed playlists and fast indexing use the URL and existing
-          duration/aspect-ratio detection, which can misclassify short vertical videos.
-        </p>
-      </details>
-      <p class="mt-4 text-sm text-theme-on-surface-muted">
-        These options are saved to this source's managed config file and apply to its future downloads. Existing
-        manually maintained config files keep working.
-      </p>
-
-      <.yt_dlp_options_editor
-        id_prefix="source"
-        scope_help="These options apply to every download for this source. The base config and the selected media profile's config still apply, and a media-item config can add its own options."
-        contents={@yt_dlp_options}
-        version={@yt_dlp_options_version}
-        present={@yt_dlp_options_present}
-        readable={@yt_dlp_options_readable}
-        clearable={@yt_dlp_options_clearable}
-        inherited={@yt_dlp_options_inherited}
-        profile_presence={@yt_dlp_options_profile_presence}
-        error={@yt_dlp_error}
-      />
-    </section>
-
-    <div class="my-10 w-full">
-      <.button class="w-full sm:mb-7.5 sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+      </div>
     </div>
 
-    <section
-      x-data="{ sourceFolderHelpOpen: false }"
-      class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg"
-    >
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
-        x-on:click="sourceFolderHelpOpen = !sourceFolderHelpOpen"
-        x-bind:aria-expanded="sourceFolderHelpOpen"
-      >
-        <div>
-          <h3 class="text-lg font-semibold text-theme-on-surface">How source folders work?</h3>
-
-          <p class="mt-1 text-sm text-theme-on-surface-muted">
-            Source folders sit in front of the output template. Expand this for examples and edge cases.
-          </p>
-        </div>
-
-        <.icon
-          name="hero-chevron-down"
-          class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
-          x-bind:class="sourceFolderHelpOpen ? 'rotate-180 text-theme-primary' : ''"
-        />
-      </button>
-
-      <div
-        x-cloak
-        x-show="sourceFolderHelpOpen"
-        x-transition.opacity.duration.150ms
-        class="border-t border-theme-outline/60 px-4 py-4 text-sm text-theme-on-surface md:px-6"
-      >
-        <p>
-          Pinchflat saves downloads to <code class="text-theme-on-surface">media root + source folder + output template</code>.
-        </p>
-
-        <p class="mt-3">
-          Use <strong class="text-theme-on-surface">Source folder</strong>
-          for the main folder, then keep your template focused on file naming or
-          subfolders inside it.
-        </p>
-
-        <p class="mt-3">
-          If both the source folder and the template point to the same folder name, it will be duplicated.
-          Example: source folder <code class="text-theme-on-surface">Kids</code>
-          plus template <code class="text-theme-on-surface">{~S(Kids/{{ title }}.{{ ext }})}</code>
-          becomes <code class="text-theme-on-surface">Kids/Kids/...</code>.
-        </p>
-
-        <p class="mt-3">Good examples:</p>
-
-        <ul class="mt-2 list-disc pl-5">
-          <li :for={example <- download_subdirectory_examples()}>
-            <code class="text-theme-on-surface">{example}</code>
-          </li>
-        </ul>
-      </div>
-    </section>
-
-    <section
-      x-data="{ fastIndexHelpOpen: false }"
-      class="theme-surface-accent mb-5 w-full overflow-hidden rounded-m3-lg"
-    >
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-4 px-4 py-4 text-left md:px-6"
-        x-on:click="fastIndexHelpOpen = !fastIndexHelpOpen"
-        x-bind:aria-expanded="fastIndexHelpOpen"
-      >
-        <div>
-          <h3 class="text-lg font-semibold text-theme-on-surface">What is fast indexing?</h3>
-
-          <p class="mt-1 text-sm text-theme-on-surface-muted">Click to expand the explanation and recommendations.</p>
-        </div>
-
-        <.icon
-          name="hero-chevron-down"
-          class="h-5 w-5 shrink-0 text-theme-on-surface-muted transition duration-200"
-          x-bind:class="fastIndexHelpOpen ? 'rotate-180 text-theme-primary' : ''"
-        />
-      </button>
-
-      <div
-        x-cloak
-        x-show="fastIndexHelpOpen"
-        x-transition.opacity.duration.150ms
-        class="border-t border-theme-outline/60 px-4 py-4 md:px-6 md:py-6"
-      >
-        <.fast_indexing_help />
-      </div>
-    </section>
+    <div class="sticky bottom-0 z-10 -mx-5 mt-10 border-t border-theme-outline/60 bg-theme-surface-2 px-5 py-3 sm:-mx-7.5 sm:px-7.5">
+      <.button class="w-full sm:w-auto" rounding="rounded-m3-sm">Save Source</.button>
+    </div>
   </section>
 </.simple_form>
 
