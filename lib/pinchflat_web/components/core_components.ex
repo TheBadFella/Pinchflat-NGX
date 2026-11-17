@@ -1133,4 +1133,191 @@ defmodule PinchflatWeb.CoreComponents do
       :error -> raise ArgumentError, "unknown icon #{inspect(name)}"
     end
   end
+
+  @doc """
+  Renders an ordered codec preference list backed by a hidden form field.
+
+  Each row is a select of supported codecs plus Move up / Move down / Remove
+  buttons. The list order is serialized as a comma-separated string into the
+  hidden input named after the form field, so the server receives exactly what
+  the user sees. Reordering is button-based (no drag and drop), so it is fully
+  keyboard accessible.
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :legend, :string, required: true
+  attr :kind, :atom, required: true, values: [:video, :audio]
+  attr :help, :string, default: nil
+
+  def ordered_codec_list(assigns) do
+    assigns =
+      assign(assigns,
+        options: codec_select_options(assigns.kind),
+        errors: codec_field_errors(assigns.field),
+        tokens:
+          assigns.field.value
+          |> Pinchflat.Settings.CodecPreferences.parse()
+          |> Pinchflat.Settings.CodecPreferences.canonical_tokens(assigns.kind)
+      )
+
+    ~H"""
+    <div id={"#{@field.id}-list"} class="mt-5" x-data={ordered_codec_list_state(@tokens, @options)}>
+      <.label :if={@tokens != []} for={"#{@field.id}-first"}>{@legend}</.label>
+      <p :if={@tokens == []} class="mt-5 mb-2 text-sm font-medium text-theme-on-surface">{@legend}</p>
+
+      <input type="hidden" id={@field.id} name={@field.name} x-bind:value="serialized()" />
+      <template x-if="rows.length === 0">
+        <p class="max-w-prose rounded-m3-sm border border-theme-outline/60 bg-theme-surface-2 px-4 py-3 text-sm text-theme-on-surface-muted">
+          No codecs are preferred for this stream. yt-dlp's default sorting, or any
+          custom options you configure, decide which codec is used.
+        </p>
+      </template>
+
+      <ol class="flex flex-col gap-2" x-show="rows.length > 0">
+        <template x-for="(row, index) in rows" x-bind:key="row.id">
+          <li class="flex flex-col gap-2 rounded-m3-sm border border-theme-outline/30 bg-theme-surface-1 p-2.5 sm:flex-row sm:items-center sm:border-0 sm:bg-transparent sm:p-0">
+            <select
+              class="theme-input min-h-11 w-full sm:flex-1 font-mono text-sm"
+              x-bind:id={"index === 0 ? '#{@field.id}-first' : '#{@field.id}-' + row.id"}
+              x-bind:aria-label={"'Codec ' + (index + 1) + ' for ' + '#{@legend}'"}
+              x-model="row.codec"
+              x-on:change={"sync('#{@field.id}')"}
+            >
+              <option value="">Select a codec</option>
+              <template x-for="option in options" x-bind:key="option.value">
+                <option x-bind:value="option.value" x-text="option.label"></option>
+              </template>
+            </select>
+
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-m3-sm border border-theme-outline px-2 text-sm text-theme-on-surface hover:bg-theme-surface-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-3"
+                x-bind:disabled="index === 0"
+                x-bind:aria-label="'Move ' + (row.codec || 'codec') + ' up'"
+                x-on:click={"move('#{@field.id}', 'up', index)"}
+              >
+                Move up
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-m3-sm border border-theme-outline px-2 text-sm text-theme-on-surface hover:bg-theme-surface-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-3"
+                x-bind:disabled="index === rows.length - 1"
+                x-bind:aria-label="'Move ' + (row.codec || 'codec') + ' down'"
+                x-on:click={"move('#{@field.id}', 'down', index)"}
+              >
+                Move down
+              </button>
+
+              <button
+                type="button"
+                class="inline-flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-m3-sm border border-theme-error/50 px-2 text-sm text-theme-error hover:bg-theme-error/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary sm:flex-none sm:px-3"
+                x-bind:aria-label="'Remove ' + (row.codec || 'codec')"
+                x-on:click={"removeRow('#{@field.id}', index)"}
+              >
+                Remove
+              </button>
+            </div>
+          </li>
+        </template>
+      </ol>
+
+      <button
+        type="button"
+        class="mt-3 inline-flex min-h-11 items-center justify-center rounded-m3-sm border border-theme-outline px-4 text-sm font-medium text-theme-on-surface hover:bg-theme-surface-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary disabled:cursor-not-allowed disabled:opacity-40"
+        x-bind:disabled="rows.length >= maxItems"
+        x-on:click={"addRow('#{@field.id}')"}
+      >
+        Add codec
+      </button>
+
+      <.help :if={@help}>{@help}</.help>
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </div>
+    """
+  end
+
+  defp codec_field_errors(field) do
+    if Phoenix.Component.used_input?(field) do
+      Enum.map(field.errors, &translate_error/1)
+    else
+      []
+    end
+  end
+
+  defp codec_select_options(:video) do
+    [
+      %{value: "avc", label: "AVC / H.264 (avc, avc1)"},
+      %{value: "vp9", label: "VP9 (vp9, vp09)"},
+      %{value: "av1", label: "AV1 (av1, av01)"},
+      %{value: "hevc", label: "HEVC / H.265 (hevc, h265)"},
+      %{value: "vp8", label: "VP8 (vp8)"},
+      %{value: "mp4v", label: "MPEG-4 Visual (mp4v, h263)"}
+    ]
+  end
+
+  defp codec_select_options(:audio) do
+    [
+      %{value: "m4a", label: "M4A / AAC in MP4 (m4a, aac, mp4a)"},
+      %{value: "opus", label: "Opus (opus)"},
+      %{value: "vorbis", label: "Vorbis (vorbis, ogg)"},
+      %{value: "mp3", label: "MP3 (mp3)"},
+      %{value: "flac", label: "FLAC (flac)"},
+      %{value: "wav", label: "WAV / AIFF (wav, aiff)"},
+      %{value: "ac3", label: "AC-3 / DTS (ac3, dts)"},
+      %{value: "eac3", label: "E-AC-3 (eac3)"},
+      %{value: "ac4", label: "AC-4 (ac4)"}
+    ]
+  end
+
+  defp ordered_codec_list_state(tokens, options) do
+    rows =
+      tokens
+      |> Enum.with_index()
+      |> Enum.map(fn {token, index} -> %{id: index + 1, codec: token} end)
+
+    state = """
+    {
+      rows: #{Jason.encode!(rows)},
+      nextId: #{length(rows) + 1},
+      maxItems: #{Pinchflat.Settings.CodecPreferences.max_items()},
+      options: #{Jason.encode!(options)},
+      serialized() {
+        return this.rows.map((row) => row.codec).filter((codec) => codec !== '').join(',');
+      },
+      sync(id) {
+        const field = document.getElementById(id);
+        if (field) { field.value = this.serialized(); }
+      },
+      refocus(index) {
+        this.$nextTick(() => {
+          const selects = this.$root.querySelectorAll('select');
+          if (selects[index]) { selects[index].focus(); }
+        });
+      },
+      addRow(id) {
+        this.rows.push({ id: this.nextId++, codec: '' });
+        this.refocus(this.rows.length - 1);
+        this.sync(id);
+      },
+      move(id, direction, index) {
+        const target = direction === 'up' ? index - 1 : index + 1;
+        if (target < 0 || target >= this.rows.length) { return; }
+        const moved = this.rows[index];
+        this.rows.splice(index, 1);
+        this.rows.splice(target, 0, moved);
+        this.sync(id);
+        this.refocus(target);
+      },
+      removeRow(id, index) {
+        const target = index > 0 ? index - 1 : 0;
+        this.rows.splice(index, 1);
+        this.sync(id);
+        this.refocus(target);
+      }
+    }
+    """
+
+    String.trim(state)
+  end
 end

@@ -183,6 +183,11 @@ WORKDIR "/app"
 # runtime copies yt-dlp into a private writable directory when it starts.
 RUN mkdir -p /config /downloads /opt/pinchflat-ngx/yt-dlp-plugins /opt/pinchyt /etc/elixir_tzdata_data /etc/yt-dlp/plugins
 
+# Application-owned ordered-codec plugin. Baked into the image and kept separate from
+# the user-removable plugin directory so it cannot be deleted or replaced from the UI.
+COPY docker/yt-dlp-app-plugins /opt/pinchflat-ngx/yt-dlp-app-plugins
+RUN chmod -R a+rX /opt/pinchflat-ngx/yt-dlp-app-plugins
+
 # The official bgutil plugin is installed as a zip in a dedicated directory.
 # Pinchflat-ngx adds --plugin-dirs only when POT_PROVIDER_URL is valid, so the
 # disabled configuration keeps the existing yt-dlp command line unchanged.
