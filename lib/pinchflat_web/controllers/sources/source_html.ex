@@ -42,6 +42,41 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def source_form(assigns)
 
   @doc """
+  Wraps a metadata-backed field (name or description) and manages its lock.
+  Editing the field locks it so metadata refreshes keep the user's version;
+  "Follow the channel again" clears the lock. The lock is submitted as a
+  hidden boolean under the lock field's name.
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :lock, Phoenix.HTML.FormField, required: true
+  attr :noun, :string, required: true
+  slot :inner_block, required: true
+
+  def metadata_field_lock(assigns) do
+    assigns = assign(assigns, :locked, Phoenix.HTML.Form.normalize_value("checkbox", assigns.lock.value))
+
+    ~H"""
+    <div id={"#{@field.id}-lock"} x-data={"{ locked: #{@locked} }"}>
+      {render_slot(@inner_block)}
+      <input type="hidden" name={@lock.name} value={to_string(@locked)} x-bind:value="locked ? 'true' : 'false'" />
+      <p class="mt-1 flex flex-wrap items-center gap-x-3 text-sm text-theme-on-surface-muted">
+        <span x-cloak x-show="!locked">Follows the channel: metadata refreshes update this {@noun}.</span>
+        <span x-cloak x-show="locked">Kept as you set it: metadata refreshes leave this {@noun} alone.</span>
+        <button
+          type="button"
+          x-cloak
+          x-show="locked"
+          class="min-h-11 font-medium text-theme-primary underline underline-offset-2 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"
+          x-on:click="locked = false; $nextTick(() => $root.querySelector('input:not([type=hidden]), textarea')?.focus())"
+        >
+          Follow the channel again
+        </button>
+      </p>
+    </div>
+    """
+  end
+
+  @doc """
   A source's collection type as an icon plus label, for places that list sources
   (the sources table, the source page). A source indexed before its type was
   known renders as "Unknown" rather than an empty cell.

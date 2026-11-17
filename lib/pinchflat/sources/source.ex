@@ -127,7 +127,7 @@ defmodule Pinchflat.Sources.Source do
     # Keep both policies enabled by default so existing sources retain their
     # current behavior after the policy fields are introduced.
     field :download_public_media, :boolean, default: true
-    field :download_members_only_media, :boolean, default: true
+    field :download_members_only_media, :boolean, default: false
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date

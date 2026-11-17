@@ -240,34 +240,28 @@
           <h3 class="text-2xl text-theme-on-surface">Source Metadata</h3>
 
           <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
-            Name and description are refreshed from source metadata unless you lock the individual field. Locked fields
-            can still be edited and saved here; the lock only affects automated refreshes.
+            Name and description follow the channel's metadata. Once you edit one, Pinchflat-ngx keeps your version
+            and metadata refreshes leave it alone.
           </p>
 
-          <.input
-            field={f[:custom_name]}
-            type="text"
-            label="Source Name"
-            help="The name shown throughout Pinchflat-ngx. It will be refreshed from source metadata unless locked."
-          />
-          <.input
-            field={f[:custom_name_locked]}
-            type="toggle"
-            label="Lock Source Name"
-            help="Keep the current name when automated metadata refreshes run."
-          />
-          <.input
-            field={f[:description]}
-            type="textarea"
-            label="Description"
-            help="The source description shown in Pinchflat-ngx. It will be refreshed from source metadata unless locked."
-          />
-          <.input
-            field={f[:description_locked]}
-            type="toggle"
-            label="Lock Description"
-            help="Keep the current description when automated metadata refreshes run."
-          />
+          <.metadata_field_lock field={f[:custom_name]} lock={f[:custom_name_locked]} noun="name">
+            <.input
+              field={f[:custom_name]}
+              type="text"
+              label="Source Name"
+              help="The name shown throughout Pinchflat-ngx."
+              x-on:input="locked = true"
+            />
+          </.metadata_field_lock>
+          <.metadata_field_lock field={f[:description]} lock={f[:description_locked]} noun="description">
+            <.input
+              field={f[:description]}
+              type="textarea"
+              label="Description"
+              help="The source description shown in Pinchflat-ngx."
+              x-on:input="locked = true"
+            />
+          </.metadata_field_lock>
         </section>
         <section
           id="source-indexing"

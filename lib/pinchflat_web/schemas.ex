@@ -487,8 +487,9 @@ defmodule PinchflatWeb.Schemas do
             },
             download_members_only_media: %Schema{
               type: :boolean,
-              description: "Download subscriber-only, premium-only, and authentication-required media",
-              default: true
+              description:
+                "Download subscriber-only, premium-only, and authentication-required media. These usually need cookies.",
+              default: false
             },
             fast_index: %Schema{type: :boolean, description: "Use fast indexing", default: false},
             player_client: %Schema{

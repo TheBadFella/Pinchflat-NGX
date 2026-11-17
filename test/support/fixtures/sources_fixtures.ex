@@ -28,7 +28,9 @@ defmodule Pinchflat.SourcesFixtures do
             description: "This is a description",
             original_url: "https://www.youtube.com/@#{youtube_handle_fixture()}",
             media_profile_id: ProfilesFixtures.media_profile_fixture().id,
-            index_frequency_minutes: 60
+            index_frequency_minutes: 60,
+            # most tests predate the members-only default turning off
+            download_members_only_media: true
           }
         ),
         :pre_insert
