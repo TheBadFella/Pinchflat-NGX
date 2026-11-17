@@ -658,7 +658,10 @@ defmodule PinchflatWeb.SourceControllerTest do
       end
 
       assert response =~ ~s(id="setting-search")
-      assert response =~ ~s(aria-label="Settings in General")
+      refute response =~ ~s(aria-label="Settings in )
+      assert response =~ "lg:bg-theme-surface-2"
+      assert response =~ ~r/id="source-general"[^>]*theme-surface-raised/
+      refute response =~ ~r/<section\s+id="source-[a-z-]+"[^>]*border-t/
       assert response =~ ~s(id="source-shared-cookies")
       assert response =~ "YouTube player client"
       assert response =~ "Retention and watch window"

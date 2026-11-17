@@ -1,7 +1,7 @@
 <div x-data="settingsPage()">
   <h2 class="mb-6 ml-4 text-title-md2 font-bold text-theme-on-surface">Settings</h2>
 
-  <div class="lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
+  <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
     <.settings_nav
       label="Settings sections"
       placeholder="cookies, workers, plex"
@@ -10,7 +10,6 @@
       sections={[
         {"settings-notifications", "Notifications"},
         {"settings-extractor", "Extractor"},
-        {"database-migration", "Database"},
         {"settings-discovery", "Channel discovery"},
         {"settings-yt-dlp", "yt-dlp"},
         {"settings-codecs", "Codecs"},

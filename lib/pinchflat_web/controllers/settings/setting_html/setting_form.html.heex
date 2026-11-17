@@ -124,27 +124,6 @@
   </section>
 
   <section
-    id="database-migration"
-    data-setting-group
-    class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
-  >
-    <h3 class="text-2xl text-theme-on-surface">PostgreSQL Migration</h3>
-    <div
-      id="settings-postgres-migration"
-      data-setting
-      data-setting-label="PostgreSQL migration"
-      data-setting-keywords="database postgres migrate transfer"
-      class="mt-3 space-y-3"
-    >
-      <p class="text-sm text-theme-on-surface-muted">
-        Current database: <strong class="text-theme-on-surface">{if Pinchflat.Database.postgres?(), do: "PostgreSQL", else: "SQLite"}</strong>.
-        Review the setup requirements and migration status before transferring an existing SQLite library to PostgreSQL.
-      </p>
-      <.button href={~p"/postgres_migration"} variant="outline">Review PostgreSQL migration</.button>
-    </div>
-  </section>
-
-  <section
     id="settings-discovery"
     data-setting-group
     class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"

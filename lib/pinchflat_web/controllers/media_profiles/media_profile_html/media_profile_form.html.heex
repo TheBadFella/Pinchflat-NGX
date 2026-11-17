@@ -8,10 +8,12 @@
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
   <section x-data="{ selectedPreset: null }">
-    <div class="lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
+    <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
       <.settings_nav
         label="Media profile settings sections"
         placeholder="subtitles, resolution, retention"
+        desktop_nav_surface={:surface_2}
+        bleed="-mx-4 bg-theme-surface-2 px-4 md:-mx-6 md:px-6"
         sections={[
           {"profile-preset", "Preset"},
           {"profile-general", "General"},
@@ -28,11 +30,15 @@
         ]}
       />
 
-      <div data-settings class="min-w-0">
-        <.settings_no_match />
+      <div data-settings class="mt-6 flex min-w-0 flex-col gap-6 lg:mt-0">
+        <.settings_no_match class="theme-surface-raised px-5 py-8 text-center sm:px-7.5" />
 
-        <section id="profile-preset" data-setting-group class="scroll-mt-36 lg:scroll-mt-24">
-          <h3 class="my-4 text-2xl text-theme-on-surface">Use a Preset</h3>
+        <section
+          id="profile-preset"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Use a Preset</h3>
 
           <section id="profile-preset-picker" data-setting data-setting-label="Preset" x-data="{ selection: null }">
             <.input
@@ -61,9 +67,9 @@
         <section
           id="profile-general"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">General Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
           <section x-data="{
         presets: {
@@ -120,9 +126,9 @@
         <section
           id="profile-subtitles"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Subtitle Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Subtitle Options</h3>
 
           <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
             <.input
@@ -178,9 +184,9 @@
         <section
           id="profile-thumbnails"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Thumbnail Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Thumbnail Options</h3>
 
           <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
             <.input
@@ -206,9 +212,9 @@
         <section
           id="profile-metadata"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Metadata Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Metadata Options</h3>
 
           <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: true } }">
             <.input
@@ -234,9 +240,9 @@
         <section
           id="profile-release-format"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Release Format Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Release Format Options</h3>
 
           <section x-data="{ presets: { default: 'include', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
             <.input
@@ -264,9 +270,9 @@
         <section
           id="profile-quality"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Quality Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Quality Options</h3>
 
           <section x-data="{ presets: { default: '1080p', media_center: '1080p', audio: 'audio', archiving: '2160p' } }">
             <.input
@@ -303,9 +309,9 @@
         <section
           id="profile-retention"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Retention and Redownload</h3>
+          <h3 class="text-2xl text-theme-on-surface">Retention and Redownload</h3>
 
           <.input
             field={f[:retention_period_days]}
@@ -340,9 +346,9 @@
         <section
           id="profile-media-center"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Media Center Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Media Center Options</h3>
 
           <p class="mt-2 text-sm text-theme-on-surface-muted">
             Everything in this section is experimental - please open a GitHub issue if you see something odd.
@@ -380,9 +386,9 @@
         <section
           id="profile-sponsorblock"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">SponsorBlock Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">SponsorBlock Options</h3>
 
           <p class="mb-4 text-sm text-theme-on-surface-muted">
             Not sure what a category covers? See the
@@ -416,9 +422,9 @@
         <section
           id="profile-yt-dlp"
           data-setting-group
-          class="mt-10 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <h3 class="mt-8 text-2xl text-theme-on-surface">Advanced Options</h3>
+          <h3 class="text-2xl text-theme-on-surface">Advanced Options</h3>
 
           <.yt_dlp_options_editor
             collapsed
@@ -434,19 +440,19 @@
             error={@yt_dlp_error}
           />
         </section>
+
+        <section
+          id="profile-template-help"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <.output_template_help />
+        </section>
+
+        <div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">
+          <.button class="w-full sm:w-auto" rounding="rounded-m3-sm">Save Media profile</.button>
+        </div>
       </div>
-    </div>
-
-    <section
-      id="profile-template-help"
-      data-setting-group
-      class="mt-10 w-full min-w-0 scroll-mt-36 border-t border-theme-outline/60 lg:scroll-mt-24"
-    >
-      <div class="theme-surface-accent mt-8 p-4 md:p-6"><.output_template_help /></div>
-    </section>
-
-    <div class="theme-form-save-bar">
-      <.button class="w-full sm:w-auto" rounding="rounded-m3-sm">Save Media profile</.button>
     </div>
   </section>
 </.simple_form>

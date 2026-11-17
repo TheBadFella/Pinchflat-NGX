@@ -19,7 +19,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ ~s(href="/backups")
       refute html =~ ~s(data-settings-group="backups")
       refute html =~ ~s(id="postgres-backups")
-      assert html =~ "Review PostgreSQL migration"
+      refute html =~ ~s(id="database-migration")
       assert html =~ ~s(href="/postgres_migration")
     end
   end
@@ -29,7 +29,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       html = conn |> get(~p"/settings") |> html_response(200)
 
       for id <-
-            ~w(settings-notifications settings-extractor database-migration settings-discovery settings-yt-dlp
+            ~w(settings-notifications settings-extractor settings-discovery settings-yt-dlp
                settings-codecs settings-storage media-server-settings settings-yt-dlp-plugins settings-cookies
                api-access-settings) do
         assert html =~ ~s(id="#{id}")
@@ -37,7 +37,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       end
 
       assert html =~ ~s|x-data="settingsPage()"|
-      assert html =~ ~s(aria-label="Settings in Notifications")
+      refute html =~ ~s(aria-label="Settings in )
       refute html =~ "matchGroup"
 
       for title <- ["Plex Media Server", "Jellyfin", "Emby"] do
