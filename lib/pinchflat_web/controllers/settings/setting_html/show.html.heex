@@ -1,11 +1,11 @@
 <div x-data="settingsPage()">
   <h2 class="mb-6 ml-4 text-title-md2 font-bold text-theme-on-surface">Settings</h2>
 
-  <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+  <div class="lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
     <.settings_nav
       label="Settings sections"
       placeholder="cookies, workers, plex"
-      bleed="-mx-4 bg-theme-bg px-4 md:-mx-6 md:px-6"
+      bleed="-mx-4 bg-theme-surface-2 px-4 md:-mx-6 md:px-6 lg:bg-transparent"
       sections={[
         {"settings-notifications", "Notifications"},
         {"settings-extractor", "Extractor"},

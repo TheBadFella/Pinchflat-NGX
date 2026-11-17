@@ -69,12 +69,11 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
               <li>
                 <a
                   x-bind:href="'#' + item.target"
-                  x-bind:title="item.hint"
                   x-text="item.title"
                   x-on:click.prevent="goToSetting(item.target)"
                   x-bind:aria-current="activeSetting === item.target ? 'true' : false"
                   x-bind:class="activeSetting === item.target && 'theme-nav-current'"
-                  class="block truncate rounded-m3-sm px-3 py-1.5 text-xs text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"
+                  class="block rounded-m3-sm px-3 py-1.5 text-xs leading-snug text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 lg:whitespace-normal lg:[overflow-wrap:anywhere]"
                 ></a>
               </li>
             </template>
