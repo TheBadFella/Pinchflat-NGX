@@ -281,8 +281,13 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "preserves existing Pinchflat-ngx behavior."
       refute response =~ ~S(Pinchflat-ngx\'s)
       assert response =~ "Source Metadata"
-      assert response =~ "Lock Source Name"
-      assert response =~ "Lock Description"
+      refute response =~ "Lock Source Name"
+      refute response =~ "Lock Description"
+      assert response =~ "Follow the channel again"
+      assert response =~ ~s(name="source[custom_name_locked]" value="false")
+      assert response =~ ~s(name="source[description_locked]" value="false")
+      assert response =~ ~s(x-on:input="locked = true")
+      refute %Pinchflat.Sources.Source{}.download_members_only_media
       assert response =~ "Delay Automatic Download"
       assert response =~ "Download Public and Unlisted Media"
       assert response =~ "Download Members-only Media"

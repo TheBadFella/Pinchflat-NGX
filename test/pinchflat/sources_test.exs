@@ -31,11 +31,11 @@ defmodule Pinchflat.SourcesTest do
   end
 
   describe "schema" do
-    test "defaults availability policies to enabled" do
-      source = source_fixture()
+    test "defaults public media on and members-only media off" do
+      source = %Source{}
 
       assert source.download_public_media
-      assert source.download_members_only_media
+      refute source.download_members_only_media
     end
 
     test "source_metadata is deleted when the source is deleted" do
