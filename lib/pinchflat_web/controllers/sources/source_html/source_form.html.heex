@@ -8,6 +8,32 @@
     settingQuery: '',
     settingMatches: 0,
     activeSection: 'source-general',
+    sectionSettings: {},
+    collectSectionSettings(form) {
+      form.querySelectorAll('section[data-setting-group][id]').forEach(section => {
+        this.sectionSettings[section.id] = [...section.querySelectorAll('[data-setting]')].flatMap(setting => {
+          const label = setting.querySelector('label[for]');
+          const target = setting.id || label?.htmlFor;
+          const title = setting.dataset.settingLabel || label?.textContent.trim().replace(/\s+/g, ' ');
+          return target && title ? [{ target, title, advanced: !!setting.closest('[x-show*=advancedMode]') }] : [];
+        });
+      });
+    },
+    goToSetting(target) {
+      const field = document.getElementById(target);
+      const setting = field?.closest('[data-setting]');
+      if (!setting) return;
+      this.settingQuery = '';
+      if (setting.closest('[x-show*=advancedMode]')) this.advancedMode = true;
+      for (let group = setting.closest('details'); group; group = group.parentElement.closest('details')) group.open = true;
+      // wait briefly so a just-revealed Advanced section has a layout to scroll to
+      setTimeout(() => {
+        setting.scrollIntoView({ block: 'center' });
+        setting.querySelector('input:not([type=hidden]), textarea, button')?.focus({ preventScroll: true });
+        history.replaceState(null, '', '#' + target);
+        this.activeSection = setting.closest('section[data-setting-group][id]')?.id || this.activeSection;
+      }, 50);
+    },
     filterSettings(form) {
       const query = this.settingQuery.trim().toLowerCase();
       const settings = [...form.querySelectorAll('[data-setting]')];
@@ -19,17 +45,25 @@
       });
     }
   }"
+  x-on:hashchange.window="if (!location.hash.startsWith('#source-')) goToSetting(location.hash.slice(1))"
   x-init="
     $watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)));
     $el.querySelectorAll('[data-settings] label[for]:not(.theme-switch-target)').forEach(label => {
       if (!label.closest('[data-setting]')) label.parentElement.dataset.setting = '';
     });
     $watch('settingQuery', () => filterSettings($el));
+    collectSectionSettings($el);
+    if (location.hash.length > 1 && !location.hash.startsWith('#source-')) $nextTick(() => goToSetting(location.hash.slice(1)));
+    const sections = [...$el.querySelectorAll('section[data-setting-group][id]')];
+    const inView = new Set();
     const sectionObserver = new IntersectionObserver(
-      entries => entries.forEach(entry => { if (entry.isIntersecting) activeSection = entry.target.id }),
+      entries => {
+        entries.forEach(entry => entry.isIntersecting ? inView.add(entry.target.id) : inView.delete(entry.target.id));
+        activeSection = sections.find(section => inView.has(section.id))?.id || activeSection;
+      },
       { rootMargin: '-25% 0px -65% 0px' }
     );
-    $el.querySelectorAll('section[data-setting-group][id]').forEach(section => sectionObserver.observe(section));
+    sections.forEach(section => sectionObserver.observe(section));
   "
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
@@ -99,7 +133,7 @@
           aria-label="Source settings sections"
           class="sticky top-20 z-10 -mx-5 mt-3 flex gap-1 overflow-x-auto border-b border-theme-outline/60 bg-theme-surface-2 px-5 py-2 sm:-mx-7.5 sm:px-7.5 lg:static lg:mx-0 lg:flex-col lg:overflow-visible lg:border-0 lg:p-0"
         >
-          <a
+          <div
             :for={
               {id, title, advanced_only} <- [
                 {"source-general", "General", false},
@@ -110,14 +144,37 @@
                 {"source-advanced", "Advanced", true}
               ]
             }
-            href={"##{id}"}
+            class="contents lg:block"
             x-show={advanced_only && "advancedMode"}
-            x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
-            x-bind:class={"activeSection === '#{id}' ? 'bg-theme-surface-3 text-theme-on-surface' : 'text-theme-on-surface-muted'"}
-            class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:justify-start"
           >
-            {title}
-          </a>
+            <a
+              href={"##{id}"}
+              x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
+              x-bind:class={"activeSection === '#{id}' ? 'bg-theme-surface-3 text-theme-on-surface' : 'text-theme-on-surface-muted'"}
+              class="theme-filter-button shrink-0 rounded-full hover:bg-theme-surface-3 hover:text-theme-on-surface lg:w-full lg:justify-start"
+            >
+              {title}
+            </a>
+            <%!-- Settings of the section being read. Wide screens only: the phone row has no room for them. --%>
+            <ul
+              x-cloak
+              x-show={"activeSection === '#{id}'"}
+              aria-label={"Settings in #{title}"}
+              class="hidden border-l border-theme-outline/60 py-1 lg:ml-5 lg:block"
+            >
+              <template x-for={"item in sectionSettings['#{id}'] || []"} x-bind:key="item.target">
+                <li x-show="!item.advanced || advancedMode">
+                  <a
+                    x-bind:href="'#' + item.target"
+                    x-bind:title="item.title"
+                    x-text="item.title"
+                    x-on:click.prevent="goToSetting(item.target)"
+                    class="block truncate rounded-m3-sm px-3 py-1.5 text-xs text-theme-on-surface-muted hover:bg-theme-surface-3 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"
+                  ></a>
+                </li>
+              </template>
+            </ul>
+          </div>
         </nav>
       </div>
 
@@ -454,7 +511,12 @@
               help="Uses your YouTube cookies for this source (if configured). 'When Needed' tries to minimize cookie usage except for certain indexing and downloading tasks. See docs"
               x-model="cookieBehaviour"
             />
-            <div data-setting class="theme-surface-accent flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm">
+            <div
+              id="source-shared-cookies"
+              data-setting
+              data-setting-label="Shared cookies.txt"
+              class="theme-surface-accent flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm"
+            >
               <p class="min-w-0 flex-1 basis-60 text-theme-on-surface-muted">
                 <span class="font-medium text-theme-on-surface">Shared cookies.txt:</span>
                 <%= cond do %>

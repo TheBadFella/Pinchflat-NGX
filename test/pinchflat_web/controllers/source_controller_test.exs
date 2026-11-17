@@ -592,6 +592,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       end
 
       assert response =~ ~s(id="setting-search")
+      assert response =~ ~s(aria-label="Settings in General")
+      assert response =~ ~s(id="source-shared-cookies")
       assert response =~ "YouTube player client"
       assert response =~ "Retention and watch window"
       assert response =~ "Output path template overrides"
