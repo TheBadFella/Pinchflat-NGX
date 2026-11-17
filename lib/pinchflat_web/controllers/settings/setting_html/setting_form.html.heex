@@ -207,24 +207,22 @@
     <h3 class="text-2xl text-theme-on-surface">Codec Options</h3>
 
     <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
-      The best available codec will be used if your preferred codecs are not found
+      Resolution is chosen first. At the same resolution, codecs are tried in the order shown.
+      If none is available, yt-dlp chooses a fallback.
     </p>
 
-    <.input
+    <.ordered_codec_list
       field={f[:video_codec_preference]}
-      placeholder="avc"
-      type="text"
-      label="Video Codec Preference"
-      help="Video codec preference. Will be remuxed into an MP4 container. See below for more details"
-      inputclass="font-mono text-sm mr-4"
+      kind={:video}
+      legend="Video codec preferences"
+      help="Ordered from most to least preferred. Video is remuxed into an MP4 container."
     />
-    <.input
+
+    <.ordered_codec_list
       field={f[:audio_codec_preference]}
-      placeholder="m4a"
-      type="text"
-      label="Audio Codec Preference"
-      help="Audio codec preference. See below for more details"
-      inputclass="font-mono text-sm mr-4"
+      kind={:audio}
+      legend="Audio codec preferences"
+      help="Ordered from most to least preferred. This picks the audio track's codec, not the final container."
     />
 
     <div class="theme-surface-accent mt-5 p-4 md:p-6"><.codec_settings_help /></div>

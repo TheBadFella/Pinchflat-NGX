@@ -138,6 +138,101 @@ defmodule PinchflatWeb.SettingControllerTest do
     end
   end
 
+  describe "codec preferences in settings" do
+    setup do
+      on_exit(fn ->
+        Pinchflat.Settings.update_setting(Pinchflat.Settings.record(), %{
+          video_codec_preference: "avc",
+          audio_codec_preference: "m4a"
+        })
+      end)
+
+      :ok
+    end
+
+    test "renders interpolated codec list ids and labels", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "vp9,avc")
+      Pinchflat.Settings.set(audio_codec_preference: "opus,m4a")
+
+      conn = get(conn, ~p"/settings")
+      html = html_response(conn, 200)
+
+      refute html =~ "@{"
+      assert html =~ ~s(for="settings-form_video_codec_preference-first")
+      assert html =~ ~s(for="settings-form_audio_codec_preference-first")
+      assert html =~ ~s(x-bind:id="index === 0 ? &#39;settings-form_video_codec_preference-first&#39;)
+      assert html =~ "&#39; for &#39; + &#39;Video codec preferences&#39;"
+      assert html =~ "&#39; for &#39; + &#39;Audio codec preferences&#39;"
+    end
+
+    test "labels the codec lists without a dangling for attribute when empty", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "")
+      Pinchflat.Settings.set(audio_codec_preference: "")
+
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      refute html =~ ~s(for="settings-form_video_codec_preference-first")
+      refute html =~ ~s(for="settings-form_audio_codec_preference-first")
+      assert html =~ "Video codec preferences"
+      assert html =~ "Audio codec preferences"
+    end
+
+    test "saves ordered codec preferences", %{conn: conn} do
+      conn =
+        put(conn, ~p"/settings", %{
+          setting: %{video_codec_preference: "vp9,avc,av1", audio_codec_preference: "opus,m4a"}
+        })
+
+      assert redirected_to(conn) == ~p"/settings"
+
+      assert Pinchflat.Settings.get!(:video_codec_preference) == "vp9,avc,av1"
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == "opus,m4a"
+    end
+
+    test "saves codec aliases canonicalized to select values", %{conn: conn} do
+      conn =
+        put(conn, ~p"/settings", %{
+          setting: %{video_codec_preference: "H264,VP09", audio_codec_preference: "aac,aiff"}
+        })
+
+      assert redirected_to(conn) == ~p"/settings"
+      assert Pinchflat.Settings.get!(:video_codec_preference) == "avc,vp9"
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == "m4a,wav"
+    end
+
+    test "renders legacy stored aliases canonicalized to select values", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "h264")
+      Pinchflat.Settings.set(audio_codec_preference: "aac")
+
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      assert html =~ ~s(&quot;codec&quot;:&quot;avc&quot;)
+      assert html =~ ~s(&quot;codec&quot;:&quot;m4a&quot;)
+      refute html =~ ~s(&quot;codec&quot;:&quot;h264&quot;)
+      refute html =~ ~s(&quot;codec&quot;:&quot;aac&quot;)
+    end
+
+    test "clears codec preferences to an empty string", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "vp9,avc")
+      Pinchflat.Settings.set(audio_codec_preference: "opus,m4a")
+
+      conn = put(conn, ~p"/settings", %{setting: %{video_codec_preference: "", audio_codec_preference: ""}})
+
+      assert redirected_to(conn) == ~p"/settings"
+      assert Pinchflat.Settings.get!(:video_codec_preference) == ""
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == ""
+    end
+
+    test "rejects an unknown codec and keeps the draft", %{conn: conn} do
+      conn = put(conn, ~p"/settings", %{setting: %{video_codec_preference: "vp9,boguscodec"}})
+
+      html = html_response(conn, 200)
+      assert html =~ "unsupported codec"
+      assert html =~ "boguscodec"
+      assert Pinchflat.Settings.get!(:video_codec_preference) != "vp9,boguscodec"
+    end
+  end
+
   describe "download_cookies" do
     setup do
       base_dir =

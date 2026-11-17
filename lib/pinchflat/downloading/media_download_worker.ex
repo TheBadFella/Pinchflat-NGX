@@ -218,6 +218,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         maybe_update_progress(job_id, %{progress_status: message})
         {:ok, :non_retry}
 
+      {:error, :codec_plugin_unavailable, message} ->
+        maybe_update_progress(job_id, %{progress_status: message})
+        Logger.error("ordered codec plugin unavailable: #{inspect(message)}")
+        {:snooze, 60}
+
       {:error, :cancelled, message} ->
         maybe_update_progress(job_id, %{progress_status: message})
         {:cancel, message}

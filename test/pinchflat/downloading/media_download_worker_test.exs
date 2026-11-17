@@ -943,4 +943,51 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       perform_job(MediaDownloadWorker, %{id: media_item.id})
     end
   end
+
+  describe "perform/1 when ordered codec plugin is unavailable" do
+    test "snoozes the job without marking the media item permanently prevented", %{media_item: media_item} do
+      Settings.set(video_codec_preference: "vp9,avc,av1")
+
+      missing_dir = Path.join(System.tmp_dir!(), "nonexistent-app-plugins-#{System.unique_integer([:positive])}")
+      Application.put_env(:pinchflat, :yt_dlp_app_plugin_dir, missing_dir)
+      on_exit(fn -> Application.delete_env(:pinchflat, :yt_dlp_app_plugin_dir) end)
+
+      assert {:snooze, 60} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      reloaded = Repo.reload!(media_item)
+      assert reloaded.prevent_download == false
+      assert is_nil(reloaded.download_prevented_reason)
+      assert is_nil(reloaded.error_type)
+    end
+
+    test "snoozes the job when yt-dlp fails at runtime with KeyError CodecOrderPP", %{
+      media_item: media_item
+    } do
+      dir = Path.join(System.tmp_dir!(), "mock-plugins-#{System.unique_integer([:positive])}")
+      nested = Path.join([dir, "pinchflat_ngx_codec_order", "yt_dlp_plugins", "postprocessor"])
+      File.mkdir_p!(nested)
+      File.write!(Path.join(nested, "codec_order.py"), "class CodecOrderPP:\n    pass\n")
+      Application.put_env(:pinchflat, :yt_dlp_app_plugin_dir, dir)
+
+      on_exit(fn ->
+        Application.delete_env(:pinchflat, :yt_dlp_app_plugin_dir)
+        File.rm_rf(dir)
+      end)
+
+      Settings.set(video_codec_preference: "vp9,avc,av1")
+
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, _opts, _template, _extra ->
+        {:error, "Traceback (most recent call last):\nKeyError: 'CodecOrderPP'", 1}
+      end)
+
+      assert {:snooze, 60} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      reloaded = Repo.reload!(media_item)
+      assert reloaded.prevent_download == false
+      assert is_nil(reloaded.download_prevented_reason)
+      assert is_nil(reloaded.error_type)
+    end
+  end
 end
