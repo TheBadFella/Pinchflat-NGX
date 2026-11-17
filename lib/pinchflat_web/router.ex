@@ -210,6 +210,7 @@ defmodule PinchflatWeb.Router do
     pipe_through :browser
 
     live_dashboard "/dashboard",
+      on_mount: [PinchflatWeb.LiveAuth],
       metrics: PinchflatWeb.Telemetry,
       ecto_repos: [Pinchflat.Repo]
   end

@@ -39,4 +39,13 @@ defmodule PinchflatWeb.LiveAuthTest do
 
     assert {:ok, _view, _html} = live_isolated(conn, BrowseLive)
   end
+
+  test "rejects a connected dashboard mount without an SSO session", %{conn: conn} do
+    Application.put_env(:pinchflat, :oidc, nil)
+    conn = get(conn, "/dev/dashboard/home")
+    assert html_response(conn, 200)
+    Application.put_env(:pinchflat, :oidc, issuer: "https://sso.test")
+
+    assert {:error, {:redirect, %{to: "/auth/login"}}} = live(conn)
+  end
 end
