@@ -218,6 +218,12 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         maybe_update_progress(job_id, %{progress_status: message})
         {:ok, :non_retry}
 
+      {:error, :watch_hold, message} ->
+        persist_download_failure(media_item, :transient, should_force)
+        maybe_update_progress(job_id, %{progress_status: message})
+        Logger.warning("watched replacement held for media item ##{media_item.id}: #{message}")
+        {:ok, :non_retry}
+
       {:error, :codec_plugin_unavailable, message} ->
         maybe_update_progress(job_id, %{progress_status: message})
         Logger.error("ordered codec plugin unavailable: #{inspect(message)}")
