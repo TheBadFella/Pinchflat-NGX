@@ -49,7 +49,7 @@
     target.searchParams.set('original_url', info.url)
     if (info.name) target.searchParams.set('custom_name', info.name)
     if (info.type) target.searchParams.set('source_type', info.type)
-    target.searchParams.set('download_members_only_media', String(!!info.member))
+    target.searchParams.set('download_members_only_media', 'false')
     return target.toString()
   }
 
@@ -173,31 +173,14 @@
       return !!el && UPCOMING_RE.test(el.textContent)
     })
 
-  const MEMBER_BUTTON = /^(see perks|joined)$/i
-  const WATCH_OWNER = 'ytd-watch-metadata #owner'
-  const CHANNEL_HEADER = 'yt-page-header-view-model,ytd-c4-tabbed-header-renderer,#channel-header'
-
-  const hasMemberButton = (rootSelector) =>
-    [...document.querySelectorAll(rootSelector)].some((root) =>
-      [...root.querySelectorAll('button,a')].some((b) =>
-        [b.textContent, b.getAttribute('aria-label')].some((t) =>
-          MEMBER_BUTTON.test((t || '').replace(/\s+/g, ' ').trim())
-        )
-      )
-    )
-
   const cardInfo = (card) => {
     if (cfg.skipUpcoming && isUpcoming(card)) return null
     const title = first(TITLE, card)
     const onChannel = CHAN.test(location.pathname)
-    const member = onChannel && hasMemberButton(CHANNEL_HEADER)
     for (const a of card.querySelectorAll('a[href*="list="]')) {
       const id = abs(a.getAttribute('href'))?.searchParams.get('list')
       if (id && !NO_LIST.test(id))
-        return {
-          ...playlist(id, title, first(OWNER, card) || (onChannel ? channelName() : '')),
-          member
-        }
+        return playlist(id, title, first(OWNER, card) || (onChannel ? channelName() : ''))
     }
     for (const a of card.querySelectorAll(
       'a[href*="/watch?v="],a[href*="/shorts/"],a[href*="/live/"]'
@@ -206,7 +189,7 @@
       if (url)
         return cfg.hideShorts && url.includes('/shorts/')
           ? null
-          : { url, type: 'video', name: title, member }
+          : { url, type: 'video', name: title }
     }
     return null
   }
@@ -220,8 +203,7 @@
           type: 'video',
           name:
             first(['ytd-watch-metadata h1 yt-formatted-string', 'ytd-watch-metadata h1']) ||
-            clean(document.title),
-          member: hasMemberButton(WATCH_OWNER)
+            clean(document.title)
         }
       : null
   }
@@ -237,8 +219,7 @@
     return {
       url: path.startsWith('http') ? path : yt(path),
       type: 'channel',
-      name: txt(Q('ytd-watch-metadata #owner ytd-channel-name a')) || txt(a),
-      member: hasMemberButton(WATCH_OWNER)
+      name: txt(Q('ytd-watch-metadata #owner ytd-channel-name a')) || txt(a)
     }
   }
 
@@ -253,8 +234,7 @@
       ? {
           url: yt(m[0]),
           type: 'channel',
-          name: channelName(),
-          member: hasMemberButton(CHANNEL_HEADER)
+          name: channelName()
         }
       : null
   }
@@ -446,10 +426,12 @@
     if (!info) return hide()
 
     cur = { info, rect, card, thumb }
-    fb.title =
+    const label =
       info.type === 'playlist'
         ? 'Add this entire playlist to Pinchflat'
         : 'Add this video to Pinchflat'
+    fb.title = label
+    fb.setAttribute('aria-label', label)
     place(rect)
     show()
   }
@@ -501,7 +483,9 @@
     true
   )
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') combos.forEach((c) => c.collapse())
+    if (e.key === 'Escape') {
+      combos.forEach((c) => c.collapse(c.root.contains(document.activeElement)))
+    }
   })
 
   const makeWatchCombo = () => {
@@ -533,7 +517,7 @@
       toggle.setAttribute('aria-expanded', String(open))
     }
 
-    const collapse = () => {
+    const collapse = (restoreFocus = false) => {
       if (!open) return
       open = false
       root.style.width = BTN + 'px'
@@ -547,6 +531,7 @@
       }
       spin.style.transform = ''
       setLabel()
+      if (restoreFocus) toggle.focus()
     }
 
     const seg = (label, d, title, getInfo) => {
@@ -645,7 +630,10 @@
     }
   ]
 
-  const tick = () =>
+  const tick = () => {
+    for (const combo of combos) {
+      if (!combo.root.isConnected) combos.delete(combo)
+    }
     slots.forEach((s) => {
       const info = s.get()
       const host = info && s.host()
@@ -678,6 +666,7 @@
         .querySelectorAll(`[data-pf-key="${s.key}"]`)
         .forEach((b) => (b.style.display = info ? 'inline-flex' : 'none'))
     })
+  }
 
   const toast = (msg) => {
     const t = mk(
