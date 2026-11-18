@@ -514,21 +514,6 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp recheck_before_commit(%Lease{} = lease, %Watch{} = _archived) do
-    with :ok <- renew_lease(lease),
-         %Watch{} = watch <- Repo.get!(Watch, lease.watch_id),
-         true <- watch.lease_owner == lease.owner and watch.lease_generation == lease.generation,
-         true <- watch.observation_version == lease.observation_version,
-         true <- replacement_eligible?(watch),
-         true <- watch.archive_state == "published",
-         {:ok, _manifest} <- verify_archive(watch) do
-      :ok
-    else
-      false -> {:error, :watch_hold}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   defp recover_watch(%Watch{} = snapshot) do
     action =
       Repo.transaction(fn ->
@@ -1483,10 +1468,7 @@ defmodule Pinchflat.MediaWatch do
         {:error, :watch_released}
 
       watch.archive_state == "published" ->
-        with :ok <- ensure_item_matches_approved(watch, media_item),
-             {:ok, _manifest} <- verify_archive(watch) do
-          {:ok, watch}
-        end
+        verify_published_original(watch, media_item)
 
       true ->
         with true <- watch.archive_state in ["none", "needs_recovery"],
@@ -1500,6 +1482,13 @@ defmodule Pinchflat.MediaWatch do
           false -> {:error, :archive_preparing}
           {:error, reason} -> {:error, reason}
         end
+    end
+  end
+
+  defp verify_published_original(watch, media_item) do
+    with :ok <- ensure_item_matches_approved(watch, media_item),
+         {:ok, _manifest} <- verify_archive(watch) do
+      {:ok, watch}
     end
   end
 
@@ -1544,9 +1533,9 @@ defmodule Pinchflat.MediaWatch do
   end
 
   @doc """
-  Prepares a watched replacement: claims the lease, publishes or verifies the
-  original archive, and rechecks the fencing state immediately before the
-  caller mutates active files.
+  Prepares a watched replacement: publishes the original if needed, then
+  claims a fresh lease for the commit. The commit verifies the archive and
+  current files under its database reservation before mutating active files.
 
   Returns {:ok, %Lease{} | :unwatched} | {:error, term()}.
   """
@@ -1568,15 +1557,41 @@ defmodule Pinchflat.MediaWatch do
 
           true ->
             with :ok <- recover_pending_intent_for(watch.id),
-                 {:ok, lease} <- claim_lease(media_item.id, "replace", opts),
-                 :ok <- ensure_observation_unchanged(lease),
-                 {:ok, archived} <- archive_original(watch, media_item, opts),
-                 :ok <- recheck_before_commit(lease, archived) do
-              {:ok, lease}
-            else
-              {:error, reason} -> {:error, reason}
+                 {:ok, archived} <- prepare_original(watch, media_item, opts),
+                 {:ok, lease} <- claim_lease(media_item.id, "replace", opts) do
+              current = Repo.get!(Watch, lease.watch_id)
+
+              if current.archive_state == "published" and replacement_eligible?(current) and
+                   current.observation_version == archived.observation_version and
+                   current.observation_version == lease.observation_version and lease_current?(lease) do
+                {:ok, lease}
+              else
+                release_lease(lease)
+                {:error, :watch_hold}
+              end
             end
         end
+    end
+  end
+
+  defp prepare_original(%Watch{archive_state: "published"} = watch, item, _opts) do
+    verify_published_original(watch, item)
+  end
+
+  defp prepare_original(watch, media_item, opts) do
+    with {:ok, lease} <- claim_lease(media_item.id, "replace", opts) do
+      try do
+        with :ok <- ensure_observation_unchanged(lease),
+             {:ok, archived} <- archive_original(watch, media_item, opts),
+             true <- archived.observation_version == lease.observation_version do
+          {:ok, archived}
+        else
+          false -> {:error, :watch_observation_changed}
+          error -> error
+        end
+      after
+        release_lease(lease)
+      end
     end
   end
 
@@ -1626,7 +1641,7 @@ defmodule Pinchflat.MediaWatch do
                :ok <- ReplacementIntent.advance(intent, "transferring"),
                {:ok, transferred_json} <- invoke_transfer(transfer_fun, pre_images(intent)),
                :ok <- verify_transferred(intent, transferred_json),
-               :ok <- reserve_for_commit(lease),
+               # The transaction still owns the reservation even if the lease timestamp has elapsed.
                {:ok, _manifest} <- verify_fence(lease),
                :ok <- backup_postprocessing_files(intent),
                {:ok, updated} <- invoke_update(update_fun, transferred_json),

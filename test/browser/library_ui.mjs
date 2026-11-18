@@ -419,6 +419,46 @@ async function assertRowMenuKeyboard() {
   screenshot('row-menu-keyboard.png')
 }
 
+async function assertTabScrollAcrossShorterPage() {
+  const sourcePath = `/sources/${fixture.channel_id}`
+  const scroll = (edge) =>
+    page.eval(
+      new Function(`
+        const pane = document.querySelector('nav[aria-label="Page sections"]').closest('.overflow-y-auto')
+        if (${JSON.stringify(edge)} === 'bottom') pane.scrollTop = pane.scrollHeight
+        if (${JSON.stringify(edge)} === 'top') pane.scrollTop = 0
+        return { top: pane.scrollTop, max: pane.scrollHeight - pane.clientHeight }
+      `)
+    )
+  const switchTab = async (tab) => {
+    await page.eval(
+      new Function(`
+        document.querySelector('nav[aria-label="Page sections"] a[href$="tab=${tab}"]').click()
+      `)
+    )
+    await page.wait(250)
+  }
+
+  await open(`${sourcePath}?tab=source`)
+  const start = await scroll('bottom')
+  await switchTab('videos')
+  const short = await scroll()
+  assert(
+    short.max > 0 && short.max < start.top,
+    'Fixture Videos tab must be shorter and scrollable'
+  )
+  assert.equal(short.top, short.max, 'Shorter tab must clamp to its bottom')
+  await switchTab('source')
+  assert.equal((await scroll()).top, start.top, 'Returning must restore the unclamped position')
+
+  await switchTab('videos')
+  await scroll('top')
+  await switchTab('source')
+  assert.equal((await scroll()).top, 0, 'Scrolling the shorter tab must set the next position')
+  await open(`${sourcePath}?tab=videos`)
+  assert.equal((await scroll()).top, 0, 'Direct tab navigation must start at the top')
+}
+
 async function assertEmptyHome() {
   await open('/')
   const state = await page.eval(() => ({
@@ -454,5 +494,8 @@ if (fixture.mode === 'empty') {
 
   emitViewport(768)
   await assertRowMenuKeyboard()
-  console.log('PASS: library pages, thumbnails, action column, touch targets and row menu keyboard')
+  await assertTabScrollAcrossShorterPage()
+  console.log(
+    'PASS: library pages, thumbnails, action column, touch targets, row menu keyboard and tab scroll'
+  )
 }

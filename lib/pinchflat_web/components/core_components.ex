@@ -1169,63 +1169,64 @@ defmodule PinchflatWeb.CoreComponents do
       <legend class="mb-2 text-sm font-medium text-theme-on-surface">{@legend}</legend>
       <input type="hidden" id={@field.id} name={@field.name} x-bind:value="serialized()" />
 
-      <ol class="flex flex-col gap-1.5">
+      <ol class="relative flex flex-col gap-1.5">
         <template x-for="(row, index) in rows" x-bind:key="row.codec">
-          <li
-            class="flex min-h-11 items-center gap-2 rounded-m3-sm border px-2 transition"
-            x-bind:class="[
-              row.on ? 'border-theme-outline bg-theme-surface-2' : 'border-theme-outline/40',
-              dragging === index && 'opacity-50',
-              dropTarget === index && dragging !== index && 'ring-2 ring-theme-primary'
-            ]"
-            x-on:dragover.prevent="dropTarget = index"
-            x-on:drop.prevent="drop(index)"
-          >
-            <span
-              draggable="true"
-              class="hidden cursor-grab items-center self-stretch px-1 text-theme-on-surface-muted sm:flex"
-              title="Drag to reorder"
-              x-on:dragstart="dragging = index; $event.dataTransfer.effectAllowed = 'move'"
-              x-on:dragend="dragging = null; dropTarget = null"
+          <li x-on:dragover.prevent="dropTarget = index" x-on:drop.prevent="drop(index)">
+            <div
+              class="flex min-h-11 items-center gap-2 rounded-m3-sm border px-2"
+              x-bind:class="[
+                row.on ? 'border-theme-outline bg-theme-surface-2' : 'border-theme-outline/40',
+                dragging !== null && 'pointer-events-none motion-safe:transition-transform',
+                dragging === index && (dropTarget === index || dropTarget === null ? 'opacity-50' : 'opacity-0')
+              ]"
+              x-bind:style="previewOffset(index, $el.parentElement)"
             >
-              <.icon name="hero-bars-3" class="h-5 w-5" />
-            </span>
-            <label class="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm">
-              <input
-                type="checkbox"
-                class="h-4 w-4 shrink-0 accent-theme-primary"
-                x-bind:id={"'#{@field.id}-' + row.codec"}
-                x-model="row.on"
-              />
               <span
-                class="w-5 shrink-0 text-right font-mono text-xs text-theme-on-surface-muted"
-                x-text="row.on ? rank(index) + '.' : ''"
-              ></span>
-              <span class="min-w-0" x-bind:class="row.on ? 'text-theme-on-surface' : 'text-theme-on-surface-muted'">
-                <span x-text="row.name"></span>
-                <span class="hidden text-xs text-theme-on-surface-muted sm:inline" x-text="row.aliases"></span>
+                draggable="true"
+                class="hidden cursor-grab items-center self-stretch px-1 text-theme-on-surface-muted sm:flex"
+                title="Drag to reorder"
+                x-on:dragstart="dragging = index; $event.dataTransfer.effectAllowed = 'move'"
+                x-on:dragend="dragging = null; dropTarget = null"
+              >
+                <.icon name="hero-bars-3" class="h-5 w-5" />
               </span>
-            </label>
-            <button
-              type="button"
-              class="theme-field-action"
-              x-bind:disabled="index === 0"
-              x-bind:aria-label="'Move ' + row.label + ' up'"
-              x-bind:data-move="row.codec + '-up'"
-              x-on:click="move(index, index - 1, 'up')"
-            >
-              <.icon name="hero-chevron-up" class="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              class="theme-field-action"
-              x-bind:disabled="index === rows.length - 1"
-              x-bind:aria-label="'Move ' + row.label + ' down'"
-              x-bind:data-move="row.codec + '-down'"
-              x-on:click="move(index, index + 1, 'down')"
-            >
-              <.icon name="hero-chevron-down" class="h-5 w-5" />
-            </button>
+              <label class="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 shrink-0 accent-theme-primary"
+                  x-bind:id={"'#{@field.id}-' + row.codec"}
+                  x-model="row.on"
+                />
+                <span
+                  class="w-5 shrink-0 text-right font-mono text-xs text-theme-on-surface-muted"
+                  x-text="row.on ? rank(index) + '.' : ''"
+                ></span>
+                <span class="min-w-0" x-bind:class="row.on ? 'text-theme-on-surface' : 'text-theme-on-surface-muted'">
+                  <span x-text="row.name"></span>
+                  <span class="hidden text-xs text-theme-on-surface-muted sm:inline" x-text="row.aliases"></span>
+                </span>
+              </label>
+              <button
+                type="button"
+                class="theme-field-action"
+                x-bind:disabled="index === 0"
+                x-bind:aria-label="'Move ' + row.label + ' up'"
+                x-bind:data-move="row.codec + '-up'"
+                x-on:click="move(index, index - 1, 'up')"
+              >
+                <.icon name="hero-chevron-up" class="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                class="theme-field-action"
+                x-bind:disabled="index === rows.length - 1"
+                x-bind:aria-label="'Move ' + row.label + ' down'"
+                x-bind:data-move="row.codec + '-down'"
+                x-on:click="move(index, index + 1, 'down')"
+              >
+                <.icon name="hero-chevron-down" class="h-5 w-5" />
+              </button>
+            </div>
           </li>
         </template>
       </ol>
@@ -1319,6 +1320,14 @@ defmodule PinchflatWeb.CoreComponents do
           const other = this.$root.querySelector(`[data-move="${row.codec}-${direction === 'up' ? 'down' : 'up'}"]`);
           (button && !button.disabled ? button : other)?.focus();
         });
+      },
+      previewOffset(index, row) {
+        if (this.dragging === null || this.dropTarget === null) return {};
+        let neighbor;
+        if (index > this.dragging && index <= this.dropTarget) neighbor = row.previousElementSibling;
+        if (index < this.dragging && index >= this.dropTarget) neighbor = row.nextElementSibling;
+        if (!neighbor) return {};
+        return { transform: 'translateY(' + (neighbor.offsetTop - row.offsetTop) + 'px)' };
       },
       drop(index) {
         if (this.dragging !== null && this.dragging !== index) { this.move(this.dragging, index); }

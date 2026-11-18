@@ -12,18 +12,21 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
 
   use Pinchflat.DataCase
 
+  import Phoenix.ConnTest
   import Pinchflat.MediaFixtures
   import Pinchflat.ProfilesFixtures
   import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Downloading.DownloadStaging
-  alias Pinchflat.Downloading.MediaDownloader
+  alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Media
   alias Pinchflat.MediaWatch
   alias Pinchflat.MediaWatch.MediaWatch, as: Watch
   alias Pinchflat.MediaWatch.OriginalArchive
   alias Pinchflat.MediaWatch.ReplacementIntent
   alias Pinchflat.Repo
+
+  @endpoint PinchflatWeb.Endpoint
 
   setup context do
     stub(DiskSpaceCheckerMock, :available_bytes, fn _ -> {:ok, 100 * 1024 * 1024 * 1024} end)
@@ -353,6 +356,34 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       assert File.regular?(staged)
     end
 
+    test "a replacement finishing after lease expiry keeps its database reservation" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.prepare_replacement(item)
+      staged = staged_file("replacement artifact")
+
+      assert {:ok, updated} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn _ ->
+                   File.rename!(staged, item.media_filepath)
+
+                   Repo.update_all(from(w in Watch, where: w.id == ^watch.id),
+                     set: [lease_expires_at: now_minus(1, :minute)]
+                   )
+
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _ -> Media.update_media_item(item, %{title: "replacement title"}) end
+               )
+
+      assert Repo.reload!(item).title == updated.title
+      assert File.read!(updated.media_filepath) == "replacement artifact"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
+    end
+
     test "an observation version change under the lease refuses the commit" do
       {item, watch} = watched_item()
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
@@ -466,7 +497,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
       staged = staged_file("replacement artifact")
 
-      assert {:error, :lost_lease} =
+      assert {:error, :watch_hold} =
                MediaWatch.commit_replacement(
                  lease,
                  item,
@@ -475,7 +506,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                    File.rename!(staged, item.media_filepath)
 
                    Repo.update_all(from(w in Watch, where: w.id == ^watch.id),
-                     set: [lease_expires_at: now_minus(1, :minute)]
+                     inc: [lease_generation: 1]
                    )
 
                    {:ok, %{"filepath" => item.media_filepath}}
@@ -584,29 +615,15 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       refute ReplacementIntent.pending?(watch.id)
     end
 
-    test "the downloader commits a watched replacement through the fence" do
+    test "an API-queued watched replacement commits through the fence" do
       {item, watch} = watched_item()
-      media_root = Application.fetch_env!(:pinchflat, :media_directory) |> Path.expand()
-      relative_directory = Path.relative_to(Path.dirname(item.media_filepath), media_root)
+      mock_replacement_download(item)
+      job = enqueue_force_download(item)
 
-      stub(YtDlpRunnerMock, :run, fn
-        _url, :get_downloadable_status, _opts, _output, _addl ->
-          {:ok, "{}"}
-
-        _url, :download_thumbnail, _opts, _output, _addl ->
-          {:ok, ""}
-
-        _url, :download, opts, _output, _addl ->
-          staged = Path.join([Path.dirname(Keyword.fetch!(opts, :output)), relative_directory, "media.mp4"])
-          File.mkdir_p!(Path.dirname(staged))
-          File.write!(staged, "replacement artifact")
-          {:ok, downloader_metadata(staged)}
-      end)
-
-      stub(HTTPClientMock, :get, fn _url, _headers, _opts -> {:ok, ""} end)
-
-      assert {:ok, updated} = MediaDownloader.download_for_media_item(item)
+      assert :ok = MediaDownloadWorker.perform(job)
+      updated = Repo.reload!(item)
       assert updated.media_filepath == item.media_filepath
+      assert is_nil(updated.last_error)
       assert File.read!(item.media_filepath) == "replacement artifact"
 
       committed = Repo.get!(Watch, watch.id)
@@ -619,6 +636,22 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
 
       assert [%{"role" => "media", "sha256" => ^first_checksum}] =
                Enum.filter(manifest["files"], &(&1["role"] == "media"))
+    end
+
+    test "an API-queued replacement held by the file guard records the error and stops retrying" do
+      {item, watch} = watched_item()
+      File.write!(item.media_filepath, "user edit")
+      mock_replacement_download(item)
+      job = enqueue_force_download(item)
+
+      assert {:ok, :non_retry} = MediaDownloadWorker.perform(job)
+      failed = Repo.reload!(item)
+      assert failed.error_type == :transient
+      assert failed.last_error == "watched original is protected: :active_file_changed"
+      assert File.read!(item.media_filepath) == "user edit"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
+      assert File.ls!(DownloadStaging.replacement_directory()) == []
     end
   end
 
@@ -795,6 +828,34 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       |> Repo.update()
 
     {Repo.reload(item), watch}
+  end
+
+  defp enqueue_force_download(item) do
+    build_conn() |> post("/api/media/#{item.id}/actions/download") |> json_response(200)
+    [job] = all_enqueued(worker: MediaDownloadWorker, args: %{"id" => item.id})
+    job
+  end
+
+  defp mock_replacement_download(item) do
+    media_root = Application.fetch_env!(:pinchflat, :media_directory) |> Path.expand()
+    relative_directory = Path.relative_to(Path.dirname(item.media_filepath), media_root)
+
+    stub(UserScriptRunnerMock, :run, fn _event, _item -> {:ok, "", 0} end)
+    stub(HTTPClientMock, :get, fn _url, _headers, _opts -> {:ok, ""} end)
+
+    stub(YtDlpRunnerMock, :run, fn
+      _url, :get_downloadable_status, _opts, _output, _addl ->
+        {:ok, "{}"}
+
+      _url, :download_thumbnail, _opts, _output, _addl ->
+        {:ok, ""}
+
+      _url, :download, opts, _output, _addl ->
+        staged = Path.join([Path.dirname(Keyword.fetch!(opts, :output)), relative_directory, "media.mp4"])
+        File.mkdir_p!(Path.dirname(staged))
+        File.write!(staged, "replacement artifact")
+        {:ok, downloader_metadata(staged)}
+    end)
   end
 
   defp downloader_metadata(path) do

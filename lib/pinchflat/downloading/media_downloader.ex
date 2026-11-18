@@ -267,7 +267,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp watch_hold_message(reason), do: "watched original is protected: #{inspect(reason)}"
 
   defp watch_replacement_message(reason) do
-    "watched replacement stopped and the original was restored: #{inspect(reason)}"
+    "watched replacement stopped: #{inspect(reason)}"
   end
 
   defp attempt_recovery_from_error(media_with_preloads, output_filepath, error_message) do

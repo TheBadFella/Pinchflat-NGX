@@ -35,8 +35,8 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
           aria-label="Page sections"
           class="no-scrollbar flex min-w-0 flex-1 flex-nowrap gap-3 overflow-x-auto sm:gap-8"
           x-data="{
-            revealCurrent() {
-              const tab = this.$el.querySelector('[aria-current=page]');
+            restored: null,
+            revealTab(tab) {
               this.$el.scrollLeft += tab.getBoundingClientRect().left - this.$el.getBoundingClientRect().left;
             },
             scroller() {
@@ -47,22 +47,29 @@ defmodule PinchflatWeb.CustomComponents.TabComponents do
               const link = event.target.closest('a[href]');
               if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
               const url = new URL(link.href);
+              const current = this.scroller().scrollTop;
+              // Carry the requested position across a shorter tab until the reader scrolls.
+              const top = this.restored?.actual === current ? this.restored.requested : current;
               try {
-                sessionStorage.setItem('tabScroll', JSON.stringify({ path: url.pathname + url.search, top: this.scroller().scrollTop }));
+                sessionStorage.setItem('tabScroll', JSON.stringify({ path: url.pathname + url.search, top }));
               } catch (_) {}
             },
             restoreScroll() {
               try {
                 const saved = JSON.parse(sessionStorage.getItem('tabScroll') || 'null');
                 sessionStorage.removeItem('tabScroll');
-                if (saved && saved.path === location.pathname + location.search) this.scroller().scrollTop = saved.top;
+                if (saved && saved.path === location.pathname + location.search) {
+                  const scroller = this.scroller();
+                  scroller.scrollTop = saved.top;
+                  this.restored = { requested: saved.top, actual: scroller.scrollTop };
+                }
               } catch (_) {}
             }
           }"
-          x-init="restoreScroll(); $nextTick(() => revealCurrent())"
+          x-init="$nextTick(() => { restoreScroll(); revealTab($el.querySelector('[aria-current=page]')) })"
           x-on:click="rememberScroll($event)"
-          x-on:resize.window.debounce.100ms="revealCurrent()"
-          x-on:focusin="$event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })"
+          x-on:resize.window.debounce.100ms="revealTab($el.querySelector('[aria-current=page]'))"
+          x-on:focusin="revealTab($event.target)"
         >
           <.link
             :for={tab <- @tab}
