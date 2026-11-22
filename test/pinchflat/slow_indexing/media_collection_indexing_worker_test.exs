@@ -101,6 +101,48 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorkerTest do
       perform_job(MediaCollectionIndexingWorker, %{id: source.id, force: true})
     end
 
+    test "stops a channel tab crawl at the download cutoff date without an indexing cutoff" do
+      download_cutoff = Date.utc_today() |> Date.add(-30)
+
+      source =
+        source_fixture(%{
+          original_url: "https://www.youtube.com/@fixture/videos",
+          index_cutoff_date: nil,
+          download_cutoff_date: download_cutoff,
+          index_frequency_minutes: 0,
+          last_indexed_at: nil,
+          download_media: false
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, template, _runner_opts ->
+        filepath = Pinchflat.Utils.FilesystemUtils.generate_metadata_tmpfile(:json)
+        on_exit(fn -> File.rm(filepath) end)
+
+        args =
+          ["test/support/scripts/index_cutoff_fixture.py"] ++
+            Pinchflat.Utils.CliUtils.parse_options(opts) ++ ["--print-to-file", template, filepath]
+
+        {output, 0} = System.cmd("python3", args)
+        assert %{"visited" => ["undated", "recent", "old"], "status" => 101} = Jason.decode!(output)
+
+        File.read(filepath)
+      end)
+
+      assert :ok = perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+
+      assert Repo.reload!(source).last_indexed_at
+
+      saved_media_ids =
+        source
+        |> Repo.reload!()
+        |> Repo.preload(:media_items)
+        |> Map.fetch!(:media_items)
+        |> Enum.map(& &1.media_id)
+        |> Enum.sort()
+
+      assert saved_media_ids == ["recent", "undated"]
+    end
+
     test "does not do any indexing if the source has been indexed and shouldn't be rescheduled" do
       expect(YtDlpRunnerMock, :run, 0, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
         {:ok, ""}

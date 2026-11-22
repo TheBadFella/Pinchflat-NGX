@@ -491,10 +491,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   defp content_type_filter(:streams), do: dynamic([mi], mi.livestream == true)
   defp content_type_filter(:all), do: dynamic(true)
 
-  # `--break-match-filters` aborts the crawl the moment it reaches a video older
-  # than the source's indexing cutoff date. Unlike the download archive (which is
-  # skipped on first/forced indexes), this applies to every index — the first crawl
-  # of a large channel is exactly where it saves the most time.
+  # `--dateafter` only rejects older videos; without `--break-on-reject` yt-dlp keeps
+  # extracting every entry until the end of the listing, so a channel tab still walks
+  # its whole catalogue. `--break-on-reject` ends the tab at the first rejected video,
+  # and `--break-match-filters` does the same for an indexing cutoff date. Either way
+  # the crawl must stop at the scan date, because everything past it was already being
+  # skipped - the same videos stay indexed, only the wasted extractions stop.
   #
   # Early abort is only safe when the listing is newest-first, which is only
   # guaranteed for YouTube channel tabs — playlists are ordered arbitrarily and
@@ -515,6 +517,16 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       break_match_filters: "upload_date >= #{formatted_date}",
       break_match_filters: "!upload_date"
     ]
+  end
+
+  # `--break-on-reject` is added here so it lands after the archive options and
+  # appears once even when an indexing cutoff also applies.
+  defp build_index_cutoff_options(%Source{} = source, content_type)
+       when content_type in [:videos, :shorts, :streams] do
+    case calculate_effective_scan_date(source) do
+      nil -> []
+      %Date{} -> [:break_on_reject]
+    end
   end
 
   defp build_index_cutoff_options(_source, _content_type), do: []
@@ -554,6 +566,11 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # This optimization dramatically reduces indexing time for sources with short
   # retention periods - instead of scanning thousands of old videos, we only
   # scan videos that could potentially be downloaded and retained.
+  #
+  # --dateafter only rejects; it does not stop the listing. On newest-first YouTube
+  # channel tabs the crawl must also break at that same date (see
+  # `build_index_cutoff_options/2`), otherwise yt-dlp still extracts the whole
+  # catalogue just to reject every older video.
   @dateafter_buffer_days 3
   defp build_dateafter_options(%Source{} = source) do
     effective_date = calculate_effective_scan_date(source)
