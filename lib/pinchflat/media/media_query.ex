@@ -278,7 +278,7 @@ defmodule Pinchflat.Media.MediaQuery do
   def pending do
     dynamic(
       [mi],
-      not (^downloaded()) and
+      is_nil(mi.media_filepath) and
         not (^download_prevented()) and
         ^AvailabilityPolicy.query_condition() and
         ^upload_date_after_source_cutoff() and
@@ -289,7 +289,7 @@ defmodule Pinchflat.Media.MediaQuery do
   end
 
   def download_failed do
-    dynamic([mi], (not is_nil(mi.last_error) or mi.error_type == :permanent) and not (^downloaded()))
+    dynamic([mi], (not is_nil(mi.last_error) or mi.error_type == :permanent) and is_nil(mi.media_filepath))
   end
 
   # A permanent failure blocks automatic downloads until the user explicitly
