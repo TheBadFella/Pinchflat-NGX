@@ -9,6 +9,10 @@ defmodule PinchflatWeb.Helpers.JobActionHelpers do
   def feedback({:ok, _task}, message), do: %{type: :info, message: message}
   def feedback({:error, :duplicate_job}, _message), do: %{type: :info, message: "Already queued."}
 
+  def feedback(:downloads_disabled, _message) do
+    %{type: :info, message: "Downloads are disabled for this source. No jobs were queued."}
+  end
+
   def feedback(results, _message) when is_list(results) do
     queued = Enum.count(results, &match?({:ok, _}, &1))
     duplicates = Enum.count(results, &(&1 == {:error, :duplicate_job}))

@@ -928,6 +928,63 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = post(conn, ~p"/sources/#{source.id}/force_download_pending")
       assert redirected_to(conn) == ~p"/sources/#{source.id}"
     end
+
+    test "explains that downloads are disabled instead of reporting a queue count", %{conn: conn} do
+      source = source_fixture(%{download_media: false})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      conn = post(conn, ~p"/sources/#{source.id}/force_download_pending")
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Downloads are disabled for this source. No jobs were queued."
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == nil
+      refute_enqueued(worker: MediaDownloadWorker)
+      assert [] = Tasks.list_tasks_for(media_item)
+    end
+
+    test "reports the existing no-op summary for an enabled source with no pending items", %{conn: conn} do
+      source = source_fixture()
+
+      conn = post(conn, ~p"/sources/#{source.id}/force_download_pending")
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "0 queued, 0 already queued, 0 failed."
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
+    test "replaces non-executing pending tasks and reports queued items when forcing download of already queued items",
+         %{conn: conn} do
+      source = source_fixture()
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      assert {:ok, initial_task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      conn = post(conn, ~p"/sources/#{source.id}/force_download_pending")
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "1 queued, 0 already queued, 0 failed."
+
+      assert [persisted] = Tasks.list_tasks_for(media_item)
+      assert persisted.id != initial_task.id
+    end
+
+    test "reports already queued items when pending download task is executing", %{conn: conn} do
+      source = source_fixture()
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      # Oban's uniqueness key includes args, so this executing job must match the
+      # retry args to conflict instead of being replaced.
+      assert {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item, %{"reset_last_error" => true})
+      job = Repo.get!(Oban.Job, task.job_id)
+      job |> Ecto.Changeset.change(%{state: "executing"}) |> Repo.update!()
+
+      conn = post(conn, ~p"/sources/#{source.id}/force_download_pending")
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "0 queued, 1 already queued, 0 failed."
+    end
   end
 
   describe "show source" do

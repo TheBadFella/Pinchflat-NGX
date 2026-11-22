@@ -20,30 +20,47 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
 
   @doc """
   Starts tasks for downloading media for any of a sources _pending_ media items.
-  Jobs are not enqueued if the source is set to not download media. This will return :ok.
+  Jobs are not enqueued if the source is set to not download media.
+
+  Pending media items are eligible rows, not necessarily live queued jobs, so
+  the returned count describes this attempt only: it is the number of download
+  jobs newly scheduled by this call. Items that already had an active job are
+  reported in the log as `already_queued` and items that could not be queued
+  are reported as `failed`; neither is counted here.
 
   NOTE: this starts a download for each media item that is pending,
   not just the ones that were indexed in this job run. This should ensure
   that any stragglers are caught if, for some reason, they weren't enqueued
   or somehow got de-queued.
 
-  Returns :ok
+  Returns integer() - the count of download jobs newly scheduled by this call.
   """
   def enqueue_pending_download_tasks(source, job_opts \\ [])
 
   def enqueue_pending_download_tasks(%Source{download_media: true} = source, job_opts) do
-    pending_media_items = Media.list_pending_media_items_for(source)
+    counts =
+      source
+      |> Media.list_pending_media_items_for()
+      |> Enum.reduce(%{enqueued: 0, already_queued: 0, failed: 0}, fn media_item, counts ->
+        outcome =
+          case MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts) do
+            {:ok, _task} -> :enqueued
+            {:error, :duplicate_job} -> :already_queued
+            {:error, _reason} -> :failed
+          end
 
-    Enum.each(pending_media_items, &MediaDownloadWorker.kickoff_with_task(&1, %{}, job_opts))
+        Map.update!(counts, outcome, &(&1 + 1))
+      end)
 
-    pending_count = length(pending_media_items)
+    pending_count = counts.enqueued + counts.already_queued + counts.failed
 
     Logger.info(
       "pending_download_enqueue source_id=#{source.id} pending_count=#{pending_count} " <>
+        "enqueued=#{counts.enqueued} already_queued=#{counts.already_queued} failed=#{counts.failed} " <>
         "job_opts_present=#{job_opts != []}"
     )
 
-    pending_count
+    counts.enqueued
   end
 
   def enqueue_pending_download_tasks(%Source{download_media: false} = source, _job_opts) do
@@ -77,7 +94,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   Starts retry-style download tasks for any pending media items in a source.
   Existing `last_error` values are cleared when the new attempt begins.
 
-  Returns [{:ok, %Task{}} | {:error, any()}]
+  Returns [{:ok, %Task{}} | {:error, any()}] | :downloads_disabled
   """
   def retry_pending_download_tasks(%Source{download_media: true} = source) do
     source
@@ -85,7 +102,7 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
     |> Enum.map(&MediaDownloadWorker.kickoff_with_task(&1, %{"reset_last_error" => true}))
   end
 
-  def retry_pending_download_tasks(%Source{download_media: false}), do: []
+  def retry_pending_download_tasks(%Source{download_media: false}), do: :downloads_disabled
 
   @doc """
   Re-enqueues download jobs for retryable media items that have a recorded error.

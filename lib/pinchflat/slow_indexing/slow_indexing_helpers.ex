@@ -189,7 +189,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     case Enum.find(results, &match?({:error, _reason}, &1)) do
       nil ->
         if Enum.any?(results, &match?({:ok, outcome} when outcome in [:queued, :already_queued], &1)) do
-          {:applied, Enum.count(results, &match?({:ok, outcome} when outcome in [:queued, :already_queued], &1))}
+          {:applied, Enum.count(results, &match?({:ok, :queued}, &1))}
         else
           :ok
         end
