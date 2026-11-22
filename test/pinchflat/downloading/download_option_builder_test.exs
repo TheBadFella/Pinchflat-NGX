@@ -63,6 +63,41 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:output, "/tmp/test/media/07-007.%(ext)s"} in res
     end
 
+    test "uses the translated title in the output path when present", %{media_item: media_item} do
+      media_item = Repo.update!(Ecto.Changeset.change(media_item, translated_title: "Übersetzter Titel"))
+
+      media_item =
+        update_media_profile_attribute(media_item, %{output_path_template: "{{ translated_title }}.%(ext)s"})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/Übersetzter Titel.%(ext)s"} in res
+    end
+
+    test "falls back to the original title in the output path when translated_title is nil", %{
+      media_item: media_item
+    } do
+      media_item = Repo.update!(Ecto.Changeset.change(media_item, title: "Original Title", translated_title: nil))
+
+      media_item =
+        update_media_profile_attribute(media_item, %{output_path_template: "{{ translated_title }}.%(ext)s"})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/Original Title.%(ext)s"} in res
+    end
+
+    test "escapes a path-unsafe translated title as a literal component", %{media_item: media_item} do
+      media_item = Repo.update!(Ecto.Changeset.change(media_item, translated_title: "Titel/Eins"))
+
+      media_item =
+        update_media_profile_attribute(media_item, %{output_path_template: "{{ translated_title }}.%(ext)s"})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/Titel_Eins.%(ext)s"} in res
+    end
+
     test "rejects a template that escapes the media root even without staging", %{media_item: item} do
       source = %{item.source | output_path_template_override: "../outside/{{ title }}.{{ ext }}"}
 

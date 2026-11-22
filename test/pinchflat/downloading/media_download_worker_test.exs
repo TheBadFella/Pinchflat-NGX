@@ -147,6 +147,16 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert Repo.reload(media_item).metadata != nil
     end
 
+    test "preserves an existing translated title after metadata is refreshed", %{media_item: media_item} do
+      {:ok, media_item} = Media.update_media_item(media_item, %{translated_title: "Übersetzter Titel"})
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+      assert media_item.translated_title == "Übersetzter Titel"
+      assert media_item.media_filepath != nil
+    end
+
     test "omits requested subtitles without a filepath from persisted media item", %{media_item: media_item} do
       subtitle_path = "/downloads/subtitles/video.en.srt"
 

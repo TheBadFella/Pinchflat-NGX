@@ -694,6 +694,38 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "title language" do
+    setup [:create_source]
+
+    test "saves the source title language and redisplays it on the form", %{conn: conn, source: source} do
+      conn = put(conn, ~p"/sources/#{source}", source: %{title_language: "ZH-cn"})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      assert Repo.reload!(source).title_language == "zh-CN"
+
+      html = conn |> recycle() |> get(~p"/sources/#{source}/edit") |> html_response(200)
+      assert html =~ ~r/id="source_title_language"[^>]*value="zh-CN"/
+      assert html =~ ~r/<summary[^>]*>.*?Title language.*?zh-CN.*?<\/summary>/s
+    end
+
+    test "shows the default summary when no title language is set", %{conn: conn} do
+      html = conn |> get(~p"/sources/new") |> html_response(200)
+
+      assert html =~ ~s(name="source[title_language]")
+      assert html =~ ~r/<summary[^>]*>.*?Title language.*?Default \(channel language\).*?<\/summary>/s
+    end
+
+    test "shows a validation error for an invalid title language", %{conn: conn, source: source} do
+      response =
+        conn
+        |> put(~p"/sources/#{source}", source: %{title_language: "invalid_code"})
+        |> html_response(200)
+
+      assert response =~ "must be a YouTube language code such as en, ja, pt-PT or zh-CN"
+      assert [opened] = Regex.scan(~r/<details[^>]*\sopen[^>]*>.*?<\/summary>/s, response)
+      assert hd(opened) =~ "Title language"
+    end
+  end
+
   describe "title filter test" do
     test "reports which sample and indexed titles the regex matches", %{conn: conn} do
       source = source_fixture()

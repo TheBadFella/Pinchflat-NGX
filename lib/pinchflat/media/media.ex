@@ -234,8 +234,11 @@ defmodule Pinchflat.Media do
 
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
-  def create_media_item_from_backend_attrs(source, media_attrs_struct) do
-    attrs = Map.merge(%{source_id: source.id}, Map.from_struct(media_attrs_struct))
+  def create_media_item_from_backend_attrs(source, media_attrs_struct, translated_title \\ nil) do
+    attrs =
+      %{source_id: source.id}
+      |> Map.merge(Map.from_struct(media_attrs_struct))
+      |> maybe_put_translated_title(translated_title)
 
     result =
       case attrs.media_id do
@@ -616,11 +619,23 @@ defmodule Pinchflat.Media do
       attrs
       |> Map.drop(@fields_to_drop_on_update)
       |> preserve_known_availability(media_item)
+      |> preserve_translated_title(media_item)
 
     media_item
     |> MediaItem.changeset(attrs)
     |> Repo.update()
   end
+
+  defp maybe_put_translated_title(attrs, nil), do: attrs
+  defp maybe_put_translated_title(attrs, translated_title), do: Map.put(attrs, :translated_title, translated_title)
+
+  # A translated title is captured once. Later indexing or downloads must not
+  # replace an existing value with an A/B variant.
+  defp preserve_translated_title(attrs, %{translated_title: translated_title}) when not is_nil(translated_title) do
+    Map.delete(attrs, :translated_title)
+  end
+
+  defp preserve_translated_title(attrs, _media_item), do: attrs
 
   # A later backend response can omit availability while yt-dlp is unable to determine it.
   # Keep a value already captured instead of replacing it with nil.

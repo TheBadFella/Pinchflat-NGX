@@ -80,6 +80,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
       source_collection_name:
         "the YouTube name of the sources that use this profile (often the same as source_custom_name)",
       source_collection_type: "the collection type of the sources using this profile. Either 'channel' or 'playlist'",
+      translated_title: "Translated title for the source's title language. Falls back to the original title.",
       artist_name: "the name of the artist with fallbacks to other uploader fields",
       season_from_date: "alias for upload_year",
       season_episode_from_date: "the upload date formatted as <code>sYYYYeMMDD</code>",

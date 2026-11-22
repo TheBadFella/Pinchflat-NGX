@@ -1539,6 +1539,40 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "change_source/3 when testing title language validation" do
+    test "succeeds with language codes yt-dlp supports" do
+      source = source_fixture()
+
+      Enum.each(~w(en ja pt-PT zh-CN es-419 sr-Latn), fn code ->
+        assert %{errors: []} = Sources.change_source(source, %{title_language: code})
+      end)
+    end
+
+    test "maps any letter case to the spelling yt-dlp requires" do
+      source = source_fixture()
+
+      assert %{changes: %{title_language: "zh-CN"}} = Sources.change_source(source, %{title_language: "zh-cn"})
+      assert %{changes: %{title_language: "pt-PT"}} = Sources.change_source(source, %{title_language: "PT-pt"})
+      assert %{changes: %{title_language: "en"}} = Sources.change_source(source, %{title_language: "EN"})
+    end
+
+    test "succeeds when the language is set back to nil" do
+      source = source_fixture(%{title_language: "ja"})
+
+      assert %{errors: []} = Sources.change_source(source, %{title_language: nil})
+    end
+
+    test "fails with invalid language codes" do
+      source = source_fixture()
+
+      Enum.each(["english", "e", "en_US", "pt-br", "zh-hans", "; rm"], fn code ->
+        changeset = Sources.change_source(source, %{title_language: code})
+
+        assert "must be a YouTube language code such as en, ja, pt-PT or zh-CN" in errors_on(changeset).title_language
+      end)
+    end
+  end
+
   describe "change_source/3 when testing original_url validation" do
     test "succeeds when an original URL is valid" do
       source = source_fixture()

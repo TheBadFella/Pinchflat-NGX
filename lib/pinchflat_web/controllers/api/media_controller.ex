@@ -197,6 +197,7 @@ defmodule PinchflatWeb.Api.MediaController do
           id: mi.id,
           uuid: mi.uuid,
           title: mi.title,
+          translated_title: mi.translated_title,
           media_id: mi.media_id,
           availability: mi.availability,
           prevent_download: mi.prevent_download,

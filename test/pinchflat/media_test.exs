@@ -486,6 +486,90 @@ defmodule Pinchflat.MediaTest do
 
       assert Media.list_pending_media_items_for(source) == [media_item_one, media_item_two]
     end
+
+    test "matches the translated title when title_language is set" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      matching_media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: "foo"
+        })
+
+      assert Media.list_pending_media_items_for(source) == [matching_media_item]
+    end
+
+    test "does not match the translated title when title_language is nil" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: nil})
+
+      _media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: "foo"
+        })
+
+      assert Media.list_pending_media_items_for(source) == []
+    end
+
+    test "matches the original title when title_language is set" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      matching_media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "foo",
+          translated_title: "bar"
+        })
+
+      assert Media.list_pending_media_items_for(source) == [matching_media_item]
+    end
+
+    test "matches the original title when title_language is nil" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: nil})
+
+      matching_media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "foo",
+          translated_title: "bar"
+        })
+
+      assert Media.list_pending_media_items_for(source) == [matching_media_item]
+    end
+
+    test "excludes items when neither the original nor translated title matches" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      _media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: "baz"
+        })
+
+      assert Media.list_pending_media_items_for(source) == []
+    end
+
+    test "does not match when translated_title is nil and the original title does not match" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      _media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: nil
+        })
+
+      assert Media.list_pending_media_items_for(source) == []
+    end
   end
 
   describe "list_pending_media_items_for/1 when min and max durations" do
@@ -699,6 +783,90 @@ defmodule Pinchflat.MediaTest do
       media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "foo"})
 
       assert Media.pending_download?(media_item)
+    end
+
+    test "returns true if only the translated title matches and title_language is set" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: "foo"
+        })
+
+      assert Media.pending_download?(media_item)
+    end
+
+    test "returns false if only the translated title matches and title_language is nil" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: nil})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: "foo"
+        })
+
+      refute Media.pending_download?(media_item)
+    end
+
+    test "returns true if only the original title matches and title_language is set" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "foo",
+          translated_title: "bar"
+        })
+
+      assert Media.pending_download?(media_item)
+    end
+
+    test "returns true if only the original title matches and title_language is nil" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: nil})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "foo",
+          translated_title: "bar"
+        })
+
+      assert Media.pending_download?(media_item)
+    end
+
+    test "returns false if neither the original nor translated title matches" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: "baz"
+        })
+
+      refute Media.pending_download?(media_item)
+    end
+
+    test "returns false when translated_title is nil and the original title does not match" do
+      source = source_fixture(%{title_filter_regex: "(?i)^FOO$", title_language: "en"})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "bar",
+          translated_title: nil
+        })
+
+      refute Media.pending_download?(media_item)
     end
 
     test "returns true if the duration is between the min and max" do

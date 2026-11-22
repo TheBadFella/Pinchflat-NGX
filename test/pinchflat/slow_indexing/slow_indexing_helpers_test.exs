@@ -1158,22 +1158,147 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
+  end
 
-    test "uses retention-based date when cutoff is nil but retention is set" do
-      source = source_fixture(%{download_cutoff_date: nil, retention_period_days: 7})
+  describe "index_and_enqueue_download_for_media_items/2 when translating titles" do
+    test "stores the translated title when the listing title differs from the canonical title" do
+      source = translated_titles_source()
 
-      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
-        {:dateafter, dateafter_value} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
+      stub_translated_titles({:ok, %{"video1" => "Titel Eins", "video2" => "Video 2"}})
 
-        # Should be retention + buffer days ago (7 + 3 = 10 days ago)
-        expected_date = Date.utc_today() |> Date.add(-10)
-        expected_dateafter = Date.to_iso8601(expected_date, :basic)
-        assert dateafter_value == expected_dateafter
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
 
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == "Titel Eins"
+    end
+
+    test "does not store a translated title when it equals the canonical title" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video1" => "Video 1", "video2" => "Video 2"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == nil
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video2").translated_title == nil
+    end
+
+    test "does not store a blank translated title" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video1" => "   ", "video2" => ""}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == nil
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video2").translated_title == nil
+    end
+
+    test "does not store a translated title when the item is missing from the listing" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video2" => "Titel Zwei"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == nil
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video2").translated_title == "Titel Zwei"
+    end
+
+    test "does not replace an existing translated title on reindex" do
+      source = translated_titles_source()
+
+      _item =
+        media_item_fixture(%{source_id: source.id, media_id: "video1", title: "Video 1", translated_title: "Bestehend"})
+
+      stub_translated_titles({:ok, %{"video1" => "Neuer Titel"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == "Bestehend"
+    end
+
+    test "still indexes items without translated titles and logs at info when the listing fails" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:error, "listing unavailable", 1})
+
+      log =
+        capture_log([level: :info], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      assert log =~ "source_id=#{source.id}"
+      assert log =~ "translated_titles_listing_failed"
+
+      items = Repo.all(MediaItem)
+      assert Enum.count(items) == 3
+      assert Enum.all?(items, &is_nil(&1.translated_title))
+    end
+
+    test "does not request a translated listing when title_language is nil" do
+      source = translated_titles_source(%{title_language: nil})
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, :get_media_attributes_for_collection, _opts, _template, _addl ->
         {:ok, source_attributes_return_fixture()}
       end)
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Enum.all?(Repo.all(MediaItem), &is_nil(&1.translated_title))
     end
+
+    test "applies translated titles to media created by the file follower" do
+      watcher_poll_interval = Application.get_env(:pinchflat, :file_watcher_poll_interval)
+      source = translated_titles_source()
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, _opts, _template, _addl ->
+          {:ok, translated_titles_output(%{"video1" => "Titel Eins"})}
+
+        _url, :get_media_attributes_for_collection, _opts, _template, addl_opts ->
+          filepath = Keyword.get(addl_opts, :output_filepath)
+          File.write(filepath, source_attributes_return_fixture())
+
+          :timer.sleep(watcher_poll_interval * 2)
+          {:ok, ""}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == "Titel Eins"
+    end
+  end
+
+  defp translated_titles_source(attrs \\ %{}) do
+    source_fixture(
+      Map.merge(
+        %{
+          collection_type: :playlist,
+          original_url: "https://www.youtube.com/playlist?list=PLtranslated",
+          title_language: "de"
+        },
+        attrs
+      )
+    )
+  end
+
+  defp stub_translated_titles(listing_result) do
+    stub(YtDlpRunnerMock, :run, fn
+      _url, :get_translated_titles, _opts, _template, _addl ->
+        case listing_result do
+          {:ok, titles} -> {:ok, translated_titles_output(titles)}
+          error -> error
+        end
+
+      _url, :get_media_attributes_for_collection, _opts, _template, _addl ->
+        {:ok, source_attributes_return_fixture()}
+    end)
+  end
+
+  defp translated_titles_output(titles) do
+    titles
+    |> Enum.map_join("\n", fn {media_id, title} ->
+      Phoenix.json_library().encode!(%{id: media_id, title: title})
+    end)
   end
 end

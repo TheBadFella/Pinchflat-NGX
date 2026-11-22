@@ -78,6 +78,7 @@ defmodule Pinchflat.Sources.Source do
     min_duration_seconds
     max_duration_seconds
     watch_window_days
+    title_language
   )a
 
   # Expensive API calls are made when a source is inserted/updated so
@@ -101,6 +102,19 @@ defmodule Pinchflat.Sources.Source do
                                   collection_id
                                   collection_type
                                 )a
+
+  # YouTube interface languages accepted by yt-dlp's `youtube:lang` extractor argument.
+  # yt-dlp matches them case-sensitively, so input is mapped to this spelling.
+  @title_languages ~w(
+    af az id ms bs ca cs da de et en-IN en-GB
+    en es es-419 es-US eu fil fr fr-CA gl hr zu is
+    it sw lv lt hu nl no uz pl pt-PT pt ro
+    sq sk sl sr-Latn fi sv vi tr be bg ky kk
+    mk mn ru sr uk el hy iw ur ar fa ne
+    mr hi as bn pa gu or ta te kn ml si
+    th lo my ka am km zh-CN zh-TW zh-HK ja ko
+  )
+  @title_languages_by_downcase Map.new(@title_languages, &{String.downcase(&1), &1})
 
   schema "sources" do
     field :enabled, :boolean, default: true
@@ -142,6 +156,8 @@ defmodule Pinchflat.Sources.Source do
     field :watch_window_days, :integer
     field :original_url, :string
     field :title_filter_regex, :string
+    # nil disables translated titles for this source
+    field :title_language, :string
     field :download_subdirectory, :string
     field :output_path_template_override, :string
     field :output_path_template_shorts_override, :string
@@ -211,6 +227,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_required(required_fields)
     |> validate_original_url()
     |> validate_title_regex()
+    |> normalize_title_language()
+    |> validate_title_language()
     |> normalize_download_subdirectory()
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
@@ -501,6 +519,19 @@ defmodule Pinchflat.Sources.Source do
   end
 
   defp validate_title_regex(changeset), do: changeset
+
+  defp normalize_title_language(changeset) do
+    update_change(changeset, :title_language, fn
+      value when is_binary(value) -> Map.get(@title_languages_by_downcase, String.downcase(value), value)
+      value -> value
+    end)
+  end
+
+  defp validate_title_language(changeset) do
+    validate_inclusion(changeset, :title_language, @title_languages,
+      message: "must be a YouTube language code such as en, ja, pt-PT or zh-CN"
+    )
+  end
 
   defp validate_regex(regex) do
     if Pinchflat.Database.postgres?() do

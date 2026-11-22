@@ -179,12 +179,18 @@ defmodule Pinchflat.Media.MediaQuery do
     if Pinchflat.Database.postgres?() do
       dynamic(
         [mi, source],
-        is_nil(source.title_filter_regex) or fragment("? ~ ?", mi.title, source.title_filter_regex)
+        is_nil(source.title_filter_regex) or
+          fragment("? ~ ?", mi.title, source.title_filter_regex) or
+          (not is_nil(source.title_language) and not is_nil(mi.translated_title) and
+             fragment("? ~ ?", mi.translated_title, source.title_filter_regex))
       )
     else
       dynamic(
         [mi, source],
-        is_nil(source.title_filter_regex) or fragment("regexp_like(?, ?)", mi.title, source.title_filter_regex)
+        is_nil(source.title_filter_regex) or
+          fragment("regexp_like(?, ?)", mi.title, source.title_filter_regex) or
+          (not is_nil(source.title_language) and not is_nil(mi.translated_title) and
+             fragment("regexp_like(?, ?)", mi.translated_title, source.title_filter_regex))
       )
     end
   end

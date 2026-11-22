@@ -403,6 +403,65 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
     end
   end
 
+  describe "index_and_kickoff_downloads/1 when translating titles" do
+    test "stores the translated title when the listing title differs from the canonical title" do
+      source = source_fixture(%{title_language: "de"})
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, opts, _template, _addl ->
+          assert {:playlist_end, 30} in opts
+          {:ok, translated_titles_output(%{"video1" => "Titel Eins"})}
+
+        _url, :get_media_attributes, _opts, _template, _addl ->
+          {:ok, media_attributes_return_fixture()}
+      end)
+
+      assert [%MediaItem{translated_title: "Titel Eins"} = item] =
+               FastIndexingHelpers.index_and_kickoff_downloads(source)
+
+      assert item.title == "Video 1"
+    end
+
+    test "does not fetch the listing when there are no new media ids" do
+      source = source_fixture(%{title_language: "de"})
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+      media_item_fixture(source_id: source.id, media_id: "test_1")
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, _opts, _template, _addl ->
+          flunk("should not fetch translated titles when there are no new media ids")
+
+        _url, :get_media_attributes, _opts, _template, _addl ->
+          {:ok, media_attributes_return_fixture()}
+      end)
+
+      assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+    end
+
+    test "does not fetch the listing when title_language is nil" do
+      source = source_fixture(%{title_language: nil})
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, _opts, _template, _addl ->
+          flunk("should not fetch translated titles when title_language is nil")
+
+        _url, :get_media_attributes, _opts, _template, _addl ->
+          {:ok, media_attributes_return_fixture()}
+      end)
+
+      assert [%MediaItem{translated_title: nil}] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+    end
+  end
+
+  defp translated_titles_output(titles) do
+    titles
+    |> Enum.map_join("\n", fn {media_id, title} ->
+      Phoenix.json_library().encode!(%{id: media_id, title: title})
+    end)
+  end
+
   defp with_debug_logs(fun) do
     previous_level = Logger.level()
     Logger.configure(level: :debug)

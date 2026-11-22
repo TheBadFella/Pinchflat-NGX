@@ -810,6 +810,23 @@
               </.form_disclosure>
             </div>
           </.form_disclosure>
+          <.form_disclosure
+            title="Title language"
+            open={Keyword.has_key?(@changeset.errors, :title_language)}
+            data-setting-group
+          >
+            <:status>{f[:title_language].value || "Default (channel language)"}</:status>
+            <div data-setting>
+              <.input
+                field={f[:title_language]}
+                type="text"
+                inputclass="font-mono"
+                label="Title language"
+                placeholder="en"
+                help="Language code such as en or ja. When set, Pinchflat-ngx saves the channel's translated title for that language next to the original title. Existing downloads keep their names."
+              />
+            </div>
+          </.form_disclosure>
           <section
             x-data={
           """
