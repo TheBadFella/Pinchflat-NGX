@@ -18,6 +18,10 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Downloading.MediaDownloadWorker
 
+  # Mirrors MediaDownloadWorker's `unique` states. A job in any of these states
+  # blocks a new kickoff, so the automatic pass can skip it before trying.
+  @active_download_job_states [:available, :scheduled, :retryable, :executing, :suspended]
+
   @doc """
   Starts tasks for downloading media for any of a sources _pending_ media items.
   Jobs are not enqueued if the source is set to not download media.
@@ -25,8 +29,13 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   Pending media items are eligible rows, not necessarily live queued jobs, so
   the returned count describes this attempt only: it is the number of download
   jobs newly scheduled by this call. Items that already had an active job are
-  reported in the log as `already_queued` and items that could not be queued
-  are reported as `failed`; neither is counted here.
+  skipped before kickoff and reported in the log as `already_queued`, the same
+  way a duplicate found by the kickoff transaction is; items that could not be
+  queued are reported as `failed`. Neither is counted here.
+
+  The per-item kickoff remains the final uniqueness check, so an item that gains
+  an active job between the lookup and its kickoff is still reported as
+  `already_queued` rather than `failed`.
 
   NOTE: this starts a download for each media item that is pending,
   not just the ones that were indexed in this job run. This should ensure
@@ -38,15 +47,20 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def enqueue_pending_download_tasks(source, job_opts \\ [])
 
   def enqueue_pending_download_tasks(%Source{download_media: true} = source, job_opts) do
+    media_items = Media.list_pending_media_items_for_enqueue(source)
+    active_ids = active_download_job_media_item_ids(source, media_items)
+
     counts =
-      source
-      |> Media.list_pending_media_items_for()
-      |> Enum.reduce(%{enqueued: 0, already_queued: 0, failed: 0}, fn media_item, counts ->
+      Enum.reduce(media_items, %{enqueued: 0, already_queued: 0, failed: 0}, fn media_item, counts ->
         outcome =
-          case MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts) do
-            {:ok, _task} -> :enqueued
-            {:error, :duplicate_job} -> :already_queued
-            {:error, _reason} -> :failed
+          if MapSet.member?(active_ids, media_item.id) do
+            :already_queued
+          else
+            case MediaDownloadWorker.kickoff_with_task(media_item, %{}, job_opts) do
+              {:ok, _task} -> :enqueued
+              {:error, :duplicate_job} -> :already_queued
+              {:error, _reason} -> :failed
+            end
           end
 
         Map.update!(counts, outcome, &(&1 + 1))
@@ -66,6 +80,34 @@ defmodule Pinchflat.Downloading.DownloadingHelpers do
   def enqueue_pending_download_tasks(%Source{download_media: false} = source, _job_opts) do
     Logger.info("pending_download_enqueue_skipped source_id=#{source.id} reason=source_downloads_disabled")
     0
+  end
+
+  defp active_download_job_media_item_ids(_source, []), do: MapSet.new()
+
+  # Filters by source rather than by the pending IDs so a large source doesn't
+  # exceed SQLite's bound-parameter limit. Extra IDs from non-pending items are
+  # harmless because the result is only used for membership checks.
+  defp active_download_job_media_item_ids(%Source{} = source, _media_items) do
+    stringified_states = Enum.map(@active_download_job_states, &to_string/1)
+
+    state_filter =
+      if Pinchflat.Database.postgres?() do
+        dynamic([_t, j, _mi], fragment("?::text", j.state) in ^stringified_states)
+      else
+        dynamic([_t, j, _mi], fragment("CAST(? AS text)", j.state) in ^stringified_states)
+      end
+
+    from(t in Task,
+      join: j in assoc(t, :job),
+      join: mi in assoc(t, :media_item),
+      where: mi.source_id == ^source.id,
+      where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+      where: ^state_filter,
+      distinct: true,
+      select: t.media_item_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
   end
 
   @doc """

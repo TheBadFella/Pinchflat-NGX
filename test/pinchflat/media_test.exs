@@ -322,6 +322,102 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing downloaded state" do
+    test "only media_items without a media_filepath are pending" do
+      source = source_fixture()
+      pending = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      downloaded = media_item_fixture(%{source_id: source.id, media_filepath: "/video/downloaded.mp4"})
+
+      assert Media.list_pending_media_items_for(source) == [pending]
+      assert Media.pending_download?(pending)
+      refute Media.pending_download?(downloaded)
+    end
+
+    test "the schema stores an empty-string media_filepath as nil" do
+      media_item = media_item_fixture(%{media_filepath: ""})
+
+      assert media_item.media_filepath == nil
+      assert Media.pending_download?(media_item)
+    end
+
+    test "an empty-string media_filepath stored directly is not pending" do
+      source = source_fixture()
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      {1, _} =
+        Repo.update_all(from(mi in MediaItem, where: mi.id == ^media_item.id), set: [media_filepath: ""])
+
+      refute Media.pending_download?(Repo.get!(MediaItem, media_item.id))
+      assert Media.list_pending_media_items_for(source) == []
+    end
+
+    test "prevented and unavailable items without a media_filepath are still excluded" do
+      source = source_fixture()
+      pending = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      _prevented = media_item_fixture(%{source_id: source.id, media_filepath: nil, prevent_download: true})
+
+      _unavailable =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_download: true,
+          unavailable_at: now()
+        })
+
+      _downloaded =
+        media_item_fixture(%{source_id: source.id, media_filepath: "/video/downloaded.mp4", prevent_download: true})
+
+      assert Media.list_pending_media_items_for(source) == [pending]
+    end
+
+    test "unavailable_at alone does not affect the downloaded check" do
+      source = source_fixture()
+      unavailable = media_item_fixture(%{source_id: source.id, media_filepath: nil, unavailable_at: now()})
+
+      assert Media.list_pending_media_items_for(source) == [unavailable]
+    end
+
+    test "cutoff and title filters still apply to items without a media_filepath" do
+      source =
+        source_fixture(%{download_cutoff_date: now_minus(2, :days), title_filter_regex: "(?i)^KEEP$"})
+
+      pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "keep",
+          uploaded_at: now_minus(1, :day)
+        })
+
+      _before_cutoff =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "keep",
+          uploaded_at: now_minus(3, :days)
+        })
+
+      _title_mismatch =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          title: "drop",
+          uploaded_at: now_minus(1, :day)
+        })
+
+      _downloaded =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/downloaded.mp4",
+          title: "keep",
+          uploaded_at: now_minus(1, :day)
+        })
+
+      assert Media.list_pending_media_items_for(source) == [pending]
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing shorts" do
     test "returns shorts and normal media when shorts_behaviour is :include" do
       source = source_fixture(%{media_profile_id: media_profile_fixture(%{shorts_behaviour: :include}).id})

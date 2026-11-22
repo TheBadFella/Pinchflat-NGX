@@ -124,10 +124,25 @@ defmodule Pinchflat.Media do
   Returns [%MediaItem{}, ...].
   """
   def list_pending_media_items_for(%Source{} = source) do
-    MediaQuery.new()
-    |> MediaQuery.require_assoc(:media_profile)
-    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
-    |> order_by([mi], asc: mi.id)
+    source
+    |> pending_media_items_query()
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns pending media items for a given source with only `:id` loaded from the
+  database, for callers that only need to enqueue work.
+
+  Every other field is its schema default rather than the stored value, so these
+  structs must not be used for display or download decisions. Use
+  `list_pending_media_items_for/1` when full rows are needed.
+
+  Returns [%MediaItem{}, ...].
+  """
+  def list_pending_media_items_for_enqueue(%Source{} = source) do
+    source
+    |> pending_media_items_query()
+    |> select([mi], struct(mi, [:id]))
     |> Repo.all()
   end
 
@@ -449,6 +464,13 @@ defmodule Pinchflat.Media do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.download_failed()))
+  end
+
+  defp pending_media_items_query(%Source{} = source) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
+    |> order_by([mi], asc: mi.id)
   end
 
   defp source_media_direct_status_counts(%Source{} = source) do
