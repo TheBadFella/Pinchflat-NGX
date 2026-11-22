@@ -808,6 +808,44 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       end
     end
 
+    test "real yt-dlp stops at the download cutoff date without an indexing cutoff" do
+      today = Date.utc_today()
+      download_cutoff = Date.add(today, -30)
+      profile = media_profile_fixture(%{download_source_images: false})
+
+      for was_forced <- [false, true] do
+        source =
+          source_fixture(%{
+            original_url: "https://www.youtube.com/@fixture/videos",
+            index_cutoff_date: nil,
+            download_cutoff_date: download_cutoff,
+            media_profile_id: profile.id,
+            download_media: false
+          })
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, template, _runner_opts ->
+          filepath = Pinchflat.Utils.FilesystemUtils.generate_metadata_tmpfile(:json)
+          on_exit(fn -> File.rm(filepath) end)
+
+          args =
+            ["test/support/scripts/index_cutoff_fixture.py"] ++
+              Pinchflat.Utils.CliUtils.parse_options(opts) ++ ["--print-to-file", template, filepath]
+
+          {output, 0} = System.cmd("python3", args)
+          assert %{"visited" => ["undated", "recent", "old"], "status" => 101} = Jason.decode!(output)
+
+          File.read(filepath)
+        end)
+
+        items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, was_forced: was_forced)
+
+        assert Enum.sort(Enum.map(items, & &1.media_id)) == ["recent", "undated"]
+
+        assert Enum.sort(Enum.map(Pinchflat.Repo.preload(source, :media_items).media_items, & &1.media_id)) ==
+                 ["recent", "undated"]
+      end
+    end
+
     test "a channel with an indexing cutoff date passes break filters to every tab" do
       source =
         source_fixture(%{
@@ -1182,6 +1220,91 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       end)
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "a channel download cutoff stops every tab's crawl at that date" do
+      cutoff_date = Date.utc_today() |> Date.add(-10)
+
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          download_cutoff_date: cutoff_date,
+          index_cutoff_date: nil
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        expected_dateafter = Date.to_iso8601(cutoff_date, :basic)
+
+        assert Keyword.get(opts, :dateafter) == expected_dateafter
+        assert :break_on_reject in opts
+        refute Keyword.has_key?(opts, :break_match_filters)
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "positive effective retention stops the crawl on channel tabs" do
+      profile = media_profile_fixture(%{retention_period_days: 5})
+
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          media_profile_id: profile.id,
+          download_cutoff_date: nil,
+          retention_period_days: nil,
+          index_cutoff_date: nil
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Keyword.has_key?(opts, :dateafter)
+        assert :break_on_reject in opts
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "adds break-on-reject once when both a download and indexing cutoff apply" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          download_cutoff_date: Date.utc_today() |> Date.add(-10),
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Enum.count(opts, &(&1 == :break_on_reject)) == 1
+
+        break_filters = for {:break_match_filters, filter} <- opts, do: filter
+        assert break_filters == ["upload_date >= 20260701", "!upload_date"]
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "a download cutoff does not stop the crawl for playlists or non-YouTube channels" do
+      cutoff_date = Date.utc_today() |> Date.add(-10)
+
+      for attrs <- [
+            %{collection_type: :playlist},
+            %{collection_type: :channel, original_url: "https://example.com/some-channel"}
+          ] do
+        source = source_fixture(Map.merge(attrs, %{download_cutoff_date: cutoff_date}))
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+          assert Keyword.has_key?(opts, :dateafter)
+          refute :break_on_reject in opts
+
+          {:ok, source_attributes_return_fixture()}
+        end)
+
+        SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      end
     end
   end
 
