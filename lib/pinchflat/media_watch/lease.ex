@@ -13,8 +13,17 @@ defmodule Pinchflat.MediaWatch.Lease do
           generation: integer(),
           observation_version: integer(),
           expires_at: DateTime.t(),
-          operation_kind: String.t()
+          operation_kind: String.t(),
+          lease_seconds: pos_integer()
         }
 
-  defstruct [:watch_id, :owner, :generation, :observation_version, :expires_at, :operation_kind]
+  defstruct [
+    :watch_id,
+    :owner,
+    :generation,
+    :observation_version,
+    :expires_at,
+    :operation_kind,
+    :lease_seconds
+  ]
 end

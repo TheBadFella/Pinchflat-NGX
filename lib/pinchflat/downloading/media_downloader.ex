@@ -117,7 +117,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
                         staging_directory,
                         staging_opts,
                         media_with_preloads,
-                        replacement_lease
+                        replacement_lease,
+                        override_opts
                       )
 
                     finish_replacement_lease(replacement_lease)
@@ -193,7 +194,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     end
   end
 
-  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, :unwatched) do
+  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, :unwatched, _opts) do
     first? =
       not is_nil(media_with_preloads.watch_download_started_at) and
         is_nil(media_with_preloads.media_downloaded_at) and
@@ -221,7 +222,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
   # A watched replacement moves active files only inside MediaWatch's write
   # reservation and durable intent, so a failure restores the verified original.
-  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, lease) do
+  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, lease, override_opts) do
+    progress = fn attrs -> maybe_report_progress(override_opts, attrs) end
+
     with {:ok, plan} <- DownloadStaging.transfer_plan(parsed_json, staging_directory, staging_opts),
          {:ok, updated} <-
            MediaWatch.commit_replacement(
@@ -232,10 +235,22 @@ defmodule Pinchflat.Downloading.MediaDownloader do
                DownloadStaging.transfer(
                  parsed_json,
                  staging_directory,
-                 Keyword.put(staging_opts, :pre_images, pre_images)
+                 staging_opts
+                 |> Keyword.put(:pre_images, pre_images)
+                 |> Keyword.put(:lease_valid?, fn -> MediaWatch.lease_current?(lease) end)
                )
              end,
-             fn transferred_json -> update_media_item_from_parsed_json(media_with_preloads, transferred_json) end
+             fn prepared_attrs -> persist_prepared_attrs(media_with_preloads, prepared_attrs) end,
+             progress: progress,
+             prepare: fn transferred_json ->
+               suffix = Map.get(transferred_json, "incoming_suffix")
+
+               prepare_media_item_attrs(
+                 media_with_preloads,
+                 transferred_json,
+                 if(is_binary(suffix), do: [suffix: suffix], else: [])
+               )
+             end
            ) do
       {:ok, updated}
     else
@@ -296,7 +311,10 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     )
   end
 
-  defp update_media_item_from_parsed_json(media_with_preloads, parsed_json, opts \\ []) do
+  # Filesystem work (NFO, compressed metadata, and the thumbnail download that
+  # spawns yt-dlp) runs before the replacement write transaction so a slow or
+  # failing thumbnail fetch never holds the SQLite/PostgreSQL write lock.
+  defp prepare_media_item_attrs(media_with_preloads, parsed_json, opts \\ []) do
     parsed_attrs =
       parsed_json
       |> MetadataParser.parse_for_media_item()
@@ -305,26 +323,39 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       |> Map.merge(%{
         # The worker owns the successful completion marker, not metadata or partial recovery.
         culled_at: nil,
-        nfo_filepath: determine_nfo_filepath(media_with_preloads, parsed_json),
+        nfo_filepath: determine_nfo_filepath(media_with_preloads, parsed_json, opts),
         metadata: %{
           # IDEA: might be worth kicking off a job for this since thumbnail fetching
           # could fail and I want to handle that in isolation
-          metadata_filepath: MetadataFileHelpers.compress_and_store_metadata_for(media_with_preloads, parsed_json),
-          thumbnail_filepath: MetadataFileHelpers.download_and_store_thumbnail_for(media_with_preloads)
+          metadata_filepath:
+            MetadataFileHelpers.compress_and_store_metadata_for(media_with_preloads, parsed_json, opts),
+          thumbnail_filepath: MetadataFileHelpers.download_and_store_thumbnail_for(media_with_preloads, opts)
         }
       })
 
-    first_watched_artifact? =
-      opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
-        is_nil(media_with_preloads.media_downloaded_at) and
-        (FirstArtifact.pending?(media_with_preloads) or
-           MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0)
+    {:ok, parsed_attrs}
+  end
 
-    if first_watched_artifact? do
-      persist_first_artifact(media_with_preloads, Map.put(parsed_attrs, :watch_postprocessing_pending, true))
-    else
-      Media.update_media_item(media_with_preloads, parsed_attrs)
+  defp update_media_item_from_parsed_json(media_with_preloads, parsed_json, opts \\ []) do
+    with {:ok, parsed_attrs} <- prepare_media_item_attrs(media_with_preloads, parsed_json) do
+      first_watched_artifact? =
+        opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
+          is_nil(media_with_preloads.media_downloaded_at) and
+          (FirstArtifact.pending?(media_with_preloads) or
+             MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0)
+
+      if first_watched_artifact? do
+        persist_first_artifact(media_with_preloads, Map.put(parsed_attrs, :watch_postprocessing_pending, true))
+      else
+        Media.update_media_item(media_with_preloads, parsed_attrs)
+      end
     end
+  end
+
+  # The replacement commit runs this inside its short write transaction; all
+  # filesystem and thumbnail work already happened in prepare_media_item_attrs/2.
+  defp persist_prepared_attrs(media_with_preloads, parsed_attrs) do
+    Media.update_media_item(media_with_preloads, parsed_attrs)
   end
 
   defp persist_first_artifact(item, attrs) do
@@ -343,11 +374,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       {:error, :artifact_persistence_failed, "First artifact write failed; retry from protected copy"}
   end
 
-  defp determine_nfo_filepath(media_item, parsed_json) do
+  defp determine_nfo_filepath(media_item, parsed_json, opts) do
     if media_item.source.media_profile.download_nfo do
       filepath = Path.rootname(parsed_json["filepath"]) <> ".nfo"
 
-      NfoBuilder.build_and_store_for_media_item(filepath, parsed_json)
+      NfoBuilder.build_and_store_for_media_item(filepath, parsed_json, opts)
     else
       nil
     end
@@ -713,6 +744,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       nil -> :ok
       progress_handler -> progress_handler.(attrs)
     end
+
+    :ok
   end
 
   defp maybe_add_staging_directory(override_opts, nil), do: override_opts

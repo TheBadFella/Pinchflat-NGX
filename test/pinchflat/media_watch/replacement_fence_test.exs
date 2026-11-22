@@ -655,6 +655,1227 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
     end
   end
 
+  describe "restoring a missing active original" do
+    @describetag :destructive_watch
+
+    test "restores deleted active media from the verified published archive" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      File.rm!(item.media_filepath)
+
+      assert {:ok, restored} = MediaWatch.restore_active_from_archive(item)
+
+      assert restored.id == item.id
+      assert File.read!(item.media_filepath) == original
+      assert {:ok, %{sha256: _expected}} = ReplacementIntent.fingerprint(item.media_filepath)
+      assert Repo.get!(Watch, watch.id).lease_owner == nil
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+    end
+
+    test "a present but damaged active file is never overwritten by restoration" do
+      {item, _watch} = watched_item()
+      File.write!(item.media_filepath, "corrupted replacement")
+
+      # Missing-only recovery: a file on disk is the operator's, so restoration
+      # reports success without touching it and nothing is published over it.
+      assert {:ok, _restored} = MediaWatch.restore_active_from_archive(item)
+
+      assert File.read!(item.media_filepath) == "corrupted replacement"
+      assert no_restore_copies?(item.media_filepath)
+    end
+
+    test "refuses to restore when no original was ever published" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+      watch |> Ecto.Changeset.change(archive_state: "needs_recovery") |> Repo.update!()
+
+      assert {:error, :watch_archive_required} = MediaWatch.restore_active_from_archive(item)
+      refute File.exists?(item.media_filepath)
+    end
+  end
+
+  describe "durable missing-file restoration" do
+    @describetag :destructive_watch
+
+    test "a file appearing during the copy is preserved and never overwritten" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      assert {:ok, _} =
+               MediaWatch.restore_active_from_archive(item,
+                 before_publish: fn -> File.write!(item.media_filepath, "operator wrote this") end
+               )
+
+      assert File.read!(item.media_filepath) == "operator wrote this"
+      refute ReplacementIntent.restore_pending?(watch.id)
+      assert no_restore_copies?(item.media_filepath)
+    end
+
+    test "a present edited sidecar is preserved by missing-only restoration" do
+      {item, watch} = watched_item()
+      File.write!(item.thumbnail_filepath, "operator thumbnail")
+      File.rm!(item.media_filepath)
+
+      assert {:ok, _} = MediaWatch.restore_active_from_archive(item)
+
+      assert File.read!(item.thumbnail_filepath) == "operator thumbnail"
+      assert File.read!(item.media_filepath) == "first artifact"
+      refute ReplacementIntent.restore_pending?(watch.id)
+    end
+  end
+
+  describe "durable restore reconciliation" do
+    @describetag :destructive_watch
+
+    test "a partial restoration is reconciled from the durable journal on restart" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      archive_file = watched_archive_media(watch)
+      File.cp!(archive_file, temporary)
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => sha256_of(temporary),
+                     "size" => File.stat!(temporary).size
+                   }
+                 ]
+               })
+
+      refute File.exists?(item.media_filepath)
+      assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id and &1.action == :restore_reconciled))
+
+      assert File.read!(item.media_filepath) == "first artifact"
+      refute File.exists?(temporary)
+      refute ReplacementIntent.restore_pending?(watch.id)
+    end
+
+    test "a restore superseded before publication is rejected and leaves no active file" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      assert {:error, :watch_hold} =
+               MediaWatch.restore_active_from_archive(item,
+                 before_publish: fn ->
+                   Repo.update_all(from(w in Watch, where: w.id == ^watch.id), inc: [lease_generation: 1])
+                 end
+               )
+
+      refute File.exists?(item.media_filepath)
+      # The journal and its verified temporary are retained for reconciliation
+      # rather than silently discarded, and nothing reached the active path.
+      assert ReplacementIntent.restore_pending?(watch.id)
+      refute no_restore_copies?(item.media_filepath)
+    end
+
+    test "a restore database commit failure after publication retains the journal and retry reconciles" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      archive_file = watched_archive_media(watch)
+      File.cp!(archive_file, temporary)
+      before_commit = Repo.get!(Watch, watch.id).approved_active_files
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => sha256_of(temporary),
+                     "size" => File.stat!(temporary).size
+                   }
+                 ]
+               })
+
+      assert [%{watch_id: watch_id, action: :needs_recovery}] =
+               Enum.filter(
+                 MediaWatch.recover_pending(
+                   before_restore_commit: fn _watch_id -> Repo.rollback(:simulated_db_error) end
+                 ),
+                 &(&1.watch_id == watch.id)
+               )
+
+      assert watch_id == watch.id
+      # The bytes were published before the database commit failed, so the file
+      # is active even though the approvals never landed.
+      assert File.read!(item.media_filepath) == original
+      assert ReplacementIntent.restore_pending?(watch.id)
+      assert Repo.get!(Watch, watch.id).approved_active_files == before_commit
+
+      assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id and &1.action == :restore_reconciled))
+
+      assert File.read!(item.media_filepath) == original
+      refute ReplacementIntent.restore_pending?(watch.id)
+
+      media_path = Path.expand(item.media_filepath)
+
+      assert Enum.any?(Repo.get!(Watch, watch.id).approved_active_files, fn {_key, file} ->
+               file["path"] == media_path and file["sha256"] == sha256_of(item.media_filepath)
+             end)
+    end
+  end
+
+  describe "restore recovery integrity" do
+    @describetag :destructive_watch
+
+    test "an unverified truncated temporary is never published and its journal is kept" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      File.write!(temporary, "truncated")
+
+      archive_file = watched_archive_media(watch)
+      full_size = File.stat!(archive_file).size
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => sha256_of(archive_file),
+                     "size" => full_size
+                   }
+                 ]
+               })
+
+      assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id))
+
+      refute File.exists?(item.media_filepath),
+             "truncated bytes must never be published as the active original"
+
+      assert File.read!(temporary) == "truncated"
+      assert ReplacementIntent.restore_pending?(watch.id)
+    end
+
+    test "a live restore owner is never raced by recovery" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      # A live worker holds the lease into the future while it copies.
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "restore_active", lease_seconds: 300)
+      operation_id = lease.owner
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      archive_file = watched_archive_media(watch)
+      File.cp!(archive_file, temporary)
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => sha256_of(archive_file),
+                     "size" => File.stat!(archive_file).size
+                   }
+                 ]
+               })
+
+      # Recovery reports the live owner and touches nothing it owns.
+      assert Enum.any?(
+               MediaWatch.recover_pending(),
+               &(&1.watch_id == watch.id and &1.action == :restore_in_progress)
+             )
+
+      refute File.exists?(item.media_filepath)
+      assert File.regular?(temporary)
+      assert ReplacementIntent.restore_pending?(watch.id)
+      assert MediaWatch.lease_current?(lease)
+    end
+
+    test "recovery publishes a verified temporary and refreshes the approved files" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      archive_file = watched_archive_media(watch)
+      File.cp!(archive_file, temporary)
+      digest = sha256_of(archive_file)
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => digest,
+                     "size" => File.stat!(archive_file).size
+                   }
+                 ]
+               })
+
+      assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id and &1.action == :restore_reconciled))
+
+      assert File.read!(item.media_filepath) == "first artifact"
+      refute File.exists?(temporary)
+      refute ReplacementIntent.restore_pending?(watch.id)
+
+      approved = Repo.get!(Watch, watch.id).approved_active_files
+      restored = approved["0"]
+      assert restored["path"] == Path.expand(item.media_filepath)
+      assert restored["sha256"] == sha256_of(item.media_filepath)
+      refute Map.has_key?(restored, "stat")
+    end
+  end
+
+  describe "durable restore hold and approvals" do
+    @describetag :destructive_watch
+
+    test "an unverified temporary leaves a persisted hold reason after recovery" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      File.write!(temporary, "truncated")
+      {archive_file, media_file} = watched_archive_role(watch, "media")
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => media_file["sha256"],
+                     "size" => media_file["size"]
+                   }
+                 ]
+               })
+
+      MediaWatch.recover_pending()
+
+      # The rollback must not discard the hold it just decided to take.
+      assert Repo.get!(Watch, watch.id).hold_reason == "unverified_restore_temporary"
+      assert File.read!(temporary) == "truncated"
+      assert File.stat!(archive_file).size == media_file["size"]
+    end
+
+    test "an unverified restore hold is generation-fenced and does not clear a successor lease" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      File.write!(temporary, "truncated")
+      {_archive_file, media_file} = watched_archive_role(watch, "media")
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => media_file["sha256"],
+                     "size" => media_file["size"]
+                   }
+                 ]
+               })
+
+      parent = self()
+
+      MediaWatch.recover_pending(
+        before_restore_hold: fn _watch_id ->
+          {:ok, successor_lease} = MediaWatch.claim_lease(item.id, "replace")
+          send(parent, {:successor_lease, successor_lease})
+        end
+      )
+
+      assert_received {:successor_lease, successor_lease}
+      assert MediaWatch.lease_current?(successor_lease)
+
+      reloaded = Repo.get!(Watch, watch.id)
+      # The successor advanced the generation, so the recovery's hold update was
+      # fenced out instead of clearing a lease it no longer owned.
+      assert reloaded.lease_owner == successor_lease.owner
+      refute reloaded.hold_reason == "unverified_restore_temporary"
+      assert File.read!(temporary) == "truncated"
+    end
+
+    test "approvals merge by file identity without numeric key collisions and permit next replacement" do
+      {item, watch} = watched_item()
+      original_media = File.read!(item.media_filepath)
+      original_thumbnail = File.read!(item.thumbnail_filepath)
+      [subtitle_entry] = item.subtitle_filepaths
+      subtitle_path = List.last(subtitle_entry)
+
+      existing = Repo.get!(Watch, watch.id).approved_active_files
+      first = existing["first"]
+
+      by_path =
+        existing
+        |> Map.delete("first")
+        |> Map.values()
+        |> Map.new(&{Path.expand(&1["path"]), &1})
+
+      media = Map.fetch!(by_path, Path.expand(item.media_filepath))
+      thumbnail = Map.fetch!(by_path, Path.expand(item.thumbnail_filepath))
+      subtitle = Map.fetch!(by_path, Path.expand(subtitle_path))
+
+      # Deliberately reverse the natural ordering: the sidecar occupies key "0"
+      # and the media key "1". A merge keyed by numeric index would overwrite the
+      # untouched sidecar when the restore publishes the media file.
+      custom_approvals = %{"0" => thumbnail, "1" => media, "2" => subtitle, "first" => first}
+      watch |> Ecto.Changeset.change(approved_active_files: custom_approvals) |> Repo.update!()
+
+      File.rm!(item.media_filepath)
+
+      assert {:ok, _restored} = MediaWatch.restore_active_from_archive(item)
+
+      assert File.read!(item.media_filepath) == original_media
+      assert File.read!(item.thumbnail_filepath) == original_thumbnail
+
+      approvals = Repo.get!(Watch, watch.id).approved_active_files
+      media_path = Path.expand(item.media_filepath)
+      thumbnail_path = Path.expand(item.thumbnail_filepath)
+
+      assert Enum.any?(approvals, fn {_key, file} -> file["path"] == media_path end)
+      assert Enum.any?(approvals, fn {_key, file} -> file["path"] == thumbnail_path end)
+
+      # The surviving approvals still identify the same files, so the next
+      # replacement is still permitted.
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact 2")
+
+      assert {:ok, updated} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _attrs -> Media.update_media_item(item, %{title: "next replacement"}) end
+               )
+
+      assert updated.title == "next replacement"
+      assert File.read!(item.media_filepath) == "replacement artifact 2"
+    end
+
+    test "a restore keeps approvals for files it did not touch" do
+      {item, watch} = watched_item()
+      before_approvals = Repo.get!(Watch, watch.id).approved_active_files
+      assert map_size(before_approvals) > 1
+
+      File.rm!(item.media_filepath)
+
+      assert {:ok, _item} = MediaWatch.restore_active_from_archive(item)
+      assert File.read!(item.media_filepath) == "first artifact"
+
+      after_approvals = Repo.get!(Watch, watch.id).approved_active_files
+      media_path = Path.expand(item.media_filepath)
+
+      assert Enum.any?(after_approvals, fn {_k, file} -> file["path"] == media_path end),
+             "the restored media file must be approved"
+
+      Enum.each(before_approvals, fn {_key, file} ->
+        if file["path"] != media_path do
+          assert Enum.any?(
+                   after_approvals,
+                   fn {_k, kept} ->
+                     kept["path"] == file["path"] and kept["sha256"] == file["sha256"]
+                   end
+                 ),
+                 "approval for #{file["path"]} was discarded by the restore"
+        end
+      end)
+    end
+
+    test "a partial restore interrupted between two files is reconciled on retry" do
+      {item, watch} = watched_item()
+      sidecar = item.thumbnail_filepath
+      before_approvals = Repo.get!(Watch, watch.id).approved_active_files
+
+      File.rm!(item.media_filepath)
+      File.rm!(sidecar)
+
+      {media_source, media_file} = watched_archive_role(watch, "media")
+      {sidecar_source, sidecar_file} = watched_archive_role(watch, "thumbnail")
+
+      operation_id = Ecto.UUID.generate()
+      media_temp = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      sidecar_temp = sidecar <> ".pinchflat-restore-" <> operation_id
+
+      # File 1 was published before the crash; file 2 was never copied.
+      File.cp!(media_source, item.media_filepath)
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => media_temp,
+                     "sha256" => media_file["sha256"],
+                     "size" => media_file["size"]
+                   },
+                   %{
+                     "role" => "thumbnail",
+                     "path" => sidecar,
+                     "temporary" => sidecar_temp,
+                     "sha256" => sidecar_file["sha256"],
+                     "size" => sidecar_file["size"]
+                   }
+                 ]
+               })
+
+      # File 2's verified copy is still on disk, so reconciliation publishes it.
+      File.cp!(sidecar_source, sidecar_temp)
+
+      assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id and &1.action == :restore_reconciled))
+
+      media_path = Path.expand(item.media_filepath)
+      sidecar_path = Path.expand(sidecar)
+      approvals = Repo.get!(Watch, watch.id).approved_active_files
+
+      # File 1, published before the crash, is claimed as restored rather than
+      # silently dropped from the approvals.
+      assert Enum.any?(approvals, fn {_k, file} ->
+               file["path"] == media_path and file["sha256"] == media_file["sha256"]
+             end)
+
+      # File 2 is published by the retry and approved too.
+      assert File.read!(sidecar) == File.read!(sidecar_source)
+
+      assert Enum.any?(approvals, fn {_k, file} ->
+               file["path"] == sidecar_path and file["sha256"] == sidecar_file["sha256"]
+             end)
+
+      # Approvals that predate the restore are preserved.
+      Enum.each(before_approvals, fn {_key, old} ->
+        assert Enum.any?(approvals, fn {_k, kept} -> kept["path"] == old["path"] end),
+               "approval for #{old["path"]} was discarded"
+      end)
+
+      refute File.exists?(sidecar_temp)
+      refute ReplacementIntent.restore_pending?(watch.id)
+    end
+  end
+
+  describe "restore publication preserves operator files" do
+    @describetag :destructive_watch
+
+    test "a destination that appears in place of the temporary is never claimed as restored" do
+      {item, watch} = watched_item()
+      before_approvals = Repo.get!(Watch, watch.id).approved_active_files
+      File.rm!(item.media_filepath)
+      File.write!(item.media_filepath, "operator edit")
+
+      {media_source, media_file} = watched_archive_role(watch, "media")
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      File.cp!(media_source, temporary)
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => media_file["sha256"],
+                     "size" => media_file["size"]
+                   }
+                 ]
+               })
+
+      MediaWatch.recover_pending()
+
+      assert File.read!(item.media_filepath) == "operator edit"
+      refute File.exists?(temporary)
+
+      media_path = Path.expand(item.media_filepath)
+      edit_hash = :sha256 |> :crypto.hash("operator edit") |> Base.encode16(case: :lower)
+
+      # The operator's bytes are never approved, and no approval is invented for
+      # a path this restore did not publish.
+      refute Enum.any?(Repo.get!(Watch, watch.id).approved_active_files, fn {_k, file} ->
+               file["path"] == media_path and file["sha256"] == edit_hash
+             end),
+             "an operator file must never be approved as the restored archive"
+
+      assert Repo.get!(Watch, watch.id).approved_active_files == before_approvals
+      assert sha256_of(item.media_filepath) == edit_hash
+      assert File.stat!(media_source).size == media_file["size"]
+    end
+
+    test "normal restore atomically refuses to overwrite a destination created after existence check" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      assert {:error, :destination_occupied} =
+               MediaWatch.restore_active_from_archive(item,
+                 before_restore_publish: fn target -> File.write!(target, "user occupied this file") end
+               )
+
+      assert File.read!(item.media_filepath) == "user occupied this file"
+      assert ReplacementIntent.restore_pending?(watch.id)
+    end
+
+    test "boot recovery atomically refuses to overwrite a destination created after existence check" do
+      {item, watch} = watched_item()
+      File.rm!(item.media_filepath)
+
+      operation_id = Ecto.UUID.generate()
+      temporary = item.media_filepath <> ".pinchflat-restore-" <> operation_id
+      archive_file = watched_archive_media(watch)
+      File.cp!(archive_file, temporary)
+
+      assert {:ok, _} =
+               ReplacementIntent.publish_restore(watch.id, %{
+                 "operation_id" => operation_id,
+                 "entries" => [
+                   %{
+                     "role" => "media",
+                     "path" => item.media_filepath,
+                     "temporary" => temporary,
+                     "sha256" => sha256_of(temporary),
+                     "size" => File.stat!(temporary).size
+                   }
+                 ]
+               })
+
+      assert [%{watch_id: watch_id, action: :needs_recovery}] =
+               Enum.filter(
+                 MediaWatch.recover_pending(
+                   before_restore_publish: fn target -> File.write!(target, "user occupied on boot") end
+                 ),
+                 &(&1.watch_id == watch.id)
+               )
+
+      assert watch_id == watch.id
+      assert File.read!(item.media_filepath) == "user occupied on boot"
+      assert ReplacementIntent.restore_pending?(watch.id)
+    end
+  end
+
+  describe "concurrency guarantees" do
+    @describetag :destructive_watch
+
+    # Process A pauses inside the hashing phase, which runs outside the write
+    # transaction. A separate process with its own pooled connection must be able
+    # to commit a write while A is paused; being blocked would mean A holds the
+    # database write lock during filesystem work.
+    @tag :unboxed
+    test "an independent database writer is not blocked by a paused verification phase" do
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+        uuid = Ecto.UUID.generate()
+
+        profile =
+          media_profile_fixture(%{name: "Writer Profile #{uuid}"})
+          |> Ecto.Changeset.change(watch_window_days: 14)
+          |> Repo.update!()
+
+        source =
+          %Pinchflat.Sources.Source{}
+          |> Pinchflat.Sources.Source.changeset(
+            %{
+              enabled: true,
+              collection_name: "Writer Channel #{uuid}",
+              collection_id: "UC_writer_#{uuid}",
+              collection_type: :channel,
+              custom_name: "Writer Channel",
+              original_url: "https://www.youtube.com/channel/UC_writer_#{uuid}",
+              media_profile_id: profile.id,
+              download_media: true,
+              fast_index: false,
+              index_frequency_minutes: 60
+            },
+            :pre_insert
+          )
+          |> Repo.insert!()
+
+        item =
+          media_item_with_attachments(%{
+            source_id: source.id,
+            metadata_filepath: nil,
+            nfo_filepath: nil
+          })
+
+        File.write!(item.media_filepath, "first artifact")
+
+        {:ok, watch} =
+          Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
+
+        {:ok, item} = Media.update_media_item(item, %{media_downloaded_at: now_minus(1, :day)})
+        item = Repo.preload(Repo.reload!(item), [:metadata, source: :media_profile])
+        {:ok, published} = MediaWatch.archive_original(watch, item)
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        {:ok, _watch} = published |> Ecto.Changeset.change(last_success_at: now, next_check_at: now) |> Repo.update()
+
+        {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+        staged = staged_file("replacement artifact")
+        media_path = Path.expand(item.media_filepath)
+        parent = self()
+        database = Application.fetch_env!(:pinchflat, Repo)[:database]
+        adapter = Application.get_env(:pinchflat, Repo)[:adapter]
+
+        writer =
+          Task.async(fn ->
+            receive do
+              :start_write ->
+                {elapsed_us, result} =
+                  :timer.tc(fn ->
+                    if adapter == Ecto.Adapters.SQLite3 do
+                      {:ok, db} = Exqlite.Sqlite3.open(database)
+                      :ok = Exqlite.Sqlite3.execute(db, "PRAGMA busy_timeout = 2000;")
+
+                      res =
+                        Exqlite.Sqlite3.execute(
+                          db,
+                          "UPDATE media_items SET description = 'independent' WHERE id = '#{item.id}'"
+                        )
+
+                      :ok = Exqlite.Sqlite3.close(db)
+                      res
+                    else
+                      case Media.update_media_item(Media.get_media_item!(item.id), %{description: "independent"}) do
+                        {:ok, _} -> :ok
+                        other -> other
+                      end
+                    end
+                  end)
+
+                {div(elapsed_us, 1000), result}
+            end
+          end)
+
+        try do
+          assert {:ok, _updated} =
+                   MediaWatch.commit_replacement(
+                     lease,
+                     item,
+                     %{source_map: %{staged => item.media_filepath}},
+                     fn pre_images ->
+                       stage_incoming!(staged, media_path, pre_images)
+                       {:ok, %{"filepath" => media_path}}
+                     end,
+                     fn _json -> Media.update_media_item(item, %{title: "replacement"}) end,
+                     before_verify: fn path ->
+                       if Path.expand(path) == media_path do
+                         send(writer.pid, :start_write)
+                         assert {elapsed, :ok} = Task.await(writer, 5_000)
+                         send(parent, {:writer_ms, elapsed})
+                       end
+
+                       :ok
+                     end
+                   )
+
+          assert_received {:writer_ms, elapsed}
+          assert elapsed < 500, "independent write took #{elapsed}ms while verification was paused"
+          assert Repo.reload!(item).description == "independent"
+          refute ReplacementIntent.pending?(watch.id)
+        after
+          Repo.delete_all(from e in Pinchflat.MediaWatch.MediaWatchEvent, where: e.media_watch_id == ^watch.id)
+          Repo.delete_all(from w in Watch, where: w.id == ^watch.id)
+          Repo.delete!(item)
+          Repo.delete!(source)
+          Repo.delete!(profile)
+          File.rm_rf!(Path.dirname(item.media_filepath))
+        end
+      end)
+    end
+
+    # The full-file digest checks run before the write reservation now. A writer
+    # on its own SQLite connection must therefore commit immediately while those
+    # reads are paused, instead of waiting out busy_timeout behind the lock the
+    # old in-reservation hashing held.
+    @tag :unboxed
+    test "an independent database writer on a separate connection is not blocked during replacement file verification" do
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+        uuid = Ecto.UUID.generate()
+
+        profile =
+          media_profile_fixture(%{name: "Verify Writer Profile #{uuid}"})
+          |> Ecto.Changeset.change(watch_window_days: 14)
+          |> Repo.update!()
+
+        source =
+          %Pinchflat.Sources.Source{}
+          |> Pinchflat.Sources.Source.changeset(
+            %{
+              enabled: true,
+              collection_name: "Verify Writer Channel #{uuid}",
+              collection_id: "UC_verify_writer_#{uuid}",
+              collection_type: :channel,
+              custom_name: "Verify Writer Channel",
+              original_url: "https://www.youtube.com/channel/UC_verify_writer_#{uuid}",
+              media_profile_id: profile.id,
+              download_media: true,
+              fast_index: false,
+              index_frequency_minutes: 60
+            },
+            :pre_insert
+          )
+          |> Repo.insert!()
+
+        item =
+          media_item_with_attachments(%{
+            source_id: source.id,
+            metadata_filepath: nil,
+            nfo_filepath: nil
+          })
+
+        File.write!(item.media_filepath, "first artifact")
+
+        {:ok, watch} =
+          Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
+
+        {:ok, item} = Media.update_media_item(item, %{media_downloaded_at: now_minus(1, :day)})
+        item = Repo.preload(Repo.reload!(item), [:metadata, source: :media_profile])
+        {:ok, published} = MediaWatch.archive_original(watch, item)
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        {:ok, _watch} = published |> Ecto.Changeset.change(last_success_at: now, next_check_at: now) |> Repo.update()
+
+        {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+        staged = staged_file("replacement artifact")
+        media_path = Path.expand(item.media_filepath)
+        parent = self()
+        database = Application.fetch_env!(:pinchflat, Repo)[:database]
+        adapter = Application.get_env(:pinchflat, Repo)[:adapter]
+
+        writer =
+          Task.async(fn ->
+            receive do
+              :start_write ->
+                {elapsed_us, result} =
+                  :timer.tc(fn ->
+                    if adapter == Ecto.Adapters.SQLite3 do
+                      {:ok, db} = Exqlite.Sqlite3.open(database)
+                      :ok = Exqlite.Sqlite3.execute(db, "PRAGMA busy_timeout = 500;")
+
+                      res =
+                        Exqlite.Sqlite3.execute(
+                          db,
+                          "UPDATE media_items SET description = 'independent' WHERE id = '#{item.id}'"
+                        )
+
+                      :ok = Exqlite.Sqlite3.close(db)
+                      res
+                    else
+                      case Media.update_media_item(Media.get_media_item!(item.id), %{description: "independent"}) do
+                        {:ok, _} -> :ok
+                        other -> other
+                      end
+                    end
+                  end)
+
+                {div(elapsed_us, 1000), result}
+            end
+          end)
+
+        try do
+          assert {:ok, _updated} =
+                   MediaWatch.commit_replacement(
+                     lease,
+                     item,
+                     %{source_map: %{staged => item.media_filepath}},
+                     fn pre_images ->
+                       stage_incoming!(staged, media_path, pre_images)
+                       {:ok, %{"filepath" => media_path}}
+                     end,
+                     fn _json -> Media.update_media_item(item, %{title: "replacement"}) end,
+                     before_file_verify: fn path ->
+                       if Path.expand(path) == media_path do
+                         send(writer.pid, :start_write)
+                         assert {elapsed, :ok} = Task.await(writer, 5_000)
+                         send(parent, {:writer_ms, elapsed})
+                       end
+
+                       :ok
+                     end
+                   )
+
+          assert_received {:writer_ms, elapsed}
+          assert elapsed < 500, "independent write took #{elapsed}ms during file verification"
+          assert Repo.reload!(item).description == "independent"
+          refute ReplacementIntent.pending?(watch.id)
+        after
+          Repo.delete_all(from e in Pinchflat.MediaWatch.MediaWatchEvent, where: e.media_watch_id == ^watch.id)
+          Repo.delete_all(from w in Watch, where: w.id == ^watch.id)
+          Repo.delete!(item)
+          Repo.delete!(source)
+          Repo.delete!(profile)
+          File.rm_rf!(Path.dirname(item.media_filepath))
+        end
+      end)
+    end
+  end
+
+  describe "lease heartbeat and swap ownership" do
+    @describetag :destructive_watch
+
+    test "a replacement slower than the lease window succeeds when heartbeats keep ownership" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace", lease_seconds: 1)
+      staged = staged_file("replacement artifact")
+
+      assert {:ok, updated} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   # A transfer far longer than the original one-second lease.
+                   Process.sleep(1_500)
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> Media.update_media_item(item, %{title: "slow replacement"}) end
+               )
+
+      assert Repo.reload!(updated).title == "slow replacement"
+      assert File.read!(item.media_filepath) == "replacement artifact"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
+    end
+
+    test "a slow owner superseded by a successor fails closed without corrupting the destination" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:error, :watch_hold} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> flunk("a superseded worker must not update the media item") end,
+                 before_swap: fn ->
+                   Repo.update_all(from(w in Watch, where: w.id == ^watch.id), inc: [lease_generation: 1])
+                 end
+               )
+
+      assert File.read!(item.media_filepath) == original
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      assert Repo.get!(Watch, watch.id).operation_id == nil
+    end
+
+    test "an active file edited between verification and commit fails closed" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:error, :active_file_changed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> flunk("an edited active file must never be approved") end,
+                 before_swap: fn -> File.write!(item.media_filepath, "edited after verification") end
+               )
+
+      # The edit is neither approved nor left in place: recovery restores the
+      # verified original, and the staged replacement is quarantined.
+      refute ReplacementIntent.pending?(watch.id)
+      assert File.read!(item.media_filepath) == "first artifact"
+
+      approved = Repo.get!(Watch, watch.id).approved_active_files
+
+      edited_hash = :sha256 |> :crypto.hash("edited after verification") |> Base.encode16(case: :lower)
+
+      assert Enum.all?(
+               Map.delete(approved, "first"),
+               fn {_k, file} -> file["sha256"] != edited_hash end
+             )
+    end
+
+    test "a live heartbeat keeps a second worker out for the whole slow transfer" do
+      {item, watch} = watched_item()
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace", lease_seconds: 2)
+      staged = staged_file("replacement artifact")
+      original = File.read!(item.media_filepath)
+      parent = self()
+
+      takeover =
+        Task.async(fn ->
+          receive do
+            :try_takeover -> MediaWatch.claim_lease(item.id, "replace")
+          end
+        end)
+
+      assert {:ok, updated} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   # Far longer than the two-second lease, with no heartbeat
+                   # injected here: only the production loop keeps ownership.
+                   Process.sleep(2_500)
+
+                   send(takeover.pid, :try_takeover)
+                   send(parent, {:takeover, Task.await(takeover, 5_000)})
+                   send(parent, {:active_during_pause, File.read!(item.media_filepath)})
+
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> Media.update_media_item(item, %{title: "slow owner"}) end
+               )
+
+      assert_received {:takeover, {:error, :lease_busy}}
+      assert_received {:active_during_pause, paused_bytes}
+      assert paused_bytes == original
+      assert Repo.reload!(updated).title == "slow owner"
+      assert File.read!(item.media_filepath) == "replacement artifact"
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+    end
+
+    test "a lease that expires without heartbeats is superseded and the worker is rejected" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      {:ok, lease_a} = MediaWatch.claim_lease(item.id, "replace", lease_seconds: 1)
+      staged = staged_file("worker a artifact")
+
+      assert {:error, outcome} =
+               MediaWatch.commit_replacement(
+                 lease_a,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   # No heartbeat: worker B deterministically takes the watch once
+                   # the deadline has passed, which bumps the generation.
+                   Repo.update_all(from(w in Watch, where: w.id == ^watch.id),
+                     set: [lease_expires_at: now_minus(1, :minute)]
+                   )
+
+                   assert {:ok, lease_b} = MediaWatch.claim_lease(item.id, "replace")
+                   assert lease_b.generation > lease_a.generation
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> flunk("a superseded worker must not commit") end
+               )
+
+      assert outcome in [:watch_hold, :lost_lease]
+
+      assert File.read!(item.media_filepath) == original
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+    end
+
+    test "a worker paused before the swap cannot publish after a successor advances the lease" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      {:ok, lease_a} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("worker a artifact")
+
+      assert {:error, outcome} =
+               MediaWatch.commit_replacement(
+                 lease_a,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> flunk("worker A must never commit after losing ownership") end,
+                 before_swap: fn ->
+                   # Worker B recovers the abandoned journal and takes a new generation.
+                   Repo.update_all(from(w in Watch, where: w.id == ^watch.id),
+                     set: [lease_expires_at: now_minus(1, :minute)]
+                   )
+
+                   assert Enum.any?(MediaWatch.recover_pending(), &(&1.watch_id == watch.id))
+                   assert {:ok, _} = MediaWatch.claim_lease(item.id, "replace")
+                 end
+               )
+
+      assert outcome in [:watch_hold, :lost_lease, :replacement_in_progress]
+      assert File.read!(item.media_filepath) == original
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+
+      ownership = Repo.get!(Watch, watch.id)
+      assert is_nil(ownership.operation_id) or ownership.operation_id != lease_a.owner
+    end
+
+    test "a same-size content edit with unchanged modification timestamp before swap fails closed" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      assert byte_size(original) == 14
+      original_stat = File.lstat!(item.media_filepath, time: :posix)
+
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      assert {:error, :active_file_changed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> flunk("a changed active file must never be approved") end,
+                 before_swap: fn ->
+                   # Keep the byte count, inode, and recorded mtime unchanged.
+                   File.write!(item.media_filepath, "second artifac")
+                   File.touch!(item.media_filepath, original_stat.mtime)
+
+                   edited_stat = File.lstat!(item.media_filepath, time: :posix)
+
+                   assert edited_stat.size == original_stat.size and
+                            edited_stat.inode == original_stat.inode and
+                            edited_stat.mtime == original_stat.mtime
+                 end
+               )
+
+      # Recovery restores the verified original and preserves the edit.
+      assert File.read!(item.media_filepath) == original
+      refute ReplacementIntent.pending?(watch.id)
+      assert File.stat!(item.media_filepath).size == original_stat.size
+
+      [directory] = Enum.filter(File.ls!(quarantine_root()), &String.starts_with?(&1, "quarantine-#{watch.id}-"))
+
+      quarantined =
+        quarantine_root()
+        |> Path.join(directory)
+        |> File.ls!()
+        |> Enum.map(&File.read!(Path.join([quarantine_root(), directory, &1])))
+
+      assert "second artifac" in quarantined
+
+      edited_hash = :sha256 |> :crypto.hash("second artifac") |> Base.encode16(case: :lower)
+
+      refute Enum.any?(Repo.get!(Watch, watch.id).approved_active_files, fn {_key, file} ->
+               is_map(file) and file["sha256"] == edited_hash
+             end)
+    end
+
+    test "a same-size content edit to the incoming media with unchanged modification timestamp before swap fails closed" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+
+      parent = self()
+
+      # Before the fix, approve_entry hashed the incoming file and the swap only
+      # re-checked its type. A same-size edit that kept the inode and restored
+      # mtime was then renamed into place while the database saved the old hash.
+      assert {:error, :active_file_changed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   incoming = stage_incoming!(staged, item.media_filepath, pre_images)
+                   send(parent, {:incoming, incoming})
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json -> flunk("edited incoming bytes must never be approved") end,
+                 before_swap: fn ->
+                   assert_received {:incoming, incoming}
+
+                   incoming_stat = File.lstat!(incoming, time: :posix)
+                   assert File.read!(incoming) == "replacement artifact"
+
+                   # Same byte count, different bytes, original mtime restored.
+                   File.write!(incoming, "replacement artifacX")
+                   File.touch!(incoming, incoming_stat.mtime)
+
+                   edited_stat = File.lstat!(incoming, time: :posix)
+
+                   assert edited_stat.size == incoming_stat.size
+                   assert edited_stat.inode == incoming_stat.inode
+                   assert edited_stat.mtime == incoming_stat.mtime
+                 end
+               )
+
+      # The active original is untouched and still recoverable, the journal is
+      # cleared by a successful recovery, and the failure is reported as itself
+      # rather than wrapped in a recovery error.
+      assert File.read!(item.media_filepath) == original
+      refute ReplacementIntent.pending?(watch.id)
+      assert {:ok, _manifest} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+
+      edited_hash = :sha256 |> :crypto.hash("replacement artifacX") |> Base.encode16(case: :lower)
+
+      refute Enum.any?(Repo.get!(Watch, watch.id).approved_active_files, fn {_key, file} ->
+               is_map(file) and file["sha256"] == edited_hash
+             end),
+             "modified incoming bytes must never be approved"
+    end
+
+    test "a same-size edit after the swap rolls back approval and preserves both copies" do
+      {item, watch} = watched_item()
+      original = File.read!(item.media_filepath)
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace")
+      staged = staged_file("replacement artifact")
+      edited = "replacement artifacX"
+
+      assert {:error, :active_file_changed} =
+               MediaWatch.commit_replacement(
+                 lease,
+                 item,
+                 %{source_map: %{staged => item.media_filepath}},
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
+                   {:ok, %{"filepath" => item.media_filepath}}
+                 end,
+                 fn _json ->
+                   assert File.read!(item.media_filepath) == "replacement artifact"
+                   assert {:ok, %{"mtime" => mtime} = stamp} = ReplacementIntent.file_stamp(item.media_filepath)
+                   File.write!(item.media_filepath, edited)
+                   assert {"", 0} = System.cmd("touch", ["-m", "-d", mtime, "--", item.media_filepath])
+                   assert {:ok, edited_stamp} = ReplacementIntent.file_stamp(item.media_filepath)
+                   assert Map.delete(edited_stamp, "ctime") == Map.delete(stamp, "ctime")
+                   assert edited_stamp["ctime"] != stamp["ctime"]
+                   Media.update_media_item(item, %{title: "must roll back"})
+                 end
+               )
+
+      assert Repo.reload!(item).title == item.title
+      assert File.read!(item.media_filepath) == original
+      assert File.read!(watched_archive_media(watch)) == original
+      refute ReplacementIntent.pending?(watch.id)
+
+      assert Enum.any?(Path.wildcard(Path.join(quarantine_root(), "quarantine-#{watch.id}-*/*")), fn path ->
+               File.read!(path) == edited
+             end)
+    end
+  end
+
   describe "cross-filesystem quarantine and recovery" do
     @describetag :destructive_watch
 
@@ -663,6 +1884,8 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       directory = Path.join("/dev/shm", "pinchflat-quarantine-#{Ecto.UUID.generate()}")
       File.mkdir_p!(directory)
       Application.put_env(:pinchflat, :metadata_directory, directory)
+      File.rm_rf!(quarantine_root())
+      File.mkdir_p!(quarantine_root())
 
       assert File.stat!(directory).major_device !=
                File.stat!(Application.fetch_env!(:pinchflat, :media_directory)).major_device
@@ -670,6 +1893,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       on_exit(fn ->
         Application.put_env(:pinchflat, :metadata_directory, original)
         File.rm_rf!(directory)
+        File.rm_rf!(quarantine_root())
       end)
 
       %{internal_thumbnail: Path.join(directory, "thumbnail.jpg")}
@@ -706,7 +1930,12 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
       try do
         assert {:error, :quarantine_source_changed} = ReplacementIntent.quarantine(219, Ecto.UUID.generate(), [path])
         assert File.read!(path) == "edited thumbnail"
-        [saved_directory] = File.ls!(quarantine_root())
+
+        [saved_directory] =
+          quarantine_root()
+          |> File.ls!()
+          |> Enum.filter(&String.starts_with?(&1, "quarantine-219-"))
+
         [saved] = File.ls!(Path.join(quarantine_root(), saved_directory))
         assert File.read!(Path.join([quarantine_root(), saved_directory, saved])) == "original thumbnail"
         refute String.contains?(saved, ".copy-")
@@ -714,6 +1943,94 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
         System.put_env("PATH", original_path)
         File.rm_rf!(directory)
       end
+    end
+
+    test "an inline queued restore completes the job and leaves the item playable", %{
+      internal_thumbnail: _path
+    } do
+      profile =
+        media_profile_fixture()
+        |> Ecto.Changeset.change(watch_window_days: 14)
+        |> Repo.update!()
+
+      source = source_fixture(%{media_profile_id: profile.id})
+
+      item =
+        media_item_with_attachments(%{source_id: source.id, metadata_filepath: nil, nfo_filepath: nil})
+
+      # Generate real playable video before enrollment
+      {_, 0} =
+        System.cmd("ffmpeg", [
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "testsrc=duration=2:size=320x240:rate=1",
+          "-c:v",
+          "libx264",
+          "-pix_fmt",
+          "yuv420p",
+          item.media_filepath
+        ])
+
+      assert {probe, 0} =
+               System.cmd("ffprobe", [
+                 "-v",
+                 "error",
+                 "-show_entries",
+                 "format=duration",
+                 "-of",
+                 "default=noprint_wrappers=1:nokey=1",
+                 item.media_filepath
+               ])
+
+      assert String.to_float(String.trim(probe)) > 0.0
+
+      {:ok, watch} = Pinchflat.MediaWatchFixtures.enroll_approved_watch(item, Repo.preload(source, :media_profile))
+      {:ok, item} = Media.update_media_item(item, %{media_downloaded_at: now_minus(1, :day)})
+
+      item = Repo.preload(Repo.reload(item), [:metadata, source: :media_profile])
+      {:ok, published_watch} = MediaWatch.archive_original(watch, item)
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      {:ok, watch} =
+        published_watch
+        |> Ecto.Changeset.change(last_success_at: now, next_check_at: now)
+        |> Repo.update()
+
+      original = File.read!(item.media_filepath)
+      File.rm!(item.media_filepath)
+      {:ok, _} = Media.update_media_item(item, %{last_error: "missing active media"})
+      mock_replacement_download(Repo.reload(item))
+
+      {:ok, job} = Oban.insert(MediaDownloadWorker.new(%{id: item.id, force: true}))
+      assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :media_fetching)
+
+      # Read back the terminal state directly from the database
+      terminal_job = Repo.get!(Oban.Job, job.id)
+      assert terminal_job.state == "completed"
+
+      restored = Repo.reload!(item)
+      assert File.read!(item.media_filepath) == original
+      assert is_nil(restored.last_error)
+      assert File.regular?(item.media_filepath)
+
+      # Verify the restored file is a valid playable video via ffprobe
+      assert {restored_probe, 0} =
+               System.cmd("ffprobe", [
+                 "-v",
+                 "error",
+                 "-show_entries",
+                 "format=duration",
+                 "-of",
+                 "default=noprint_wrappers=1:nokey=1",
+                 item.media_filepath
+               ])
+
+      assert String.to_float(String.trim(restored_probe)) > 0.0
+      assert {:ok, _} = MediaWatch.verify_archive(Repo.get!(Watch, watch.id))
+      refute ReplacementIntent.pending?(watch.id)
     end
 
     test "a failed replacement restores config thumbnails and can subsequently complete", %{internal_thumbnail: path} do
@@ -757,13 +2074,16 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                  retry_lease,
                  item,
                  %{source_map: %{staged => item.media_filepath}},
-                 fn _ ->
-                   File.rename!(staged, item.media_filepath)
+                 fn pre_images ->
+                   stage_incoming!(staged, item.media_filepath, pre_images)
                    {:ok, %{"filepath" => item.media_filepath}}
                  end,
-                 fn _ ->
-                   File.write!(path, "completed thumbnail")
-                   Media.update_media_item(item, %{title: "Completed replacement"})
+                 fn _prepared -> Media.update_media_item(item, %{title: "Completed replacement"}) end,
+                 prepare: fn transferred ->
+                   # Regenerated sidecars are written beside the destination and
+                   # published by the swap, never over the active file.
+                   File.write!(path <> transferred["incoming_suffix"], "completed thumbnail")
+                   {:ok, transferred}
                  end
                )
 
@@ -923,6 +2243,31 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
     |> Path.dirname()
     |> File.ls!()
     |> Enum.all?(&(not String.starts_with?(&1, Path.basename(path) <> ".pinchflat-restore-")))
+  end
+
+  # Mimics the production transfer: staged bytes become the incoming copy beside
+  # the destination, leaving the active file untouched until the swap.
+  defp stage_incoming!(staged, destination, pre_images) do
+    incoming = DownloadStaging.incoming_path(destination, pre_images[destination])
+    File.rm(incoming)
+    File.rename!(staged, incoming)
+    incoming
+  end
+
+  defp sha256_of(path) do
+    :sha256 |> :crypto.hash(File.read!(path)) |> Base.encode16(case: :lower)
+  end
+
+  defp watched_archive_media(watch), do: watch |> watched_archive_role("media") |> elem(0)
+
+  defp watched_archive_role(watch, role) do
+    manifest_path = OriginalArchive.relative_manifest_path(watch.id)
+
+    {:ok, absolute} = OriginalArchive.resolve_manifest_path(manifest_path)
+    {:ok, manifest} = OriginalArchive.verify(absolute, watch_id: watch.id)
+
+    file = Enum.find(manifest["files"], &(&1["role"] == role))
+    {Path.join(Path.dirname(absolute), file["path"]), file}
   end
 
   defp quarantine_root do

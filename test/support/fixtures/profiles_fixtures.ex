@@ -11,7 +11,7 @@ defmodule Pinchflat.ProfilesFixtures do
     {:ok, media_profile} =
       attrs
       |> Enum.into(%{
-        name: "Media Profile ##{System.unique_integer([:positive, :monotonic])}",
+        name: "Media Profile ##{System.unique_integer([:positive, :monotonic])}-#{:rand.uniform(10_000_000)}",
         output_path_template: "{{title}}.{{ext}}"
       })
       |> Pinchflat.Profiles.create_media_profile()

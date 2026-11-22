@@ -15,10 +15,10 @@ defmodule Pinchflat.Metadata.NfoBuilder do
 
   Returns the filepath of the NFO file.
   """
-  def build_and_store_for_media_item(nfo_filepath, metadata) do
+  def build_and_store_for_media_item(nfo_filepath, metadata, opts \\ []) do
     nfo = build_for_media_item(nfo_filepath, metadata)
 
-    FilesystemUtils.write_p!(nfo_filepath, nfo)
+    FilesystemUtils.write_p!(MetadataFileHelpers.incoming_path(nfo_filepath, opts), nfo)
 
     nfo_filepath
   end
