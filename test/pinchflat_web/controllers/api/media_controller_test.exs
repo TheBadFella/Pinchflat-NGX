@@ -162,6 +162,48 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
     end
   end
 
+  describe "GET /api/media/:id translated titles" do
+    test "includes the translated title and conforms to the OpenAPI schema", %{conn: conn} do
+      item = media_item_fixture(%{translated_title: "Translated Fixture Title"})
+
+      conn = get(conn, "/api/media/#{item.id}")
+      response = json_response(conn, 200)
+
+      assert response["title"] == item.title
+      assert response["translated_title"] == "Translated Fixture Title"
+      assert_response_schema(conn, "Api.MediaController.show")
+    end
+
+    test "returns a null translated title for an item without one", %{conn: conn} do
+      item = media_item_fixture(%{translated_title: nil})
+
+      conn = get(conn, "/api/media/#{item.id}")
+      response = json_response(conn, 200)
+
+      assert Map.has_key?(response, "translated_title")
+      assert is_nil(response["translated_title"])
+      assert_response_schema(conn, "Api.MediaController.show")
+    end
+
+    test "includes translated titles in recent downloads", %{conn: conn} do
+      item = media_item_fixture(%{translated_title: "Recent Translated Title", media_downloaded_at: now()})
+
+      response = conn |> get("/api/media/recent_downloads") |> json_response(200)
+
+      assert Enum.find(response["data"], &(&1["id"] == item.id))["translated_title"] == "Recent Translated Title"
+    end
+
+    test "lists translated titles in the media index", %{conn: conn} do
+      item = media_item_fixture(%{translated_title: "Indexed Translated Title"})
+
+      conn = get(conn, "/api/media?limit=50")
+      response = json_response(conn, 200)
+
+      assert Enum.find(response["data"], &(&1["id"] == item.id))["translated_title"] == "Indexed Translated Title"
+      assert_response_schema(conn, "Api.MediaController.index")
+    end
+  end
+
   describe "DELETE /api/media/:id" do
     test "deletes media files", %{conn: conn} do
       item = media_item_fixture()

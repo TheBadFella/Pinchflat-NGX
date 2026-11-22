@@ -19,6 +19,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.FastIndexing.FastIndexingWorker
   alias Pinchflat.YtDlp.TransientMedia
+  alias Pinchflat.YtDlp.MediaCollection
   alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Downloading.DownloadError
 
@@ -52,9 +53,14 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
     existing_media_items = list_media_items_by_media_id_for(source, media_ids)
     new_media_ids = media_ids -- Enum.map(existing_media_items, & &1.media_id)
 
+    translated_titles =
+      if new_media_ids == [],
+        do: %{},
+        else: MediaCollection.get_source_translated_titles(source, [source.original_url], playlist_end: 30)
+
     maybe_new_media_items =
       Enum.map(new_media_ids, fn media_id ->
-        case create_media_item_from_media_id(source, media_id) do
+        case create_media_item_from_media_id(source, media_id, translated_titles) do
           {:ok, media_item} ->
             DownloadingHelpers.kickoff_download_if_pending(media_item, priority: 0)
             media_item
@@ -98,7 +104,7 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
     |> Repo.all()
   end
 
-  defp create_media_item_from_media_id(source, media_id) do
+  defp create_media_item_from_media_id(source, media_id, translated_titles) do
     url = "https://www.youtube.com/watch?v=#{media_id}"
 
     command_opts =
@@ -108,7 +114,8 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
 
     case fetch_media_attributes(source, url, command_opts) do
       {:ok, media_attrs} ->
-        Media.create_media_item_from_backend_attrs(source, media_attrs)
+        translated_title = MediaCollection.translated_title_for(media_attrs, translated_titles)
+        Media.create_media_item_from_backend_attrs(source, media_attrs, translated_title)
 
       err ->
         err

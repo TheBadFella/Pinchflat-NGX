@@ -103,6 +103,65 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
     end
   end
 
+  describe "title language over JSON API" do
+    test "creates a source with a title language and round-trips it", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Language Channel",
+           channel_id: "UC_language_channel",
+           playlist_id: "UC_language_channel",
+           playlist_title: "Language Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_language_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Language Channel",
+          "title_language" => "en"
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["title_language"] == "en"
+
+      source_id = response["id"]
+      get_response = conn |> recycle() |> get("/sources/#{source_id}?_format=json") |> json_response(200)
+      assert get_response["title_language"] == "en"
+    end
+
+    test "updates a source title language and round-trips it", %{conn: conn} do
+      source = source_fixture()
+
+      attrs = %{"source" => %{"title_language" => "ja"}, "_format" => "json"}
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(200)
+      assert response["title_language"] == "ja"
+
+      assert Sources.get_source!(source.id).title_language == "ja"
+
+      show = conn |> recycle() |> get("/sources/#{source.id}?_format=json") |> json_response(200)
+      assert show["title_language"] == "ja"
+    end
+
+    test "returns a validation error for an invalid title language", %{conn: conn} do
+      source = source_fixture()
+
+      response =
+        conn
+        |> put("/sources/#{source.id}", %{"source" => %{"title_language" => "nope!"}, "_format" => "json"})
+        |> json_response(422)
+
+      assert response["errors"]["title_language"] == ["must be a YouTube language code such as en, ja, pt-PT or zh-CN"]
+      assert Sources.get_source!(source.id).title_language == nil
+    end
+  end
+
   describe "delete/2 JSON API" do
     test "a protected source returns JSON conflict without scheduling deletion", %{conn: conn} do
       profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()

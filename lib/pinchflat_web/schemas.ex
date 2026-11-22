@@ -250,6 +250,12 @@ defmodule PinchflatWeb.Schemas do
           description: "Resolved source/profile age-based period (0 or null means no age-based cleanup)"
         },
         title_filter_regex: %Schema{type: :string, nullable: true, description: "Regex to filter media titles"},
+        title_language: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Language code for translated titles",
+          example: "en"
+        },
         min_duration_seconds: %Schema{type: :integer, nullable: true, description: "Minimum media duration"},
         max_duration_seconds: %Schema{type: :integer, nullable: true, description: "Maximum media duration"},
         watch_window_days: %Schema{
@@ -297,6 +303,12 @@ defmodule PinchflatWeb.Schemas do
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         },
         title: %Schema{type: :string, description: "Media title", example: "My Video Title"},
+        translated_title: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Channel-provided translated title",
+          example: "My Translated Title"
+        },
         media_id: %Schema{type: :string, description: "External media ID", example: "youtube_video_id"},
         source_id: %Schema{type: :integer, description: "ID of the source this media belongs to", example: 1},
         availability: %Schema{
@@ -534,6 +546,12 @@ defmodule PinchflatWeb.Schemas do
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
+            title_language: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Language code for translated titles",
+              example: "en"
+            },
             download_subdirectory: %Schema{
               type: :string,
               description: "Relative folder under the media root for this source"
@@ -632,6 +650,12 @@ defmodule PinchflatWeb.Schemas do
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
+            title_language: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Language code for translated titles",
+              example: "en"
+            },
             download_subdirectory: %Schema{
               type: :string,
               description: "Relative folder under the media root for this source"

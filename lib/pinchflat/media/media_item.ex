@@ -24,6 +24,7 @@ defmodule Pinchflat.Media.MediaItem do
     :playlist_index,
     # these fields are captured on indexing (and again on download)
     :title,
+    :translated_title,
     :media_id,
     :description,
     :original_url,
@@ -76,6 +77,7 @@ defmodule Pinchflat.Media.MediaItem do
     field :uuid, Ecto.UUID
 
     field :title, :string
+    field :translated_title, :string
     field :media_id, :string
     field :description, :string
     field :original_url, :string

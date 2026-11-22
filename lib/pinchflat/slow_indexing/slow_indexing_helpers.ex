@@ -120,8 +120,10 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
   def index_and_enqueue_download_for_media_items(%Source{} = source, opts) do
     source = Repo.preload(source, :media_profile)
-    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts)
-    persist_indexed_media(Repo.reload!(source), media_attributes)
+    urls = Enum.map(indexing_urls_for(source), fn {url, _content_type} -> url end)
+    translated_titles = MediaCollection.get_source_translated_titles(source, urls)
+    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles)
+    persist_indexed_media(Repo.reload!(source), media_attributes, translated_titles)
   end
 
   defp persist_single_video_index(source, metadata, command_opts) do
@@ -155,10 +157,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  defp persist_indexed_media(source, media_attributes) do
+  defp persist_indexed_media(source, media_attributes, translated_titles \\ %{}) do
     result =
       Enum.map(media_attributes, fn media_attrs ->
-        case Media.create_media_item_from_backend_attrs(source, media_attrs) do
+        translated_title = MediaCollection.translated_title_for(media_attrs, translated_titles)
+
+        case Media.create_media_item_from_backend_attrs(source, media_attrs, translated_title) do
           {:ok, media_item} -> media_item
           {:error, changeset} -> changeset
         end
@@ -216,7 +220,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # It attempts a graceful shutdown of the file follower after the indexing is done,
   # but the FileFollowerServer will also stop itself if it doesn't see any activity
   # for a sufficiently long time.
-  defp setup_file_watcher_and_kickoff_indexing(source, opts) do
+  defp setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles) do
     was_forced = Keyword.get(opts, :was_forced, false)
     should_use_cookies = Sources.use_cookies?(source, :indexing)
 
@@ -236,7 +240,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
             build_download_archive_options(source, was_forced, content_type) ++
             build_index_cutoff_options(source, content_type)
 
-        run_indexing_command(source, url, content_type, command_opts, should_use_cookies)
+        run_indexing_command(source, url, content_type, command_opts, should_use_cookies, translated_titles)
       end)
 
     {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
@@ -267,10 +271,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       build_dateafter_options(source)
   end
 
-  defp run_indexing_command(source, url, content_type, command_opts, should_use_cookies) do
+  defp run_indexing_command(source, url, content_type, command_opts, should_use_cookies, translated_titles) do
     {:ok, pid} = FileFollowerServer.start_link()
 
-    handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source, content_type) end
+    handler = fn filepath ->
+      setup_file_follower_watcher(pid, filepath, source, content_type, translated_titles)
+    end
 
     # Exit code 1 is declared as expected so the runner logs it at debug instead
     # of error — failures are logged here instead, where we can tell a channel
@@ -392,7 +398,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  defp setup_file_follower_watcher(pid, filepath, source, content_type) do
+  defp setup_file_follower_watcher(pid, filepath, source, content_type, translated_titles) do
     FileFollowerServer.watch_file(pid, filepath, fn line ->
       case Phoenix.json_library().decode(line) do
         {:ok, media_attrs} ->
@@ -401,7 +407,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
           media_struct =
             YtDlpMedia.response_to_struct(media_attrs, source, content_type: content_type, render_shorts: false)
 
-          create_media_item_and_enqueue_download(source, media_struct)
+          translated_title = MediaCollection.translated_title_for(media_struct, translated_titles)
+          create_media_item_and_enqueue_download(source, media_struct, translated_title)
 
         err ->
           Logger.debug("FileFollowerServer Handler: Error decoding JSON: #{inspect(err)}")
@@ -411,12 +418,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end)
   end
 
-  defp create_media_item_and_enqueue_download(source, media_attrs) do
+  defp create_media_item_and_enqueue_download(source, media_attrs, translated_title) do
     # Reload because the source may have been updated during the (long-running) indexing process
     # and important settings like `download_media` may have changed.
     source = Repo.reload!(source)
 
-    case Media.create_media_item_from_backend_attrs(source, media_attrs) do
+    case Media.create_media_item_from_backend_attrs(source, media_attrs, translated_title) do
       {:ok, %MediaItem{} = media_item} ->
         maybe_kickoff_download_if_pending(source, media_item)
 

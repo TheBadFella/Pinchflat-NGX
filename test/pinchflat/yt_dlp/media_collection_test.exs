@@ -342,6 +342,91 @@ defmodule Pinchflat.YtDlp.MediaCollectionTest do
     end
   end
 
+  describe "get_translated_titles/3" do
+    test "passes the expected default args to the runner" do
+      expect(YtDlpRunnerMock, :run, fn @channel_url, :get_translated_titles, opts, template, addl_opts ->
+        assert opts == [:flat_playlist, :skip_download, {:extractor_args, "youtube:lang=de"}]
+        assert template == "%(.{id,title})j"
+        assert addl_opts == []
+
+        {:ok, ""}
+      end)
+
+      assert {:ok, %{}} = MediaCollection.get_translated_titles(@channel_url, "de")
+    end
+
+    test "appends command options such as playlist_end and preserves existing extractor args" do
+      expect(YtDlpRunnerMock, :run, fn @channel_url, :get_translated_titles, opts, _template, addl_opts ->
+        assert opts == [
+                 :flat_playlist,
+                 :skip_download,
+                 {:extractor_args, "youtube:player-client=android;lang=de"},
+                 playlist_end: 5
+               ]
+
+        assert addl_opts == []
+
+        {:ok, ""}
+      end)
+
+      assert {:ok, %{}} =
+               MediaCollection.get_translated_titles(
+                 @channel_url,
+                 "de",
+                 [playlist_end: 5],
+                 extractor_args: "youtube:player-client=android"
+               )
+    end
+
+    test "parses multiple JSON lines into a map of media id to title" do
+      output =
+        [
+          ~s({"id":"video1","title":"Titel Eins"}),
+          ~s({"id":"video2","title":"Titel Zwei"})
+        ]
+        |> Enum.join("\n")
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_translated_titles, _opts, _template, _addl ->
+        {:ok, output}
+      end)
+
+      assert {:ok, %{"video1" => "Titel Eins", "video2" => "Titel Zwei"}} =
+               MediaCollection.get_translated_titles(@channel_url, "de")
+    end
+
+    test "skips blank lines, malformed JSON, and objects missing id or title" do
+      output =
+        [
+          "",
+          "   ",
+          "not json",
+          ~s({"id":"video1","title":"Titel Eins"}),
+          ~s({"title":"No id"}),
+          ~s({"id":"video2"}),
+          ~s({"id":123,"title":"Numeric id"}),
+          ~s({"id":"video3","title":456}),
+          ~s({}),
+          ~s({"id":"video4","title":"Titel Vier"})
+        ]
+        |> Enum.join("\n")
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_translated_titles, _opts, _template, _addl ->
+        {:ok, output}
+      end)
+
+      assert {:ok, %{"video1" => "Titel Eins", "video4" => "Titel Vier"}} =
+               MediaCollection.get_translated_titles(@channel_url, "de")
+    end
+
+    test "returns an error if the runner returns an error" do
+      expect(YtDlpRunnerMock, :run, fn _url, :get_translated_titles, _opts, _template, _addl ->
+        {:error, "Big issue", 1}
+      end)
+
+      assert {:error, _} = MediaCollection.get_translated_titles(@channel_url, "de")
+    end
+  end
+
   describe "get_source_metadata/1" do
     test "single-video metadata is printed at the video stage" do
       url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
