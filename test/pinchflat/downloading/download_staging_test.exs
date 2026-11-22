@@ -171,6 +171,67 @@ defmodule Pinchflat.Downloading.DownloadStagingTest do
     assert File.ls!(root) == []
   end
 
+  test "stale cleanup preserves every quarantine directory regardless of age or owner" do
+    Application.put_env(:pinchflat, :download_staging_directory, nil)
+    root = DownloadStaging.replacement_directory()
+    File.mkdir_p!(root)
+
+    owned = Path.join(root, "quarantine-30-running")
+    unowned = Path.join(root, "quarantine-31-abandoned")
+    File.mkdir_p!(owned)
+    File.mkdir_p!(unowned)
+    File.write!(Path.join(unowned, "video.mp4"), "recoverable replacement bytes")
+
+    assert :ok = DownloadStaging.cleanup_stale([30], root: root, stale_after_seconds: 0)
+
+    assert File.dir?(owned)
+    assert File.dir?(unowned)
+    assert File.read!(Path.join(unowned, "video.mp4")) == "recoverable replacement bytes"
+  end
+
+  test "stale cleanup preserves pre-images, pending journals and unreadable journals" do
+    Application.put_env(:pinchflat, :download_staging_directory, nil)
+    root = DownloadStaging.replacement_directory()
+    media_root = Application.fetch_env!(:pinchflat, :media_directory)
+    File.mkdir_p!(root)
+
+    pre_image = Path.join(media_root, "media-recovery/video.mp4.pinchflat-previous-#{Ecto.UUID.generate()}")
+    File.mkdir_p!(Path.dirname(pre_image))
+    File.write!(pre_image, "verified pre-image bytes")
+
+    unrecoverable = Path.join(root, "quarantine-99-unreadable")
+    File.mkdir_p!(unrecoverable)
+    File.write!(Path.join(unrecoverable, "replacement_intent.json"), "not json at all")
+
+    assert :ok = DownloadStaging.cleanup_stale([], root: root, stale_after_seconds: 0)
+
+    assert File.read!(pre_image) == "verified pre-image bytes"
+    assert File.read!(Path.join(unrecoverable, "replacement_intent.json")) == "not json at all"
+  end
+
+  test "a lost lease refuses the swap and leaves the pre-image and active file intact" do
+    assert {:ok, stage} = DownloadStaging.prepare(23)
+    create_artifacts(stage)
+    [source] = Path.wildcard(Path.join(stage, "**/video.mp4"))
+    destination = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "Shows/Example/video.mp4")
+    File.mkdir_p!(Path.dirname(destination))
+    File.write!(destination, "original active bytes")
+    backup = destination <> ".pinchflat-previous-testop"
+
+    assert {:error, :lost_lease} =
+             DownloadStaging.transfer(
+               %{"filepath" => source},
+               stage,
+               pre_images: %{destination => backup},
+               lease_valid?: fn -> false end
+             )
+
+    assert File.read!(destination) == "original active bytes"
+    refute File.exists?(backup)
+    assert File.regular?(source)
+    assert File.ls!(Path.dirname(destination)) == ["video.mp4"]
+  end
+
   defp create_artifacts(staging_directory) do
     source_files =
       Enum.map(

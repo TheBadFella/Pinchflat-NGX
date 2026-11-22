@@ -10,6 +10,7 @@ defmodule Pinchflat.MediaWatch do
   import Ecto.Query, warn: false
   require Logger
 
+  alias Pinchflat.Downloading.DownloadStaging
   alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
@@ -587,6 +588,9 @@ defmodule Pinchflat.MediaWatch do
 
   defp recover_watch_action(%Watch{}), do: :expired_lease
 
+  # Recovery supersedes the interrupted worker, so the generation advances. A
+  # stale worker that resumes later keeps its old generation and every fence
+  # check rejects it before it can publish, transfer or approve anything.
   defp clear_expired_lease(%Watch{} = watch) do
     if watch.lease_owner do
       query =
@@ -596,7 +600,10 @@ defmodule Pinchflat.MediaWatch do
               w.lease_generation == ^watch.lease_generation and
               (is_nil(w.lease_expires_at) or w.lease_expires_at <= ^utc_now())
 
-      Repo.update_all(query, set: [lease_owner: nil, lease_expires_at: nil, operation_kind: nil])
+      Repo.update_all(query,
+        set: [lease_owner: nil, lease_expires_at: nil, operation_kind: nil],
+        inc: [lease_generation: 1]
+      )
     end
 
     :ok
@@ -624,6 +631,24 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
+  # Extends a reservation already taken by this exact owner and generation. The
+  # deadline may have elapsed while files were moving, but a successor would
+  # have bumped the generation, so owner and generation are sufficient here.
+  defp reserve_commit_reservation(%Lease{} = lease) do
+    expires_at = DateTime.add(utc_now(), @lease_seconds, :second)
+
+    query =
+      from w in Watch,
+        where:
+          w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and
+            w.lease_generation == ^lease.generation and not is_nil(w.lease_expires_at)
+
+    case Repo.update_all(query, set: [lease_expires_at: expires_at]) do
+      {1, _} -> :ok
+      _ -> {:error, :lost_lease}
+    end
+  end
+
   defp locked_watch(watch_id) do
     query = from w in Watch, where: w.id == ^watch_id
 
@@ -637,50 +662,124 @@ defmodule Pinchflat.MediaWatch do
     if watch, do: {:ok, watch}, else: {:error, :watch_missing}
   end
 
-  defp verify_fence(%Lease{} = lease) do
+  # The fence is checked before any filesystem work and again just before the
+  # short database commit. The first check hashes the archive once and requires a
+  # live lease; the commit-time check compares the precomputed manifest digest
+  # instead of re-reading every saved file, so a multi-gigabyte archive is never
+  # hashed twice for one replacement.
+  defp verify_fence_snapshot(%Lease{} = lease) do
     with true <- destructive_enabled?(),
          {:ok, watch} <- locked_watch(lease.watch_id),
-         true <- watch.lease_owner == lease.owner and watch.lease_generation == lease.generation,
+         :ok <- verify_live_lease(watch, lease),
          true <- watch.observation_version == lease.observation_version,
          true <- replacement_eligible?(watch),
-         true <- watch.archive_state == "published",
-         {:ok, manifest} <- verify_archive(watch) do
-      {:ok, manifest}
+         true <- watch.archive_state == "published" do
+      {:ok, watch}
     else
       false -> {:error, :watch_hold}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp publish_intent(%Lease{} = lease, %Watch{} = watch, %MediaItem{} = media_item, source_map, operation_id) do
-    with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(media_item),
+  defp verify_live_lease(%Watch{} = watch, %Lease{} = lease) do
+    cond do
+      watch.lease_owner != lease.owner or watch.lease_generation != lease.generation ->
+        {:error, :watch_hold}
+
+      is_nil(watch.lease_expires_at) or DateTime.compare(watch.lease_expires_at, utc_now()) != :gt ->
+        {:error, :lost_lease}
+
+      true ->
+        :ok
+    end
+  end
+
+  # The reservation was taken before the transfer, so an elapsed lease timestamp
+  # cannot by itself abort a commit in progress. The owner and generation still
+  # have to match: a successor that legitimately superseded this lease bumps the
+  # generation, and then this commit fails closed and restores the original.
+  defp assert_fence_unchanged(%Lease{} = lease, %Watch{} = watch, archive_digest) do
+    with true <- destructive_enabled?(),
+         true <- watch.lease_owner == lease.owner and watch.lease_generation == lease.generation,
+         true <- watch.observation_version == lease.observation_version,
+         true <- replacement_eligible?(watch),
+         true <- watch.archive_state == "published",
+         {:ok, ^archive_digest} <- OriginalArchive.manifest_digest(watch) do
+      :ok
+    else
+      _ -> {:error, :watch_hold}
+    end
+  end
+
+  # Everything expensive - archive verification, hashing, staging fingerprints
+  # and the durable journal - runs before the write transaction. Only the atomic
+  # database changes run inside it, so a multi-gigabyte commit never holds the
+  # SQLite/PostgreSQL write reservation while reading or moving files.
+  defp prepare_commit_state(%Lease{} = lease, %MediaItem{} = media_item, source_map, operation_id) do
+    with {:ok, watch} <- verify_fence_snapshot(lease),
+         :ok <- renew_lease(lease),
+         {:ok, _manifest} <- verify_archive(watch),
+         {:ok, archive_digest} <- OriginalArchive.manifest_digest(watch),
+         {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(media_item),
          {:ok, active} <- fingerprint_entries(entries, operation_id),
          :ok <- stash_stale_backups(active, watch.id, operation_id),
          :ok <- ensure_active_matches_approved(active, watch),
-         {:ok, staged} <- fingerprint_staged(source_map) do
-      ReplacementIntent.publish(watch.id, %{
-        "operation_id" => operation_id,
-        "created_at" => DateTime.to_iso8601(utc_now()),
-        "phase" => "prepared",
-        "media_item_id" => media_item.id,
-        "media_item_uuid" => media_item.uuid,
-        "archive_manifest_path" => watch.original_manifest_path || OriginalArchive.relative_manifest_path(watch.id),
-        "lease" => %{
-          "owner" => lease.owner,
-          "generation" => lease.generation,
-          "observation_version" => lease.observation_version
-        },
-        "active" => active,
-        "staged" => staged
-      })
+         {:ok, staged} <- fingerprint_staged(source_map),
+         {:ok, intent} <-
+           publish_intent(lease, watch, media_item, active, staged, archive_digest, operation_id),
+         :ok <- ReplacementIntent.advance(intent, "transferring") do
+      {:ok, intent}
     end
+  end
+
+  defp publish_intent(
+         %Lease{} = lease,
+         %Watch{} = watch,
+         %MediaItem{} = media_item,
+         active,
+         staged,
+         archive_digest,
+         operation_id
+       ) do
+    ReplacementIntent.publish(watch.id, %{
+      "operation_id" => operation_id,
+      "created_at" => DateTime.to_iso8601(utc_now()),
+      "phase" => "prepared",
+      "media_item_id" => media_item.id,
+      "media_item_uuid" => media_item.uuid,
+      "archive_manifest_path" => watch.original_manifest_path || OriginalArchive.relative_manifest_path(watch.id),
+      "archive_digest" => archive_digest,
+      "lease" => %{
+        "owner" => lease.owner,
+        "generation" => lease.generation,
+        "observation_version" => lease.observation_version
+      },
+      "active" => active,
+      "staged" => staged,
+      "incoming" => incoming_files(active)
+    })
+  end
+
+  # Every file a replacement publishes gets an incoming path: the staged media
+  # and sidecars from the transfer, plus the postprocessing files regenerated in
+  # `prepare`. Nothing may be written over an active path before the swap.
+  defp incoming_files(active) do
+    active
+    |> Enum.filter(&is_binary(&1["backup"]))
+    |> Enum.map(fn entry ->
+      %{
+        "destination" => entry["path"],
+        "backup" => entry["backup"],
+        "incoming" => DownloadStaging.incoming_path(entry["path"], entry["backup"])
+      }
+    end)
   end
 
   defp fingerprint_entries(entries, operation_id) do
     entries
     |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
-      case ReplacementIntent.fingerprint(entry.source) do
-        {:ok, %{sha256: checksum, size: size}} ->
+      case ReplacementIntent.fingerprint_with_stat(entry.source) do
+        {:ok, %{sha256: checksum, size: size, stat: stat}} ->
           path = Path.expand(entry.source)
 
           {:cont,
@@ -691,7 +790,8 @@ defmodule Pinchflat.MediaWatch do
                 "path" => path,
                 "backup" => ReplacementIntent.backup_path(path, operation_id),
                 "sha256" => checksum,
-                "size" => size
+                "size" => size,
+                "stat" => stat
               }
               | acc
             ]}}
@@ -777,15 +877,27 @@ defmodule Pinchflat.MediaWatch do
        when not is_map_key(approved, "first"),
        do: {:error, :active_file_unverifiable}
 
+  # The active set and the approved set describe the same files, so they are
+  # compared by canonical path and the attributes that identify those bytes -
+  # never by the numeric index the approved map happens to use. A restore or a
+  # merge re-indexes the approvals, and an index-based comparison would then
+  # report a change for untouched files.
   defp ensure_active_matches_approved(active, watch) do
     actual =
-      active
-      |> Enum.with_index()
-      |> Map.new(fn {entry, index} ->
-        {Integer.to_string(index), Map.take(entry, ["role", "path", "sha256", "size"])}
+      Map.new(active, fn entry ->
+        {canonical_path(entry["path"]), Map.take(entry, ["role", "path", "sha256", "size"])}
       end)
 
-    if map_size(actual) == length(active) and actual == Map.delete(watch.approved_active_files, "first"),
+    approved =
+      watch.approved_active_files
+      |> Map.delete("first")
+      |> Map.values()
+      |> Enum.filter(fn file -> is_map(file) and is_binary(file["path"]) end)
+      |> Map.new(fn file ->
+        {canonical_path(file["path"]), Map.take(file, ["role", "path", "sha256", "size"])}
+      end)
+
+    if map_size(actual) == length(active) and actual == approved,
       do: :ok,
       else: {:error, :active_file_changed}
   end
@@ -834,7 +946,7 @@ defmodule Pinchflat.MediaWatch do
 
     with true <- is_binary(transferred_json["filepath"]),
          true <- transferred_json["filepath"] in destinations,
-         :ok <- verify_staged_files(staged) do
+         :ok <- verify_staged_files(staged, intent) do
       :ok
     else
       false -> {:error, :unexpected_media_destination}
@@ -842,13 +954,19 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  defp verify_staged_files(staged) do
+  # Watched replacements land in a staging file beside the destination, so the
+  # verified bytes are the incoming ones; the active file is still untouched.
+  defp verify_staged_files(staged, intent) do
+    incoming = Map.new(intent["incoming"] || [], &{&1["destination"], &1["incoming"]})
+
     Enum.reduce_while(staged, :ok, fn entry, :ok ->
       destination = entry["destination"]
+      incoming_path = Map.get(incoming, destination)
+      path = if incoming_path && File.exists?(incoming_path), do: incoming_path, else: destination
       expected = entry["sha256"]
       expected_size = entry["size"]
 
-      case ReplacementIntent.fingerprint(destination) do
+      case ReplacementIntent.fingerprint(path) do
         {:ok, %{sha256: ^expected, size: ^expected_size}} ->
           {:cont, :ok}
 
@@ -864,6 +982,22 @@ defmodule Pinchflat.MediaWatch do
     end)
   end
 
+  # `prepare` writes the regenerated sidecars. It is handed the operation's
+  # incoming suffix so those writes land beside the destination instead of over
+  # an active file, which may only be replaced under the write reservation.
+  defp prepared_input(transferred_json, intent) do
+    Map.put(transferred_json, "incoming_suffix", incoming_suffix(intent["operation_id"]))
+  end
+
+  defp invoke_prepare(prepare, transferred_json) do
+    case prepare.(transferred_json) do
+      {:ok, prepared_json} when is_map(prepared_json) -> {:ok, prepared_json}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    error -> {:error, {:prepare_raised, Exception.message(error)}}
+  end
+
   defp invoke_update(update_fun, transferred_json) do
     case update_fun.(transferred_json) do
       {:ok, %MediaItem{} = updated} -> {:ok, updated}
@@ -874,34 +1008,11 @@ defmodule Pinchflat.MediaWatch do
     error -> {:error, {:update_raised, Exception.message(error)}}
   end
 
-  defp backup_postprocessing_files(intent) do
-    intent["active"]
-    |> Enum.filter(&(&1["role"] in ["internal-metadata", "internal-thumbnail", "nfo"]))
-    |> Enum.reduce_while(:ok, fn entry, :ok ->
-      backup = entry["backup"]
-      expected = %{sha256: entry["sha256"], size: entry["size"]}
-
-      cond do
-        ReplacementIntent.fingerprint(backup) == {:ok, expected} ->
-          {:cont, :ok}
-
-        File.lstat(backup) != {:error, :enoent} ->
-          {:halt, {:error, :pre_image_backup_changed}}
-
-        ReplacementIntent.fingerprint(entry["path"]) != {:ok, expected} ->
-          {:halt, {:error, :active_file_changed}}
-
-        true ->
-          case File.rename(entry["path"], backup) do
-            :ok -> {:cont, :ok}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-      end
-    end)
-  end
-
-  defp approved_active_files(updated, intent, transferred_json) do
-    with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(updated) do
+  # Every destination is hashed once, before the write transaction opens. Each
+  # approval also carries a cheap stat stamp so the transaction can prove the
+  # bytes did not change without hashing a multi-gigabyte file again.
+  defp prepare_approved_files(%MediaItem{} = media_item, intent, transferred_json, opts) do
+    with {:ok, %{entries: entries}} <- OriginalArchive.archive_entries(media_item) do
       staged = Map.new(intent["staged"], &{&1["destination"], &1})
       previous = Map.new(intent["active"], &{&1["path"], &1})
 
@@ -911,21 +1022,83 @@ defmodule Pinchflat.MediaWatch do
         path = Path.expand(entry.source)
         expected = Map.get(staged, path) || Map.get(previous, path)
 
-        case ReplacementIntent.fingerprint(path) do
-          {:ok, %{sha256: hash, size: size}} ->
-            if match?(%{"sha256" => ^hash, "size" => ^size}, expected) or
-                 generated_postprocessing_file?(entry, updated, transferred_json) do
-              approved = %{"role" => entry.role, "path" => path, "sha256" => hash, "size" => size}
-              {:cont, {:ok, Map.put(acc, Integer.to_string(index), approved)}}
-            else
-              {:halt, {:error, :active_file_changed}}
-            end
-
-          _ ->
-            {:halt, {:error, :active_file_changed}}
+        with :ok <- run_before_verify(opts, path),
+             {:ok, approved} <- approve_entry(path, expected, entry, media_item, transferred_json, intent) do
+          {:cont, {:ok, Map.put(acc, Integer.to_string(index), approved)}}
+        else
+          {:error, reason} -> {:halt, {:error, reason}}
         end
       end)
     end
+  end
+
+  defp run_before_verify(opts, path) do
+    case Keyword.get(opts, :before_verify) do
+      fun when is_function(fun, 1) -> fun.(path)
+      _ -> :ok
+    end
+  end
+
+  # `read_path` is the file that will be published (the incoming copy for a
+  # watched replacement, the destination otherwise). The swap refreshes the
+  # stamp after renaming because the rename itself changes ctime.
+  defp approve_entry(path, expected, entry, media_item, transferred_json, intent) do
+    incoming_path = Map.get(incoming_index(intent), path)
+    staged? = is_binary(incoming_path) and File.exists?(incoming_path)
+    read_path = if staged?, do: incoming_path, else: path
+
+    case ReplacementIntent.fingerprint_with_stat(read_path) do
+      {:ok, %{sha256: hash, size: size, stat: stat}} ->
+        if match?(%{"sha256" => ^hash, "size" => ^size}, expected) or
+             (staged? and regenerated_sidecar?(entry.role)) or
+             generated_postprocessing_file?(entry, media_item, transferred_json) do
+          approved = %{
+            "role" => entry.role,
+            "path" => path,
+            "sha256" => hash,
+            "size" => size,
+            "stat" => stat
+          }
+
+          {:ok, approved}
+        else
+          {:error, :active_file_changed}
+        end
+
+      _ ->
+        {:error, :active_file_changed}
+    end
+  end
+
+  # These roles are produced by postprocessing rather than by the transfer, so a
+  # fresh incoming copy of them is legitimate new content, not an unapproved
+  # edit of the previous active file.
+  defp regenerated_sidecar?(role) do
+    role in ["internal-metadata", "internal-thumbnail", "nfo", "thumbnail", "metadata"]
+  end
+
+  defp incoming_index(intent) do
+    Map.new(intent["incoming"] || [], &{&1["destination"], &1["incoming"]})
+  end
+
+  @doc "Returns the suffix watched postprocessing writes use before the swap."
+  def incoming_suffix(operation_id) when is_binary(operation_id) do
+    ".pinchflat-incoming-" <> operation_id
+  end
+
+  # Compare the post-rename stamp, including ctime, before recording approvals.
+  defp verify_approved_unchanged(approved) do
+    approved
+    |> Enum.sort_by(fn {index, _file} -> String.to_integer(index) end)
+    |> Enum.reduce_while(:ok, fn {_index, file}, :ok ->
+      case ReplacementIntent.file_stamp(file["path"]) do
+        {:ok, stat} when stat == :erlang.map_get("stat", file) ->
+          {:cont, :ok}
+
+        _ ->
+          {:halt, {:error, :active_file_changed}}
+      end
+    end)
   end
 
   defp generated_postprocessing_file?(%{role: "internal-metadata", source: path}, updated, json) do
@@ -943,6 +1116,13 @@ defmodule Pinchflat.MediaWatch do
 
   defp generated_postprocessing_file?(_entry, _updated, _json), do: false
 
+  # The stat stamp is only meaningful while a commit is verifying those exact
+  # bytes; persisting it would make the next replacement's approved-set
+  # comparison fail on a field that is expected to change.
+  defp clean_approved(approved) do
+    Map.new(approved, fn {index, file} -> {index, Map.take(file, ["role", "path", "sha256", "size"])} end)
+  end
+
   defp mark_committed(%Lease{} = lease, operation_id, approved, watch) do
     query =
       from w in Watch,
@@ -951,7 +1131,7 @@ defmodule Pinchflat.MediaWatch do
     case Repo.update_all(query,
            set: [
              operation_id: operation_id,
-             approved_active_files: Map.put(approved, "first", watch.approved_active_files["first"]),
+             approved_active_files: Map.put(clean_approved(approved), "first", watch.approved_active_files["first"]),
              lease_owner: nil,
              lease_expires_at: nil,
              operation_kind: nil
@@ -966,12 +1146,12 @@ defmodule Pinchflat.MediaWatch do
     result =
       Repo.transaction(fn ->
         query =
-          from w in Watch,
-            where:
-              w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and
-                w.lease_generation == ^lease.generation and w.operation_kind == "replace" and
-                is_nil(w.released_at)
+          from w in Watch, where: w.id == ^lease.watch_id and is_nil(w.released_at)
 
+        # The transfer runs before the write reservation, so a lease superseded
+        # mid-transfer has already persisted its generation bump. The journal is
+        # exclusive per watch, so if it is still ours no successor published or
+        # committed, and restoring our partial move is the correct repair.
         case Repo.update_all(query, set: [updated_at: utc_now()]) do
           {1, _} ->
             {:ok, _watch} = locked_watch(lease.watch_id)
@@ -1225,7 +1405,434 @@ defmodule Pinchflat.MediaWatch do
     end
   end
 
-  @doc "Serializes watched active-file deletion with replacement and explicit archive release."
+  @doc """
+  Restores only the active files that are genuinely missing for a watched item,
+  from its verified published original archive.
+
+  Missing-file recovery is deliberately narrower than a replacement: a file that
+  exists at its path is never rewritten, quarantined or validated away, because
+  it may be a user edit. A durable restore journal is published before the first
+  byte is copied, so an interrupted restoration is reconciled on restart instead
+  of leaving orphaned temporaries.
+
+  Returns {:ok, %MediaItem{}} | {:error, term()}.
+  """
+  def restore_active_from_archive(target, opts \\ [])
+
+  def restore_active_from_archive(%MediaItem{} = media_item, opts) do
+    media_item = Repo.preload(media_item, [:metadata, source: :media_profile])
+
+    with %Watch{} = watch <- get_watch_for_media_item(media_item.id),
+         :ok <- ensure_restore_allowed(watch, media_item),
+         :ok <- ensure_no_pending_intent(watch),
+         {:ok, lease} <- claim_lease(media_item.id, "restore_active") do
+      heartbeat = start_lease_heartbeat(lease)
+
+      try do
+        with {:ok, watch} <- verify_restore_fence(lease),
+             {:ok, manifest} <- verify_archive(watch),
+             missing = restore_targets(manifest, archive_targets(media_item)),
+             {:ok, entries} <- restore_missing_files(watch, missing, lease),
+             :ok <- run_before_publish(opts),
+             {:ok, _restored} <- commit_restore(lease, entries, opts) do
+          {:ok, Repo.preload(Repo.get!(MediaItem, watch.media_item_id), [:metadata, source: :media_profile])}
+        end
+      after
+        stop_lease_heartbeat(heartbeat)
+        release_lease(lease)
+      end
+    end
+  end
+
+  def restore_active_from_archive(media_item_id, opts) when is_integer(media_item_id) do
+    case Repo.get(MediaItem, media_item_id) do
+      nil -> {:error, :media_item_missing}
+      item -> restore_active_from_archive(item, opts)
+    end
+  end
+
+  defp ensure_restore_allowed(watch, media_item) do
+    cond do
+      released?(watch) -> {:error, :watch_released}
+      not destructive_enabled?() -> {:error, :watch_guard_unapproved}
+      watch.archive_state != "published" -> {:error, :watch_archive_required}
+      not replacement_eligible?(watch) -> {:error, :watch_hold}
+      not is_binary(media_item.media_filepath) -> {:error, :missing_main_media}
+      true -> :ok
+    end
+  end
+
+  defp ensure_no_pending_intent(watch) do
+    cond do
+      ReplacementIntent.pending?(watch.id) -> {:error, :replacement_in_progress}
+      ReplacementIntent.restore_pending?(watch.id) -> {:error, :restore_in_progress}
+      true -> :ok
+    end
+  end
+
+  defp verify_restore_fence(%Lease{} = lease) do
+    with {:ok, watch} <- locked_watch(lease.watch_id),
+         :ok <- verify_live_lease(watch, lease) do
+      {:ok, watch}
+    end
+  end
+
+  # Missing-file recovery is strictly missing-only: a file that exists at its
+  # path, whatever its contents, belongs to the operator and is never rewritten.
+  defp restore_targets(manifest, targets) do
+    manifest["files"]
+    |> Enum.flat_map(fn file ->
+      case Map.fetch(targets, file["role"]) do
+        {:ok, path} -> restore_target(file, path)
+        :error -> []
+      end
+    end)
+  end
+
+  defp restore_target(file, path) do
+    if File.exists?(path), do: [], else: [Map.put(file, "target", path)]
+  end
+
+  # Journal first, then copy each file to a temporary restore path beside its
+  # destination and verify it against the manifest. Nothing is published until
+  # every copy verifies and the lease still belongs to this operation.
+  # A test seam for the publish-time race: the copies are complete, so this is
+  # exactly where a concurrent operator edit or successor can appear.
+  defp run_before_publish(opts) do
+    case Keyword.get(opts, :before_publish) do
+      fun when is_function(fun, 0) ->
+        fun.()
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp restore_missing_files(_watch, [], _lease), do: {:ok, []}
+
+  defp restore_missing_files(watch, missing, lease) do
+    operation_id = lease.owner
+
+    entries =
+      Enum.map(missing, fn file ->
+        %{
+          "role" => file["role"],
+          "path" => file["target"],
+          "temporary" => restore_temporary(file["target"], operation_id),
+          "sha256" => file["sha256"],
+          "size" => file["size"],
+          "replace_damaged" => Map.get(file, "replace_damaged", false)
+        }
+      end)
+
+    with {:ok, _intent} <-
+           ReplacementIntent.publish_restore(watch.id, %{
+             "operation_id" => operation_id,
+             "entries" => entries
+           }),
+         :ok <- copy_restore_temporaries(missing, entries, watch),
+         :ok <- heartbeat_restore(lease) do
+      {:ok, entries}
+    else
+      {:error, reason} ->
+        discard_restore_temporaries(entries)
+        {:error, reason}
+    end
+  end
+
+  # A failed preparation leaves no usable copy, so its temporaries and journal
+  # are removed; the destination was never touched.
+  defp discard_restore_temporaries(entries) do
+    Enum.each(entries, &File.rm(&1["temporary"]))
+    :ok
+  end
+
+  defp restore_temporary(path, operation_id) do
+    path <> ".pinchflat-restore-" <> operation_id
+  end
+
+  defp copy_restore_temporaries(missing, entries, watch) do
+    missing
+    |> Enum.zip(entries)
+    |> Enum.reduce_while(:ok, fn {file, entry}, :ok ->
+      with {:ok, source} <- archive_source(watch, file),
+           :ok <- safe_restore_path(entry["path"]),
+           :ok <- File.mkdir_p(Path.dirname(entry["path"])),
+           :ok <- copy_verified_temporary(source, entry) do
+        {:cont, :ok}
+      else
+        {:error, reason} -> {:halt, {:error, {file["role"], reason}}}
+      end
+    end)
+  end
+
+  defp copy_verified_temporary(source, entry) do
+    temporary = entry["temporary"]
+    expected = entry["sha256"]
+    size = entry["size"]
+
+    with :ok <- File.cp(source, temporary),
+         {:ok, %{sha256: ^expected, size: ^size}} <- ReplacementIntent.fingerprint(temporary) do
+      :ok
+    else
+      {:ok, %{sha256: _other}} -> {:error, :restored_checksum_mismatch}
+      {:ok, %{size: _other}} -> {:error, :restored_size_mismatch}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp heartbeat_restore(%Lease{} = lease), do: heartbeat_lease(lease)
+
+  # Publication runs under the locked watch: a destination that appeared while
+  # the copy was running is the operator's file, so that file is abandoned and
+  # its journal entry stays for the next reconciliation. Staged temporaries for
+  # abandoned files are removed, never renamed over an existing path.
+  defp commit_restore(%Lease{} = lease, entries, opts) do
+    watch = Repo.get!(Watch, lease.watch_id)
+
+    result =
+      Repo.transaction(fn ->
+        with {:ok, current} <- locked_watch(lease.watch_id),
+             :ok <- verify_live_lease(current, lease),
+             {:ok, published} <- publish_restored_files(entries, opts),
+             {1, _} <-
+               Repo.update_all(
+                 from(w in Watch,
+                   where:
+                     w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and
+                       w.lease_generation == ^lease.generation
+                 ),
+                 set: [
+                   approved_active_files: merge_approvals(current, published),
+                   hold_reason: nil,
+                   hold_at: nil,
+                   lease_owner: nil,
+                   lease_expires_at: nil,
+                   operation_kind: nil
+                 ]
+               ) do
+          published
+        else
+          {:error, reason} -> Repo.rollback(reason)
+          other -> Repo.rollback({:unexpected_restore_error, other})
+        end
+      end)
+
+    case result do
+      {:ok, published} ->
+        # The journal is the durable record of an unfinished restoration, so it
+        # is only removed once the database has durably accepted the approvals.
+        # Clearing it inside the transaction would lose the evidence if the
+        # commit then failed.
+        :ok = clear_restore_journal(lease, entries)
+        emit_restore_event(watch, published, opts)
+        {:ok, published}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A restore adds approvals for the files it published without discarding the
+  # approvals for everything it did not touch, such as a sidecar regenerated by
+  # an earlier replacement.
+  #
+  # Entries are matched by their canonical path, never by their map key. A
+  # restore can republish a file that previously occupied a different numeric
+  # key, so merging by key would overwrite an unrelated untouched sidecar.
+  # The result is re-indexed sequentially, media first and then by path, so the
+  # approved set has the same stable order every time it is written.
+  defp merge_approvals(%Watch{} = watch, published) do
+    existing = watch.approved_active_files || %{}
+
+    replaced =
+      published
+      |> Enum.map(&canonical_path(&1["path"]))
+      |> MapSet.new()
+
+    kept =
+      existing
+      |> Enum.reject(fn {_key, file} ->
+        is_map(file) and is_binary(file["path"]) and MapSet.member?(replaced, canonical_path(file["path"]))
+      end)
+      |> Enum.map(fn {_key, file} -> file end)
+
+    restored =
+      Enum.map(published, fn file -> Map.take(file, ["role", "path", "sha256", "size"]) end)
+
+    (kept ++ restored)
+    |> index_approvals()
+    |> Map.put("first", Map.get(existing, "first"))
+  end
+
+  defp canonical_path(nil), do: nil
+  defp canonical_path(path) when is_binary(path), do: Path.expand(path)
+
+  # The media file is listed first so a downstream reader that relies on the
+  # first entry always sees the item's main artifact; the remainder is ordered
+  # by canonical path to stay deterministic across restores.
+  defp index_approvals(files) do
+    files
+    |> Enum.sort_by(fn file ->
+      {if(file["role"] == "media", do: 0, else: 1), canonical_path(file["path"])}
+    end)
+    |> Enum.with_index()
+    |> Map.new(fn {file, index} -> {Integer.to_string(index), file} end)
+  end
+
+  defp publish_restored_files(entries, opts) do
+    entries
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      target = entry["path"]
+      temporary = entry["temporary"]
+
+      cond do
+        # The operator created something at this path while we were copying, so
+        # their file wins and only our temporary copy is discarded. A damaged
+        # file the operator explicitly approved repairing is the one exception.
+        File.exists?(target) ->
+          _ = File.rm(temporary)
+          {:cont, {:ok, acc}}
+
+        File.regular?(temporary) ->
+          with :ok <- run_before_restore_publish(opts, target),
+               :ok <- publish_atomically(temporary, target) do
+            {:cont, {:ok, [restored_entry(entry, target) | acc]}}
+          else
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+
+        true ->
+          {:halt, {:error, :restore_temporary_missing}}
+      end
+    end)
+    |> case do
+      {:ok, published} -> {:ok, Enum.reverse(published)}
+      error -> error
+    end
+  end
+
+  # Publication must never overwrite a destination that appeared after the
+  # existence check: a rename would silently replace the operator's bytes. A hard
+  # link fails with :eexist instead, leaving their file untouched. Only a
+  # successful publication removes the temporary, so a refused one stays with
+  # its journal for the next reconciliation.
+  defp publish_atomically(temporary, target) do
+    case File.ln(temporary, target) do
+      :ok ->
+        _ = File.rm(temporary)
+        :ok
+
+      {:error, :eexist} ->
+        {:error, :destination_occupied}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A test seam at the last moment before an atomic publication, where a
+  # concurrent operator write can create the destination.
+  defp run_before_restore_publish(opts, target) do
+    case Keyword.get(opts, :before_restore_publish) do
+      fun when is_function(fun, 1) ->
+        fun.(target)
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp restored_entry(entry, target) do
+    %{
+      "role" => entry["role"],
+      "path" => target,
+      "sha256" => entry["sha256"],
+      "size" => entry["size"]
+    }
+  end
+
+  # A restoration that had nothing to copy never published a journal.
+  defp clear_restore_journal(_lease, []), do: :ok
+
+  defp clear_restore_journal(%Lease{} = lease, _entries) do
+    ReplacementIntent.clear_restore(lease.watch_id, lease.owner)
+  end
+
+  # Maps a manifest role to the path this item expects it at. The manifest does
+  # not record host paths, so the media item supplies them; a role the item no
+  # longer declares is left untouched in the archive.
+  defp archive_targets(%MediaItem{} = item) do
+    subtitles =
+      (item.subtitle_filepaths || [])
+      |> Enum.with_index()
+      |> Enum.flat_map(fn
+        {[language, path], index} when is_binary(path) ->
+          [{subtitle_role(language, index), Path.expand(path)}]
+
+        _ ->
+          []
+      end)
+
+    [
+      {"media", item.media_filepath},
+      {"thumbnail", item.thumbnail_filepath},
+      {"metadata", item.metadata_filepath},
+      {"nfo", item.nfo_filepath},
+      {"internal-thumbnail", item.metadata && Map.get(item.metadata, :thumbnail_filepath)},
+      {"internal-metadata", item.metadata && Map.get(item.metadata, :metadata_filepath)}
+    ]
+    |> Enum.filter(fn {_role, path} -> is_binary(path) and String.trim(path) != "" end)
+    |> Enum.map(fn {role, path} -> {role, Path.expand(path)} end)
+    |> Kernel.++(subtitles)
+    |> Map.new()
+  end
+
+  defp subtitle_role(language, index) do
+    if is_binary(language) and Regex.match?(~r/^[A-Za-z0-9_-]{1,16}$/, language),
+      do: "subtitle-#{language}",
+      else: "subtitle-lang-#{index}"
+  end
+
+  defp archive_source(watch, file) do
+    path = watch.original_manifest_path || OriginalArchive.relative_manifest_path(watch.id)
+
+    with {:ok, manifest_path} <- OriginalArchive.resolve_manifest_path(path),
+         source = Path.join(Path.dirname(manifest_path), file["path"]),
+         {:ok, %{type: :regular}} <- File.lstat(source) do
+      {:ok, source}
+    else
+      {:error, :enoent} -> {:error, :missing_archive_file}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Only the roots this application manages may receive restored bytes, so a
+  # config-resident metadata file is as acceptable as an active media file while
+  # an arbitrary path is not.
+  defp safe_restore_path(path) do
+    expanded = Path.expand(path)
+
+    if Enum.any?(ReplacementIntent.allowed_roots(), &path_under?(&1, expanded)) do
+      :ok
+    else
+      {:error, :restore_outside_managed_roots}
+    end
+  end
+
+  defp path_under?(root, path) do
+    path == root or String.starts_with?(path, root <> "/")
+  end
+
+  defp emit_restore_event(watch, restored, opts) do
+    case Keyword.get(opts, :on_restored) do
+      fun when is_function(fun, 2) -> fun.(watch, restored)
+      _ -> :ok
+    end
+  end
+
   def with_deletion_fence(%MediaItem{} = item, fun) do
     case get_watch_for_media_item(item.id) do
       nil ->
@@ -1361,7 +1968,9 @@ defmodule Pinchflat.MediaWatch do
 
   Returns {:ok, %Lease{}} | {:error, :not_watched | :lease_busy}.
   """
-  def claim_lease(media_item_id, operation_kind, opts \\ []) do
+  def claim_lease(media_item_id, operation_kind, opts \\ [])
+
+  def claim_lease(media_item_id, operation_kind, opts) do
     case get_watch_for_media_item(media_item_id) do
       nil ->
         {:error, :not_watched}
@@ -1394,10 +2003,83 @@ defmodule Pinchflat.MediaWatch do
              generation: updated.lease_generation,
              observation_version: updated.observation_version,
              expires_at: expires_at,
-             operation_kind: operation_kind
+             operation_kind: operation_kind,
+             lease_seconds: lease_seconds
            }}
         else
           {:error, :lease_busy}
+        end
+    end
+  end
+
+  @doc """
+  Keeps a lease alive for the duration of the enclosing operation.
+
+  A legitimate replacement or restoration can spend far longer than one lease
+  window verifying an archive or copying across filesystems. Ownership must not
+  lapse simply because the work is slow, so this starts a background process
+  that renews the lease at a third of its window until the calling process
+  exits - normally or by exception. Renewal fails silently once a successor owns
+  the watch; the operation's own fence checks are what reject that work.
+
+  The caller must invoke this from the process that owns the operation, because
+  the loop is tied to that process's lifetime.
+  """
+  @spec start_lease_heartbeat(Lease.t()) :: {pid(), reference()}
+  def start_lease_heartbeat(%Lease{} = lease) do
+    caller = self()
+    ref = make_ref()
+    interval = heartbeat_interval(lease)
+
+    pid = spawn(fn -> heartbeat_loop(caller, ref, lease, interval) end)
+
+    # A heartbeat runs in its own process, so a sandboxed test connection must be
+    # shared with it. A replacement must never fail because of the heartbeat.
+    if Code.ensure_loaded?(Ecto.Adapters.SQL.Sandbox) do
+      try do
+        _ = Ecto.Adapters.SQL.Sandbox.allow(Repo, caller, pid)
+      rescue
+        _ -> :ok
+      end
+    end
+
+    {pid, ref}
+  end
+
+  @doc """
+  Stops a lease heartbeat started by `start_lease_heartbeat/1`.
+  """
+  @spec stop_lease_heartbeat({pid(), reference()} | term()) :: :ok
+  def stop_lease_heartbeat({pid, ref}) when is_pid(pid) and is_reference(ref) do
+    send(pid, {ref, :stop})
+    :ok
+  end
+
+  def stop_lease_heartbeat(_other), do: :ok
+
+  # A lease keeps the window it was claimed with. Renewing or heartbeating must
+  # never silently widen it, or a caller that asked for a short lease would find
+  # its ownership outliving the window it reasoned about.
+  defp lease_window(%Lease{lease_seconds: seconds}, _opts) when is_integer(seconds) and seconds > 0 do
+    seconds
+  end
+
+  defp lease_window(_lease, opts), do: Keyword.get(opts, :lease_seconds, @lease_seconds)
+
+  defp heartbeat_interval(%Lease{} = lease) do
+    max(div(lease_window(lease, []) * 1000, 3), 250)
+  end
+
+  defp heartbeat_loop(caller, ref, lease, interval) do
+    receive do
+      {^ref, :stop} -> :ok
+    after
+      interval ->
+        if Process.alive?(caller) do
+          _ = heartbeat_lease(lease)
+          heartbeat_loop(caller, ref, lease, interval)
+        else
+          :ok
         end
     end
   end
@@ -1409,8 +2091,7 @@ defmodule Pinchflat.MediaWatch do
   """
   def renew_lease(%Lease{} = lease, opts \\ []) do
     now = utc_now()
-    lease_seconds = Keyword.get(opts, :lease_seconds, @lease_seconds)
-    expires_at = DateTime.add(now, lease_seconds, :second)
+    expires_at = DateTime.add(now, lease_window(lease, opts), :second)
 
     query =
       from w in Watch,
@@ -1418,6 +2099,33 @@ defmodule Pinchflat.MediaWatch do
           w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and
             w.lease_generation == ^lease.generation and not is_nil(w.lease_expires_at) and
             w.lease_expires_at > ^now
+
+    case Repo.update_all(query, set: [lease_expires_at: expires_at]) do
+      {1, _} -> :ok
+      _ -> {:error, :lost_lease}
+    end
+  end
+
+  @doc """
+  Extends a lease owned by the same owner and generation, even if its previous
+  deadline has already elapsed.
+
+  A replacement can legitimately spend longer than one lease window hashing a
+  large archive or copying across filesystems. Nothing else may take over while
+  that work continues, so the same owner is entitled to keep extending; a
+  successor would have bumped the generation and this update then affects no
+  rows. That is what makes the heartbeat safe as well as useful.
+
+  Returns :ok | {:error, :lost_lease}.
+  """
+  def heartbeat_lease(%Lease{} = lease, opts \\ []) do
+    expires_at = DateTime.add(utc_now(), lease_window(lease, opts), :second)
+
+    query =
+      from w in Watch,
+        where:
+          w.id == ^lease.watch_id and w.lease_owner == ^lease.owner and
+            w.lease_generation == ^lease.generation and is_nil(w.released_at)
 
     case Repo.update_all(query, set: [lease_expires_at: expires_at]) do
       {1, _} -> :ok
@@ -1596,14 +2304,11 @@ defmodule Pinchflat.MediaWatch do
   end
 
   @doc """
-  Commits a watched replacement inside one adapter-safe write reservation.
+  Commits a watched replacement using a durable intent journal.
 
-  The watch row is reserved first (conditional UPDATE, plus `SELECT FOR UPDATE`
-  on PostgreSQL), the lease generation, observation version, policy and archive
-  are re-verified under that reservation, and a durable intent journal is
-  published before the first active file moves. The caller's transfer runs next;
-  only after every destination re-hashes to the recorded staged checksum is the
-  media item written and the lease cleared, still inside the same transaction.
+  Staging and hashing happen before the write reservation. Under the reservation
+  the worker rechecks the lease, policy and file stamps, swaps verified files,
+  and writes the media item and approvals in the same database transaction.
 
   A failure at any point rolls the database back and restores the active files
   from the verified original archive. The journal is left in place when that
@@ -1617,46 +2322,50 @@ defmodule Pinchflat.MediaWatch do
         %MediaItem{} = media_item,
         %{source_map: source_map},
         transfer_fun,
-        update_fun
+        update_fun,
+        opts \\ []
       )
       when is_map(source_map) and is_function(transfer_fun, 1) and is_function(update_fun, 1) do
     if destructive_enabled?() do
-      do_commit_replacement(lease, media_item, source_map, transfer_fun, update_fun)
+      do_commit_replacement(lease, media_item, source_map, transfer_fun, update_fun, opts)
     else
       {:error, :watch_guard_unapproved}
     end
   end
 
-  defp do_commit_replacement(%Lease{} = lease, %MediaItem{} = media_item, source_map, transfer_fun, update_fun) do
+  defp do_commit_replacement(%Lease{} = lease, %MediaItem{} = media_item, source_map, transfer_fun, update_fun, opts) do
     media_item = Repo.preload(media_item, [:metadata, source: :media_profile])
     operation_id = Ecto.UUID.generate()
+    report = Keyword.get(opts, :progress, fn _attrs -> :ok end)
+    prepare = Keyword.get(opts, :prepare, fn json -> {:ok, json} end)
+
+    # A replacement legitimately runs longer than one lease window, so ownership
+    # is renewed in the background for as long as this call is working.
+    heartbeat = start_lease_heartbeat(lease)
 
     result =
       try do
-        Repo.transaction(fn ->
-          with :ok <- reserve_for_commit(lease),
-               {:ok, watch} <- locked_watch(lease.watch_id),
-               {:ok, _manifest} <- verify_fence(lease),
-               {:ok, intent} <- publish_intent(lease, watch, media_item, source_map, operation_id),
-               :ok <- ReplacementIntent.advance(intent, "transferring"),
-               {:ok, transferred_json} <- invoke_transfer(transfer_fun, pre_images(intent)),
-               :ok <- verify_transferred(intent, transferred_json),
-               # The transaction still owns the reservation even if the lease timestamp has elapsed.
-               {:ok, _manifest} <- verify_fence(lease),
-               :ok <- backup_postprocessing_files(intent),
-               {:ok, updated} <- invoke_update(update_fun, transferred_json),
-               {:ok, approved} <- approved_active_files(updated, intent, transferred_json),
-               :ok <- mark_committed(lease, operation_id, approved, watch) do
-            {updated, intent}
-          else
-            {:error, reason} -> Repo.rollback(reason)
-            other -> Repo.rollback({:unexpected_replacement_error, other})
-          end
-        end)
+        with :ok <- report.(%{progress_status: "Verifying"}),
+             {:ok, intent} <- prepare_commit_state(lease, media_item, source_map, operation_id),
+             :ok <- report.(%{progress_status: "Transferring"}),
+             {:ok, transferred_json} <- invoke_transfer(transfer_fun, pre_images(intent)),
+             :ok <- verify_transferred(intent, transferred_json),
+             :ok <- heartbeat_or_fail(lease),
+             :ok <- report.(%{progress_status: "Finalizing"}),
+             {:ok, prepared} <- invoke_prepare(prepare, prepared_input(transferred_json, intent)),
+             :ok <- heartbeat_or_fail(lease),
+             {:ok, approved} <- prepare_approved_files(media_item, intent, transferred_json, opts),
+             :ok <- run_before_swap(opts),
+             :ok <- verify_pending_files(intent, approved, opts),
+             {:ok, updated} <- commit_replacement_reservation(lease, intent, prepared, approved, update_fun) do
+          {:ok, {updated, intent}}
+        end
       rescue
         error ->
           Logger.error("watched replacement raised: #{Exception.message(error)}")
           {:error, {:replacement_raised, error}}
+      after
+        stop_lease_heartbeat(heartbeat)
       end
 
     case result do
@@ -1669,6 +2378,202 @@ defmodule Pinchflat.MediaWatch do
         case recover_failed_replacement(lease, operation_id) do
           :ok -> {:error, reason}
           {:error, recovery_reason} -> {:error, {:replacement_recovery_failed, reason, recovery_reason}}
+        end
+    end
+  end
+
+  # Keep full-file reads outside the write reservation.
+  defp swap_pending_files(intent, approved) do
+    expected = Map.new(intent["active"] || [], &{&1["path"], &1})
+    approval_keys = Map.new(approved, fn {key, file} -> {file["path"], key} end)
+
+    intent["incoming"]
+    |> List.wrap()
+    |> Enum.reduce_while({:ok, approved}, fn file, {:ok, approvals} ->
+      destination = file["destination"]
+      incoming = file["incoming"]
+
+      cond do
+        File.exists?(incoming) ->
+          with {:ok, key} <- Map.fetch(approval_keys, destination),
+               %{"stat" => stamp} = approval <- Map.fetch!(approvals, key),
+               {:ok, ^stamp} <- ReplacementIntent.file_stamp(incoming),
+               :ok <- confirm_unchanged_stat(destination, Map.get(expected, destination)),
+               :ok <- stash_pre_image(destination, file["backup"]),
+               {:ok, ^stamp} <- ReplacementIntent.file_stamp(incoming),
+               :ok <- File.rename(incoming, destination),
+               {:ok, published} <- ReplacementIntent.file_stamp(destination),
+               true <- Map.delete(published, "ctime") == Map.delete(stamp, "ctime") do
+            {:cont, {:ok, Map.put(approvals, key, %{approval | "stat" => published})}}
+          else
+            {:error, reason} -> {:halt, {:error, reason}}
+            _ -> {:halt, {:error, :active_file_changed}}
+          end
+
+        File.exists?(destination) ->
+          {:cont, {:ok, approvals}}
+
+        true ->
+          {:halt, {:error, :incoming_missing}}
+      end
+    end)
+  end
+
+  # The full-file digest checks run here, before the reservation, because hashing
+  # a large or slow file under the SQLite write lock would block every other
+  # writer. Both the incoming bytes that will be renamed into place and the
+  # active destination they replace must still match their approved digests; a
+  # file edited after approval fails closed before anything is touched.
+  defp verify_pending_files(intent, approved, opts) do
+    approved_by_path = Map.new(approved, fn {_index, file} -> {file["path"], file} end)
+    expected = Map.new(intent["active"] || [], &{&1["path"], &1})
+
+    intent["incoming"]
+    |> List.wrap()
+    |> Enum.reduce_while(:ok, fn file, :ok ->
+      destination = file["destination"]
+
+      if File.exists?(file["incoming"]) do
+        with :ok <- run_before_file_verify(opts, destination),
+             :ok <- confirm_active_digest(destination, Map.get(expected, destination)),
+             :ok <- confirm_incoming_digest(file["incoming"], destination, approved_by_path) do
+          {:cont, :ok}
+        else
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      else
+        {:cont, :ok}
+      end
+    end)
+  end
+
+  defp run_before_file_verify(opts, path) do
+    case Keyword.get(opts, :before_file_verify) do
+      fun when is_function(fun, 1) -> fun.(path)
+      _ -> :ok
+    end
+  end
+
+  # The incoming copy is the file the swap renames into place. It must still hold
+  # exactly the bytes that were approved - a same-size edit with a restored
+  # timestamp is only visible by digest.
+  defp confirm_incoming_digest(incoming, destination, approved_by_path) do
+    case Map.get(approved_by_path, destination) do
+      %{"sha256" => expected} when is_binary(expected) ->
+        case ReplacementIntent.fingerprint(incoming) do
+          {:ok, %{sha256: ^expected}} -> :ok
+          _ -> {:error, :active_file_changed}
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  # The active file must still hold the bytes recorded before the transfer. The
+  # digest is authoritative because whole-second stat fields cannot distinguish a
+  # same-size rewrite whose mtime was restored.
+  defp confirm_active_digest(_destination, nil), do: :ok
+
+  defp confirm_active_digest(destination, expected) do
+    case Map.fetch(expected, "sha256") do
+      {:ok, sha256} when is_binary(sha256) ->
+        case ReplacementIntent.fingerprint(destination) do
+          {:ok, %{sha256: ^sha256}} -> :ok
+          # A destination that has gone missing cannot have been edited, and the
+          # backup and incoming renames tolerate its absence.
+          {:error, :missing_file} -> :ok
+          _ -> {:error, :active_file_changed}
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  # Inside the reservation only the cheap stat stamp is re-checked; the bytes
+  # were already verified by digest outside it.
+  defp confirm_unchanged_stat(_destination, nil), do: :ok
+
+  defp confirm_unchanged_stat(destination, expected) do
+    with %{"stat" => expected_stat} <- expected,
+         {:ok, ^expected_stat} <- ReplacementIntent.file_stamp(destination) do
+      :ok
+    else
+      {:error, :enoent} -> :ok
+      _ -> {:error, :active_file_changed}
+    end
+  end
+
+  defp stash_pre_image(destination, backup) do
+    case File.lstat(destination) do
+      {:ok, %{type: :regular}} ->
+        case File.rename(destination, backup) do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:pre_image_backup_failed, reason}}
+        end
+
+      {:error, :enoent} ->
+        :ok
+
+      {:ok, _other} ->
+        {:error, :pre_image_not_regular}
+    end
+  end
+
+  defp commit_replacement_reservation(%Lease{} = lease, intent, prepared, approved, update_fun) do
+    result =
+      Repo.transaction(fn ->
+        with {:ok, watch} <- locked_watch(lease.watch_id),
+             :ok <- assert_fence_unchanged(lease, watch, intent["archive_digest"]),
+             :ok <- reserve_commit_reservation(lease),
+             {:ok, approved} <- swap_pending_files(intent, approved),
+             {:ok, updated} <- invoke_update(update_fun, prepared),
+             :ok <- verify_approved_unchanged(approved),
+             :ok <- mark_committed(lease, intent["operation_id"], approved, watch) do
+          updated
+        else
+          {:error, reason} -> Repo.rollback(reason)
+          other -> Repo.rollback({:unexpected_replacement_error, other})
+        end
+      end)
+
+    case result do
+      {:ok, updated} -> {:ok, updated}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # A failed heartbeat has two very different meanings. If another owner or a
+  # newer generation now holds the watch, this worker was superseded and the
+  # outcome is :watch_hold. Otherwise the watch is still ours and only the
+  # deadline lapsed, which is :lost_lease.
+  # A test seam at the last moment before the reservation: everything expensive
+  # is done and the active files are still untouched.
+  defp run_before_swap(opts) do
+    case Keyword.get(opts, :before_swap) do
+      fun when is_function(fun, 0) ->
+        fun.()
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp heartbeat_or_fail(%Lease{} = lease) do
+    case heartbeat_lease(lease) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        case Repo.get(Watch, lease.watch_id) do
+          %Watch{lease_owner: owner, lease_generation: generation}
+          when owner != lease.owner or generation != lease.generation ->
+            {:error, :watch_hold}
+
+          _ ->
+            {:error, reason}
         end
     end
   end
@@ -1856,7 +2761,21 @@ defmodule Pinchflat.MediaWatch do
 
   Returns [%{watch_id: integer(), action: term()}].
   """
-  def recover_pending(limit \\ @recovery_batch_size) do
+  def recover_pending(), do: do_recover_pending(@recovery_batch_size, [])
+
+  # Test-only seam for the rollback-to-hold and database-commit windows.
+  # Production callers use the plain form, so the options stay out of the
+  # documented interface.
+  @doc false
+  def recover_pending(opts) when is_list(opts), do: do_recover_pending(@recovery_batch_size, opts)
+
+  @doc false
+  def recover_pending(limit) when is_integer(limit), do: do_recover_pending(limit, [])
+
+  @doc false
+  def recover_pending(limit, opts) when is_integer(limit) and is_list(opts), do: do_recover_pending(limit, opts)
+
+  defp do_recover_pending(limit, opts) do
     now = utc_now()
 
     watches =
@@ -1881,7 +2800,216 @@ defmodule Pinchflat.MediaWatch do
 
     Enum.map(released, fn watch ->
       %{watch_id: watch.id, action: finish_original_deletion(watch.id)}
-    end) ++ Enum.map(watches, &recover_watch/1) ++ recover_pending_intents(limit)
+    end) ++
+      Enum.map(watches, &recover_watch/1) ++
+      recover_pending_intents(limit) ++ recover_pending_restores(limit, opts)
+  end
+
+  # A restoration interrupted mid-copy left a durable journal and, at most, a
+  # verified temporary. Reconciliation must never race a live owner: a worker
+  # still holding the lease is the only process allowed to publish its files.
+  defp recover_pending_restores(limit, opts) do
+    ReplacementIntent.pending_restore_watch_ids(limit)
+    |> Enum.map(fn watch_id ->
+      action =
+        case recover_expired_restore(watch_id, opts) do
+          {:ok, action} -> action
+          {:error, _reason} -> :needs_recovery
+        end
+
+      %{watch_id: watch_id, action: action}
+    end)
+  end
+
+  defp recover_expired_restore(watch_id, opts) do
+    case Repo.get(Watch, watch_id) do
+      %Watch{} = watch ->
+        if lease_live?(watch), do: {:ok, :restore_in_progress}, else: recover_restore(watch_id, opts)
+
+      nil ->
+        {:ok, :nothing_pending}
+    end
+  end
+
+  defp lease_live?(%Watch{lease_owner: nil}), do: false
+
+  defp lease_live?(%Watch{lease_expires_at: nil}), do: false
+
+  defp lease_live?(%Watch{lease_expires_at: expires_at}), do: DateTime.compare(expires_at, utc_now()) == :gt
+
+  # Reconciliation runs under the locked watch. A temporary is published only
+  # when it re-hashes to the size and digest recorded before the copy began: an
+  # interrupted copy leaves a truncated file, and publishing that would replace
+  # a missing original with silently corrupt bytes. Unverified evidence is kept
+  # and the watch is held so an operator can inspect it.
+  defp recover_restore(watch_id, opts) do
+    result =
+      try do
+        Repo.transaction(fn ->
+          with {:ok, watch} <- locked_watch(watch_id),
+               :ok <- ensure_restore_not_live(watch),
+               {:ok, intent} <- ReplacementIntent.read_restore(watch_id) do
+            case reconcile_restore_entries(intent["entries"] || [], opts) do
+              {:ok, published} ->
+                run_before_restore_commit(opts, watch_id)
+                :ok = update_restored_approvals(watch, published)
+                {watch, intent["operation_id"]}
+
+              {:error, reason} ->
+                Repo.rollback({:restore_unverified, reason, watch.lease_generation})
+            end
+          else
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end)
+      rescue
+        error in [Exqlite.Error, Postgrex.Error, DBConnection.ConnectionError] ->
+          {:error, {:restore_database_error, Exception.message(error)}}
+      end
+
+    case result do
+      {:ok, {watch, operation_id}} ->
+        # The journal is the durable record of an unfinished restoration, so it
+        # is removed only once the database has durably accepted the approvals.
+        # Clearing it inside the transaction would lose that evidence if the
+        # commit then failed, and the retry would have nothing to reconcile.
+        case ReplacementIntent.clear_restore(watch.id, operation_id) do
+          :ok -> {:ok, :restore_reconciled}
+          {:error, reason} -> {:error, {:restore_journal_clear_failed, reason}}
+        end
+
+      {:error, {:restore_unverified, reason, generation}} ->
+        run_before_restore_hold(opts, watch_id)
+        hold_unverified_restore(watch_id, reason, generation)
+        {:error, {:restore_unverified, reason}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A test seam for the database-commit window: it runs after the restored files
+  # have been published and before the approvals are written, so an injected
+  # failure observes exactly what a real commit failure would leave behind.
+  defp run_before_restore_commit(opts, watch_id) do
+    case Keyword.get(opts, :before_restore_commit) do
+      fun when is_function(fun, 1) ->
+        fun.(watch_id)
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  # A test seam for the rollback-to-hold window: it runs after the recovery
+  # transaction has rolled back and before the hold is written, which is exactly
+  # where a successor can claim a lease.
+  defp run_before_restore_hold(opts, watch_id) do
+    case Keyword.get(opts, :before_restore_hold) do
+      fun when is_function(fun, 1) ->
+        fun.(watch_id)
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp ensure_restore_not_live(%Watch{} = watch) do
+    if lease_live?(watch), do: {:error, :restore_in_progress}, else: :ok
+  end
+
+  defp reconcile_restore_entries(entries, opts) do
+    Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, acc} ->
+      case reconcile_restore_entry(entry, opts) do
+        {:ok, nil} -> {:cont, {:ok, acc}}
+        {:ok, published} -> {:cont, {:ok, [published | acc]}}
+        {:error, reason} -> {:halt, {:error, {entry["role"], reason}}}
+      end
+    end)
+    |> case do
+      {:ok, published} -> {:ok, Enum.reverse(published)}
+      error -> error
+    end
+  end
+
+  defp reconcile_restore_entry(entry, opts) do
+    cond do
+      # A destination that already holds exactly these archived bytes was
+      # published by this same restore before a crash or a failed commit, so it
+      # is claimed as restored and its approval is kept.
+      restored_bytes_present?(entry) ->
+        _ = File.rm(entry["temporary"])
+        {:ok, restored_entry(entry, entry["path"])}
+
+      # Anything else at this path is the operator's file or an edit. It wins,
+      # is never overwritten, and is never approved as the archived original.
+      File.exists?(entry["path"]) ->
+        _ = File.rm(entry["temporary"])
+        {:ok, nil}
+
+      verified_restore_temporary?(entry) ->
+        with :ok <- run_before_restore_publish(opts, entry["path"]),
+             :ok <- publish_atomically(entry["temporary"], entry["path"]) do
+          {:ok, restored_entry(entry, entry["path"])}
+        end
+
+      File.regular?(entry["temporary"]) ->
+        {:error, :restore_temporary_unverified}
+
+      true ->
+        {:error, :restore_temporary_missing}
+    end
+  end
+
+  # Comparison is on recorded digest and size, never on mtime, so a copy that
+  # already landed is still recognised after any length of interruption.
+  defp restored_bytes_present?(entry) do
+    expected = %{sha256: entry["sha256"], size: entry["size"]}
+    File.regular?(entry["path"]) and ReplacementIntent.fingerprint(entry["path"]) == {:ok, expected}
+  end
+
+  defp verified_restore_temporary?(entry) do
+    expected = %{sha256: entry["sha256"], size: entry["size"]}
+    ReplacementIntent.fingerprint(entry["temporary"]) == {:ok, expected}
+  end
+
+  defp update_restored_approvals(_watch, []), do: :ok
+
+  defp update_restored_approvals(%Watch{} = watch, published) do
+    case update_watch(watch, %{approved_active_files: merge_approvals(watch, published)}) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The journal stays exactly as it was so the bytes remain inspectable and a
+  # retry is still possible; only an explicit operator decision clears it.
+  # This runs in its own transaction on purpose: the recovery that decided to
+  # hold has already rolled back, and the hold is the record of that decision.
+  #
+  # The recovery transaction was fenced on the generation it observed before it
+  # opened. If a successor claimed a lease and advanced the generation while
+  # that transaction ran, its lease belongs to the successor: the hold update is
+  # fenced on the same observed generation so it can never clear a live lease or
+  # reset another owner's lease_owner/lease_expires_at.
+  defp hold_unverified_restore(watch_id, reason, observed_generation) do
+    Logger.error("watched restore left unreconciled for watch ##{watch_id}: #{inspect(reason)}")
+
+    query = from w in Watch, where: w.id == ^watch_id
+
+    query =
+      if is_nil(observed_generation), do: query, else: where(query, [w], w.lease_generation == ^observed_generation)
+
+    Repo.update_all(query,
+      set: [
+        hold_reason: "unverified_restore_temporary",
+        hold_at: utc_now(),
+        lease_owner: nil,
+        lease_expires_at: nil
+      ]
+    )
   end
 
   @doc """

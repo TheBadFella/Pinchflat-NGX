@@ -49,9 +49,12 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
     unless Pinchflat.Database.PostgresMigration.pending?() do
       Pinchflat.Sources.DirectoryMove.recover!()
       ensure_tmpfile_directory()
-      if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: cleanup_stale_download_staging()
+      # Reset stuck jobs, then reconcile interrupted watch operations, before any
+      # routine staging sweep: a leftover recovery copy is only disposable once
+      # its journal has actually been resolved.
       reset_executing_jobs()
       recover_interrupted_watch_replacements()
+      if !Pinchflat.LegacyMigration.legacy_migration_pending?(), do: cleanup_stale_download_staging()
       revive_stalled_reconcile_jobs()
       create_blank_yt_dlp_files()
       ensure_plugin_directory()

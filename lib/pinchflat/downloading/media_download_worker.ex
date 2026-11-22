@@ -79,6 +79,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         current = Media.get_media_item!(media_item_id)
 
         cond do
+          missing_watched_active_file?(current) ->
+            restore_missing_active_file(current, job_id)
+
           not is_nil(current.watch_enrollment_pending_at) or
               (not is_nil(current.watch_download_started_at) and current.watch_postprocessing_pending) ->
             if current.watch_postprocessing_pending do
@@ -126,6 +129,33 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     error in [Exqlite.Error, Postgrex.Error, DBConnection.ConnectionError] ->
       Logger.error("media download state unavailable for item ##{media_item_id}: #{inspect(error)}")
       {:error, :download_state_unavailable}
+  end
+
+  # A watched item whose active file vanished still has a verified original
+  # archive, so it can be repaired without a yt-dlp run. Only a genuinely
+  # missing file triggers this; a present-but-different active file is a user
+  # edit and is left alone.
+  defp missing_watched_active_file?(%MediaItem{} = item) do
+    watch = MediaWatch.get_watch_for_media_item(item.id)
+
+    is_binary(item.media_filepath) and not is_nil(watch) and watch.archive_state == "published" and
+      is_nil(watch.released_at) and not File.regular?(item.media_filepath)
+  end
+
+  defp restore_missing_active_file(%MediaItem{} = item, job_id) do
+    Logger.info("restoring missing active media for watched item ##{item.id} from its verified archive")
+
+    case MediaWatch.restore_active_from_archive(item) do
+      {:ok, restored} ->
+        maybe_update_progress(job_id, %{progress_status: "Restored active media from verified original archive"})
+
+        {:ok, _} = Media.update_media_item(Repo.reload(restored), %{last_error: nil, error_type: nil})
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("active media restoration unavailable for item ##{item.id}: #{inspect(reason)}")
+        {:error, :active_media_restore_failed}
+    end
   end
 
   # Recheck retention here because media may have expired while its upgrade was queued.

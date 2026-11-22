@@ -38,13 +38,27 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
 
   Returns binary()
   """
-  def compress_and_store_metadata_for(database_record, metadata_map) do
+  def compress_and_store_metadata_for(database_record, metadata_map, opts \\ []) do
     filepath = generate_filepath_for(database_record, "metadata.json.gz")
+    write_path = incoming_path(filepath, opts)
     {:ok, json} = Phoenix.json_library().encode(metadata_map)
 
-    :ok = FilesystemUtils.write_p!(filepath, json, [:compressed])
+    :ok = FilesystemUtils.write_p!(write_path, json, [:compressed])
 
     filepath
+  end
+
+  @doc """
+  Returns the path a watched replacement writes to before its atomic swap.
+
+  A `:suffix` option redirects the write beside the destination so no active file
+  is displaced outside the replacement's write reservation.
+  """
+  def incoming_path(path, opts) do
+    case Keyword.get(opts, :suffix) do
+      nil -> path
+      suffix -> path <> suffix
+    end
   end
 
   @doc """
@@ -71,9 +85,16 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
 
   Returns binary() | nil
   """
-  def download_and_store_thumbnail_for(media_item_with_preloads) do
-    yt_dlp_filepath = generate_filepath_for(media_item_with_preloads, "thumbnail.%(ext)s")
-    real_filepath = generate_filepath_for(media_item_with_preloads, "thumbnail.jpg")
+  def download_and_store_thumbnail_for(media_item_with_preloads, opts \\ []) do
+    yt_dlp_filepath =
+      media_item_with_preloads
+      |> generate_filepath_for("thumbnail.%(ext)s")
+      |> incoming_path(opts)
+
+    real_filepath =
+      media_item_with_preloads
+      |> generate_filepath_for("thumbnail.jpg")
+      |> incoming_path(opts)
 
     command_opts =
       [output: yt_dlp_filepath] ++
