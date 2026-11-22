@@ -66,6 +66,131 @@ defmodule Pinchflat.Downloading.DownloadingHelpersTest do
 
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id}, priority: 1)
     end
+
+    test "returns 0 when every pending item already has an active job" do
+      source = source_fixture()
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      assert {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      queued_before = all_enqueued(worker: MediaDownloadWorker)
+
+      assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source)
+
+      assert all_enqueued(worker: MediaDownloadWorker) == queued_before
+      assert Repo.get!(Pinchflat.Tasks.Task, task.id).job_id == task.job_id
+    end
+
+    test "counts only newly scheduled jobs in a mixed batch" do
+      source = source_fixture()
+      duplicate = media_item_fixture(source_id: source.id, media_filepath: nil)
+      assert {:ok, _task} = MediaDownloadWorker.kickoff_with_task(duplicate)
+
+      fresh = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      assert 1 = DownloadingHelpers.enqueue_pending_download_tasks(source)
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => fresh.id})
+      assert [_existing] = all_enqueued(worker: MediaDownloadWorker, args: %{"id" => duplicate.id})
+    end
+
+    test "reports failed kickoffs without counting them and without persisting work" do
+      source = source_fixture()
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source, priority: -1)
+          end)
+        end)
+
+      assert log =~ "enqueued=0 already_queued=0 failed=1"
+      refute_enqueued(worker: MediaDownloadWorker)
+      assert [] = Tasks.list_tasks_for(media_item)
+    end
+
+    test "leaves existing jobs intact in every active uniqueness state" do
+      source = source_fixture()
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+      assert {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+
+      for state <- ~w(available scheduled retryable executing suspended) do
+        Repo.get!(Oban.Job, task.job_id)
+        |> Ecto.Changeset.change(%{state: state})
+        |> Repo.update!()
+
+        job_before = Repo.get!(Oban.Job, task.job_id)
+
+        assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source)
+
+        job = Repo.get!(Oban.Job, task.job_id)
+        assert job.state == state
+        assert job.attempt == job_before.attempt
+        assert job.args == %{"id" => media_item.id}
+        assert job.scheduled_at == job_before.scheduled_at
+        assert [persisted] = Tasks.list_tasks_for(media_item)
+        assert persisted.id == task.id
+        assert persisted.job_id == task.job_id
+        assert Repo.aggregate(Oban.Job, :count) == 1
+      end
+    end
+
+    test "returns 0 and skips enqueue without creating jobs or tasks when downloads are disabled for a source" do
+      source = source_fixture(download_media: false)
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      log =
+        with_debug_logs(fn ->
+          capture_log(fn ->
+            assert 0 = DownloadingHelpers.enqueue_pending_download_tasks(source)
+          end)
+        end)
+
+      assert log =~ "reason=source_downloads_disabled"
+      refute log =~ "pending_download_enqueue source_id=#{source.id} pending_count"
+      refute_enqueued(worker: MediaDownloadWorker)
+      assert [] = Tasks.list_tasks_for(media_item)
+    end
+  end
+
+  describe "retry_pending_download_tasks/1" do
+    test "returns :downloads_disabled when downloads are disabled on the source" do
+      source = source_fixture(download_media: false)
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      assert :downloads_disabled = DownloadingHelpers.retry_pending_download_tasks(source)
+      refute_enqueued(worker: MediaDownloadWorker)
+      assert [] = Tasks.list_tasks_for(media_item)
+    end
+
+    test "replaces existing non-executing pending tasks with new jobs" do
+      source = source_fixture(download_media: true)
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      assert {:ok, initial_task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      assert [initial_task.id] == Enum.map(Tasks.list_tasks_for(media_item), & &1.id)
+
+      assert [{:ok, new_task}] = DownloadingHelpers.retry_pending_download_tasks(source)
+      assert new_task.id != initial_task.id
+      assert [persisted] = Tasks.list_tasks_for(media_item)
+      assert persisted.id == new_task.id
+    end
+
+    test "returns duplicate error when pending download task is currently executing" do
+      source = source_fixture(download_media: true)
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      # Oban's uniqueness key includes args, so the executing job must carry the
+      # same `reset_last_error` arg the retry path uses to be a real conflict.
+      assert {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item, %{"reset_last_error" => true})
+      job = Repo.get!(Oban.Job, task.job_id)
+      job |> Ecto.Changeset.change(%{state: "executing"}) |> Repo.update!()
+
+      assert [{:error, :duplicate_job}] = DownloadingHelpers.retry_pending_download_tasks(source)
+      assert [persisted] = Tasks.list_tasks_for(media_item)
+      assert persisted.id == task.id
+      assert Repo.get!(Oban.Job, task.job_id).state == "executing"
+    end
   end
 
   describe "dequeue_pending_download_tasks/1" do

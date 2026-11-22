@@ -15,6 +15,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.YtDlpConfigFile
 
   setup do
     original_level = Logger.level()
@@ -268,6 +270,29 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert log =~ "indexing_completed"
       assert log =~ "source_id=#{source.id}"
       assert log =~ "pending_downloads_enqueued="
+    end
+
+    test "logs pending_downloads_enqueued=0 when pending options produces only already_queued results" do
+      video_id = "already-queued-vid"
+      source = source_fixture(collection_type: :video, collection_id: video_id, download_media: true)
+      media_item = media_item_fixture(source_id: source.id, media_id: video_id, media_filepath: nil)
+
+      assert {:ok, _task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      assert :ok = YtDlpConfigFile.delete_scope(:media_item, media_item.id)
+      assert {:ok, _} = PendingMediaItemOptions.put(source, video_id, "--quality 1080p\n")
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture(%{id: video_id})}
+      end)
+
+      log =
+        capture_log([level: :info], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      assert log =~ "indexing_completed"
+      assert log =~ "source_id=#{source.id}"
+      assert log =~ "pending_downloads_enqueued=0"
     end
 
     test "updates the source's last_indexed_at field", %{source: source} do
