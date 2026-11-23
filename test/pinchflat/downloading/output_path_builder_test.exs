@@ -25,6 +25,51 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
     end
   end
 
+  describe "sanitize_literal_text/2" do
+    test "when restricted, restricts the template's own text but not yt-dlp fields" do
+      assert OutputPathBuilder.sanitize_literal_text(
+               "/%(channel)S/%(upload_date>%Y-%m-%d)S - %(title)S.%(ext)S",
+               true
+             ) == "/%(channel)S/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"
+    end
+
+    test "when restricted, transliterates accents and drops or replaces unsafe characters" do
+      assert OutputPathBuilder.sanitize_literal_text("Season 1/Café: Q&A?.%(ext)s", true) ==
+               "Season_1/Cafe_-_Q_A.%(ext)s"
+    end
+
+    test "when restricted, doesn't leave replacement underscores at component or extension boundaries" do
+      assert OutputPathBuilder.sanitize_literal_text("/[Archive]/%(title)S [%(id)S].%(ext)S", true) ==
+               "/Archive/%(title)S_%(id)S.%(ext)S"
+    end
+
+    test "when restricted, keeps underscores already in the template" do
+      template = "/My Channel/__PINCHFLAT_SERIES_ROOT__/%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text(template, true) ==
+               "/My_Channel/__PINCHFLAT_SERIES_ROOT__/%(title)S.%(ext)S"
+    end
+
+    test "keeps path separators in both modes" do
+      template = "/Channel Videos/Season 1\\Extras/%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text(template, true) ==
+               "/Channel_Videos/Season_1\\Extras/%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text(template, false) == template
+    end
+
+    test "field defaults and %% escapes are left intact" do
+      assert OutputPathBuilder.sanitize_literal_text("%(title|Untitled video)s 100%%.%(ext)s", true) ==
+               "%(title|Untitled video)s_100%%.%(ext)s"
+    end
+
+    test "when not restricted, replaces characters Windows can't use and keeps spaces" do
+      assert OutputPathBuilder.sanitize_literal_text("Q&A: part 1?/%(title)S [%(id)S].%(ext)S", false) ==
+               "Q&A_ part 1_/%(title)S [%(id)S].%(ext)S"
+    end
+  end
+
   describe "padded_integer/1" do
     test "pads to 2 digits by default and to the template's width when given" do
       options = %{"media_playlist_index" => OutputPathBuilder.padded_integer(7)}
