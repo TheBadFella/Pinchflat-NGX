@@ -26,11 +26,12 @@ import './alpine_helpers'
 import { datePicker } from './date_picker.mjs'
 import { responsiveDialog } from './responsive_dialog.mjs'
 import { browseSearch } from './browse_search.mjs'
-import { titleFilterBuilder } from './title_filter.mjs'
+import { savedTitleFilters, titleFilterBuilder } from './title_filter.mjs'
 
 window.Alpine = Alpine
 window.pinchflatDatePicker = datePicker
 window.pinchflatTitleFilterBuilder = titleFilterBuilder
+window.pinchflatSavedTitleFilters = savedTitleFilters
 Alpine.start()
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute('content')

@@ -1674,4 +1674,50 @@ defmodule Pinchflat.SourcesTest do
       filename: "/tmp/test/media/some-one-off-video.mp4"
     })
   end
+
+  describe "saved title filters" do
+    test "save_title_filter/1 stores a trimmed name and regex" do
+      assert {:ok, filter} = Sources.save_title_filter(%{"name" => "  No shorts ", "regex" => " (?i)^(?!.*shorts).*$ "})
+
+      assert filter.name == "No shorts"
+      assert filter.regex == "(?i)^(?!.*shorts).*$"
+    end
+
+    test "save_title_filter/1 replaces the regex of a filter with the same name" do
+      {:ok, first} = Sources.save_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
+      {:ok, second} = Sources.save_title_filter(%{"name" => "Music", "regex" => "(?i)live"})
+
+      assert second.id == first.id
+      assert [%{name: "Music", regex: "(?i)live"}] = Sources.list_saved_title_filters()
+    end
+
+    test "save_title_filter/1 requires a name and a regex" do
+      assert {:error, changeset} = Sources.save_title_filter(%{"name" => " ", "regex" => ""})
+
+      assert "can't be blank" in errors_on(changeset).name
+      assert "can't be blank" in errors_on(changeset).regex
+    end
+
+    test "save_title_filter/1 rejects a regex the database cannot use" do
+      assert {:error, changeset} = Sources.save_title_filter(%{"name" => "Broken", "regex" => "(unclosed"})
+
+      assert "is not a regex the database can use" in errors_on(changeset).regex
+      assert Sources.list_saved_title_filters() == []
+    end
+
+    test "list_saved_title_filters/0 orders filters by name" do
+      {:ok, _} = Sources.save_title_filter(%{"name" => "Zebra", "regex" => "zebra"})
+      {:ok, _} = Sources.save_title_filter(%{"name" => "Apple", "regex" => "apple"})
+
+      assert ["Apple", "Zebra"] = Enum.map(Sources.list_saved_title_filters(), & &1.name)
+    end
+
+    test "delete_saved_title_filter/1 deletes a filter" do
+      {:ok, filter} = Sources.save_title_filter(%{"name" => "Gone", "regex" => "gone"})
+
+      assert {:ok, _} = Sources.delete_saved_title_filter(filter.id)
+      assert Sources.list_saved_title_filters() == []
+      assert {:error, :not_found} = Sources.delete_saved_title_filter(filter.id)
+    end
+  end
 end

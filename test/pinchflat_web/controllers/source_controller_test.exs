@@ -1663,6 +1663,52 @@ defmodule PinchflatWeb.SourceControllerTest do
     }
   end
 
+  describe "saved title filters" do
+    test "lists, saves and deletes saved filters", %{conn: conn} do
+      assert %{"filters" => []} = conn |> get(~p"/sources/title_filters") |> json_response(200)
+
+      response =
+        conn
+        |> post(~p"/sources/title_filters", %{"name" => "No shorts", "regex" => "(?i)^(?!.*shorts).*$"})
+        |> json_response(200)
+
+      assert %{"filter" => %{"id" => id, "name" => "No shorts"}, "filters" => [%{"id" => id}]} = response
+
+      assert %{"filters" => [%{"regex" => "(?i)^(?!.*shorts).*$"}]} =
+               conn |> get(~p"/sources/title_filters") |> json_response(200)
+
+      assert %{"filters" => []} = conn |> delete(~p"/sources/title_filters/#{id}") |> json_response(200)
+    end
+
+    test "explains why a filter could not be saved", %{conn: conn} do
+      response =
+        conn
+        |> post(~p"/sources/title_filters", %{"name" => "Broken", "regex" => "(unclosed"})
+        |> json_response(422)
+
+      assert response["error"] =~ "Regex is not a regex the database can use"
+    end
+
+    test "reports a saved filter that no longer exists", %{conn: conn} do
+      assert %{"error" => "That stored filter no longer exists.", "filters" => []} =
+               conn |> delete(~p"/sources/title_filters/999999") |> json_response(404)
+
+      assert %{"error" => _} = conn |> delete(~p"/sources/title_filters/not-a-number") |> json_response(404)
+    end
+
+    test "renders stored filters above the word lists and the save bar below the tester", %{conn: conn} do
+      response = conn |> get(~p"/sources/new") |> html_response(200)
+
+      assert response =~ "pinchflatSavedTitleFilters()"
+      assert response =~ "Stored Filters"
+      assert response =~ "Commonly used filters can be stored for access across all sources"
+      refute response =~ "not required"
+      assert position(response, "data-saved-title-filters") < position(response, ~s(data-title-filter-list="any"))
+      assert position(response, "Test this filter") < position(response, "data-title-filter-save-bar")
+      assert response =~ ~s|x-show="showSaveBar()"|
+    end
+  end
+
   defp position(response, text) do
     {index, _length} = :binary.match(response, text)
     index

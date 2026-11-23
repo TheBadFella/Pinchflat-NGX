@@ -732,7 +732,82 @@
                 {if f[:title_filter_regex].value in [nil, ""], do: "None", else: "Enabled"}
               </span>
             </:status>
-            <div data-setting>
+            <div data-setting x-data="window.pinchflatSavedTitleFilters()">
+              <section
+                class="border-b border-theme-outline/35 pb-5 pt-4"
+                aria-labelledby="title-filter-stored-heading"
+                data-saved-title-filters
+              >
+                <h4 id="title-filter-stored-heading" class="text-sm font-semibold text-theme-on-surface">
+                  Stored Filters
+                </h4>
+                <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">
+                  Commonly used filters can be stored for access across all sources
+                </p>
+
+                <p x-show="savedFilters.length === 0" class="mt-3 text-sm text-theme-on-surface-muted">
+                  No stored filters yet.
+                </p>
+                <ul x-cloak x-show="savedFilters.length > 0" class="theme-list mt-3" aria-label="Stored filters">
+                  <template x-for="filter in savedFilters" x-bind:key="filter.id">
+                    <li
+                      class="theme-list-item flex flex-wrap items-center gap-x-3 gap-y-2"
+                      x-bind:class="filter.id === loadedId && 'theme-list-item-selected'"
+                      x-bind:aria-current="filter.id === loadedId ? 'true' : null"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-theme-on-surface">
+                          <span class="[overflow-wrap:anywhere]" x-text="filter.name"></span>
+                          <span
+                            x-cloak
+                            x-show="filter.id === loadedId && changedSinceLoaded()"
+                            class="theme-badge-warning rounded-full px-2 py-0.5 text-xs font-medium"
+                          >
+                            Changed since loaded
+                          </span>
+                        </p>
+                        <p
+                          class="truncate font-mono text-xs text-theme-on-surface-muted"
+                          x-text="filter.regex"
+                          x-bind:title="filter.regex"
+                        >
+                        </p>
+                      </div>
+                      <div class="flex shrink-0 gap-2">
+                        <.button
+                          type="button"
+                          variant="secondary"
+                          size="compact"
+                          x-on:click="loadFilter(filter)"
+                          x-bind:disabled="savedBusy"
+                          x-bind:aria-label="'Load stored filter ' + filter.name"
+                        >
+                          Load
+                        </.button>
+                        <.button
+                          type="button"
+                          variant="danger"
+                          size="compact"
+                          x-on:click="deleteFilter(filter)"
+                          x-bind:disabled="savedBusy"
+                          x-bind:aria-label="deleteLabel(filter)"
+                        >
+                          <span x-text="confirmDeleteId === filter.id ? 'Confirm delete' : 'Delete'">Delete</span>
+                        </.button>
+                      </div>
+                    </li>
+                  </template>
+                </ul>
+                <div aria-live="polite">
+                  <p
+                    x-cloak
+                    x-show="savedMessage && messageWhere === 'list'"
+                    x-text="savedMessage"
+                    class="mt-2 text-sm text-theme-error"
+                  >
+                  </p>
+                </div>
+              </section>
               <div data-title-filter-builder>
                 <p class="mt-3 text-sm leading-5 text-theme-on-surface-muted">
                   Type a word and press Enter. Use * as a wildcard and "quotes" for phrases that contain commas.
@@ -944,6 +1019,90 @@
                   </p>
                 </div>
               </.form_disclosure>
+
+              <div
+                x-cloak
+                x-show="showSaveBar()"
+                class="theme-save-bar mt-4"
+                role="region"
+                aria-label="Store this title filter"
+                data-title-filter-save-bar
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="min-w-56 flex-1 text-sm text-theme-on-surface">
+                    <template x-if="loadedFilter()">
+                      <span>Changes to <strong class="font-semibold" x-text="loadedFilter()?.name"></strong></span>
+                    </template>
+                    <template x-if="!loadedFilter()">
+                      <span>New filter</span>
+                    </template>
+                    <span class="block text-theme-on-surface-muted" x-text="saveBarPrompt()"></span>
+                  </p>
+
+                  <template x-if="!adding">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <.button
+                        x-show="loadedFilter()"
+                        type="button"
+                        variant="outline"
+                        x-on:click="discardChanges()"
+                      >
+                        Discard changes
+                      </.button>
+                      <.button type="button" variant="secondary" x-on:click="startStoringNew()">
+                        Store as new…
+                      </.button>
+                      <.button
+                        x-show="loadedFilter()"
+                        type="button"
+                        class="text-black"
+                        x-on:click="updateLoaded()"
+                        x-bind:disabled="savedBusy"
+                      >
+                        <span x-text="'Update \u201c' + loadedFilter()?.name + '\u201d'">Update</span>
+                      </.button>
+                    </div>
+                  </template>
+
+                  <template x-if="adding">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <div class="w-64">
+                        <.input
+                          type="text"
+                          name="title_filter_save_name"
+                          id="title-filter-save-name"
+                          value=""
+                          placeholder="New filter name"
+                          aria-label="New filter name"
+                          maxlength="80"
+                          x-model="saveName"
+                          x-init="$nextTick(() => $el.focus())"
+                          x-on:keydown.enter.prevent="saveFilter()"
+                          x-on:keydown.escape.prevent="cancelAdding()"
+                        />
+                      </div>
+                      <.button type="button" variant="outline" x-on:click="cancelAdding()">Cancel</.button>
+                      <.button
+                        type="button"
+                        class="text-black"
+                        x-on:click="saveFilter()"
+                        x-bind:disabled="savedBusy || saveName.trim() === ''"
+                      >
+                        Store filter
+                      </.button>
+                    </div>
+                  </template>
+                </div>
+                <div aria-live="polite">
+                  <p
+                    x-cloak
+                    x-show="savedMessage && messageWhere === 'bar'"
+                    x-text="savedMessage"
+                    class="mt-2 text-sm text-theme-error"
+                  >
+                  </p>
+                </div>
+              </div>
             </div>
           </.form_disclosure>
           <.form_disclosure

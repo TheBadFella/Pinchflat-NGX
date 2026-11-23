@@ -358,6 +358,32 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
+  def list_title_filters(conn, _params) do
+    json(conn, %{filters: saved_title_filters_json()})
+  end
+
+  def save_title_filter(conn, params) do
+    case Sources.save_title_filter(Map.take(params, ["name", "regex"])) do
+      {:ok, saved_title_filter} ->
+        json(conn, %{filter: saved_title_filter_json(saved_title_filter), filters: saved_title_filters_json()})
+
+      {:error, changeset} ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: saved_title_filter_error(changeset)})
+    end
+  end
+
+  def delete_title_filter(conn, %{"id" => id}) do
+    with {id, ""} <- Integer.parse(id),
+         {:ok, _saved_title_filter} <- Sources.delete_saved_title_filter(id) do
+      json(conn, %{filters: saved_title_filters_json()})
+    else
+      _ ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: "That stored filter no longer exists.", filters: saved_title_filters_json()})
+    end
+  end
+
   def upload_poster(conn, %{"source_id" => id, "poster" => %{"file" => %Plug.Upload{} = upload}}) do
     source = Sources.get_source!(id)
     finish_poster_action(conn, source, CustomPoster.set_from_upload(source, upload))
@@ -1154,5 +1180,19 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> order_by([source], asc: source.download_subdirectory)
     |> limit(200)
     |> Repo.all()
+  end
+
+  defp saved_title_filters_json do
+    Enum.map(Sources.list_saved_title_filters(), &saved_title_filter_json/1)
+  end
+
+  defp saved_title_filter_json(saved_title_filter) do
+    Map.take(saved_title_filter, [:id, :name, :regex])
+  end
+
+  defp saved_title_filter_error(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(&PinchflatWeb.CoreComponents.translate_error/1)
+    |> Enum.map_join(" ", fn {field, [message | _]} -> "#{Phoenix.Naming.humanize(field)} #{message}." end)
   end
 end

@@ -336,7 +336,7 @@ export const titleFilterBuilder = (initialRegex = '') => ({
   conflictHint() {
     return this.conflictsBlockedSave
       ? 'Saving was stopped. Remove or change one of the highlighted words, then save again.'
-      : 'The source cannot be saved until this is fixed.'
+      : 'The source and stored filters cannot be saved until this is fixed.'
   },
 
   isConflicting(key, term) {
@@ -395,5 +395,188 @@ export const titleFilterBuilder = (initialRegex = '') => ({
     this.custom = false
     this.builtRegex = ''
     this.regex = ''
+  }
+})
+
+const SAVED_FILTERS_PATH = '/sources/title_filters'
+
+const csrfToken = () => document.querySelector('meta[name=csrf-token]')?.content || ''
+
+// Stored title filters live in Pinchflat's database, so every source (and browser) sees the same
+// list. Wrap the builder with this: it reads and sets the builder's `regex`.
+//
+// Loading a stored filter remembers it. When the lists change afterwards, a save bar offers to
+// update that stored filter, store the changes as a new one, or discard them. A filter built
+// from scratch on this page can be stored as new from the same bar.
+export const savedTitleFilters = () => ({
+  savedFilters: [],
+  saveName: '',
+  savedBusy: false,
+  savedMessage: '',
+  savedError: false,
+  // 'list' or 'bar': which part of the page an error belongs to
+  messageWhere: 'list',
+  confirmDeleteId: null,
+  // The name field only shows while storing a new filter
+  adding: false,
+  loadedId: null,
+  // The regex the page opened with
+  startRegex: '',
+
+  async init() {
+    this.startRegex = this.regex.trim()
+    const data = await this.savedRequest('GET', SAVED_FILTERS_PATH)
+    // A source whose filter is a stored one starts with that filter loaded
+    const match = data && this.startRegex && data.filters.find((f) => f.regex === this.startRegex)
+    if (match) this.loadedId = match.id
+  },
+
+  // Returns the response data, or null after showing the error
+  async savedRequest(method, path, params = null, where = 'list') {
+    this.savedBusy = true
+    try {
+      const response = await fetch(path, {
+        method,
+        headers: { 'x-csrf-token': csrfToken() },
+        body: params ? new URLSearchParams(params) : null
+      })
+      const data = await response.json()
+      if (data.filters) this.savedFilters = data.filters
+      if (!response.ok) {
+        this.showSavedMessage(data.error || 'That did not work. Try again.', true, where)
+        return null
+      }
+      this.showSavedMessage('')
+      return data
+    } catch (_error) {
+      this.showSavedMessage(
+        'Stored filters could not reach Pinchflat-ngx. Check the connection and try again.',
+        true,
+        where
+      )
+      return null
+    } finally {
+      this.savedBusy = false
+    }
+  },
+
+  showSavedMessage(message, error = false, where = 'list') {
+    this.savedMessage = message
+    this.savedError = error
+    this.messageWhere = where
+  },
+
+  loadedFilter() {
+    return this.savedFilters.find((filter) => filter.id === this.loadedId) || null
+  },
+
+  changedSinceLoaded() {
+    const filter = this.loadedFilter()
+    return !!filter && this.regex.trim() !== filter.regex
+  },
+
+  isUnstoredNewFilter() {
+    const regex = this.regex.trim()
+    return (
+      !this.loadedFilter() &&
+      regex !== '' &&
+      regex !== this.startRegex &&
+      !this.savedFilters.some((filter) => filter.regex === regex)
+    )
+  },
+
+  showSaveBar() {
+    return this.adding || this.changedSinceLoaded() || this.isUnstoredNewFilter()
+  },
+
+  saveBarPrompt() {
+    if (this.adding) return 'Give the new stored filter a name.'
+    return this.loadedFilter()
+      ? 'Update the stored filter, store this as a new one, or discard the changes.'
+      : 'Store it to use on other sources too.'
+  },
+
+  // Stops a contradictory filter from being stored, with the reason shown in the save bar
+  blockedByConflict() {
+    if (!this.preventSaveOnConflict?.()) return false
+    this.showSavedMessage(
+      'This filter contradicts itself. Fix the conflict shown above, then store it.',
+      true,
+      'bar'
+    )
+    return true
+  },
+
+  loadFilter(filter) {
+    this.confirmDeleteId = null
+    this.adding = false
+    this.showSavedMessage('')
+    this.loadedId = filter.id
+    this.regex = filter.regex
+  },
+
+  discardChanges() {
+    const filter = this.loadedFilter()
+    if (filter) this.regex = filter.regex
+    this.showSavedMessage('')
+  },
+
+  async updateLoaded() {
+    const filter = this.loadedFilter()
+    if (!filter || this.savedBusy || this.blockedByConflict()) return
+    await this.savedRequest(
+      'POST',
+      SAVED_FILTERS_PATH,
+      { name: filter.name, regex: this.regex },
+      'bar'
+    )
+  },
+
+  startStoringNew() {
+    if (this.blockedByConflict()) return
+    this.adding = true
+    this.saveName = ''
+    this.showSavedMessage('')
+  },
+
+  cancelAdding() {
+    this.adding = false
+    this.saveName = ''
+    this.showSavedMessage('')
+  },
+
+  async saveFilter() {
+    const name = this.saveName.trim()
+    if (!name || !this.regex.trim() || this.savedBusy || this.blockedByConflict()) return
+
+    const data = await this.savedRequest(
+      'POST',
+      SAVED_FILTERS_PATH,
+      { name, regex: this.regex },
+      'bar'
+    )
+    if (data) {
+      this.loadedId = data.filter.id
+      this.cancelAdding()
+    }
+  },
+
+  deleteLabel(filter) {
+    return (
+      (this.confirmDeleteId === filter.id ? 'Confirm delete of ' : 'Delete stored filter ') +
+      filter.name
+    )
+  },
+
+  // The first click asks for confirmation; the second deletes
+  async deleteFilter(filter) {
+    if (this.confirmDeleteId !== filter.id) {
+      this.confirmDeleteId = filter.id
+      return
+    }
+
+    this.confirmDeleteId = null
+    const data = await this.savedRequest('DELETE', SAVED_FILTERS_PATH + '/' + filter.id)
+    if (data && this.loadedId === filter.id) this.loadedId = null
   }
 })

@@ -320,6 +320,25 @@
     @apply inline-flex max-w-full items-center gap-0.5 rounded-full bg-theme-primary-container py-0.5 pl-3 pr-0.5 text-sm text-theme-on-primary-container;
   }
 
+  /* A boxed list whose rows are visibly separate items */
+  .theme-list {
+    @apply divide-y divide-theme-outline/60 overflow-hidden rounded-m3-sm border border-theme-outline/60;
+  }
+
+  .theme-list-item {
+    @apply bg-theme-surface-2 px-4 py-3 transition hover:bg-theme-surface-3;
+  }
+
+  .theme-list-item-selected {
+    @apply bg-theme-primary-container/30 hover:bg-theme-primary-container/40;
+    box-shadow: inset 3px 0 0 rgb(var(--theme-primary));
+  }
+
+  /* Action bar that appears under a form section when there is something to store */
+  .theme-save-bar {
+    @apply rounded-m3-md border border-theme-primary/35 bg-theme-surface-3 px-4 py-3;
+  }
+
   /* "i" button with a tip that opens on hover, keyboard focus or tap */
   .theme-info-button {
     @apply inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-theme-on-surface-muted transition hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 max-sm:h-11 max-sm:w-11;
