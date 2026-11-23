@@ -313,6 +313,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   slot :inner_block
   slot :input_append
+  slot :input_action, doc: "a field action button shown inside the right edge of a text input"
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     assigns
@@ -514,10 +515,14 @@ defmodule PinchflatWeb.CoreComponents do
             class={[
               "theme-input w-full rounded-m3-sm px-5 py-3 font-normal",
               "outline-none transition disabled:cursor-default disabled:opacity-50",
+              @input_action != [] && "pr-14",
               @inputclass
             ]}
             {@rest}
           />
+          <div :if={@input_action != []} class="absolute inset-y-0 right-1 z-10 flex items-center">
+            {render_slot(@input_action)}
+          </div>
         </div>
         {render_slot(@input_append)}
       </div>

@@ -640,9 +640,67 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute response =~ "advancedMode"
       refute response =~ "Editing Mode"
       assert response =~ ~s(name="source[min_duration_seconds]")
-      assert response =~ ~r/<summary[^>]*>.*?Title filter.*?\(\?i\)live.*?<\/summary>/s
+      assert response =~ ~r/<summary[^>]*>(?:(?!<\/summary>).)*Title filter(?:(?!<\/summary>).)*Enabled/s
+      refute response =~ ~r/<summary[^>]*>(?:(?!<\/summary>).)*Title filter(?:(?!<\/summary>).)*\(\?i\)live/s
       assert response =~ ~r/<summary[^>]*>.*?Custom yt-dlp options.*?No local options.*?<\/summary>/s
       refute response =~ ~r/<details[^>]*\sopen/
+    end
+
+    test "puts the raw regex after the word lists and the tester in a closed group", %{conn: conn} do
+      response = conn |> get(~p"/sources/new") |> html_response(200)
+
+      regex_field = position(response, ~s(name="source[title_filter_regex]"))
+      assert position(response, ~s(data-title-filter-list="none")) < regex_field
+      assert position(response, ~s(aria-label="Clear title filter")) > regex_field
+      assert regex_field < position(response, "Test this filter")
+      assert response =~ ~r/<summary[^>]*>(?:(?!<\/summary>).)*Test this filter/s
+      refute response =~ ~r/<summary[^>]*>(?:(?!<\/summary>).)*Title Filter Regex/s
+      refute response =~ ">Preview<"
+    end
+
+    test "renders the raw regex field below the title filter word lists on new and edit pages", %{conn: conn} do
+      source = source_fixture(title_filter_regex: "(?i)^(?=.*(?<!\\w)live(?!\\w)).*$")
+
+      for path <- [~p"/sources/new", ~p"/sources/#{source}/edit"] do
+        response = conn |> get(path) |> html_response(200)
+
+        assert response =~ "data-title-filter-builder"
+        assert response =~ "pinchflatTitleFilterBuilder("
+        assert response =~ ~s(name="source[title_filter_regex]")
+        regex_field = position(response, ~s(name="source[title_filter_regex]"))
+        assert position(response, ~s(data-title-filter-list="none")) < regex_field
+      end
+    end
+
+    test "gives each title filter word list its own switches and info tips", %{conn: conn} do
+      response = conn |> get(~p"/sources/new") |> html_response(200)
+
+      for key <- ~w(any all none) do
+        assert response =~ ~s(data-title-filter-list="#{key}")
+        assert response =~ ~s(id="title-filter-#{key}-whole")
+        assert response =~ ~s(x-model="options.#{key}.whole")
+        assert response =~ ~s(id="title-filter-#{key}-case")
+        assert response =~ ~s(x-model="options.#{key}.matchCase")
+        assert response =~ ~s(aria-describedby="title-filter-#{key}-tip")
+      end
+
+      assert response =~ "If the title has any of these, the video is skipped."
+      assert response =~ ~s(Off lets &quot;art&quot; match &quot;party&quot;.)
+    end
+
+    test "renders the title filter conflict notice inside the builder", %{conn: conn} do
+      response = conn |> get(~p"/sources/new") |> html_response(200)
+
+      assert [_, after_builder] = String.split(response, "data-title-filter-builder", parts: 2)
+      assert after_builder =~ "data-title-filter-conflicts"
+      assert after_builder =~ "This filter contradicts itself"
+    end
+
+    test "seeds the title filter builder with the saved regex", %{conn: conn} do
+      source = source_fixture(title_filter_regex: "(?i)^(?=.*(?<!\\w)live(?!\\w)).*$")
+      response = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert response =~ ~r/pinchflatTitleFilterBuilder\(&quot;\(\?i\)\^\(\?=\.\*\(\?&lt;!\\\\w\)live/
     end
 
     test "opens the title filter group when its regex is invalid", %{conn: conn} do
@@ -1603,5 +1661,10 @@ defmodule PinchflatWeb.SourceControllerTest do
         playlist_title: "some playlist name"
       })
     }
+  end
+
+  defp position(response, text) do
+    {index, _length} = :binary.match(response, text)
+    index
   end
 end

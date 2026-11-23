@@ -1146,6 +1146,35 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     |> Phoenix.json_library().encode!()
   end
 
+  # The word lists of the title filter builder, in the order they are shown
+  def title_filter_groups do
+    [
+      %{
+        key: "any",
+        label: "Title contains ANY of",
+        help: "At least one of these has to appear in the title.",
+        placeholder: "tutorial, review, guide"
+      },
+      %{
+        key: "all",
+        label: "Title contains ALL of",
+        help: "Every one of these has to appear in the title.",
+        placeholder: "Season 2, 4K"
+      },
+      %{
+        key: "none",
+        label: "Title contains NONE of",
+        help: "If the title has any of these, the video is skipped.",
+        placeholder: "Trailer, Shorts, Livestream"
+      }
+    ]
+  end
+
+  # The saved regex as a JS string literal, to seed the title filter builder
+  def title_filter_regex_json(form) do
+    Phoenix.json_library().encode!(Phoenix.HTML.Form.normalize_value("text", form[:title_filter_regex].value) || "")
+  end
+
   def title_filter_regex_help do
     url = "https://github.com/nalgeon/sqlean/blob/main/docs/regexp.md#supported-syntax"
 

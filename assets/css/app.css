@@ -307,6 +307,41 @@
     @apply inline-flex h-8 w-8 min-h-8 min-w-8 items-center justify-center rounded-m3-xs border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50 max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11;
   }
 
+  /* Word list field: removable chips with a borderless text input after them. */
+  .theme-chip-field {
+    @apply flex min-h-12 w-full cursor-text flex-wrap items-center gap-1.5 rounded-m3-sm bg-theme-surface-2 px-2 py-1.5 text-sm text-theme-on-surface transition focus-within:ring-2 focus-within:ring-theme-primary/70;
+  }
+
+  .theme-chip-field-input {
+    @apply min-h-9 min-w-36 flex-1 border-0 bg-transparent px-1 py-1 text-sm text-theme-on-surface outline-none placeholder:text-theme-on-surface-muted focus:outline-none focus:ring-0 max-sm:min-h-11;
+  }
+
+  .theme-chip {
+    @apply inline-flex max-w-full items-center gap-0.5 rounded-full bg-theme-primary-container py-0.5 pl-3 pr-0.5 text-sm text-theme-on-primary-container;
+  }
+
+  /* "i" button with a tip that opens on hover, keyboard focus or tap */
+  .theme-info-button {
+    @apply inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-theme-on-surface-muted transition hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 max-sm:h-11 max-sm:w-11;
+  }
+
+  .theme-info-tip {
+    @apply pointer-events-none invisible absolute bottom-full z-50 mb-1 w-60 rounded-m3-sm bg-theme-surface-3 px-3 py-2 text-xs font-normal leading-5 text-theme-on-surface opacity-0 shadow-m3-2 transition;
+  }
+
+  .theme-info:hover .theme-info-tip,
+  .theme-info:focus-within .theme-info-tip {
+    @apply visible opacity-100;
+  }
+
+  .theme-chip-conflict {
+    @apply ring-2 ring-theme-warning;
+  }
+
+  .theme-chip-remove {
+    @apply inline-flex h-8 w-8 min-h-8 min-w-8 shrink-0 items-center justify-center rounded-full text-base leading-none opacity-70 transition hover:bg-theme-on-primary-container/10 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11;
+  }
+
   @media (any-pointer: coarse) {
     .theme-calendar-panel {
       @apply p-1!;
@@ -317,6 +352,8 @@
     .theme-button-compact,
     .theme-icon-button,
     .theme-icon-button-compact,
+    .theme-chip-remove,
+    .theme-info-button,
     .theme-touch-target {
       @apply min-h-11! min-w-11!;
     }

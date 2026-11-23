@@ -267,6 +267,28 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   end
 
   @doc """
+  Renders a small "i" button whose tip opens on hover, keyboard focus or tap.
+  The tip text also describes the button for screen readers.
+  """
+  attr :id, :string, required: true
+  attr :text, :string, required: true
+  attr :label, :string, required: true, doc: "accessible name of the button, for example \"About whole words\""
+  attr :align, :string, default: "left", values: ~w(left right)
+
+  def info_tip(assigns) do
+    ~H"""
+    <span class="theme-info relative inline-flex align-middle">
+      <button type="button" class="theme-info-button" aria-label={@label} aria-describedby={@id}>
+        <CoreComponents.icon name="hero-information-circle" class="h-4 w-4" />
+      </button>
+      <span id={@id} role="tooltip" class={["theme-info-tip", if(@align == "right", do: "right-0", else: "left-0")]}>
+        {@text}
+      </span>
+    </span>
+    """
+  end
+
+  @doc """
   Renders a tooltip with the given content
   """
 
@@ -310,13 +332,13 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
 
   def tooltip(assigns) do
     ~H"""
-    <div class="group relative inline-flex cursor-pointer items-center justify-center overflow-visible align-middle">
+    <div class="group/tooltip relative inline-flex cursor-pointer items-center justify-center overflow-visible align-middle">
       <div class="inline-flex min-w-0 items-center justify-center">{render_slot(@inner_block)}</div>
 
       <div
         :if={@tooltip}
         class={[
-          "theme-surface-accent hidden absolute top-full z-50 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover:block group-hover:opacity-100 text-wrap shadow-m3-2",
+          "theme-surface-accent hidden absolute top-full z-50 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover/tooltip:block group-hover/tooltip:opacity-100 text-wrap shadow-m3-2",
           @tooltip_class
         ]}
       >
