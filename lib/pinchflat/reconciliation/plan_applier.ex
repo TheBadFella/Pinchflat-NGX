@@ -553,7 +553,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       case Repo.preload(source, :metadata).metadata do
         %{metadata_filepath: filepath} when is_binary(filepath) ->
           with {:ok, metadata} <- MetadataFileHelpers.read_compressed_metadata(filepath) do
-            NfoBuilder.build_and_store_for_source(row.to_path, metadata)
+            NfoBuilder.build_and_store_for_source(row.to_path, metadata, source.custom_name)
             {:ok, %{nfo_filepath: row.to_path}}
           end
 

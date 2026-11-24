@@ -767,6 +767,42 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
       File.rm!(source.nfo_filepath)
     end
 
+    test "titles the NFO with the channel name rather than the tab title" do
+      stub_series_metadata(%{"title" => "Gred Glintstone - Videos", "channel" => "Gred Glintstone"})
+
+      profile = media_profile_fixture(%{download_nfo: true})
+      source = source_fixture(%{nfo_filepath: nil, media_profile_id: profile.id, collection_type: :channel})
+      perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      source = Repo.reload(source)
+
+      assert File.read!(source.nfo_filepath) =~ "<title>Gred Glintstone</title>"
+
+      File.rm!(source.nfo_filepath)
+    end
+
+    test "titles the NFO with a locked custom source name" do
+      stub_series_metadata(%{"title" => "Gred Glintstone - Videos", "channel" => "Gred Glintstone"})
+
+      profile = media_profile_fixture(%{download_nfo: true})
+
+      source =
+        source_fixture(%{
+          nfo_filepath: nil,
+          media_profile_id: profile.id,
+          collection_type: :channel,
+          custom_name: "Test",
+          custom_name_locked: true
+        })
+
+      perform_job(SourceMetadataStorageWorker, %{id: source.id})
+      source = Repo.reload(source)
+
+      assert source.custom_name == "Test"
+      assert File.read!(source.nfo_filepath) =~ "<title>Test</title>"
+
+      File.rm!(source.nfo_filepath)
+    end
+
     test "does not store the NFO if not specified" do
       stub(YtDlpRunnerMock, :run, fn
         _url, :get_source_details, _opts, _ot, _addl ->
@@ -910,6 +946,18 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
 
       File.rm(avatar)
     end
+  end
+
+  defp stub_series_metadata(metadata) do
+    stub(YtDlpRunnerMock, :run, fn
+      _url, :get_source_details, _opts, _ot, _addl ->
+        filename = Path.join([Application.get_env(:pinchflat, :media_directory), "Season 1", "bar.mp4"])
+
+        {:ok, source_details_return_fixture(%{filename: filename})}
+
+      _url, :get_source_metadata, _opts, _ot, _addl ->
+        {:ok, Phoenix.json_library().encode!(metadata)}
+    end)
   end
 
   defp stub_metadata_refresh(metadata) do

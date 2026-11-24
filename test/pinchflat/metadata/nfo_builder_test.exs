@@ -114,6 +114,21 @@ defmodule Pinchflat.Metadata.NfoBuilderTest do
       assert String.contains?(nfo, "<title>#{metadata["title"]}</title>")
     end
 
+    test "uses the given show title instead of the metadata title", %{metadata: metadata, filepath: filepath} do
+      metadata = Map.put(metadata, "title", "Gred Glintstone - Videos")
+
+      nfo = filepath |> NfoBuilder.build_and_store_for_source(metadata, "My Source") |> File.read!()
+
+      assert nfo =~ "<title>My Source</title>"
+      refute nfo =~ "Gred Glintstone - Videos"
+    end
+
+    test "falls back to the metadata title for a blank show title", %{metadata: metadata, filepath: filepath} do
+      nfo = filepath |> NfoBuilder.build_and_store_for_source(metadata, " ") |> File.read!()
+
+      assert nfo =~ "<title>#{metadata["title"]}</title>"
+    end
+
     test "escapes invalid characters", %{filepath: filepath} do
       metadata = %{
         "title" => "hello' & <world>",

@@ -226,7 +226,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     metadata_attrs =
       %{
         series_directory: series_directory,
-        nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+        nfo_filepath: store_source_nfo(source, series_directory, source_metadata, show_title(source, source_metadata)),
         metadata: merged_metadata
       }
       |> put_if_binary(:custom_name, source_name_from_metadata(source, source_metadata))
@@ -317,13 +317,18 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     end
   end
 
-  defp store_source_nfo(source, series_directory, metadata) do
+  defp store_source_nfo(source, series_directory, metadata, show_title) do
     if source.media_profile.download_nfo && series_directory do
       nfo_filepath = Path.join(series_directory, "tvshow.nfo")
 
-      NfoBuilder.build_and_store_for_source(nfo_filepath, metadata)
+      NfoBuilder.build_and_store_for_source(nfo_filepath, metadata, show_title)
     end
   end
+
+  # The name the source will have once this refresh is saved: a locked name stays,
+  # otherwise the channel or playlist name from the metadata replaces it
+  defp show_title(%{custom_name_locked: true} = source, _metadata), do: source.custom_name
+  defp show_title(source, metadata), do: source_name_from_metadata(source, metadata) || source.custom_name
 
   defp fetch_metadata_for_source(source) do
     tmp_output_path = "#{tmp_directory()}/#{StringUtils.random_string(16)}/source_image.%(ext)S"

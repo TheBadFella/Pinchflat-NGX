@@ -292,8 +292,9 @@ defmodule Pinchflat.YtDlp.Media do
     end
   end
 
+  # yt-dlp can report the timestamp as a float (1749033569.0); from_unix needs an integer
   defp parse_uploaded_at(%{"timestamp" => ts} = response) when is_number(ts) do
-    case DateTime.from_unix(ts) do
+    case DateTime.from_unix(trunc(ts)) do
       {:ok, datetime} -> datetime
       _ -> MetadataFileHelpers.parse_upload_date(response["upload_date"])
     end

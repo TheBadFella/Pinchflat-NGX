@@ -470,6 +470,20 @@ defmodule Pinchflat.YtDlp.MediaTest do
       assert %Media{uploaded_at: ^expected_date} = Media.response_to_struct(response)
     end
 
+    test "parses a timestamp that yt-dlp reports as a float" do
+      response = %{
+        "original_url" => "https://www.youtube.com/watch?v=TiZPUDkDYbk",
+        "aspect_ratio" => 1.0,
+        "duration" => 61,
+        "upload_date" => "20250604",
+        "timestamp" => 1_749_033_569.0
+      }
+
+      expected_date = ~U[2025-06-04 10:39:29Z]
+
+      assert %Media{uploaded_at: ^expected_date} = Media.response_to_struct(response)
+    end
+
     test "parses the upload date from the uploaded_at if timestamp is present but nil" do
       response = %{
         "original_url" => "https://www.youtube.com/watch?v=TiZPUDkDYbk",

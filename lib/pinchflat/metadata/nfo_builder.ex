@@ -24,13 +24,15 @@ defmodule Pinchflat.Metadata.NfoBuilder do
   end
 
   @doc """
-  Builds an NFO file for a souce and stores it at the specified location.
+  Builds an NFO file for a source and stores it at the specified location.
   Technically works for playlists, but it's really made for channels.
+  The show title is `show_title` when given, so it matches the source's name
+  in Pinchflat-ngx, and the metadata's own title otherwise.
 
   Returns the filepath of the NFO file.
   """
-  def build_and_store_for_source(filepath, metadata) do
-    nfo = build_for_source(metadata)
+  def build_and_store_for_source(filepath, metadata, show_title \\ nil) do
+    nfo = build_for_source(metadata, show_title)
 
     FilesystemUtils.write_p!(filepath, nfo)
 
@@ -61,11 +63,13 @@ defmodule Pinchflat.Metadata.NfoBuilder do
     """
   end
 
-  defp build_for_source(metadata) do
+  defp build_for_source(metadata, show_title) do
+    title = if is_binary(show_title) and String.trim(show_title) != "", do: show_title, else: metadata["title"]
+
     """
     <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
     <tvshow>
-      <title>#{safe(metadata["title"])}</title>
+      <title>#{safe(title)}</title>
       <plot>#{safe(metadata["description"])}</plot>
       <uniqueid type="youtube" default="true">#{safe(metadata["id"])}</uniqueid>
       <genre>YouTube</genre>
