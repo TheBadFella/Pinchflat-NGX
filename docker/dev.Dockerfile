@@ -15,7 +15,7 @@ FROM ${DEV_IMAGE}
 ARG TARGETPLATFORM
 ARG YT_DLP_CACHE_BUST=""
 # renovate: datasource=github-releases depName=Brainicism/bgutil-ytdlp-pot-provider
-ARG BGUTIL_PLUGIN_VERSION=2.0.0
+ARG BGUTIL_PLUGIN_VERSION=2.0.2
 ARG DATABASE_ADAPTER=sqlite
 ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
 RUN echo "Building for ${TARGETPLATFORM:?}"
