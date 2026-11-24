@@ -470,6 +470,52 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
     end
   end
 
+  describe "build/1 when a source overrides sponsorblock categories" do
+    test "inherits the profile's categories when the source does not override them", %{media_item: media_item} do
+      media_item = update_media_profile_attribute(media_item, %{sponsorblock_remove_categories: ["sponsor"]})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:sponsorblock_remove, "sponsor"} in res
+    end
+
+    test "uses the source's categories instead of the profile's", %{media_item: media_item} do
+      media_item =
+        update_media_profile_attribute(media_item, %{sponsorblock_remove_categories: ["sponsor"]})
+
+      media_item = update_source_attribute(media_item, %{sponsorblock_remove_categories: ["intro"]})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:sponsorblock_remove, "intro"} in res
+      refute {:sponsorblock_remove, "sponsor"} in res
+    end
+
+    test "an empty source list removes the flag even when the profile sets it", %{media_item: media_item} do
+      media_item = update_media_profile_attribute(media_item, %{sponsorblock_remove_categories: ["sponsor"]})
+      media_item = update_source_attribute(media_item, %{sponsorblock_remove_categories: []})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      refute Keyword.has_key?(res, :sponsorblock_remove)
+    end
+
+    test "mark and remove inherit independently", %{media_item: media_item} do
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          sponsorblock_remove_categories: ["sponsor"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      media_item = update_source_attribute(media_item, %{sponsorblock_remove_categories: []})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      refute Keyword.has_key?(res, :sponsorblock_remove)
+      assert {:sponsorblock_mark, "intro"} in res
+    end
+  end
+
   describe "build/1 when testing config file options" do
     setup do
       base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
@@ -620,6 +666,16 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:format_sort, "res:1080,+codec:avc:m4a"} in options
       assert {:remux_video, "mp4"} in options
     end
+  end
+
+  defp update_source_attribute(media_item_with_preloads, attrs) do
+    media_item_with_preloads.source
+    |> Sources.change_source(attrs)
+    |> Repo.update!()
+
+    media_item_with_preloads
+    |> Repo.reload()
+    |> Repo.preload([source: :media_profile], force: true)
   end
 
   defp update_media_profile_attribute(media_item_with_preloads, attrs) do
