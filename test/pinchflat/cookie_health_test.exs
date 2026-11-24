@@ -456,6 +456,8 @@ defmodule Pinchflat.CookieHealthTest do
       assert_receive {:snapshot, path}, 1000
       on_exit(fn -> File.rm(path) end)
       Task.shutdown(task, :brutal_kill)
+      # The snapshot owner removes the file after it sees the probe die, so give it up to a second
+      Enum.find(1..50, fn _ -> not File.exists?(path) or Process.sleep(20) == :never end)
       refute File.exists?(path)
     end
 

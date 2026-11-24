@@ -132,7 +132,8 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
 
       refute Repo.reload!(new_media_item).culled_at
       assert Repo.reload!(old_media_item).culled_at
-      assert DateTime.diff(now(), Repo.reload!(old_media_item).culled_at) < 1
+      # culled_at is stored to the second, so allow for crossing a second boundary
+      assert DateTime.diff(now(), Repo.reload!(old_media_item).culled_at) in 0..2
     end
 
     test "skips culling when legacy migration review is pending" do
