@@ -49,7 +49,7 @@ defmodule Pinchflat.Settings.MediaServerTestLive do
 
   @impl true
   def handle_event("test_connection", _params, socket) do
-    server_type = String.to_existing_atom(socket.assigns.server_type)
+    {:ok, server_type} = MediaServers.parse_server_type(socket.assigns.server_type)
 
     case MediaServers.test_connection(server_type) do
       {:ok, :connected} ->
