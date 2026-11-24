@@ -24,8 +24,10 @@ defmodule Pinchflat.Metadata.NfoBuilder do
   end
 
   @doc """
-  Builds an NFO file for a souce and stores it at the specified location.
+  Builds an NFO file for a source and stores it at the specified location.
   Technically works for playlists, but it's really made for channels.
+  The show title is `show_title` when given, so it matches the source's name
+  in Pinchflat-ngx, and the metadata's own title otherwise.
 
   Returns the filepath of the NFO file.
   """
