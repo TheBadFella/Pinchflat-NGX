@@ -5,7 +5,7 @@ defmodule Pinchflat.MixProject do
     [
       app: :pinchflat,
       version: "2026.11.2",
-      elixir: "~> 1.17",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       elixirc_options: [warnings_as_errors: System.get_env("EX_CHECK") == "1"],
       listeners: [Phoenix.CodeReloader],
@@ -50,7 +50,7 @@ defmodule Pinchflat.MixProject do
     [
       {:phoenix, "~> 1.8.5"},
       {:assent, "~> 0.4.0"},
-      {:req, "~> 0.4"},
+      {:req, "~> 0.7"},
       {:phoenix_ecto, "~> 4.4"},
       {:ecto, "~> 3.14"},
       {:ecto_sql, "~> 3.14"},
