@@ -7,6 +7,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias OpenApiSpex.Schema
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Media.MediaItem
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
@@ -261,6 +262,7 @@ defmodule PinchflatWeb.Sources.SourceController do
           changeset: changeset,
           media_profiles: profiles,
           available_folders: saved_source_folders(),
+          cutoff_downloaded_items: cutoff_downloaded_items(source),
           current_path: ~p"/sources/#{source}/edit"
         ],
         cookie_file_assigns() ++ Map.to_list(options)
@@ -838,6 +840,7 @@ defmodule PinchflatWeb.Sources.SourceController do
               changeset: %{changeset | action: :update},
               media_profiles: profiles,
               available_folders: saved_source_folders(),
+              cutoff_downloaded_items: cutoff_downloaded_items(source),
               current_path: ~p"/sources/#{source}/edit"
             ],
             cookie_file_assigns() ++ Map.to_list(options)
@@ -1221,6 +1224,20 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   defp allowed_tabs_for(_source) do
     ~w(source videos pending failed active-tasks job-queue other podcast)
+  end
+
+  # Lightweight publication dates for the cutoff deletion preview. Only
+  # downloaded, unprotected items can be removed by cutoff cleanup, so the form
+  # only needs those dates.
+  defp cutoff_downloaded_items(%Source{id: source_id}) do
+    from(m in MediaItem,
+      where: m.source_id == ^source_id and not is_nil(m.media_filepath) and not is_nil(m.uploaded_at),
+      select: %{uploaded_at: m.uploaded_at, prevent_culling: m.prevent_culling}
+    )
+    |> Repo.all()
+    |> Enum.map(fn item ->
+      %{d: item.uploaded_at |> DateTime.to_date() |> Date.to_iso8601(), p: item.prevent_culling == true}
+    end)
   end
 
   defp saved_source_folders do

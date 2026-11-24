@@ -1611,6 +1611,76 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "effective_download_cutoff_date/2" do
+    test "prefers a fixed download cutoff date" do
+      source = source_fixture(%{download_cutoff_date: ~D[2026-07-01]})
+
+      assert Source.effective_download_cutoff_date(source, ~D[2026-11-24]) == ~D[2026-07-01]
+    end
+
+    test "resolves rolling days relative to the given today" do
+      source = source_fixture(%{download_cutoff_days: 30})
+
+      assert Source.effective_download_cutoff_date(source, ~D[2026-11-24]) == ~D[2026-10-25]
+      assert Source.effective_download_cutoff_date(source, ~D[2026-12-01]) == ~D[2026-11-01]
+    end
+
+    test "returns nil when neither cutoff is set" do
+      source = source_fixture(%{download_cutoff_date: nil, download_cutoff_days: nil})
+
+      assert is_nil(Source.effective_download_cutoff_date(source, ~D[2026-11-24]))
+    end
+
+    test "reads the effective cutoff from a changeset" do
+      source = source_fixture()
+      changeset = Sources.change_source(source, %{download_cutoff_days: 30})
+
+      assert Source.effective_download_cutoff_date(changeset, ~D[2026-11-24]) == ~D[2026-10-25]
+    end
+  end
+
+  describe "change_source/3 when testing download cutoff validations" do
+    test "rejects a fixed date and rolling days together" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{download_cutoff_date: ~D[2026-07-01], download_cutoff_days: 30})
+
+      assert "must be blank when a download cutoff date is set" in errors_on(changeset).download_cutoff_days
+    end
+
+    test "rejects zero or negative rolling days" do
+      source = source_fixture()
+
+      assert %{errors: [_]} = Sources.change_source(source, %{download_cutoff_days: 0})
+      assert %{errors: [_]} = Sources.change_source(source, %{download_cutoff_days: -1})
+    end
+
+    test "accepts positive rolling days" do
+      source = source_fixture()
+
+      assert %{errors: []} = Sources.change_source(source, %{download_cutoff_days: 30})
+    end
+
+    test "rejects an index cutoff after the rolling download cutoff" do
+      source = source_fixture()
+      today = Date.utc_today()
+
+      changeset = Sources.change_source(source, %{index_cutoff_date: today, download_cutoff_days: 30})
+
+      assert "must be on or before the download cutoff date" in errors_on(changeset).index_cutoff_date
+    end
+
+    test "accepts an index cutoff on the rolling download cutoff" do
+      source = source_fixture()
+      effective_cutoff = Date.utc_today() |> Date.add(-30)
+
+      changeset = Sources.change_source(source, %{index_cutoff_date: effective_cutoff, download_cutoff_days: 30})
+
+      assert %{errors: []} = changeset
+    end
+  end
+
   describe "change_source/3 when testing title language validation" do
     test "succeeds with language codes yt-dlp supports" do
       source = source_fixture()

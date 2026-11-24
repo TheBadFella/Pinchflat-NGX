@@ -238,6 +238,12 @@ defmodule PinchflatWeb.Schemas do
           nullable: true,
           description: "Only download media after this date"
         },
+        download_cutoff_days: %Schema{
+          type: :integer,
+          nullable: true,
+          description:
+            "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+        },
         retention_period_days: %Schema{
           type: :integer,
           nullable: true,
@@ -569,6 +575,12 @@ defmodule PinchflatWeb.Schemas do
               format: :date,
               description: "Only download media after this date (YYYY-MM-DD)"
             },
+            download_cutoff_days: %Schema{
+              type: :integer,
+              nullable: true,
+              description:
+                "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+            },
             retention_period_days: %Schema{
               type: :integer,
               nullable: true,
@@ -686,6 +698,12 @@ defmodule PinchflatWeb.Schemas do
               type: :string,
               format: :date,
               description: "Only download media after this date"
+            },
+            download_cutoff_days: %Schema{
+              type: :integer,
+              nullable: true,
+              description:
+                "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
             },
             retention_period_days: %Schema{
               type: :integer,

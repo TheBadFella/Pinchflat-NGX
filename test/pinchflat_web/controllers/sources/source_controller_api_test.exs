@@ -347,6 +347,70 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
     end
   end
 
+  describe "download cutoff over JSON API" do
+    test "creates a source with rolling cutoff days", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Rolling Channel",
+           channel_id: "UC_rolling_channel",
+           playlist_id: "UC_rolling_channel",
+           playlist_title: "Rolling Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_rolling_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Rolling Channel",
+          "download_cutoff_days" => 30
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+
+      assert response["download_cutoff_days"] == 30
+      assert response["download_cutoff_date"] == nil
+      assert Sources.get_source!(response["id"]).download_cutoff_days == 30
+    end
+
+    test "updates rolling days and clears the fixed date", %{conn: conn} do
+      source = source_fixture(download_cutoff_date: ~D[2026-07-01])
+
+      attrs = %{
+        "source" => %{"download_cutoff_date" => "", "download_cutoff_days" => 30},
+        "_format" => "json"
+      }
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(200)
+
+      assert response["download_cutoff_days"] == 30
+      assert is_nil(response["download_cutoff_date"])
+
+      updated = Sources.get_source!(source.id)
+      assert updated.download_cutoff_days == 30
+      assert is_nil(updated.download_cutoff_date)
+    end
+
+    test "rejects a source that sets both cutoff forms", %{conn: conn} do
+      source = source_fixture()
+
+      attrs = %{
+        "source" => %{"download_cutoff_date" => "2026-07-01", "download_cutoff_days" => 30},
+        "_format" => "json"
+      }
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(422)
+
+      assert response["errors"]["download_cutoff_days"] == ["must be blank when a download cutoff date is set"]
+      assert is_nil(Sources.get_source!(source.id).download_cutoff_days)
+    end
+  end
+
   describe "delete/2 JSON API" do
     test "a protected source returns JSON conflict without scheduling deletion", %{conn: conn} do
       profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()

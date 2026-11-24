@@ -779,6 +779,78 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "download cutoff modes" do
+    setup [:create_source]
+
+    test "creates a source with a rolling cutoff", %{conn: conn, create_attrs: create_attrs} do
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: Map.merge(create_attrs, %{download_cutoff_days: "30", download_cutoff_date: ""})
+        )
+
+      assert %{id: id} = redirected_params(conn)
+      source = Repo.get!(Pinchflat.Sources.Source, id)
+      assert source.download_cutoff_days == 30
+      assert is_nil(source.download_cutoff_date)
+    end
+
+    test "renders the cutoff mode selector and the rolling value", %{conn: conn} do
+      source = source_fixture(download_cutoff_days: 30)
+      media_item_with_attachments(%{source_id: source.id, uploaded_at: ~U[2026-10-24 12:00:00Z]})
+
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ ~s(id="source-cutoff-mode")
+      assert html =~ ~s(<option value="days")
+      assert html =~ "Rolling window (last N days)"
+      assert html =~ ~r/id="source_download_cutoff_days"[^>]*value="30"/
+      assert html =~ ~r/cutoffMode: (?:'|&#39;)days(?:'|&#39;)/
+      assert html =~ "cutoffWarningCount"
+      assert html =~ "2026-10-24"
+    end
+
+    test "switches between rolling, fixed, and no cutoff", %{conn: conn, source: source} do
+      conn = put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "", download_cutoff_days: "30"})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.download_cutoff_days == 30
+      assert is_nil(updated.download_cutoff_date)
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "2026-07-01", download_cutoff_days: ""})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.download_cutoff_date == ~D[2026-07-01]
+      assert is_nil(updated.download_cutoff_days)
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "", download_cutoff_days: ""})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert is_nil(updated.download_cutoff_date)
+      assert is_nil(updated.download_cutoff_days)
+    end
+
+    test "rejects a submission that sets both cutoff forms", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "2026-07-01", download_cutoff_days: "30"})
+
+      assert html_response(conn, 200) =~ "must be blank when a download cutoff date is set"
+    end
+
+    test "shows the rolling cutoff on the source overview", %{conn: conn} do
+      source = source_fixture(download_cutoff_days: 30)
+      expected = Date.utc_today() |> Date.add(-30) |> Calendar.strftime("%b %-d, %Y")
+
+      html = conn |> get(~p"/sources/#{source}?#{[tab: "source"]}") |> html_response(200)
+
+      assert html =~ "Rolling 30 days (currently #{expected})"
+    end
+  end
+
   describe "title language" do
     setup [:create_source]
 

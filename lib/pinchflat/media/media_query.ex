@@ -135,18 +135,25 @@ defmodule Pinchflat.Media.MediaQuery do
     end
   end
 
-  def upload_date_after_source_cutoff do
+  def upload_date_after_source_cutoff(today \\ Date.utc_today()) do
     if Pinchflat.Database.postgres?() do
       dynamic(
         [mi, source],
-        is_nil(source.download_cutoff_date) or
-          fragment("?::date >= ?", mi.uploaded_at, source.download_cutoff_date)
+        (is_nil(source.download_cutoff_date) or fragment("?::date >= ?", mi.uploaded_at, source.download_cutoff_date)) and
+          (is_nil(source.download_cutoff_days) or
+             fragment("?::date >= ?::date - ?::integer", mi.uploaded_at, ^today, source.download_cutoff_days))
       )
     else
       dynamic(
         [mi, source],
-        is_nil(source.download_cutoff_date) or
-          fragment("date(?) >= ?", mi.uploaded_at, source.download_cutoff_date)
+        (is_nil(source.download_cutoff_date) or fragment("date(?) >= ?", mi.uploaded_at, source.download_cutoff_date)) and
+          (is_nil(source.download_cutoff_days) or
+             fragment(
+               "date(?) >= date(?, '-' || ? || ' day')",
+               mi.uploaded_at,
+               ^Date.to_iso8601(today),
+               source.download_cutoff_days
+             ))
       )
     end
   end
@@ -265,23 +272,23 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
-  def deletable_based_on_source_cutoff do
+  def deletable_based_on_source_cutoff(today \\ Date.utc_today()) do
     dynamic(
       [mi, source],
       ^downloaded() and
-        not (^upload_date_after_source_cutoff()) and
+        not (^upload_date_after_source_cutoff(today)) and
         not (^culling_prevented()) and
         not (^watch_protected())
     )
   end
 
-  def pending do
+  def pending(today \\ Date.utc_today()) do
     dynamic(
       [mi],
       is_nil(mi.media_filepath) and
         not (^download_prevented()) and
         ^AvailabilityPolicy.query_condition() and
-        ^upload_date_after_source_cutoff() and
+        ^upload_date_after_source_cutoff(today) and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and
         ^meets_min_and_max_duration()

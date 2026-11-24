@@ -30,6 +30,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :cookie_file_configured, :boolean, required: true
   attr :cookie_file_contents, :string, default: nil
   attr :available_folders, :list, default: []
+  attr :cutoff_downloaded_items, :list, default: []
   attr :show_delay_automatic_download, :boolean, default: false
   attr :new_source, :boolean, default: false
   attr :yt_dlp_options, :string, default: ""
@@ -732,6 +733,18 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
+  defp cutoff_form_mode(changeset) do
+    cond do
+      Ecto.Changeset.get_field(changeset, :download_cutoff_days) not in [nil, ""] -> "days"
+      Ecto.Changeset.get_field(changeset, :download_cutoff_date) not in [nil, ""] -> "date"
+      true -> "none"
+    end
+  end
+
+  # UTC to match the queries and Source.effective_download_cutoff_date/2, so the preview
+  # names the same date cleanup will use.
+  defp cutoff_today_iso, do: Date.to_iso8601(Date.utc_today())
+
   @doc """
   The Settings tab's grouped view of a source, replacing the old raw attribute
   dump. Returns a list of `%{title, icon, fields}` groups, where each field is a
@@ -837,8 +850,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Media longer than this is skipped"
       ),
       field(
-        "Download cutoff date",
-        format_date(source.download_cutoff_date),
+        "Download cutoff",
+        download_cutoff_label(source),
         "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
       ),
       field(
@@ -951,6 +964,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   defp format_date(nil), do: nil
   defp format_date(date), do: Calendar.strftime(date, "%b %-d, %Y")
+
+  defp download_cutoff_label(source) do
+    cond do
+      is_integer(source.download_cutoff_days) and source.download_cutoff_days > 0 ->
+        effective = source |> Source.effective_download_cutoff_date() |> format_date()
+        "Rolling #{source.download_cutoff_days} days (currently #{effective})"
+
+      not is_nil(source.download_cutoff_date) ->
+        format_date(source.download_cutoff_date)
+
+      true ->
+        nil
+    end
+  end
 
   defp format_duration(nil), do: nil
 
