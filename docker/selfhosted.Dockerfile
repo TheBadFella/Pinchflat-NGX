@@ -1,7 +1,10 @@
 # Find eligible builder and runner images on Docker Hub. We use Ubuntu/Debian
 # instead of Alpine to avoid DNS resolution issues in production.
+# renovate: datasource=github-releases depName=elixir-lang/elixir extractVersion=^v(?<version>.+)$
 ARG ELIXIR_VERSION=1.20.5
+# renovate: datasource=github-tags depName=erlang/otp versioning=loose extractVersion=^OTP-(?<version>.+)$
 ARG OTP_VERSION=28.5.0.8
+# renovate: datasource=docker depName=debian versioning=regex:^(?<compatibility>[a-z]+)-(?<major>\d{8})-slim$
 ARG DEBIAN_VERSION=trixie-20261104-slim
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
@@ -93,6 +96,7 @@ FROM ${RUNNER_IMAGE}
 
 ARG TARGETPLATFORM
 ARG PORT=8945
+# renovate: datasource=github-releases depName=Brainicism/bgutil-ytdlp-pot-provider
 ARG BGUTIL_PLUGIN_VERSION=2.0.0
 ARG YT_DLP_CACHE_BUST=""
 ARG DATABASE_ADAPTER=sqlite

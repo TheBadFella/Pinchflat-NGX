@@ -1,5 +1,8 @@
+# renovate: datasource=github-releases depName=elixir-lang/elixir extractVersion=^v(?<version>.+)$
 ARG ELIXIR_VERSION=1.20.5
+# renovate: datasource=github-tags depName=erlang/otp versioning=loose extractVersion=^OTP-(?<version>.+)$
 ARG OTP_VERSION=28.5.0.8
+# renovate: datasource=docker depName=debian versioning=regex:^(?<compatibility>[a-z]+)-(?<major>\d{8})-slim$
 ARG DEBIAN_VERSION=trixie-20261104-slim
 ARG INSTALL_SHELL_TOOLS=0
 
@@ -11,6 +14,7 @@ FROM ${DEV_IMAGE}
 
 ARG TARGETPLATFORM
 ARG YT_DLP_CACHE_BUST=""
+# renovate: datasource=github-releases depName=Brainicism/bgutil-ytdlp-pot-provider
 ARG BGUTIL_PLUGIN_VERSION=2.0.0
 ARG DATABASE_ADAPTER=sqlite
 ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
