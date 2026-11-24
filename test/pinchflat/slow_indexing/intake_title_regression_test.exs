@@ -145,6 +145,27 @@ defmodule Pinchflat.SlowIndexing.IntakeTitleRegressionTest do
     assert Sources.get_source!(source.id).custom_name == "User's latest name"
   end
 
+  test "the indexing rename prediction uses the item's scoped config files" do
+    source = intake_source()
+    base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
+    on_exit(fn -> File.rm_rf(base_dir) end)
+
+    source_filepath = Path.join(base_dir, "source-#{source.id}-config.txt")
+    Pinchflat.Utils.FilesystemUtils.write_p!(source_filepath, "--restrict-filenames")
+
+    stub(YtDlpRunnerMock, :run, fn
+      _, :get_media_attributes_for_collection, _, _, _ ->
+        {:ok, Jason.encode!(metadata(source))}
+
+      _, :predict_filepath_from_metadata, opts, _, _ ->
+        assert {:config_locations, source_filepath} in opts
+        {:ok, Jason.encode!(%{"filename" => "/tmp/test/media/YouTube Video probe_video/Indexed title.mp4"})}
+    end)
+
+    assert [item] = Indexing.index_and_enqueue_download_for_media_items(source)
+    assert item.predicted_media_filepath == "/tmp/test/media/YouTube Video probe_video/Indexed title.mp4"
+  end
+
   test "a metadata title cannot turn source_custom_name into parent directories" do
     source = intake_source()
 

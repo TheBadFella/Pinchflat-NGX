@@ -28,6 +28,12 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.MediaServers
   alias Pinchflat.MediaWatch
 
+  # A stream that has ended but is still being processed by YouTube is rechecked
+  # on this interval, up to the give-up limit below.
+  @post_live_recheck_seconds 30 * 60
+  @post_live_give_up_hours 72
+  @post_live_terminal_error "This stream ended but YouTube was still processing the recording after 72 hours. Retry the download later."
+
   @doc """
   Starts the media_item media download worker and creates a task for the media_item.
 
@@ -69,7 +75,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   Returns :ok | {:error, any, ...any}
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args}) do
+  def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args} = job) do
     case SpaceProtection.preflight(job_id) do
       :ok ->
         should_force = Map.get(args, "force", false)
@@ -104,7 +110,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
                   is_quality_upgrade,
                   should_force,
                   should_reset_last_error,
-                  job_id
+                  job
                 )
 
               {:skip, reason} ->
@@ -204,7 +210,13 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     Repo.preload(media_item, source: :media_profile)
   end
 
-  defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id) do
+  defp download_media_and_schedule_jobs(
+         media_item,
+         is_quality_upgrade,
+         should_force,
+         should_reset_last_error,
+         %Oban.Job{id: job_id} = job
+       ) do
     overwrite_behaviour = if should_force || is_quality_upgrade, do: :force_overwrites, else: :no_force_overwrites
 
     override_opts = [
@@ -242,6 +254,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
       {:error, :unsuitable_for_download, _message} ->
         persist_download_failure(media_item, :transient, should_force)
         {:ok, :non_retry}
+
+      {:error, :post_live_processing, message} ->
+        handle_post_live_processing(media_item, job, message, should_force)
 
       {:error, :staging_unavailable, message} ->
         persist_download_failure(media_item, :transient, should_force)
@@ -284,6 +299,52 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
       {:error, _error_atom, message} ->
         maybe_ignore_unavailable_media(media_item, job_id, message, should_force)
     end
+  end
+
+  # The broadcast has ended, but yt-dlp reports the recording is still processing.
+  # Keep the item pending and recheck, until the give-up limit measured from the
+  # publication time (or the job's insert time when that is unknown) is reached.
+  # The limit only stops the waiting; it is not a readiness signal.
+  defp handle_post_live_processing(media_item, job, message, should_force) do
+    if post_live_waiting_expired?(media_item, job) do
+      persist_post_live_give_up(media_item, should_force)
+      maybe_update_progress(job.id, %{progress_status: @post_live_terminal_error})
+      Logger.info("post_live give-up for media item ##{media_item.id}: #{inspect(message)}")
+      {:ok, :non_retry}
+    else
+      next_check = DateTime.utc_now() |> DateTime.add(@post_live_recheck_seconds, :second)
+
+      maybe_update_progress(job.id, %{
+        progress_status:
+          "Stream ended; YouTube is still processing the recording. Next check at " <>
+            format_utc_datetime(next_check) <> " UTC"
+      })
+
+      Logger.info("post_live recheck scheduled for media item ##{media_item.id} at #{DateTime.to_iso8601(next_check)}")
+
+      {:snooze, @post_live_recheck_seconds}
+    end
+  end
+
+  defp post_live_waiting_expired?(media_item, %Oban.Job{inserted_at: inserted_at}) do
+    reference = media_item.uploaded_at || inserted_at
+
+    DateTime.diff(DateTime.utc_now(), reference, :hour) >= @post_live_give_up_hours
+  end
+
+  # The transient state and the explanation are written together so the item page
+  # shows both, and a later index or manual retry can still clear them.
+  defp persist_post_live_give_up(media_item, should_force) do
+    current = Repo.reload!(media_item)
+    attrs = DownloadState.transition(current, {:failure, :transient, should_force})
+    {:ok, _} = Media.update_media_item(current, Map.put(attrs, :last_error, @post_live_terminal_error))
+    :ok
+  end
+
+  defp format_utc_datetime(%DateTime{} = datetime) do
+    datetime
+    |> DateTime.truncate(:second)
+    |> Calendar.strftime("%Y-%m-%d %H:%M")
   end
 
   defp resume_first_artifact(item) do

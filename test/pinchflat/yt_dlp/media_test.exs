@@ -107,12 +107,12 @@ defmodule Pinchflat.YtDlp.MediaTest do
       assert {:ok, :ignorable} = Media.get_downloadable_status(@media_url)
     end
 
-    test "returns :ignorable if the media was live but hasn't been processed" do
+    test "returns :post_live if the media was live and is still being processed" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_downloadable_status, _opts, _ot, _addl ->
         {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
       end)
 
-      assert {:ok, :ignorable} = Media.get_downloadable_status(@media_url)
+      assert {:ok, :post_live} = Media.get_downloadable_status(@media_url)
     end
 
     test "returns an error if the downloadable status can't be determined" do

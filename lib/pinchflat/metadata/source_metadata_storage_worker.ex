@@ -291,6 +291,14 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
 
   defp determine_series_directory(source) do
     # Source-only rendering always uses the primary template, including for Shorts-only channels.
+    #
+    # This is a live network extraction, so it deliberately does not receive the
+    # scoped extras config files that downloads and offline predictions use. The
+    # source-details response carries collection fields only, not a full video
+    # record, so re-rendering it offline with those files would not reproduce the
+    # same path. If a config file changes path-affecting options, this series
+    # directory can therefore differ from a later download until an item-level
+    # prediction replaces it. Offline prediction is the parity boundary.
     runner_opts =
       [output: DownloadOptionBuilder.build_output_path_for(source)] ++
         DownloadOptionBuilder.build_youtube_options_for(source)

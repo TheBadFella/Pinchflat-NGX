@@ -44,7 +44,13 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         Media.update_media_item(media_item, DownloadState.transition(media_item, :success))
 
       {:error, guard_reason, message}
-      when guard_reason in [:cancelled, :migration_hold, :insufficient_storage, :codec_plugin_unavailable] ->
+      when guard_reason in [
+             :cancelled,
+             :migration_hold,
+             :insufficient_storage,
+             :codec_plugin_unavailable,
+             :post_live_processing
+           ] ->
         {:error, guard_reason, message}
 
       {:error, error_atom, message} ->
@@ -72,6 +78,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   # - If the media item fails the precheck, it returns {:error, :unsuitable_for_download, message}
   #   - However, if the precheck fails in a way that we think can be fixed by using cookies, we retry with cookies
   #     and return the result of that
+  #   - A `post_live` precheck result returns {:error, :post_live_processing, message} instead: the
+  #     stream ended but the recording is not ready yet, so the caller waits rather than failing the item
   # - If the precheck passes but the download fails, it normally returns {:error, :download_failed, message}
   #   - However, there are some errors we can recover from (eg: failure to communicate with SponsorBlock).
   #     In this case, we attempt the download anyway and update the media item with what details we do have.
@@ -85,6 +93,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   # - On initial failure but successfully recovered: {:recovered, updated_media_item, message}
   # - On error: {:error, error_atom, message} where error_atom is one of:
   #   - `:unsuitable_for_download` if the media item fails the precheck
+  #   - `:post_live_processing` if the stream ended but the recording is not ready yet
   #   - `:unrecoverable` if there was an initial failure and the recovery attempt failed
   #   - `:download_failed` for all other yt-dlp-related downloading errors
   #   - `:filtered` when yt-dlp intentionally skipped the media via a configured filter
@@ -135,6 +144,14 @@ defmodule Pinchflat.Downloading.MediaDownloader do
                 Logger.warning(message)
 
                 {:error, :unsuitable_for_download, message}
+
+              {:error, :post_live_processing} ->
+                message =
+                  "Media item ##{media_with_preloads.id} ended its live stream but YouTube is still processing the recording"
+
+                Logger.info(message)
+
+                {:error, :post_live_processing, message}
 
               {:error, :staging_unavailable, message} ->
                 {:error, :staging_unavailable, message}
@@ -465,6 +482,12 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         {{:ok, :ignorable}, _} ->
           {:error, :unsuitable_for_download}
 
+        {{:ok, :post_live}, _} ->
+          # The broadcast ended but the recording is still being processed. This is
+          # transient by nature, so the worker can wait and recheck rather than
+          # treating the item as permanently unsuitable.
+          {:error, :post_live_processing}
+
         {{:error, message, _exit_code} = err, false} ->
           if codec_plugin_error?(message) do
             {:error, :codec_plugin_unavailable, message}
@@ -566,6 +589,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         success
 
       {:error, :unsuitable_for_download} = err ->
+        err
+
+      {:error, :post_live_processing} = err ->
         err
 
       {:error, :staging_unavailable, _msg} = err ->
