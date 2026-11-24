@@ -112,6 +112,20 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:output, "/tmp/test/media/my_source/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"} in res
     end
 
+    test "keeps a non-Latin source name as its folder when filenames are restricted", %{media_item: media_item} do
+      Settings.set(restrict_filenames: true)
+      Repo.update!(Ecto.Changeset.change(media_item.source, custom_name: "Лонгплей"))
+
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          output_path_template: "{{ source_custom_name }}/{{ title }}.{{ ext }}"
+        })
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/Лонгплей/%(title)S.%(ext)S"} in res
+    end
+
     test "leaves spaces in the template's own text when filenames aren't restricted", %{media_item: media_item} do
       Settings.set(restrict_filenames: false)
 

@@ -37,14 +37,29 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   Returns binary()
   """
   def sanitize_literal_text(template, restrict) do
-    @yt_dlp_field_regex
-    |> Regex.split(template, include_captures: true)
-    |> Enum.map_join(fn piece ->
-      if Regex.match?(@whole_yt_dlp_field_regex, piece),
-        do: piece,
-        else: sanitize_text(piece, restrict)
+    sanitized =
+      @yt_dlp_field_regex
+      |> Regex.split(template, include_captures: true)
+      |> Enum.map_join(fn piece ->
+        if Regex.match?(@whole_yt_dlp_field_regex, piece),
+          do: piece,
+          else: sanitize_text(piece, restrict)
+      end)
+
+    keep_emptied_components(template, sanitized)
+  end
+
+  defp keep_emptied_components(template, sanitized) do
+    template
+    |> path_components()
+    |> Enum.zip(path_components(sanitized))
+    |> Enum.map_join(fn
+      {original, ""} -> original
+      {_original, component} -> component
     end)
   end
+
+  defp path_components(path), do: Regex.split(~r{[/\\]}, path, include_captures: true)
 
   defp sanitize_text(text, false), do: String.replace(text, @windows_unsafe_regex, "_")
 

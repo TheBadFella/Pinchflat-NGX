@@ -50,6 +50,11 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
                "/My_Channel/__PINCHFLAT_SERIES_ROOT__/%(title)S.%(ext)S"
     end
 
+    test "when restricted, keeps a path component that would sanitize to nothing" do
+      assert OutputPathBuilder.sanitize_literal_text("/Лонгплей/%(title)S.%(ext)S", true) ==
+               "/Лонгплей/%(title)S.%(ext)S"
+    end
+
     test "keeps path separators in both modes" do
       template = "/Channel Videos/Season 1\\Extras/%(title)S.%(ext)S"
 
