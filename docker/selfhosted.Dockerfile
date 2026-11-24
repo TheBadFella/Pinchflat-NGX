@@ -97,7 +97,7 @@ FROM ${RUNNER_IMAGE}
 ARG TARGETPLATFORM
 ARG PORT=8945
 # renovate: datasource=github-releases depName=Brainicism/bgutil-ytdlp-pot-provider
-ARG BGUTIL_PLUGIN_VERSION=2.0.0
+ARG BGUTIL_PLUGIN_VERSION=2.0.2
 ARG YT_DLP_CACHE_BUST=""
 ARG DATABASE_ADAPTER=sqlite
 ARG BUILD_TRACK=stable
