@@ -13,6 +13,10 @@ defmodule PinchflatWeb.BrowserUserscriptControllerTest do
     body = conn.resp_body
     assert body =~ ~s(const PINCHFLAT_BASE = "https://pinchflat.example/pf")
     assert body =~ "@downloadURL  https://pinchflat.example/pf/browser/userscripts/youtube-quick-add-source.user.js"
+    assert body =~ "@updateURL    https://pinchflat.example/pf/browser/userscripts/youtube-quick-add-source.user.js"
+    assert body =~ "// @match        https://pinchflat.example/pf/sources/new*"
+    assert body =~ ~r{^// @connect      pinchflat\.example$}m
+    refute body =~ "__PINCHFLAT_"
     assert body =~ "GM_openInTab"
 
     manual = File.read!("extras/browser/userscripts/youtube-quick-add-source.user.js")

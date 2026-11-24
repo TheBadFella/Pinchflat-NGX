@@ -4,7 +4,9 @@
 // @version      1.4.0-pinchflat-ngx
 // @description  Add Pinchflat-NGX sources from YouTube with the full New Source form prefilled.
 // @author       Adapted by TheBadFella; contributed originally by Asinin3 (https://github.com/Asinin3)
-// @homepageURL  https://github.com/TheBadFella/Pinchflat-NGX/wiki/Sharing-and-bookmarklets
+// @downloadURL  __PINCHFLAT_BASE__/browser/userscripts/youtube-quick-add-source.user.js
+// @updateURL    __PINCHFLAT_BASE__/browser/userscripts/youtube-quick-add-source.user.js
+// @homepageURL  __PINCHFLAT_BASE__/settings
 // @supportURL   https://github.com/TheBadFella/Pinchflat-NGX/discussions/227
 // @license      AGPL-3.0-or-later
 // @match        https://www.youtube.com/*
@@ -21,13 +23,11 @@
 // @run-at       document-idle
 // ==/UserScript==
 //
-// Prefer installing from your instance (Settings → API & Access): the hosted copy
-// sets PINCHFLAT_BASE from External base URL. For a manual install, edit the @match and
-// @connect lines above and PINCHFLAT_BASE below.
+// PINCHFLAT_BASE, @match and @connect are set by your Pinchflat-ngx instance when you install from its hosted URL.
 
 ;(() => {
   /** External base URL from Pinchflat Settings (no trailing slash). */
-  const PINCHFLAT_BASE = '__PINCHFLAT_BASE__'
+  const PINCHFLAT_BASE = __PINCHFLAT_BASE_JS__
   const BASE = PINCHFLAT_BASE.replace(/\/$/, '')
 
   const LOGO_DATA_URI =
