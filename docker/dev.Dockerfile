@@ -100,7 +100,7 @@ RUN set -eux; \
   # Install Apprise
   export PIPX_HOME=/opt/pipx && \
   export PIPX_BIN_DIR=/usr/local/bin && \
-  pipx install apprise==2.0.1 && \
+  pipx install apprise==2.3.0 && \
   # Set up optional shell tools
   if [ "${INSTALL_SHELL_TOOLS:-0}" = "1" ]; then \
     chsh -s $(which zsh) && \
