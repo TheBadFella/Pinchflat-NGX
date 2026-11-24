@@ -67,6 +67,7 @@ defmodule Pinchflat.Sources.Source do
     last_indexed_at
     original_url
     download_cutoff_date
+    download_cutoff_days
     index_cutoff_date
     retention_period_days
     title_filter_regex
@@ -145,6 +146,9 @@ defmodule Pinchflat.Sources.Source do
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date
+    # Rolling alternative to download_cutoff_date: only download media published
+    # within this many days of the run. Mutually exclusive with the fixed date.
+    field :download_cutoff_days, :integer
     # Stop indexing a channel once it reaches media published before this date.
     # Only applied to YouTube channels — their tab listings are newest-first,
     # which is what makes an early abort on an old video safe. Playlists are
@@ -208,6 +212,37 @@ defmodule Pinchflat.Sources.Source do
 
   def effective_watch_window_days(%__MODULE__{watch_window_days: days}), do: days
 
+  @doc """
+  Returns the effective download cutoff date for a source, changeset, or map.
+
+  A fixed `download_cutoff_date` takes precedence. Otherwise a positive
+  `download_cutoff_days` is resolved against `today` as a rolling window.
+  Returns `nil` when neither is set.
+  """
+  def effective_download_cutoff_date(source_or_changeset, today \\ Date.utc_today())
+
+  def effective_download_cutoff_date(%Ecto.Changeset{} = changeset, today) do
+    effective_cutoff(
+      get_field(changeset, :download_cutoff_date),
+      get_field(changeset, :download_cutoff_days),
+      today
+    )
+  end
+
+  def effective_download_cutoff_date(%__MODULE__{} = source, today) do
+    effective_cutoff(source.download_cutoff_date, source.download_cutoff_days, today)
+  end
+
+  def effective_download_cutoff_date(source, today) when is_map(source) do
+    effective_cutoff(Map.get(source, :download_cutoff_date), Map.get(source, :download_cutoff_days), today)
+  end
+
+  defp effective_cutoff(%Date{} = date, _days, _today), do: date
+
+  defp effective_cutoff(_date, days, today) when is_integer(days) and days > 0, do: Date.add(today, -days)
+
+  defp effective_cutoff(_date, _days, _today), do: nil
+
   @doc false
   def changeset(source, attrs, validation_stage \\ :initial) do
     # See above for rationale
@@ -232,6 +267,8 @@ defmodule Pinchflat.Sources.Source do
     |> normalize_download_subdirectory()
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
+    |> validate_number(:download_cutoff_days, greater_than: 0)
+    |> validate_download_cutoff_exclusivity()
     |> validate_index_cutoff_date()
     |> normalize_player_client_fallbacks()
     |> validate_player_client_fallbacks()
@@ -541,12 +578,22 @@ defmodule Pinchflat.Sources.Source do
     end
   end
 
+  # A source configures its download cutoff either as a fixed date or as a
+  # rolling number of days. Both at once would be ambiguous.
+  defp validate_download_cutoff_exclusivity(changeset) do
+    if get_field(changeset, :download_cutoff_date) && get_field(changeset, :download_cutoff_days) do
+      add_error(changeset, :download_cutoff_days, "must be blank when a download cutoff date is set")
+    else
+      changeset
+    end
+  end
+
   # An indexing cutoff after the download cutoff would stop indexing before
   # reaching media the download cutoff still allows — that media would never be
   # indexed, so it could never be downloaded
   defp validate_index_cutoff_date(changeset) do
     index_cutoff = get_field(changeset, :index_cutoff_date)
-    download_cutoff = get_field(changeset, :download_cutoff_date)
+    download_cutoff = effective_download_cutoff_date(changeset)
 
     if index_cutoff && download_cutoff && Date.compare(index_cutoff, download_cutoff) == :gt do
       add_error(changeset, :index_cutoff_date, "must be on or before the download cutoff date")

@@ -15,6 +15,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Settings
+  alias Pinchflat.Sources.Source
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
@@ -526,9 +527,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     end
   end
 
-  defp before_cutoff?(media_item, %{download_cutoff_date: %Date{} = cutoff_date})
-       when not is_nil(media_item.uploaded_at) do
-    Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
+  defp before_cutoff?(media_item, source) when not is_nil(media_item.uploaded_at) do
+    case Source.effective_download_cutoff_date(source) do
+      %Date{} = cutoff_date -> Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
+      nil -> false
+    end
   end
 
   defp before_cutoff?(_media_item, _source), do: false

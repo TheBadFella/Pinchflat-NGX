@@ -8,6 +8,7 @@ defmodule Pinchflat.MediaTest do
 
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.MediaQuery
   alias Pinchflat.Metadata.MetadataFileHelpers
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
@@ -561,6 +562,149 @@ defmodule Pinchflat.MediaTest do
       new_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now()})
 
       assert Media.list_pending_media_items_for(source) == [old_media_item, new_media_item]
+    end
+  end
+
+  @rolling_cutoff_today ~D[2026-11-24]
+
+  defp pending_ids_for(source, today) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending(today)))
+    |> Repo.all()
+    |> Enum.map(& &1.id)
+  end
+
+  defp deletable_ids_for(today) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:source)
+    |> where(^MediaQuery.deletable_based_on_source_cutoff(today))
+    |> Repo.all()
+    |> Enum.map(& &1.id)
+  end
+
+  describe "MediaQuery when testing a rolling download cutoff" do
+    test "pending includes the boundary day and later uploads but excludes earlier ones" do
+      source = source_fixture(%{download_cutoff_days: 30})
+
+      outside =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-24 12:00:00Z]
+        })
+
+      boundary =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-25 12:00:00Z]
+        })
+
+      inside =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-26 12:00:00Z]
+        })
+
+      pending_ids = MapSet.new(pending_ids_for(source, @rolling_cutoff_today))
+
+      assert pending_ids == MapSet.new([boundary.id, inside.id])
+      refute MapSet.member?(pending_ids, outside.id)
+    end
+
+    test "cleanup deletes only unprotected downloads before the rolling boundary" do
+      source = source_fixture(%{download_cutoff_days: 30})
+
+      old_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-old.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z]
+        })
+
+      boundary_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-boundary.mp4",
+          uploaded_at: ~U[2026-10-25 12:00:00Z]
+        })
+
+      protected_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-protected.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z],
+          prevent_culling: true
+        })
+
+      watched_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-watched.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z],
+          watch_postprocessing_pending: true
+        })
+
+      deletable_ids = deletable_ids_for(@rolling_cutoff_today)
+
+      assert old_download.id in deletable_ids
+      refute boundary_download.id in deletable_ids
+      refute protected_download.id in deletable_ids
+      refute watched_download.id in deletable_ids
+    end
+
+    test "a fixed cutoff date keeps its previous behavior" do
+      source = source_fixture(%{download_cutoff_date: ~D[2026-10-25]})
+
+      outside_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/fixed-old.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z]
+        })
+
+      boundary_pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-25 12:00:00Z]
+        })
+
+      inside_pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-26 12:00:00Z]
+        })
+
+      assert MapSet.new(pending_ids_for(source, @rolling_cutoff_today)) ==
+               MapSet.new([boundary_pending.id, inside_pending.id])
+
+      assert deletable_ids_for(@rolling_cutoff_today) == [outside_download.id]
+    end
+
+    test "no cutoff leaves every item pending and nothing deletable" do
+      source = source_fixture(%{download_cutoff_date: nil, download_cutoff_days: nil})
+
+      old_pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-01-01 12:00:00Z]
+        })
+
+      old_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/no-cutoff.mp4",
+          uploaded_at: ~U[2026-01-01 12:00:00Z]
+        })
+
+      assert old_pending.id in pending_ids_for(source, @rolling_cutoff_today)
+      refute old_download.id in deletable_ids_for(@rolling_cutoff_today)
+      assert deletable_ids_for(@rolling_cutoff_today) == []
     end
   end
 

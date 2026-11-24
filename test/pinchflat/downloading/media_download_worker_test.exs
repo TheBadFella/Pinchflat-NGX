@@ -721,6 +721,36 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
   end
 
+  describe "perform/1 when testing the rolling download cutoff" do
+    test "skips an item outside the rolling window but still downloads when forced" do
+      source = source_fixture(%{download_cutoff_days: 2})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: now_minus(10, :days)
+        })
+
+      log =
+        capture_log([level: :info], fn ->
+          assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+        end)
+
+      assert log =~ "media_download_skipped"
+      assert log =~ "reason=format_or_profile_mismatch"
+      refute Repo.reload!(media_item).media_filepath
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, _addl -> {:ok, render_metadata(:media_metadata)}
+        _url, :download_thumbnail, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id, force: true})
+      assert Repo.reload!(media_item).media_filepath
+    end
+  end
+
   describe "perform/1 when testing re-downloads" do
     test "skips an automatic upgrade that expires while queued" do
       profile = media_profile_fixture(%{redownload_delay_days: 2})

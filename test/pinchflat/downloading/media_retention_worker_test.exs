@@ -248,6 +248,40 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
       refute Repo.reload!(old_media_item).media_filepath
     end
 
+    test "culls downloaded media outside a rolling cutoff and keeps it re-downloadable" do
+      source = source_fixture(%{download_cutoff_days: 2})
+
+      outside =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(4, :days)
+        })
+
+      protected =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(4, :days),
+          prevent_culling: true
+        })
+
+      inside =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: now_minus(1, :day)
+        })
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      refute File.exists?(outside.media_filepath)
+      assert File.exists?(protected.media_filepath)
+      assert File.exists?(inside.media_filepath)
+
+      outside = Repo.reload!(outside)
+      assert is_nil(outside.media_filepath)
+      assert outside.culled_at
+      refute outside.prevent_download
+    end
+
     # NOTE: Since this is a date and not a datetime, we can't add logic to have to-the-minute
     # comparison like we can with retention periods. We can only compare to the day.
     test "doesn't cull media from on or after the cutoff date" do

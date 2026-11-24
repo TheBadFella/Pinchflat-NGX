@@ -29,7 +29,11 @@
       },
       sourceUrl: '',
       sourceType: '#{Ecto.Changeset.get_field(@changeset, :source_type, :automatic)}',
+      cutoffMode: '#{cutoff_form_mode(@changeset)}',
       cutoffDate: '#{f[:download_cutoff_date].value}',
+      cutoffDays: '#{to_string(f[:download_cutoff_days].value || "")}',
+      cutoffToday: '#{cutoff_today_iso()}',
+      cutoffDownloadedItems: #{Jason.encode!(@cutoff_downloaded_items)},
       indexCutoffDate: '#{f[:index_cutoff_date].value}',
       isPlaylist: #{Ecto.Changeset.get_field(@changeset, :collection_type) == :playlist},
       get sourceTypeLabel() {
@@ -49,8 +53,39 @@
         }[this.sourceType] || 'URL of a channel, playlist, or single video (required).'
       },
       get looksLikePlaylist() { return this.isPlaylist || /[?&]list=|\\/playlist/.test(this.sourceUrl) },
+      get effectiveCutoffDate() {
+        if (this.cutoffMode === 'date') return this.cutoffDate || '';
+        if (this.cutoffMode === 'days') {
+          const days = Number(this.cutoffDays);
+          if (!Number.isInteger(days) || days <= 0) return '';
+          const date = new Date(this.cutoffToday + 'T00:00:00Z');
+          date.setUTCDate(date.getUTCDate() - days);
+          return date.toISOString().slice(0, 10);
+        }
+        return '';
+      },
+      get cutoffPreviewText() {
+        if (this.cutoffMode !== 'days' || !this.effectiveCutoffDate) return '';
+        const days = Number(this.cutoffDays);
+        return 'Effective cutoff: ' + this.effectiveCutoffDate + ' for ' + days + (days === 1 ? ' day' : ' days') + ' on ' + this.cutoffToday + '.';
+      },
+      get cutoffWarningCount() {
+        if (!this.effectiveCutoffDate) return 0;
+        return this.cutoffDownloadedItems.filter(item => !item.p && item.d < this.effectiveCutoffDate).length;
+      },
+      get cutoffWarningText() {
+        const count = this.cutoffWarningCount;
+        if (count <= 0) return '';
+        const noun = count === 1 ? 'video' : 'videos';
+        return 'Warning: ' + count + ' currently downloaded, unprotected ' + noun + ' published before ' + this.effectiveCutoffDate + ' will be deleted at the next scheduled cleanup.';
+      },
+      setCutoffMode(mode) {
+        this.cutoffMode = mode;
+        if (mode !== 'date') this.cutoffDate = '';
+        if (mode !== 'days') this.cutoffDays = '';
+      },
       get indexCutoffAfterDownloadCutoff() {
-        return !!(this.indexCutoffDate && this.cutoffDate && this.indexCutoffDate > this.cutoffDate)
+        return !!(this.indexCutoffDate && this.effectiveCutoffDate && this.indexCutoffDate > this.effectiveCutoffDate)
       }
     }
     """
@@ -607,6 +642,22 @@
 
           <section data-setting class="mt-5">
             <div class="sm:max-w-md">
+              <label for="source-cutoff-mode" class="mb-1 block text-sm font-medium text-theme-on-surface-muted">
+                Download cutoff
+              </label>
+              <select
+                id="source-cutoff-mode"
+                x-model="cutoffMode"
+                x-on:change="setCutoffMode($event.target.value)"
+                class="theme-input theme-select min-h-11 w-full rounded-m3-sm px-3 py-2 text-sm"
+              >
+                <option value="none">No cutoff</option>
+                <option value="date">Fixed date</option>
+                <option value="days">Rolling window (last N days)</option>
+              </select>
+            </div>
+
+            <div x-show="cutoffMode === 'date'" x-cloak class="mt-4 sm:max-w-md">
               <.date_picker
                 id={f[:download_cutoff_date].id}
                 name={f[:download_cutoff_date].name}
@@ -620,11 +671,45 @@
               />
             </div>
             <.error :for={error <- f[:download_cutoff_date].errors}>{translate_error(error)}</.error>
+
+            <div x-show="cutoffMode === 'days'" x-cloak class="mt-4 sm:max-w-md">
+              <.input
+                field={f[:download_cutoff_days]}
+                type="number"
+                min="1"
+                step="1"
+                label="Rolling window (days)"
+                placeholder="30"
+                x-model="cutoffDays"
+                help="Only download media published within this many days of each run."
+              />
+              <p
+                x-show="effectiveCutoffDate"
+                class="mt-2 text-sm text-theme-on-surface"
+                aria-live="polite"
+                x-text="cutoffPreviewText"
+              >
+              </p>
+            </div>
+            <.error :for={error <- f[:download_cutoff_days].errors}>{translate_error(error)}</.error>
+
+            <div
+              x-show="cutoffMode === 'days' && cutoffWarningCount > 0"
+              x-cloak
+              class="theme-status-card theme-status-card-warning mt-4"
+              role="alert"
+            >
+              <div class="flex items-start gap-3">
+                <.icon name="hero-exclamation-triangle" class="mt-0.5 h-5 w-5 shrink-0" />
+                <p class="text-sm leading-6 text-theme-on-surface" x-text="cutoffWarningText"></p>
+              </div>
+            </div>
+
             <p class="mt-2 text-sm text-theme-on-surface-muted">
-              Automatically download media published on or after this date. Scheduled cleanup also deletes unprotected
-              downloaded media from before this date, including manual downloads, even within their retention period.
-              Leave blank for no cutoff. Prevent Automatic Deletion on a media item's Edit page overrides both cutoff
-              and retention cleanup.
+              Automatically download media published on or after the cutoff. Scheduled cleanup also deletes unprotected
+              downloaded media from before it, including manual downloads, even within their retention period. A rolling
+              window moves with the current date. Choose No cutoff to disable both. Prevent Automatic Deletion on a
+              media item's Edit page overrides cutoff and retention cleanup.
             </p>
           </section>
 

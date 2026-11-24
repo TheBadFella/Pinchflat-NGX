@@ -79,6 +79,18 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
     refute Repo.reload!(source).download_media
   end
 
+  test "setting a fixed date clears rolling cutoff days" do
+    source = source_fixture(%{download_cutoff_days: 30})
+    ids = ["#{source.id}"]
+
+    assert {:ok, preview} = BulkCutoff.preview(ids, "2026-01-02")
+    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview.fingerprint)
+
+    updated = Repo.reload!(source)
+    assert updated.download_cutoff_date == ~D[2026-01-02]
+    assert is_nil(updated.download_cutoff_days)
+  end
+
   test "invalid dates, invalid selections and indexing conflicts change nothing" do
     valid = source_fixture()
     conflict = source_fixture(index_cutoff_date: ~D[2026-02-01], download_cutoff_date: ~D[2026-03-01])

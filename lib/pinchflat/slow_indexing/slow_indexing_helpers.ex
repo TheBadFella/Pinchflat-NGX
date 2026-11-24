@@ -585,7 +585,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # with a retention-based date (if applicable). Returns the more recent of the two,
   # since there's no point scanning videos older than either threshold.
   defp calculate_effective_scan_date(%Source{} = source) do
-    cutoff_date = source.download_cutoff_date
+    cutoff_date = Source.effective_download_cutoff_date(source)
     retention_date = calculate_retention_based_date(source)
 
     case {cutoff_date, retention_date} do
