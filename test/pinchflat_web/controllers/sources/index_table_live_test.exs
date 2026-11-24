@@ -237,13 +237,46 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   describe "poster-grid progress" do
     test "does not claim completion when the total is empty or unknown" do
       assert %{state: :empty, percent: 0, label: "No indexed media yet"} =
-               IndexTableLive.source_progress(%{media_count: 0, downloaded_count: 0})
+               IndexTableLive.source_progress(%{media_count: 0, downloaded_count: 0, pending_count: 0})
 
       assert %{state: :unknown, percent: nil} =
-               IndexTableLive.source_progress(%{media_count: nil, downloaded_count: 0})
+               IndexTableLive.source_progress(%{media_count: nil, downloaded_count: 0, pending_count: 0})
 
-      assert %{state: :known, percent: 50, label: "1 of 2 indexed items downloaded"} =
-               IndexTableLive.source_progress(%{media_count: 2, downloaded_count: 1})
+      assert %{state: :known, percent: 50, label: "1 of 2 items downloaded"} =
+               IndexTableLive.source_progress(%{media_count: 2, downloaded_count: 1, pending_count: 1})
+    end
+
+    test "measures against the items to download, leaving skipped ones out" do
+      assert %{state: :known, percent: 100, label: "5 of 5 items downloaded"} =
+               IndexTableLive.source_progress(%{media_count: 10, downloaded_count: 5, pending_count: 0})
+
+      assert %{state: :known, percent: 80, label: "12 of 15 items downloaded"} =
+               IndexTableLive.source_progress(%{media_count: 55, downloaded_count: 12, pending_count: 3})
+    end
+
+    test "says when every indexed item is skipped instead of claiming nothing is indexed" do
+      assert %{state: :all_skipped, percent: nil, label: "Nothing to download"} =
+               IndexTableLive.source_progress(%{media_count: 3, downloaded_count: 0, pending_count: 0})
+    end
+
+    test "shows a caught-up source as complete in the poster grid", %{conn: conn} do
+      source = source_fixture(custom_name: "Progress source")
+      media_item_fixture(source_id: source.id)
+      media_item_fixture(source_id: source.id, media_filepath: nil, prevent_download: true)
+      skipped_only = source_fixture(custom_name: "Skipped source")
+      media_item_fixture(source_id: skipped_only.id, media_filepath: nil, prevent_download: true)
+
+      session = Map.put(create_session(), "initial_view_mode", "grid")
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      card = render_element(view, "#source-card-#{source.id}")
+      assert card =~ "1 of 1 items downloaded"
+      assert card =~ ~s(aria-valuenow="100")
+
+      skipped_card = render_element(view, "#source-card-#{skipped_only.id}")
+      assert skipped_card =~ ~s(data-progress-state="all_skipped")
+      assert skipped_card =~ "Nothing to download"
+      refute skipped_card =~ ~s(role="progressbar")
     end
   end
 

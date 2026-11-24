@@ -106,8 +106,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   def normalize_search_term(_term), do: nil
 
   @doc """
-  Describes source download progress without treating an unknown or empty
-  denominator as complete.
+  Describes how far a source is through the items it is set to download.
+
+  The total is downloaded plus pending, so a caught-up source reaches 100%.
+  Pending already leaves out items skipped by the cutoff, title filter,
+  duration limits, format preference, availability rules, keep-newest limit
+  and Prevent Download. Items whose files retention removed are no longer
+  downloaded or pending, so they are left out too.
 
   Returns a map with `:state`, `:label`, and either a `:percent` or `nil`.
   """
@@ -116,9 +121,16 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   def source_progress(%{media_count: 0}), do: %{state: :empty, label: "No indexed media yet", percent: 0}
 
-  def source_progress(%{media_count: total, downloaded_count: downloaded}) when total > 0 do
-    percent = min(div(downloaded * 100, total), 100)
-    %{state: :known, label: "#{downloaded} of #{total} indexed items downloaded", percent: percent}
+  def source_progress(%{media_count: indexed, downloaded_count: downloaded, pending_count: pending})
+      when indexed > 0 do
+    to_download = downloaded + pending
+
+    if to_download == 0 do
+      %{state: :all_skipped, label: "Nothing to download", percent: nil}
+    else
+      percent = min(div(downloaded * 100, to_download), 100)
+      %{state: :known, label: "#{downloaded} of #{to_download} items downloaded", percent: percent}
+    end
   end
 
   attr :source, :map, required: true
