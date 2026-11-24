@@ -31,26 +31,37 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
 
   @doc """
   Sanitizes the literal text of a yt-dlp output template the way yt-dlp
-  sanitizes field values, following `--restrict-filenames` when `restrict`
-  is true and `--windows-filenames` otherwise. `%(...)` fields are unchanged.
+  sanitizes field values. Folder text only loses characters Windows can't use
+  (`--windows-filenames`). When `restrict` is true, the filename (the text after
+  the last separator) also follows `--restrict-filenames`. `%(...)` fields are
+  unchanged.
 
   When restricted, accented Latin letters lose their accents, but letters and
-  digits with no ASCII form (Cyrillic, Greek, CJK...) are kept, so a source
-  named in another alphabet keeps a folder of its own.
+  digits with no ASCII form (Cyrillic, Greek, CJK...) are kept as typed.
 
   Returns binary()
   """
   def sanitize_literal_text(template, restrict) do
-    sanitized =
+    # Walk back from the end: text is part of the filename until the last separator
+    {sanitized, _in_filename?} =
       @yt_dlp_field_regex
       |> Regex.split(template, include_captures: true)
-      |> Enum.map_join(fn piece ->
-        if Regex.match?(@whole_yt_dlp_field_regex, piece),
-          do: piece,
-          else: sanitize_text(piece, restrict)
+      |> List.foldr({[], restrict}, fn piece, {acc, in_filename?} ->
+        cond do
+          Regex.match?(@whole_yt_dlp_field_regex, piece) -> {[piece | acc], in_filename?}
+          not in_filename? -> {[sanitize_text(piece, false) | acc], false}
+          true -> sanitize_filename_end(piece, acc)
+        end
       end)
 
-    keep_emptied_components(template, sanitized)
+    keep_emptied_components(template, Enum.join(sanitized))
+  end
+
+  defp sanitize_filename_end(piece, acc) do
+    case Regex.run(~r/\A(.*[\/\\])(.*)\z/su, piece, capture: :all_but_first) do
+      [folders, filename] -> {[restrict_filename(folders, filename) | acc], false}
+      nil -> {[sanitize_text(piece, true) | acc], true}
+    end
   end
 
   defp keep_emptied_components(template, sanitized) do
@@ -67,10 +78,19 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
 
   defp sanitize_text(text, false), do: String.replace(text, @windows_unsafe_regex, "_")
 
-  defp sanitize_text(text, true) do
-    text
-    |> String.graphemes()
-    |> Enum.flat_map(&restrict_grapheme/1)
+  defp sanitize_text(text, true), do: restrict_filename("", text)
+
+  # Folder text kept Windows-safe, followed by restricted filename text
+  defp restrict_filename(folders, filename) do
+    folder_chars =
+      folders
+      |> sanitize_text(false)
+      |> String.graphemes()
+      |> Enum.map(&{&1, false})
+
+    filename_chars = filename |> String.graphemes() |> Enum.flat_map(&restrict_grapheme/1)
+
+    (folder_chars ++ filename_chars)
     |> collapse_replaced_underscores()
     |> trim_replaced_underscores()
     |> Enum.map_join(fn {char, _replaced?} -> char end)

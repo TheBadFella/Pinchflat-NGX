@@ -35,19 +35,24 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
 
     test "when restricted, transliterates accents and drops or replaces unsafe characters" do
       assert OutputPathBuilder.sanitize_literal_text("Season 1/Café: Q&A?.%(ext)s", true) ==
-               "Season_1/Cafe_-_Q_A.%(ext)s"
+               "Season 1/Cafe_-_Q_A.%(ext)s"
+    end
+
+    test "when restricted, leaves folder text alone apart from characters Windows can't use" do
+      assert OutputPathBuilder.sanitize_literal_text("/Q&A: Live/Season 1/%(title)S - clip.%(ext)S", true) ==
+               "/Q&A_ Live/Season 1/%(title)S_-_clip.%(ext)S"
     end
 
     test "when restricted, doesn't leave replacement underscores at component or extension boundaries" do
-      assert OutputPathBuilder.sanitize_literal_text("/[Archive]/%(title)S [%(id)S].%(ext)S", true) ==
+      assert OutputPathBuilder.sanitize_literal_text("/Archive/[%(title)S] [%(id)S].%(ext)S", true) ==
                "/Archive/%(title)S_%(id)S.%(ext)S"
     end
 
     test "when restricted, keeps underscores already in the template" do
-      template = "/My Channel/__PINCHFLAT_SERIES_ROOT__/%(title)S.%(ext)S"
+      template = "/My Channel/__PINCHFLAT_SERIES_ROOT__/my_clip %(title)S.%(ext)S"
 
       assert OutputPathBuilder.sanitize_literal_text(template, true) ==
-               "/My_Channel/__PINCHFLAT_SERIES_ROOT__/%(title)S.%(ext)S"
+               "/My Channel/__PINCHFLAT_SERIES_ROOT__/my_clip_%(title)S.%(ext)S"
     end
 
     test "when restricted, keeps a path component that would sanitize to nothing" do
@@ -55,24 +60,29 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
                "/Лонгплей/%(title)S.%(ext)S"
     end
 
-    test "when restricted, keeps letters with no ASCII form so partly non-Latin names stay distinct" do
-      assert OutputPathBuilder.sanitize_literal_text("/Лонгплей Live/%(title)S.%(ext)S", true) ==
-               "/Лонгплей_Live/%(title)S.%(ext)S"
+    test "when restricted, keeps letters with no ASCII form in the filename" do
+      assert OutputPathBuilder.sanitize_literal_text("/%(channel)S/Лонгплей Live %(title)S.%(ext)S", true) ==
+               "/%(channel)S/Лонгплей_Live_%(title)S.%(ext)S"
 
-      assert OutputPathBuilder.sanitize_literal_text("/Кинопоиск Live/%(title)S.%(ext)S", true) ==
-               "/Кинопоиск_Live/%(title)S.%(ext)S"
+      assert OutputPathBuilder.sanitize_literal_text("/%(channel)S/Обзор \u{1F3B5} Café.%(ext)S", true) ==
+               "/%(channel)S/Обзор_Cafe.%(ext)S"
+    end
 
-      assert OutputPathBuilder.sanitize_literal_text("/Обзор \u{1F3B5} Café/%(title)S.%(ext)S", true) ==
-               "/Обзор_Cafe/%(title)S.%(ext)S"
+    test "when restricted, splits folders from the filename inside one piece of text" do
+      assert OutputPathBuilder.sanitize_literal_text("/Лонгплей Live/Кинопоиск %(title)S.%(ext)S", true) ==
+               "/Лонгплей Live/Кинопоиск_%(title)S.%(ext)S"
     end
 
     test "keeps path separators in both modes" do
-      template = "/Channel Videos/Season 1\\Extras/%(title)S.%(ext)S"
+      template = "/Channel Videos/Season 1\\Extras/%(title)S - clip.%(ext)S"
 
       assert OutputPathBuilder.sanitize_literal_text(template, true) ==
-               "/Channel_Videos/Season_1\\Extras/%(title)S.%(ext)S"
+               "/Channel Videos/Season 1\\Extras/%(title)S_-_clip.%(ext)S"
 
       assert OutputPathBuilder.sanitize_literal_text(template, false) == template
+
+      assert OutputPathBuilder.sanitize_literal_text("/Channel Videos/%(title)S.%(ext)S", true) ==
+               "/Channel Videos/%(title)S.%(ext)S"
     end
 
     test "field defaults and %% escapes are left intact" do
