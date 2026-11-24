@@ -466,7 +466,8 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
 
     {:ok, started} =
       Pinchflat.Media.update_media_item(item, %{
-        watch_download_started_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        watch_download_started_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        last_error: "Download staging is unavailable: :erofs"
       })
 
     assert :ok = Pinchflat.Downloading.FirstArtifact.remember(started, Jason.decode!(metadata(path)), staged)
@@ -485,6 +486,7 @@ defmodule Pinchflat.Downloading.MediaWatchEnrollmentTest do
     completed = Repo.reload!(item)
     assert completed.media_filepath == path
     assert completed.media_downloaded_at
+    assert is_nil(completed.last_error)
     assert MediaWatch.get_watch_for_media_item(item.id)
     refute Pinchflat.Downloading.FirstArtifact.pending?(completed)
   end

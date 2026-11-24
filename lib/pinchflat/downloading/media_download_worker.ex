@@ -351,7 +351,15 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   defp resume_first_artifact(item) do
     with {:ok, metadata} <- FirstArtifact.resume(item),
          {:ok, recovered} <- MediaDownloader.restore_first_artifact(item, metadata) do
-      finish_first_download_postprocessing(item, recovered, false)
+      case finish_first_download_postprocessing(item, recovered, false) do
+        :ok ->
+          # The failure that left this journal is resolved; don't keep showing it.
+          {:ok, _} = Media.update_media_item(Repo.reload(recovered), %{last_error: nil, error_type: nil})
+          :ok
+
+        error ->
+          error
+      end
     else
       {:error, reason} ->
         Logger.error("first artifact recovery failed for media item ##{item.id}: #{inspect(reason)}")
