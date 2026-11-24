@@ -18,6 +18,7 @@ defmodule Pinchflat.LegacyMigrationProvenanceTest do
     on_exit(fn ->
       Application.delete_env(:pinchflat, :legacy_migration_state_path)
       File.rm(state_file)
+      Enum.each(Path.wildcard(state_file <> ".blocked-*"), &File.rm/1)
       File.rm_rf(dir)
     end)
 
@@ -101,5 +102,169 @@ defmodule Pinchflat.LegacyMigrationProvenanceTest do
     original_schema()
     Ecto.Adapters.SQL.query!(Repo, "INSERT INTO schema_migrations VALUES (20260910160000)")
     assert %{provenance: "existing_ngx", status: "completed"} = LegacyMigration.pre_migration_check(Repo)
+  end
+
+  describe "blocked provenance recovery" do
+    @fork_versions [20_260_618_215_000, 20_260_625_174_920, 20_260_629_120_000]
+
+    defp fork_schema do
+      original_schema()
+
+      Enum.each(@fork_versions, fn version ->
+        Ecto.Adapters.SQL.query!(Repo, "INSERT INTO schema_migrations VALUES (?)", [version])
+      end)
+    end
+
+    defp remove_fork_versions do
+      Enum.each(@fork_versions, fn version ->
+        Ecto.Adapters.SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = ?", [version])
+      end)
+    end
+
+    defp read_state_file(path), do: path |> File.read!() |> Jason.decode!()
+    defp write_state_file(path, state), do: File.write!(path, Jason.encode!(state, pretty: true))
+    defp blocked_backups(path), do: Path.wildcard(path <> ".blocked-*")
+
+    defp discussion_265_block do
+      %{
+        "error" => "%RuntimeError{message: \"Migration history is not a recognized NGX database\"}",
+        "provenance" => "unknown",
+        "status" => "blocked"
+      }
+    end
+
+    test "a fork migration history blocks the first start with a detection failure", %{state_file: path} do
+      fork_schema()
+
+      assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+
+      state = read_state_file(path)
+
+      assert state["status"] == "blocked"
+      assert state["provenance"] == "unknown"
+      assert state["block_reason"] == "detection_failed"
+      assert is_binary(state["error"])
+      assert state["error"] =~ "not a recognized NGX database"
+    end
+
+    test "rolling back the fork migrations recovers the previously blocked state", %{state_file: path} do
+      fork_schema()
+      assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+
+      remove_fork_versions()
+
+      assert %{provenance: "legacy_pinchflat", status: "pending_review"} = LegacyMigration.pre_migration_check(Repo)
+
+      # A detection_failed block is reproducible, so it is not backed up.
+      assert blocked_backups(path) == []
+    end
+
+    test "a restart loop on a still-broken database keeps at most one backup", %{state_file: path} do
+      fork_schema()
+      write_state_file(path, discussion_265_block())
+
+      for _ <- 1..3 do
+        error = assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+        assert Exception.message(error) =~ path
+      end
+
+      assert [backup] = blocked_backups(path)
+      assert read_state_file(backup) == discussion_265_block()
+    end
+
+    test "a hand-written discussion 265 block recovers against a clean legacy database", %{state_file: path} do
+      original_schema()
+      write_state_file(path, discussion_265_block())
+
+      assert %{provenance: "legacy_pinchflat", status: "pending_review"} = LegacyMigration.pre_migration_check(Repo)
+
+      assert [backup] = blocked_backups(path)
+      assert read_state_file(backup) == discussion_265_block()
+    end
+
+    test "a discussion 265 block with extra keys stays locked", %{state_file: path} do
+      original_schema()
+
+      for extra <- [{"last_scan", %{"status" => "ok"}}, {"original_database_identity", "deadbeef"}] do
+        {key, value} = extra
+        locked = Map.put(discussion_265_block(), key, value)
+        write_state_file(path, locked)
+
+        error = assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+        assert Exception.message(error) =~ "is locked"
+        assert Exception.message(error) =~ path
+
+        assert read_state_file(path) == locked
+        assert blocked_backups(path) == []
+      end
+    end
+
+    test "a pending review bound to another database stays locked", %{state_file: path} do
+      original_schema()
+      assert %{provenance: "legacy_pinchflat", status: "pending_review"} = LegacyMigration.pre_migration_check(Repo)
+      pending = read_state_file(path)
+
+      # Database B: a fresh install now lives at the same path.
+      Enum.each(["schema_migrations", "sources", "settings"], fn table ->
+        Ecto.Adapters.SQL.query!(Repo, "DROP TABLE #{table}")
+      end)
+
+      assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+      locked = read_state_file(path)
+      assert locked["status"] == "blocked"
+
+      # Database A returns to the path, but the locked block is sticky.
+      original_schema()
+      assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+
+      assert read_state_file(path) == locked
+      assert pending["provenance"] == "legacy_pinchflat"
+      assert blocked_backups(path) == []
+    end
+
+    test "a detection failure on retry backs up the block and rewrites the error", %{state_file: path} do
+      fork_schema()
+      write_state_file(path, discussion_265_block())
+      earlier = read_state_file(path)
+
+      error = assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+      assert Exception.message(error) =~ "not a recognized NGX database"
+
+      assert [backup] = blocked_backups(path)
+      assert read_state_file(backup) == earlier
+
+      rewritten = read_state_file(path)
+      assert rewritten["status"] == "blocked"
+      assert rewritten["provenance"] == "unknown"
+      assert rewritten["block_reason"] == "detection_failed"
+      assert rewritten["error"] =~ "not a recognized NGX database"
+    end
+
+    test "corrupt and unreadable state files raise without being altered", %{state_file: path} do
+      original_schema()
+
+      File.write!(path, "{not json")
+      error = assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+      assert Exception.message(error) =~ "Cannot read migration provenance from #{path}"
+      assert File.read!(path) == "{not json"
+      assert blocked_backups(path) == []
+
+      oversized = String.duplicate("0", 1_048_577)
+      File.write!(path, oversized)
+      assert_raise RuntimeError, fn -> LegacyMigration.pre_migration_check(Repo) end
+      assert File.read!(path) == oversized
+      assert blocked_backups(path) == []
+    end
+
+    test "an existing NGX database recovers from a blocked file", %{state_file: path} do
+      original_schema()
+      Ecto.Adapters.SQL.query!(Repo, "INSERT INTO schema_migrations VALUES (20260910160000)")
+      write_state_file(path, discussion_265_block())
+
+      assert %{provenance: "existing_ngx", status: "completed"} = LegacyMigration.pre_migration_check(Repo)
+
+      assert [backup] = blocked_backups(path)
+      assert read_state_file(backup) == discussion_265_block()
+    end
   end
 end
