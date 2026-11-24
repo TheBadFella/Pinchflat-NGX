@@ -576,6 +576,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
       too_long?(media_item, source) ->
         :format_or_profile_mismatch
 
+      foreign_upload?(media_item, source) ->
+        :format_or_profile_mismatch
+
       media_profile.shorts_behaviour == :exclude && media_item.short_form_content ->
         :format_or_profile_mismatch
 
@@ -618,6 +621,13 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   end
 
   defp too_long?(_media_item, _source), do: false
+
+  defp foreign_upload?(media_item, %{only_owner_uploads: true, owner_channel_id: owner_channel_id})
+       when not is_nil(owner_channel_id) and not is_nil(media_item.channel_id) do
+    media_item.channel_id != owner_channel_id
+  end
+
+  defp foreign_upload?(_media_item, _source), do: false
 
   defp maybe_replace_existing_manual_retry(media_item, job_args) do
     if Map.get(job_args, :reset_last_error) || Map.get(job_args, "reset_last_error") do

@@ -881,6 +881,30 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
   end
 
+  describe "perform/1 when testing the playlist owner lock" do
+    test "skips an item uploaded by another channel without calling yt-dlp" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: "UC_owner"})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          channel_id: "UC_other"
+        })
+
+      expect(YtDlpRunnerMock, :run, 0, fn _url, _action, _opts, _ot, _addl -> :ok end)
+
+      log =
+        capture_log([level: :info], fn ->
+          assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+        end)
+
+      assert log =~ "media_download_skipped"
+      assert log =~ "reason=format_or_profile_mismatch"
+      refute Repo.reload!(media_item).media_filepath
+    end
+  end
+
   describe "perform/1 when testing re-downloads" do
     test "skips an automatic upgrade that expires while queued" do
       profile = media_profile_fixture(%{redownload_delay_days: 2})

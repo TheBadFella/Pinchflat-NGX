@@ -1430,6 +1430,90 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
     end
   end
 
+  describe "index_and_enqueue_download_for_media_items/2 when testing the playlist owner lock" do
+    test "indexes every upload but only enqueues the owner's when the lock is on" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          only_owner_uploads: true,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, owner_lock_attributes_fixture()}
+      end)
+
+      assert items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+
+    test "indexes every upload and enqueues both when the lock is off" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          only_owner_uploads: false,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, owner_lock_attributes_fixture()}
+      end)
+
+      assert items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+  end
+
+  # Two playlist entries with recent upload dates: one from the playlist owner
+  # and one from another channel.
+  defp owner_lock_attributes_fixture do
+    upload_date = Date.add(Date.utc_today(), -1) |> Calendar.strftime("%Y%m%d")
+
+    [
+      %{
+        id: "v_owner",
+        title: "Owner video",
+        original_url: "https://example.com/v_owner",
+        live_status: "not_live",
+        description: "owner desc",
+        aspect_ratio: 1.67,
+        duration: 60.0,
+        upload_date: upload_date,
+        channel_id: "UC_owner_123"
+      },
+      %{
+        id: "v_foreign",
+        title: "Foreign video",
+        original_url: "https://example.com/v_foreign",
+        live_status: "not_live",
+        description: "foreign desc",
+        aspect_ratio: 1.67,
+        duration: 90.0,
+        upload_date: upload_date,
+        channel_id: "UC_other_456"
+      }
+    ]
+    |> Enum.map_join("\n", fn attrs -> Phoenix.json_library().encode!(attrs) end)
+  end
+
   defp translated_titles_source(attrs \\ %{}) do
     source_fixture(
       Map.merge(

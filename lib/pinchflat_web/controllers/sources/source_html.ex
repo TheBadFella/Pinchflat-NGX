@@ -857,38 +857,57 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   defp filter_fields(source) do
-    [
-      field("Title filter", source.title_filter_regex, "Only media whose title matches this regex is downloaded",
-        type: :code
-      ),
-      field(
-        "Minimum duration",
-        format_duration(source.min_duration_seconds),
-        "Media shorter than this is skipped"
-      ),
-      field(
-        "Maximum duration",
-        format_duration(source.max_duration_seconds),
-        "Media longer than this is skipped"
-      ),
-      field(
-        "Download cutoff",
-        download_cutoff_label(source),
-        "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
-      ),
-      field(
-        "SponsorBlock remove",
-        sponsorblock_status_label(source, :remove),
-        "Blank inherits the media profile, Off disables removal for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
-        set?: source.sponsorblock_remove_categories != nil
-      ),
-      field(
-        "SponsorBlock mark",
-        sponsorblock_status_label(source, :mark),
-        "Blank inherits the media profile, Off disables chapter marking for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
-        set?: source.sponsorblock_mark_categories != nil
-      )
-    ]
+    playlist_fields =
+      if source.collection_type == :playlist do
+        [
+          field(
+            "Owner channel",
+            source.owner_channel_id || "Unknown",
+            "The channel that owns this playlist. Only owner uploads compares each video's uploader with it"
+          ),
+          field(
+            "Only owner uploads",
+            yes_no(source.only_owner_uploads),
+            "Whether videos the owner added from other channels are listed but not downloaded"
+          )
+        ]
+      else
+        []
+      end
+
+    playlist_fields ++
+      [
+        field("Title filter", source.title_filter_regex, "Only media whose title matches this regex is downloaded",
+          type: :code
+        ),
+        field(
+          "Minimum duration",
+          format_duration(source.min_duration_seconds),
+          "Media shorter than this is skipped"
+        ),
+        field(
+          "Maximum duration",
+          format_duration(source.max_duration_seconds),
+          "Media longer than this is skipped"
+        ),
+        field(
+          "Download cutoff",
+          download_cutoff_label(source),
+          "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
+        ),
+        field(
+          "SponsorBlock remove",
+          sponsorblock_status_label(source, :remove),
+          "Blank inherits the media profile, Off disables removal for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
+          set?: source.sponsorblock_remove_categories != nil
+        ),
+        field(
+          "SponsorBlock mark",
+          sponsorblock_status_label(source, :mark),
+          "Blank inherits the media profile, Off disables chapter marking for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
+          set?: source.sponsorblock_mark_categories != nil
+        )
+      ]
   end
 
   defp storage_fields(source) do

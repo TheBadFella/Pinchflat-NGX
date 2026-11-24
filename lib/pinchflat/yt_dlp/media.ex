@@ -29,6 +29,7 @@ defmodule Pinchflat.YtDlp.Media do
     :duration_seconds,
     :playlist_index,
     :availability,
+    :channel_id,
     :predicted_media_filepath
   ]
 
@@ -163,7 +164,7 @@ defmodule Pinchflat.YtDlp.Media do
   def indexing_output_template(source \\ nil, opts \\ [])
 
   def indexing_output_template(nil, _opts) do
-    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename,availability})j"
+    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename,availability,channel_id})j"
   end
 
   def indexing_output_template(source, opts) do
@@ -218,6 +219,7 @@ defmodule Pinchflat.YtDlp.Media do
       uploaded_at: response["upload_date"] && parse_uploaded_at(response),
       playlist_index: response["playlist_index"] || 0,
       availability: normalize_availability(response["availability"]),
+      channel_id: response["channel_id"],
       predicted_media_filepath: response["filename"]
     }
 
