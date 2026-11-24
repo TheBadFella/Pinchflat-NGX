@@ -633,6 +633,20 @@
               Only download media within this length. Leave either field blank for no limit.
             </p>
           </section>
+
+          <section
+            x-cloak
+            x-show="isPlaylist"
+            data-setting
+            data-setting-keywords="owner channel uploader playlist lock"
+          >
+            <.input
+              field={f[:only_owner_uploads]}
+              type="toggle"
+              label="Only download videos uploaded by the playlist owner"
+              help="Videos the owner added from other channels are still listed but not downloaded. Videos already downloaded are kept. Has no effect on playlists without an owner channel, such as mixes."
+            />
+          </section>
         </section>
         <section
           id="source-cleanup"

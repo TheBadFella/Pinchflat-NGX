@@ -57,6 +57,29 @@ defmodule PinchflatWeb.ApiSpecControllerTest do
       end
     end
 
+    test "documents playlist owner lock fields", %{conn: conn} do
+      schemas = conn |> get("/api/spec") |> json_response(200) |> then(& &1["components"]["schemas"])
+
+      source = schemas["Source"]["properties"]
+      assert source["owner_channel_id"]["type"] == "string"
+      assert source["owner_channel_id"]["nullable"] == true
+      assert source["owner_channel_id"]["readOnly"] == true
+
+      assert source["only_owner_uploads"]["type"] == "boolean"
+      assert source["only_owner_uploads"]["description"] == "Only download playlist videos uploaded by owner_channel_id"
+
+      for schema_name <- ["CreateSourceRequest", "UpdateSourceRequest"] do
+        properties = schemas[schema_name]["properties"]["source"]["properties"]
+
+        assert properties["only_owner_uploads"]["type"] == "boolean"
+
+        assert properties["only_owner_uploads"]["description"] ==
+                 "Only download playlist videos uploaded by owner_channel_id"
+
+        refute Map.has_key?(properties, "owner_channel_id")
+      end
+    end
+
     test "routes reference the updated source and media schemas", %{conn: conn} do
       response = conn |> get("/api/spec") |> json_response(200)
 

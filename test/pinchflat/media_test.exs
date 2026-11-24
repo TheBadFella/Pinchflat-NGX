@@ -854,6 +854,80 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when testing the owner lock" do
+    test "an item from another channel is not pending when the lock is on" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: "UC_owner"})
+
+      foreign_media_item =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, channel_id: "UC_other"})
+
+      assert Media.list_pending_media_items_for(source) == []
+      refute Media.pending_download?(foreign_media_item)
+    end
+
+    test "an item from the owner's channel is pending when the lock is on" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: "UC_owner"})
+
+      owned_media_item =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, channel_id: "UC_owner"})
+
+      assert Media.list_pending_media_items_for(source) == [owned_media_item]
+      assert Media.pending_download?(owned_media_item)
+    end
+
+    test "an item without a channel_id is pending when the lock is on" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: "UC_owner"})
+
+      unclassified_media_item =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, channel_id: nil})
+
+      assert Media.list_pending_media_items_for(source) == [unclassified_media_item]
+      assert Media.pending_download?(unclassified_media_item)
+    end
+
+    test "an item is pending when the lock is on but the source has no owner_channel_id" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: nil})
+
+      media_item =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, channel_id: "UC_other"})
+
+      assert Media.list_pending_media_items_for(source) == [media_item]
+      assert Media.pending_download?(media_item)
+    end
+
+    test "an item from another channel is pending when the lock is off" do
+      source = source_fixture(%{only_owner_uploads: false, owner_channel_id: "UC_owner"})
+
+      foreign_media_item =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, channel_id: "UC_other"})
+
+      assert Media.list_pending_media_items_for(source) == [foreign_media_item]
+      assert Media.pending_download?(foreign_media_item)
+    end
+
+    test "a newer item from another channel does not take a keep newest slot" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: "UC_owner", keep_newest_count: 1})
+
+      _foreign_newer =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          channel_id: "UC_other",
+          uploaded_at: ~U[2026-11-24 00:00:00Z]
+        })
+
+      owned_older =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          channel_id: "UC_owner",
+          uploaded_at: ~U[2026-11-23 00:00:00Z]
+        })
+
+      assert Media.list_pending_media_items_for(source) == [owned_older]
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing keep newest count" do
     test "only the newest counted items are pending" do
       source = source_fixture(%{keep_newest_count: 3})

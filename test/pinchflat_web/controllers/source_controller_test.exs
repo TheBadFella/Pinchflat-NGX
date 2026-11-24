@@ -1055,6 +1055,72 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "playlist owner lock" do
+    test "PUT persists only_owner_uploads", %{conn: conn} do
+      source = source_fixture(collection_type: :playlist, only_owner_uploads: false)
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{only_owner_uploads: "true"})
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      assert Repo.reload!(source).only_owner_uploads
+    end
+
+    test "edit form renders the toggle for a playlist source", %{conn: conn} do
+      source = source_fixture(collection_type: :playlist)
+
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ "Only download videos uploaded by the playlist owner"
+    end
+
+    test "edit form keeps the toggle inside the playlist-only section", %{conn: conn} do
+      source = source_fixture(collection_type: :channel)
+
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ ~r/<section[^>]*x-show="isPlaylist"[^>]*>.*?only_owner_uploads.*?<\/section>/s
+    end
+
+    test "source page shows owner rows only for playlists", %{conn: conn} do
+      playlist =
+        source_fixture(
+          collection_type: :playlist,
+          owner_channel_id: "UCplaylistowner",
+          only_owner_uploads: true
+        )
+
+      channel = source_fixture(collection_type: :channel, owner_channel_id: "UCchannelowner")
+
+      playlist_html = conn |> get(~p"/sources/#{playlist}?#{[tab: "source"]}") |> html_response(200)
+      assert playlist_html =~ "Owner channel"
+      assert playlist_html =~ "UCplaylistowner"
+      assert playlist_html =~ "Only owner uploads"
+      assert playlist_html =~ "Yes"
+
+      channel_html = conn |> get(~p"/sources/#{channel}?#{[tab: "source"]}") |> html_response(200)
+      refute channel_html =~ "Owner channel"
+      refute channel_html =~ "Only owner uploads"
+    end
+
+    test "JSON show returns owner lock fields", %{conn: conn} do
+      source =
+        source_fixture(
+          collection_type: :playlist,
+          owner_channel_id: "UCplaylistowner",
+          only_owner_uploads: true
+        )
+
+      response =
+        conn
+        |> put_req_header("accept", "application/json")
+        |> get(~p"/sources/#{source}")
+        |> json_response(200)
+
+      assert response["owner_channel_id"] == "UCplaylistowner"
+      assert response["only_owner_uploads"] == true
+    end
+  end
+
   describe "keep newest confirmation" do
     test "lowering the limit shows the removal count before saving", %{conn: conn} do
       source = source_fixture(%{keep_newest_count: 5, download_media: false})

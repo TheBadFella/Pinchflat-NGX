@@ -1240,7 +1240,8 @@ defmodule Pinchflat.Sources do
     collection_changes = %{
       collection_type: :video,
       collection_id: source_details.video_id,
-      collection_name: source_details.video_title
+      collection_name: source_details.video_title,
+      owner_channel_id: source_details.channel_id
     }
 
     change_source(source, Map.merge(changes, collection_changes))
@@ -1250,7 +1251,8 @@ defmodule Pinchflat.Sources do
     collection_changes = %{
       collection_type: :channel,
       collection_id: source_details.channel_id,
-      collection_name: source_details.channel_name
+      collection_name: source_details.channel_name,
+      owner_channel_id: source_details.channel_id
     }
 
     change_source(source, Map.merge(changes, collection_changes))
@@ -1260,7 +1262,8 @@ defmodule Pinchflat.Sources do
     collection_changes = %{
       collection_type: :playlist,
       collection_id: source_details.playlist_id,
-      collection_name: source_details.playlist_name
+      collection_name: source_details.playlist_name,
+      owner_channel_id: source_details.channel_id
     }
 
     change_source(source, Map.merge(changes, collection_changes))

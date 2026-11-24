@@ -231,6 +231,7 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
       }
       |> put_if_binary(:custom_name, source_name_from_metadata(source, source_metadata))
       |> put_if_binary(:description, source_metadata["description"])
+      |> put_if_binary(:owner_channel_id, source_metadata["channel_id"])
 
     Sources.update_source(
       source,

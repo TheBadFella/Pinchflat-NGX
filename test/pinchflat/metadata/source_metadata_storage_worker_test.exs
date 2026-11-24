@@ -334,6 +334,27 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorkerTest do
       assert source.description == "This is a test file for Pinchflat"
     end
 
+    test "an existing owner_channel_id is backfilled from the fetched metadata" do
+      stub_metadata_refresh(%{"channel" => "Playlist owner", "channel_id" => "UCplaylistowner012345678"})
+
+      source = source_fixture(%{collection_type: :playlist, owner_channel_id: nil})
+
+      refute source.owner_channel_id
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      assert Repo.reload!(source).owner_channel_id == "UCplaylistowner012345678"
+    end
+
+    test "an existing owner_channel_id is kept when the metadata has no channel_id" do
+      stub_metadata_refresh(%{"channel" => "Playlist owner"})
+
+      source = source_fixture(%{collection_type: :playlist, owner_channel_id: "UCkeptowner012345678901"})
+
+      assert :ok = perform_job(SourceMetadataStorageWorker, %{id: source.id})
+
+      assert Repo.reload!(source).owner_channel_id == "UCkeptowner012345678901"
+    end
+
     test "unlocked name and description are refreshed" do
       stub_metadata_refresh(%{"channel" => "Refreshed Source", "description" => "Refreshed description"})
       source = source_fixture(%{custom_name: "Old Source", description: "Old description"})

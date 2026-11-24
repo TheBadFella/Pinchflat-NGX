@@ -209,6 +209,80 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
     end
   end
 
+  describe "index_and_kickoff_downloads/1 when testing the playlist owner lock" do
+    test "indexes every upload but only enqueues the owner's when the lock is on" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          fast_index: true,
+          only_owner_uploads: true,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(HTTPClientMock, :get, fn _url ->
+        {:ok, "<yt:videoId>v_owner</yt:videoId><yt:videoId>v_foreign</yt:videoId>"}
+      end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn url, :get_media_attributes, _opts, _ot, _addl ->
+        cond do
+          String.ends_with?(url, "v_owner") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_owner", channel_id: "UC_owner_123"})}
+
+          String.ends_with?(url, "v_foreign") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_foreign", channel_id: "UC_other_456"})}
+        end
+      end)
+
+      assert items = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+
+    test "indexes every upload and enqueues both when the lock is off" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          fast_index: true,
+          only_owner_uploads: false,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(HTTPClientMock, :get, fn _url ->
+        {:ok, "<yt:videoId>v_owner</yt:videoId><yt:videoId>v_foreign</yt:videoId>"}
+      end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn url, :get_media_attributes, _opts, _ot, _addl ->
+        cond do
+          String.ends_with?(url, "v_owner") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_owner", channel_id: "UC_owner_123"})}
+
+          String.ends_with?(url, "v_foreign") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_foreign", channel_id: "UC_other_456"})}
+        end
+      end)
+
+      assert items = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+  end
+
   describe "index_and_kickoff_downloads/1 when testing cookies" do
     test "fast indexing completes the download after cookie recovery with artwork disabled" do
       profile = media_profile_fixture(download_source_images: false, download_nfo: false)

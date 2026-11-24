@@ -271,6 +271,17 @@ defmodule PinchflatWeb.Schemas do
         },
         min_duration_seconds: %Schema{type: :integer, nullable: true, description: "Minimum media duration"},
         max_duration_seconds: %Schema{type: :integer, nullable: true, description: "Maximum media duration"},
+        owner_channel_id: %Schema{
+          type: :string,
+          nullable: true,
+          readOnly: true,
+          description:
+            "Channel ID of the source's owner: the playlist owner, the channel itself, or a single video's uploader. Null when YouTube reports no owner (for example a mix)."
+        },
+        only_owner_uploads: %Schema{
+          type: :boolean,
+          description: "Only download playlist videos uploaded by owner_channel_id"
+        },
         watch_window_days: %Schema{
           type: :integer,
           nullable: true,
@@ -613,6 +624,10 @@ defmodule PinchflatWeb.Schemas do
             },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
+            only_owner_uploads: %Schema{
+              type: :boolean,
+              description: "Only download playlist videos uploaded by owner_channel_id"
+            },
             output_path_template_shorts_override: %Schema{
               type: :string,
               nullable: true,
@@ -743,6 +758,10 @@ defmodule PinchflatWeb.Schemas do
             },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
+            only_owner_uploads: %Schema{
+              type: :boolean,
+              description: "Only download playlist videos uploaded by owner_channel_id"
+            },
             output_path_template_shorts_override: %Schema{
               type: :string,
               nullable: true,

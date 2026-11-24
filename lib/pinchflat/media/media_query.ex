@@ -215,6 +215,18 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  # Playlists can contain uploads from other channels. When the source owner lock
+  # is enabled, only items whose `channel_id` matches the source's
+  # `owner_channel_id` are eligible. A missing owner or item channel leaves the
+  # item eligible, so enabling the lock never silently drops unclassified items.
+  def uploaded_by_source_owner do
+    dynamic(
+      [mi, source],
+      not source.only_owner_uploads or is_nil(source.owner_channel_id) or is_nil(mi.channel_id) or
+        mi.channel_id == source.owner_channel_id
+    )
+  end
+
   def past_retention_period do
     if Pinchflat.Database.postgres?() do
       dynamic(
@@ -362,7 +374,8 @@ defmodule Pinchflat.Media.MediaQuery do
         ^upload_date_after_source_cutoff(today) and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and
-        ^meets_min_and_max_duration()
+        ^meets_min_and_max_duration() and
+        ^uploaded_by_source_owner()
     )
   end
 
@@ -448,8 +461,9 @@ defmodule Pinchflat.Media.MediaQuery do
     end
   end
 
-  # Not downloaded and skipped by the source's rules (format, title, duration, cutoff or availability),
-  # rather than prevented by the user or held back by a failure. Requires the media_profile assoc.
+  # Not downloaded and skipped by the source's rules (format, title, duration, cutoff, availability or
+  # the owner lock for other channels' uploads), rather than prevented by the user or held back by a
+  # failure. Requires the media_profile assoc.
   # CASE turns a NULL (e.g. from a NULL error_type) into "excluded" so this and its negation never both
   # drop an item. It also keeps SQLite short-circuiting, so regexp_like never sees a NULL pattern.
   def excluded do

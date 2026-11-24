@@ -416,6 +416,54 @@ defmodule Pinchflat.SourcesTest do
       assert String.starts_with?(source.collection_id, "some_playlist_id_")
     end
 
+    test "stores the playlist owner as the source owner_channel_id" do
+      owner_channel_id = "UC" <> String.duplicate("a", 22)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        Phoenix.json_library().encode(%{
+          channel: "Uploader of the first item",
+          channel_id: "UC" <> String.duplicate("b", 22),
+          playlist_id: "PLabc123",
+          playlist_title: "Some playlist",
+          playlist_channel: "Playlist owner",
+          playlist_channel_id: owner_channel_id
+        })
+      end)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/playlist?list=PLabc123"
+      }
+
+      assert {:ok, %Source{collection_type: :playlist} = source} =
+               Sources.create_source(valid_attrs, run_post_commit_tasks: false)
+
+      assert source.owner_channel_id == owner_channel_id
+    end
+
+    test "stores the channel ID as the source owner_channel_id for channels" do
+      channel_id = "UC" <> String.duplicate("c", 22)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        Phoenix.json_library().encode(%{
+          channel: "Channel owner",
+          channel_id: channel_id,
+          playlist_id: channel_id,
+          playlist_title: "Channel owner - Videos"
+        })
+      end)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/#{channel_id}"
+      }
+
+      assert {:ok, %Source{collection_type: :channel} = source} =
+               Sources.create_source(valid_attrs, run_post_commit_tasks: false)
+
+      assert source.owner_channel_id == channel_id
+    end
+
     test "creates a source and adds name + ID for single videos" do
       expect(YtDlpRunnerMock, :run, &video_mock/5)
 
