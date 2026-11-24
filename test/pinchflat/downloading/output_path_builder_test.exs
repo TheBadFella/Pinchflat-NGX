@@ -55,6 +55,17 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
                "/Лонгплей/%(title)S.%(ext)S"
     end
 
+    test "when restricted, keeps letters with no ASCII form so partly non-Latin names stay distinct" do
+      assert OutputPathBuilder.sanitize_literal_text("/Лонгплей Live/%(title)S.%(ext)S", true) ==
+               "/Лонгплей_Live/%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text("/Кинопоиск Live/%(title)S.%(ext)S", true) ==
+               "/Кинопоиск_Live/%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text("/Обзор \u{1F3B5} Café/%(title)S.%(ext)S", true) ==
+               "/Обзор_Cafe/%(title)S.%(ext)S"
+    end
+
     test "keeps path separators in both modes" do
       template = "/Channel Videos/Season 1\\Extras/%(title)S.%(ext)S"
 

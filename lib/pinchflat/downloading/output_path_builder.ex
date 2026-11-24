@@ -34,6 +34,10 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   sanitizes field values, following `--restrict-filenames` when `restrict`
   is true and `--windows-filenames` otherwise. `%(...)` fields are unchanged.
 
+  When restricted, accented Latin letters lose their accents, but letters and
+  digits with no ASCII form (Cyrillic, Greek, CJK...) are kept, so a source
+  named in another alphabet keeps a folder of its own.
+
   Returns binary()
   """
   def sanitize_literal_text(template, restrict) do
@@ -65,13 +69,22 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
 
   defp sanitize_text(text, true) do
     text
-    |> :unicode.characters_to_nfkd_binary()
-    |> String.replace(~r/\p{Mn}/u, "")
     |> String.graphemes()
-    |> Enum.flat_map(&restrict_char/1)
+    |> Enum.flat_map(&restrict_grapheme/1)
     |> collapse_replaced_underscores()
     |> trim_replaced_underscores()
     |> Enum.map_join(fn {char, _replaced?} -> char end)
+  end
+
+  # "é" becomes "e"; a letter or digit with no ASCII form is kept as typed
+  defp restrict_grapheme(grapheme) do
+    ascii = grapheme |> :unicode.characters_to_nfkd_binary() |> String.replace(~r/\p{Mn}/u, "")
+
+    cond do
+      ascii != "" and ascii =~ ~r/\A[\x00-\x7f]+\z/ -> ascii |> String.graphemes() |> Enum.flat_map(&restrict_char/1)
+      grapheme =~ ~r/\A[\p{L}\p{N}]/u -> [{grapheme, false}]
+      true -> [{"_", true}]
+    end
   end
 
   defp restrict_char("/"), do: [{"/", false}]
