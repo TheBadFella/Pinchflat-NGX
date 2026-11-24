@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>Pinchflat-NGX</Name>
+  <Repository>ghcr.io/thebadfella/pinchflat-ngx:latest</Repository>
+  <Registry>https://github.com/TheBadFella/Pinchflat-NGX/pkgs/container/pinchflat-ngx</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/TheBadFella/Pinchflat-NGX/issues</Support>
+  <Project>https://github.com/TheBadFella/Pinchflat-NGX</Project>
+  <Overview>Download and manage videos from YouTube channels and playlists. This template starts a new SQLite library. To keep an existing Pinchflat library, follow the migration guide and edit the existing container.</Overview>
+  <Category>MediaApp:Video</Category>
+  <WebUI>http://[IP]:[PORT:8945]</WebUI>
+  <Icon>https://raw.githubusercontent.com/TheBadFella/Pinchflat-NGX/master/docs/assets/brand/icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/TheBadFella/Pinchflat-NGX/master/templates/pinchflat-ngx.xml</TemplateURL>
+  <ReadMe>https://github.com/TheBadFella/Pinchflat-NGX/wiki/Installation#unraid</ReadMe>
+  <License>AGPL-3.0</License>
+  <Config Name="WebUI Port" Target="8945" Default="8945" Mode="tcp" Description="Change the host port if 8945 is already in use." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/pinchflat-ngx" Mode="rw" Description="Persistent SQLite database and settings. Use appdata backed by local storage." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Downloads" Target="/downloads" Default="" Mode="rw" Description="Choose a writable host folder for the videos downloaded by Pinchflat-NGX." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Time Zone" Target="TZ" Default="Etc/UTC" Mode="" Description="Set an IANA time zone such as America/Regina for local times and scheduled tasks." Type="Variable" Display="always" Required="true" Mask="false"/>
+</Container>
