@@ -10,7 +10,6 @@ defmodule Pinchflat.MediaServers.Emby do
   before automatic scans are triggered.
   """
 
-  require Logger
   alias Pinchflat.HTTP.HTTPClient
 
   @doc """

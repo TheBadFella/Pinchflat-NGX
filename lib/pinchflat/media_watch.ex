@@ -1577,7 +1577,6 @@ defmodule Pinchflat.MediaWatch do
       :ok
     else
       {:ok, %{sha256: _other}} -> {:error, :restored_checksum_mismatch}
-      {:ok, %{size: _other}} -> {:error, :restored_size_mismatch}
       {:error, reason} -> {:error, reason}
     end
   end

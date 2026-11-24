@@ -16,7 +16,6 @@ defmodule Pinchflat.Diagnostics.MigrationCheck do
   """
 
   import Ecto.Query, warn: false
-  require Logger
 
   alias Pinchflat.LegacyMigration
   alias Pinchflat.Media.MediaItem

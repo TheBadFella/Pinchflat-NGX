@@ -1,6 +1,6 @@
 # Find eligible builder and runner images on Docker Hub. We use Ubuntu/Debian
 # instead of Alpine to avoid DNS resolution issues in production.
-ARG ELIXIR_VERSION=1.19.7
+ARG ELIXIR_VERSION=1.20.5
 ARG OTP_VERSION=28.5.0.8
 ARG DEBIAN_VERSION=trixie-20261104-slim
 

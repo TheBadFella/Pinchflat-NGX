@@ -5,7 +5,6 @@ defmodule Pinchflat.Diagnostics.MigrationRepair.TokenStore do
   """
 
   use GenServer
-  require Logger
 
   @table :migration_repair_tokens
 

@@ -5,8 +5,6 @@ defmodule Pinchflat.Profiles.MediaProfileDeletionWorker do
     queue: :local_data,
     tags: ["media_profiles", "local_data"]
 
-  require Logger
-
   alias __MODULE__
   alias Pinchflat.Profiles
 
