@@ -84,6 +84,7 @@ defmodule PinchflatWeb.CoreComponents do
   attr :id, :string, required: true
   attr :show, :boolean, default: false
   attr :allow_close, :boolean, default: true
+  attr :compact, :boolean, default: false, doc: "a narrow dialog with less padding, for short confirmations"
   attr :on_cancel, JS, default: %JS{}
   slot :inner_block, required: true
 
@@ -106,16 +107,19 @@ defmodule PinchflatWeb.CoreComponents do
         tabindex="0"
       >
         <div class="flex min-h-full items-center justify-center">
-          <div class="w-full max-w-3xl p-2 sm:p-6 lg:py-8">
+          <div class={["w-full p-2", if(@compact, do: "max-w-md sm:p-4", else: "max-w-3xl sm:p-6 lg:py-8")]}>
             <div
               id={"#{@id}-container"}
               phx-window-keydown={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
               phx-key="escape"
               phx-click-away={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
-              class="theme-surface-raised relative hidden rounded-m3-lg p-8 sm:p-14 transition"
+              class={[
+                "theme-surface-raised relative hidden rounded-m3-lg transition",
+                if(@compact, do: "p-6", else: "p-8 sm:p-14")
+              ]}
             >
               <.focus_wrap id={"#{@id}-focus-wrap"}>
-                <div :if={@allow_close} class="absolute top-6 right-5">
+                <div :if={@allow_close} class={["absolute", if(@compact, do: "top-4 right-4", else: "top-6 right-5")]}>
                   <button
                     phx-click={JS.exec("data-cancel", to: "##{@id}")}
                     type="button"
@@ -148,9 +152,57 @@ defmodule PinchflatWeb.CoreComponents do
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :toast, :boolean, default: false, doc: "float in a corner and fade out instead of pushing the page down"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
+
+  def flash(%{toast: true} = assigns) do
+    assigns =
+      assigns
+      |> assign_new(:id, fn -> "flash-#{assigns.kind}" end)
+      |> assign(:dismiss_after, if(assigns.kind == :error, do: 10_000, else: 5_000))
+
+    ~H"""
+    <div
+      :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
+      id={@id}
+      role={if @kind == :error, do: "alert", else: "status"}
+      class="pointer-events-auto w-full"
+      x-data="{ open: true }"
+      x-show="open"
+      x-init={"setTimeout(() => open = false, #{@dismiss_after})"}
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 translate-y-2"
+      x-transition:leave="transition ease-in duration-300"
+      x-transition:leave-end="opacity-0"
+      {@rest}
+    >
+      <div class={[
+        "flex items-start gap-3 rounded-m3-md border border-l-4 border-theme-outline/80 bg-theme-surface-2 p-4 text-theme-on-surface shadow-m3-3",
+        @kind == :info && "border-l-theme-success",
+        @kind == :error && "border-l-theme-error"
+      ]}>
+        <.icon
+          name={if @kind == :error, do: "hero-exclamation-circle", else: "hero-check-circle"}
+          class={"mt-0.5 h-5 w-5 shrink-0 #{if @kind == :error, do: "theme-status-error", else: "theme-status-success"}"}
+        />
+        <div class="min-w-0 flex-1">
+          <p :if={@title} class="text-sm font-semibold">{@title}</p>
+          <p class="text-sm text-theme-on-surface-muted">{msg}</p>
+        </div>
+        <button
+          type="button"
+          aria-label={gettext("close")}
+          class="theme-field-action -m-2 h-9 w-9"
+          x-on:click="open = false"
+        >
+          <.icon name="hero-x-mark" class="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+    """
+  end
 
   def flash(assigns) do
     assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
@@ -196,6 +248,19 @@ defmodule PinchflatWeb.CoreComponents do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
+  attr :toast, :boolean, default: false, doc: "show messages as toasts that don't move the page"
+
+  def flash_group(%{toast: true} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="theme-toast-stack"
+    >
+      <.flash kind={:info} title="Done" flash={@flash} toast />
+      <.flash kind={:error} title="Something went wrong" flash={@flash} toast />
+    </div>
+    """
+  end
 
   def flash_group(assigns) do
     ~H"""

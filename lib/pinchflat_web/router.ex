@@ -127,8 +127,10 @@ defmodule PinchflatWeb.Router do
     post "/sources/pause_selected", Sources.SourceController, :pause_selected
     post "/sources/resume_selected", Sources.SourceController, :resume_selected
     post "/sources/assign_profile_selected", Sources.SourceController, :assign_profile_selected
+    post "/sources/delete_selected", Sources.SourceController, :delete_selected
     post "/sources/cutoff/preview", Sources.BulkCutoffController, :preview
     post "/sources/cutoff/apply", Sources.BulkCutoffController, :apply
+    post "/sources/cutoff/apply_now", Sources.BulkCutoffController, :apply_now
 
     resources "/sources", Sources.SourceController do
       post "/restore_automatic_downloads", Sources.SourceController, :restore_automatic_downloads

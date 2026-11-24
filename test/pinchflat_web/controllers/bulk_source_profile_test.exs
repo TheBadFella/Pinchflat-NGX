@@ -73,7 +73,7 @@ defmodule PinchflatWeb.BulkSourceProfileTest do
           ["-1"],
           ["#{source.id}", "999999"],
           ["#{source.id}", "#{removed.id}"],
-          List.duplicate("#{source.id}", 101)
+          List.duplicate("#{source.id}", Pinchflat.Sources.selection_limit() + 1)
         ] do
       response =
         post(conn, "/sources/assign_profile_selected", %{
@@ -101,27 +101,27 @@ defmodule PinchflatWeb.BulkSourceProfileTest do
     }
 
     {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
-    refute has_element?(view, "#selected-source-profile")
-    render_click(view, "select_page")
+    assert has_element?(view, "#selected-source-profile button[x-ref=trigger][disabled]")
+    render_click(view, "toggle_select_all")
     refute has_element?(view, "#selected-source-profile button[disabled]")
 
     assert has_element?(
              view,
-             "#selected-source-media-profile-options button[data-value='#{profile_a.id}']",
+             "#selected-source-profile button[phx-value-profile_id='#{profile_a.id}']",
              "Quality Profile 1"
            )
 
     assert has_element?(
              view,
-             "#selected-source-media-profile-options button[data-value='#{profile_b.id}']",
+             "#selected-source-profile button[phx-value-profile_id='#{profile_b.id}']",
              "Quality Profile 2"
            )
 
-    refute has_element?(view, "#selected-source-media-profile-options button[data-value='#{deleted.id}']")
-    assert has_element?(view, "#selected-source-profile input[name='source_ids[]'][value='#{source.id}']")
+    refute has_element?(view, "#selected-source-profile button[value='#{deleted.id}']")
+    assert has_element?(view, "#selected-source-cutoff input[name='source_ids[]'][value='#{source.id}']")
 
     render_click(view, "clear_selection")
-    refute has_element?(view, "#selected-source-profile")
+    assert has_element?(view, "#selected-source-profile button[x-ref=trigger][disabled]")
   end
 
   test "profile assignment keeps existing files and schedules metadata only for changes", %{conn: conn} do

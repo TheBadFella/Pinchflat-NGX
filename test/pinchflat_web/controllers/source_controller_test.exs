@@ -51,8 +51,8 @@ defmodule PinchflatWeb.SourceControllerTest do
     source_fixture(custom_name: "Individual entry", collection_type: :video)
 
     html = conn |> get(~p"/sources") |> html_response(200)
-    assert html =~ "Channels &amp; playlists"
-    assert html =~ "Individual videos"
+    assert html =~ "Channels &amp; Playlists"
+    assert html =~ "Individual Videos"
     assert html =~ "Channel entry"
     refute html =~ "Individual entry"
 
@@ -159,15 +159,15 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html_response(conn, 200) =~ "Indexed Source"
     end
 
-    test "renders download mode identifiers for automatic and delayed playlists", %{conn: conn} do
-      source_fixture(%{custom_name: "Automatic Source", collection_type: :playlist, selection_mode: :all})
-      source_fixture(%{custom_name: "Delayed Source", collection_type: :playlist, selection_mode: :manual})
+    test "renders the source status for Download Media on and off", %{conn: conn} do
+      source_fixture(%{custom_name: "Downloading Source", download_media: true})
+      source_fixture(%{custom_name: "Indexing Only Source", download_media: false})
 
       conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
-      assert response =~ "Automatic Downloads"
-      assert response =~ "Delayed Downloads"
+      assert response =~ ~s(data-source-status="Enabled")
+      assert response =~ ~s(data-source-status="Enabled, Download Media off")
     end
 
     test "renders source row controls", %{conn: conn} do
@@ -176,22 +176,25 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
-      assert response =~ "Start all"
-      assert response =~ "Pause all"
-      assert response =~ "Stop all"
-      assert response =~ "Start downloads for Controllable Source?"
-      assert response =~ "Pause downloads for Controllable Source?"
-      assert response =~ "Stop downloads for Controllable Source?"
+      assert response =~ "Start All"
+      assert response =~ "Pause All"
+      assert response =~ "Stop All"
+      assert response =~ "Click again to start"
+      assert response =~ "Click again to pause"
+      assert response =~ "Click again to stop"
+      refute response =~ "Start downloads for Controllable Source?"
     end
 
-    test "renders source delete control with non-destructive confirmation copy", %{conn: conn} do
+    test "renders the source delete control that opens the delete dialog", %{conn: conn} do
       source_fixture(%{custom_name: "Deletable Source"})
 
       conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
-      assert response =~ "Delete Deletable Source? This deletes the source only and does not delete files."
-      assert response =~ "Delete source"
+      assert response =~ ~s(aria-label="Delete Deletable Source")
+      assert response =~ "confirm_delete"
+      assert response =~ "delete-selected-sources-modal"
+      assert response =~ "Delete Source"
     end
 
     test "defaults to the poster grid and honours an explicit table view", %{conn: conn} do
@@ -231,6 +234,22 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       assert html =~ "pinchflat_sources_view="
       assert html =~ ~s|x-on:click="remember('table')"|
+    end
+
+    test "starts the selected tab from the search term in the URL", %{conn: conn} do
+      source_fixture(%{custom_name: "Zebra channel"})
+      source_fixture(%{custom_name: "Other channel"})
+      source_fixture(%{custom_name: "Zebra video", collection_type: :video})
+
+      channels = conn |> get(~p"/sources?q=zebra") |> html_response(200)
+      assert channels =~ "Zebra channel"
+      refute channels =~ "Other channel"
+      refute channels =~ "Zebra video"
+      assert channels =~ ~s(id="source-search-input")
+
+      videos = conn |> get(~p"/sources?type=videos&q=zebra") |> html_response(200)
+      assert videos =~ "Zebra video"
+      refute videos =~ "Zebra channel"
     end
 
     test "renders channel discovery in the sidebar", %{conn: conn} do
@@ -1576,18 +1595,69 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "/sources/#{source.uuid}/feed"
     end
 
-    test "renders start, pause, and stop actions in the source actions dropdown", %{conn: conn} do
+    test "shows the source status as a coloured pill in the header", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Header Source", download_media: false})
+      disabled = source_fixture(%{custom_name: "Disabled Source", enabled: false})
+
+      html = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      assert html =~ ~s(id="source-status-header-#{source.id}")
+      assert html =~ ~s(data-source-status="Enabled, Download Media off")
+      assert html =~ "theme-pill-info"
+
+      html = conn |> get(~p"/sources/#{disabled}") |> html_response(200)
+      assert html =~ ~s(data-source-status="Disabled")
+      assert html =~ "theme-pill-warning"
+    end
+
+    test "uses the sources list's actions menu and delete dialog", %{conn: conn} do
       source = source_fixture(%{custom_name: "Dropdown Source"})
+      media_item_fixture(source_id: source.id, media_filepath: nil)
+      media_item_fixture(source_id: source.id)
 
-      conn = get(conn, ~p"/sources/#{source}")
-      response = html_response(conn, 200)
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
 
-      assert response =~ "Start All"
-      assert response =~ "Pause All"
-      assert response =~ "Stop All"
-      assert response =~ "Start downloads for Dropdown Source?"
-      assert response =~ "Pause downloads for Dropdown Source?"
-      assert response =~ "Stop downloads for Dropdown Source?"
+      for label <-
+            ["Copy RSS Feed", "Copy JSON", "Use as Template", "Download Pending", "Redownload Existing"] ++
+              ["Force Index", "Refresh Metadata", "Sync Files on Disk", "Reconcile Files", "Start All"] do
+        assert response =~ label
+      end
+
+      assert response =~ "Click again to start"
+      refute response =~ "Start downloads for Dropdown Source?"
+      refute response =~ "Are you sure"
+
+      assert response =~ ~s(aria-label="Delete Dropdown Source")
+      assert response =~ ~s(id="delete-source-modal")
+      assert response =~ ~s(id="delete-source")
+      assert response =~ ~s(action="/sources/#{source.id}")
+      assert response =~ ~r/name="_method"[^>]*value="delete"/
+      assert response =~ "Delete Source + Files"
+    end
+
+    test "hides Download Pending and Redownload Existing when there is nothing for them to do", %{conn: conn} do
+      empty = source_fixture()
+      paused = source_fixture(download_media: false)
+      media_item_fixture(source_id: paused.id, media_filepath: nil)
+      media_item_fixture(source_id: paused.id)
+
+      for source <- [empty, paused] do
+        response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+        refute response =~ "Download Pending"
+        refute response =~ "Redownload Existing"
+        assert response =~ "Force Index"
+      end
+    end
+
+    test "copies the source JSON from a data attribute, not from script", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Name with ${alert(1)} and `ticks`"})
+
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      refute response =~ "String.raw"
+      assert response =~ "copyWithCallbacks($el.dataset.json"
+      assert response =~ "data-json="
     end
 
     test "renders the videos tab label and normalizes downloaded alias", %{conn: conn} do
@@ -1910,6 +1980,17 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       conn = post(conn, ~p"/sources/#{source.id}/force_index")
       assert redirected_to(conn) == ~p"/sources/#{source.id}"
+    end
+
+    test "returns to the sources list, naming the source, when started from it", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Listed Source"})
+
+      listed = post(conn, ~p"/sources/#{source.id}/force_index", %{"return_to" => "/sources?type=videos"})
+      assert redirected_to(listed) == ~p"/sources?type=videos"
+      assert Phoenix.Flash.get(listed.assigns.flash, :info) == "Listed Source: Index enqueued."
+
+      elsewhere = post(conn, ~p"/sources/#{source.id}/force_index", %{"return_to" => "https://example.com/"})
+      assert redirected_to(elsewhere) == ~p"/sources"
     end
   end
 

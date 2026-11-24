@@ -16,6 +16,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Sources.DirectoryMove
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Sources.SavedTitleFilter
+  alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.YtDlp.MediaCollection
@@ -30,13 +31,15 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Settings.PendingMediaItemOptions
   alias Pinchflat.Settings.ScopedYtDlpOptions
 
+  @selection_limit 500
+
   @automated_metadata_lock_fields %{
     custom_name: :custom_name_locked,
     description: :description_locked
   }
 
   @doc """
-  Pauses downloads for up to 100 available sources without disabling monitoring
+  Pauses downloads for up to #{@selection_limit} available sources without disabling monitoring
   or deleting files. Rejects the entire selection if any source is unavailable.
 
   Returns {:ok, [%Source{}]} | {:error, term()}
@@ -69,7 +72,7 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
-  Resumes downloads for up to 100 available sources without changing monitoring
+  Resumes downloads for up to #{@selection_limit} available sources without changing monitoring
   or deleting files. Rejects the entire selection if any source is unavailable.
   Enqueues pending download tasks for enabled sources.
 
@@ -97,7 +100,42 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
-  Updates the media profile for up to 100 available sources.
+  Marks up to #{@selection_limit} available sources for deletion and starts their deletion jobs.
+  Downloaded files are kept unless `delete_files: true` is given, matching the source page's
+  Delete Source and Delete Source + Files. Rejects the entire selection if any source is
+  unavailable or still has watch-protected videos.
+
+  Returns {:ok, [%Source{}]} | {:error, :watch_protected | term()}
+  """
+  def delete_selected_sources(ids, opts \\ []) do
+    delete_files = Keyword.get(opts, :delete_files, false)
+
+    result =
+      Repo.transaction(fn ->
+        with {:ok, sources} <- get_selected_sources(ids, lock: true),
+             false <- Enum.any?(sources, &MediaWatch.deletion_blocked?/1) do
+          marked_at = DateTime.utc_now()
+
+          Enum.map(sources, fn source ->
+            case update_source(source, %{marked_for_deletion_at: marked_at}, run_post_commit_tasks: false) do
+              {:ok, updated} -> updated
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end)
+        else
+          true -> Repo.rollback(:watch_protected)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    with {:ok, sources} <- result do
+      Enum.each(sources, &SourceDeletionWorker.kickoff(&1, %{delete_files: delete_files}))
+      {:ok, sources}
+    end
+  end
+
+  @doc """
+  Updates the media profile for up to #{@selection_limit} available sources.
   Rejects the entire selection if any source is unavailable or if the profile is invalid.
 
   Returns {:ok, [%Source{}]} | {:error, term()}
@@ -146,14 +184,41 @@ defmodule Pinchflat.Sources do
   defp validate_target_profile(_profile_id), do: {:error, :invalid_profile}
 
   @doc """
-  Loads up to 100 selected sources, rejecting the selection if any source or
+  Returns the ids of the given sources that have download jobs running or waiting to run.
+  Queued jobs count too, so a status shown from this stays steady between items in a batch.
+
+  Returns MapSet.t()
+  """
+  def downloading_source_ids([]), do: MapSet.new()
+
+  def downloading_source_ids(source_ids) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      join: mi in assoc(t, :media_item),
+      where: mi.source_id in ^source_ids,
+      where: j.state in ["executing", "available"],
+      where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+      distinct: true,
+      select: mi.source_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  @doc """
+  Returns the most sources a bulk action accepts at once.
+  """
+  def selection_limit, do: @selection_limit
+
+  @doc """
+  Loads up to #{@selection_limit} selected sources, rejecting the selection if any source or
   profile is being deleted. Use `lock: true` within a transaction when updating.
 
   Returns {:ok, [%Source{}]} | {:error, :invalid_selection | :unavailable_source}
   """
   def get_selected_sources(ids, opts \\ [])
 
-  def get_selected_sources(ids, opts) when is_list(ids) and length(ids) in 1..100 do
+  def get_selected_sources(ids, opts) when is_list(ids) and length(ids) in 1..@selection_limit do
     if Enum.all?(ids, &(is_binary(&1) and Regex.match?(~r/^[1-9][0-9]{0,17}$/, &1))) do
       ids = ids |> Enum.map(&String.to_integer/1) |> Enum.uniq()
 

@@ -28,7 +28,12 @@
 
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
   <div class="max-w-full">
-    <.source_library_header source={@source} status={@source_status} pending_tasks={@pending_tasks} />
+    <.source_library_header
+      source={@source}
+      status={@source_status}
+      downloading={@downloading}
+      pending_tasks={@pending_tasks}
+    />
     <section
       :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
       class="theme-surface-accent mb-6 rounded-m3-lg px-6 py-5 text-theme-on-surface"
@@ -66,7 +71,22 @@
     <div x-data="{ showUnset: false }">
       <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
         <:tab_append>
-          <.actions_dropdown source={@source} conn={@conn} />
+          <div class="flex items-center gap-2">
+            <.icon_button
+              icon_name="hero-trash"
+              tooltip="Delete"
+              icon_class="h-5 w-5 text-theme-error"
+              aria-label={"Delete #{@source.custom_name}"}
+              phx-click={show_modal("delete-source-modal")}
+            />
+            <.source_actions_menu
+              source={@source}
+              pending_count={@pending_count}
+              downloaded_count={@media_statistics.downloaded}
+              json={Jason.Formatter.pretty_print(Phoenix.json_library().encode!(@source))}
+              text="Actions"
+            />
+          </div>
         </:tab_append>
 
         <:tab title="Videos" id="videos">
@@ -267,3 +287,11 @@
     </div>
   </div>
 </div>
+
+<.source_delete_dialog
+  id="delete-source-modal"
+  form_id="delete-source"
+  names={[@source.custom_name]}
+  action={~p"/sources/#{@source}"}
+  method="delete"
+/>

@@ -289,63 +289,46 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   end
 
   @doc """
-  Renders a tooltip with the given content
+  Renders a tooltip with the given content.
+
+  The tip opens in the browser's top layer (see `assets/js/tooltips.mjs`), so scrolling tables
+  and neighbouring cards can't clip or cover it. It is centred on its trigger and kept on screen.
+  `position` "top" prefers above the trigger; any other value prefers below. Either flips when
+  there isn't room.
   """
 
   attr :tooltip, :string, required: true
   attr :position, :string, default: ""
   attr :tooltip_class, :any, default: ""
-  attr :tooltip_arrow_class, :any, default: ""
   slot :inner_block
-
-  def tooltip(%{position: "bottom-right"} = assigns) do
-    ~H"""
-    <.tooltip tooltip={@tooltip} tooltip_class={@tooltip_class} tooltip_arrow_class={["-top-1", @tooltip_arrow_class]}>
-      {render_slot(@inner_block)}
-    </.tooltip>
-    """
-  end
-
-  def tooltip(%{position: "bottom"} = assigns) do
-    ~H"""
-    <.tooltip
-      tooltip={@tooltip}
-      tooltip_class={["left-1/2 -translate-x-1/2", @tooltip_class]}
-      tooltip_arrow_class={["-top-1 left-1/2 -translate-x-1/2", @tooltip_arrow_class]}
-    >
-      {render_slot(@inner_block)}
-    </.tooltip>
-    """
-  end
-
-  def tooltip(%{position: "bottom-left"} = assigns) do
-    ~H"""
-    <.tooltip
-      tooltip={@tooltip}
-      tooltip_class={["left-0", @tooltip_class]}
-      tooltip_arrow_class={["-top-1 left-4", @tooltip_arrow_class]}
-    >
-      {render_slot(@inner_block)}
-    </.tooltip>
-    """
-  end
 
   def tooltip(assigns) do
     ~H"""
-    <div class="group/tooltip relative inline-flex cursor-pointer items-center justify-center overflow-visible align-middle">
+    <div
+      class="inline-flex cursor-pointer items-center justify-center align-middle"
+      data-tooltip-anchor={@tooltip && "true"}
+    >
       <div class="inline-flex min-w-0 items-center justify-center">{render_slot(@inner_block)}</div>
 
       <div
         :if={@tooltip}
+        popover="manual"
+        role="tooltip"
+        data-tooltip
+        data-position={if @position == "top", do: "top", else: "bottom"}
         class={[
-          "theme-surface-accent hidden absolute top-full z-50 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover/tooltip:block group-hover/tooltip:opacity-100 text-wrap shadow-m3-2",
+          "theme-surface-accent group/tip hidden fixed inset-auto z-50 m-0 max-w-80 overflow-visible rounded-m3-sm p-1.5 text-sm font-medium shadow-m3-2",
           @tooltip_class
         ]}
       >
-        <span class={[
-          "absolute -z-10 h-2 w-2 rotate-45 rounded-[2px] border-l border-t border-theme-outline/80 bg-theme-surface-3",
-          @tooltip_arrow_class
-        ]}></span>
+        <span
+          data-tooltip-arrow
+          class={[
+            "absolute -z-10 h-2 w-2 -translate-x-1/2 rotate-45 rounded-[2px] border-theme-outline/80 bg-theme-surface-3",
+            "group-data-[side=top]/tip:-bottom-1 group-data-[side=top]/tip:border-b group-data-[side=top]/tip:border-r",
+            "group-data-[side=bottom]/tip:-top-1 group-data-[side=bottom]/tip:border-l group-data-[side=bottom]/tip:border-t"
+          ]}
+        ></span>
         <div class="px-3">{@tooltip}</div>
       </div>
     </div>

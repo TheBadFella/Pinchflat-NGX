@@ -96,11 +96,21 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       </.button_dropdown>
   """
   attr :text, :string, default: nil
+  attr :text_class, :string, default: nil, doc: "classes for the trigger text, such as truncation for long values"
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :class, :string, default: ""
   attr :variant, :string, default: "primary"
   attr :size, :string, default: "default"
+  attr :disabled, :boolean, default: false
+
+  attr :tooltip, :string, default: nil, doc: "a styled tooltip for the trigger, used instead of the browser title"
+  attr :tooltip_position, :string, default: "bottom"
+
+  attr :align, :string,
+    default: "end",
+    values: ["end", "start"],
+    doc: "end lines the menu up with the trigger's right edge; start opens it below the left edge"
 
   slot :option, required: true
 
@@ -121,41 +131,10 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       x-on:resize.window="dropdownOpen = false"
       class={["relative flex", @class]}
     >
-      <button
-        x-ref="trigger"
-        type="button"
-        x-bind:aria-expanded="dropdownOpen"
-        x-on:click.prevent="
-          const rect = $refs.trigger.getBoundingClientRect();
-          const top = Math.max(8, (document.querySelector('header')?.getBoundingClientRect().bottom || 0) + 8);
-          const above = Math.max(0, rect.top - top - 8);
-          const below = Math.max(0, window.innerHeight - rect.bottom - 16);
-          const openUpwards = above > below;
-          const right = document.documentElement.clientWidth - rect.right;
-          menuStyle = openUpwards
-            ? { bottom: (window.innerHeight - rect.top + 8) + 'px', right: right + 'px', maxHeight: Math.min(480, above) + 'px' }
-            : { top: (rect.bottom + 8) + 'px', right: right + 'px', maxHeight: Math.min(480, below) + 'px' };
-          dropdownOpen = !dropdownOpen;
-        "
-        class={[
-          if(@icon_name, do: "theme-icon-button", else: ["theme-button gap-2.5", @size_class]),
-          @variant_class
-        ]}
-        aria-label={@aria_label}
-        title={@aria_label}
-      >
-        <%= if @icon_name do %>
-          <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
-          <span class="sr-only">{@text || @aria_label}</span>
-        <% else %>
-          {@text}
-          <CoreComponents.icon
-            name="hero-chevron-down"
-            class="h-4 w-4 fill-current duration-200 ease-linear"
-            x-bind:class="dropdownOpen && 'rotate-180'"
-          />
-        <% end %>
-      </button>
+      <TextComponents.tooltip :if={@tooltip} tooltip={@tooltip} position={@tooltip_position} tooltip_class="text-nowrap">
+        <.dropdown_trigger {trigger_assigns(assigns)} />
+      </TextComponents.tooltip>
+      <.dropdown_trigger :if={!@tooltip} {trigger_assigns(assigns)} title={@aria_label} />
 
       <%!-- x-cloak keeps every menu hidden until Alpine starts, so a list of rows doesn't flash open on load. --%>
       <div
@@ -282,5 +261,65 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       String.contains?(class, "theme-danger-button") -> {"", "h-5 w-5 text-theme-error"}
       true -> {"theme-outline-button", "h-5 w-5 text-theme-on-surface-muted"}
     end
+  end
+
+  defp trigger_assigns(assigns) do
+    Map.take(assigns, [:text, :text_class, :icon_name, :aria_label, :size_class, :variant_class, :disabled, :align])
+  end
+
+  attr :text, :string, default: nil
+  attr :text_class, :string, default: nil
+  attr :icon_name, :string, default: nil
+  attr :aria_label, :string, default: nil
+  attr :title, :string, default: nil
+  attr :size_class, :string, default: ""
+  attr :variant_class, :string, default: nil
+  attr :disabled, :boolean, default: false
+  attr :align, :string, default: "end"
+
+  defp dropdown_trigger(assigns) do
+    ~H"""
+    <button
+      x-ref="trigger"
+      type="button"
+      x-bind:aria-expanded="dropdownOpen"
+      x-on:click.prevent="
+        const rect = $refs.trigger.getBoundingClientRect();
+        const top = Math.max(8, (document.querySelector('header')?.getBoundingClientRect().bottom || 0) + 8);
+        const above = Math.max(0, rect.top - top - 8);
+        const below = Math.max(0, window.innerHeight - rect.bottom - 16);
+        const start = $refs.trigger.dataset.align === 'start';
+        const openUpwards = start ? below < 160 && above > below : above > below;
+        const side = start
+          ? { left: rect.left + 'px' }
+          : { right: (document.documentElement.clientWidth - rect.right) + 'px' };
+        menuStyle = openUpwards
+          ? { bottom: (window.innerHeight - rect.top + 8) + 'px', ...side, maxHeight: Math.min(480, above) + 'px' }
+          : { top: (rect.bottom + 8) + 'px', ...side, maxHeight: Math.min(480, below) + 'px' };
+        dropdownOpen = !dropdownOpen;
+      "
+      class={[
+        if(@icon_name, do: "theme-icon-button", else: ["theme-button gap-2.5", @size_class]),
+        @variant_class
+      ]}
+      aria-label={@aria_label}
+      title={@title}
+      disabled={@disabled}
+      data-align={@align}
+    >
+      <%= if @icon_name do %>
+        <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
+        <span class="sr-only">{@text || @aria_label}</span>
+      <% else %>
+        <span :if={@text_class} class={@text_class}>{@text}</span>
+        {if is_nil(@text_class), do: @text}
+        <CoreComponents.icon
+          name="hero-chevron-down"
+          class="h-4 w-4 fill-current duration-200 ease-linear"
+          x-bind:class="dropdownOpen && 'rotate-180'"
+        />
+      <% end %>
+    </button>
+    """
   end
 end
