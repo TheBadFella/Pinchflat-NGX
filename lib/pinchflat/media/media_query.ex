@@ -140,18 +140,25 @@ defmodule Pinchflat.Media.MediaQuery do
     end
   end
 
-  def upload_date_after_source_cutoff do
+  def upload_date_after_source_cutoff(today \\ Date.utc_today()) do
     if Pinchflat.Database.postgres?() do
       dynamic(
         [mi, source],
-        is_nil(source.download_cutoff_date) or
-          fragment("?::date >= ?", mi.uploaded_at, source.download_cutoff_date)
+        (is_nil(source.download_cutoff_date) or fragment("?::date >= ?", mi.uploaded_at, source.download_cutoff_date)) and
+          (is_nil(source.download_cutoff_days) or
+             fragment("?::date >= ?::date - ?::integer", mi.uploaded_at, ^today, source.download_cutoff_days))
       )
     else
       dynamic(
         [mi, source],
-        is_nil(source.download_cutoff_date) or
-          fragment("date(?) >= ?", mi.uploaded_at, source.download_cutoff_date)
+        (is_nil(source.download_cutoff_date) or fragment("date(?) >= ?", mi.uploaded_at, source.download_cutoff_date)) and
+          (is_nil(source.download_cutoff_days) or
+             fragment(
+               "date(?) >= date(?, '-' || ? || ' day')",
+               mi.uploaded_at,
+               ^Date.to_iso8601(today),
+               source.download_cutoff_days
+             ))
       )
     end
   end
@@ -270,20 +277,20 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
-  def deletable_based_on_source_cutoff do
+  def deletable_based_on_source_cutoff(today \\ Date.utc_today()) do
     dynamic(
       [mi, source],
       ^downloaded() and
-        not (^upload_date_after_source_cutoff()) and
+        not (^upload_date_after_source_cutoff(today)) and
         not (^culling_prevented()) and
         not (^watch_protected())
     )
   end
 
-  def pending do
+  def pending(today \\ Date.utc_today()) do
     dynamic(
       [mi],
-      ^pending_ignoring_keep_newest() and ^within_keep_newest_count()
+      ^pending_ignoring_keep_newest(today) and ^within_keep_newest_count(today)
     )
   end
 
@@ -298,12 +305,12 @@ defmodule Pinchflat.Media.MediaQuery do
   # ~15-24ms here (measured in issue #288 M1), which made the whole request time
   # out. The `prevent_culling` escape keeps those items pending without letting
   # them consume a slot, matching the correlated form.
-  def within_keep_newest_count do
+  def within_keep_newest_count(today \\ Date.utc_today()) do
     dynamic(
       [mi, source],
       is_nil(source.keep_newest_count) or
         ^culling_prevented() or
-        mi.id in subquery(counted_items_within_keep_newest_count())
+        mi.id in subquery(counted_items_within_keep_newest_count(today))
     )
   end
 
@@ -329,7 +336,7 @@ defmodule Pinchflat.Media.MediaQuery do
   def removable_beyond_keep_newest(source_id, target_count)
       when is_integer(source_id) and is_integer(target_count) and target_count > 0 do
     within =
-      from(r in subquery(counted_items_ranked(false, source_id)),
+      from(r in subquery(counted_items_ranked(false, source_id, Date.utc_today())),
         where: r.rank <= ^target_count,
         select: r.id
       )
@@ -346,13 +353,13 @@ defmodule Pinchflat.Media.MediaQuery do
 
   # The other `pending/0` rules without the keep-newest ranking, so the counted
   # subquery cannot recurse into itself.
-  defp pending_ignoring_keep_newest do
+  defp pending_ignoring_keep_newest(today) do
     dynamic(
       [mi],
       is_nil(mi.media_filepath) and
         not (^download_prevented()) and
         ^AvailabilityPolicy.query_condition() and
-        ^upload_date_after_source_cutoff() and
+        ^upload_date_after_source_cutoff(today) and
         ^format_matching_profile_preference() and
         ^matches_source_title_regex() and
         ^meets_min_and_max_duration()
@@ -366,8 +373,8 @@ defmodule Pinchflat.Media.MediaQuery do
   # nil `uploaded_at` ranks as oldest. Ties on `uploaded_at` are broken by the
   # higher `id`. Only sources that set the limit are ranked, so a database where
   # no source opts in produces no rows here.
-  defp counted_items_within_keep_newest_count do
-    from(r in subquery(counted_items_ranked(true, nil)),
+  defp counted_items_within_keep_newest_count(today) do
+    from(r in subquery(counted_items_ranked(true, nil, today)),
       where: r.rank <= r.keep_newest_count,
       select: r.id
     )
@@ -377,11 +384,11 @@ defmodule Pinchflat.Media.MediaQuery do
   # confirmation. With `require_limit?` it only ranks sources that have a
   # `keep_newest_count` set; with `source_id` it ranks one source regardless of
   # its current limit, so a first-time or lowered value can be previewed.
-  defp counted_items_ranked(require_limit?, source_id) do
+  defp counted_items_ranked(require_limit?, source_id, today) do
     counted =
       dynamic(
         [kni, kns, knmp],
-        (^downloaded() or ^pending_ignoring_keep_newest()) and not (^culling_prevented())
+        (^downloaded() or ^pending_ignoring_keep_newest(today)) and not (^culling_prevented())
       )
 
     ranked =

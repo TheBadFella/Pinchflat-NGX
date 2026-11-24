@@ -3,9 +3,11 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   import PinchflatWeb.CustomComponents.DatePicker, only: [date_picker: 1]
 
+  alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Sources.Source
+  alias PinchflatWeb.MediaProfiles.MediaProfileHTML
 
   embed_templates "source_html/*"
 
@@ -50,6 +52,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :cookie_file_configured, :boolean, required: true
   attr :cookie_file_contents, :string, default: nil
   attr :available_folders, :list, default: []
+  attr :cutoff_downloaded_items, :list, default: []
   attr :show_delay_automatic_download, :boolean, default: false
   attr :new_source, :boolean, default: false
   attr :yt_dlp_options, :string, default: ""
@@ -309,7 +312,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   defp source_info_value(assigns) do
     field = assigns.field
-    value = if field_set?(field), do: field.value, else: "—"
+    # Not field_set?/1: an inherited SponsorBlock label is shown even though the field is "unset".
+    value = if is_binary(field.value) and String.trim(field.value) != "", do: field.value, else: "—"
 
     assigns = assign(assigns, :value, value)
 
@@ -751,6 +755,18 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     ]
   end
 
+  defp cutoff_form_mode(changeset) do
+    cond do
+      Ecto.Changeset.get_field(changeset, :download_cutoff_days) not in [nil, ""] -> "days"
+      Ecto.Changeset.get_field(changeset, :download_cutoff_date) not in [nil, ""] -> "date"
+      true -> "none"
+    end
+  end
+
+  # UTC to match the queries and Source.effective_download_cutoff_date/2, so the preview
+  # names the same date cleanup will use.
+  defp cutoff_today_iso, do: Date.to_iso8601(Date.utc_today())
+
   @doc """
   The Settings tab's grouped view of a source, replacing the old raw attribute
   dump. Returns a list of `%{title, icon, fields}` groups, where each field is a
@@ -856,9 +872,21 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Media longer than this is skipped"
       ),
       field(
-        "Download cutoff date",
-        format_date(source.download_cutoff_date),
+        "Download cutoff",
+        download_cutoff_label(source),
         "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
+      ),
+      field(
+        "SponsorBlock remove",
+        sponsorblock_status_label(source, :remove),
+        "Blank inherits the media profile, Off disables removal for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
+        set?: source.sponsorblock_remove_categories != nil
+      ),
+      field(
+        "SponsorBlock mark",
+        sponsorblock_status_label(source, :mark),
+        "Blank inherits the media profile, Off disables chapter marking for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
+        set?: source.sponsorblock_mark_categories != nil
       )
     ]
   end
@@ -913,6 +941,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   Whether an `info_groups/1` field has a value worth showing. Unset fields are
   hidden until the user asks for them.
   """
+  def field_set?(%{set?: set}) when is_boolean(set), do: set
   def field_set?(%{value: value}), do: is_binary(value) and String.trim(value) != ""
 
   @doc """
@@ -952,7 +981,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       help: help,
       type: Keyword.get(opts, :type, :text),
       href: Keyword.get(opts, :href),
-      tooltip: Keyword.get(opts, :tooltip)
+      tooltip: Keyword.get(opts, :tooltip),
+      set?: Keyword.get(opts, :set?)
     }
   end
 
@@ -961,6 +991,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   defp format_date(nil), do: nil
   defp format_date(date), do: Calendar.strftime(date, "%b %-d, %Y")
+
+  defp download_cutoff_label(source) do
+    cond do
+      is_integer(source.download_cutoff_days) and source.download_cutoff_days > 0 ->
+        effective = source |> Source.effective_download_cutoff_date() |> format_date()
+        "Rolling #{source.download_cutoff_days} days (currently #{effective})"
+
+      not is_nil(source.download_cutoff_date) ->
+        format_date(source.download_cutoff_date)
+
+      true ->
+        nil
+    end
+  end
 
   defp format_duration(nil), do: nil
 
@@ -1022,6 +1066,107 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   defp retention_days_label(1, origin), do: "1 day (#{origin})"
   defp retention_days_label(days, origin), do: "#{days} days (#{origin})"
+
+  @doc """
+  Category labels for the SponsorBlock pickers, shared with the media profile form.
+  """
+  def friendly_sponsorblock_categories do
+    MediaProfileHTML.friendly_sponsorblock_categories()
+  end
+
+  @sponsorblock_actions [:mark, :remove]
+
+  @doc """
+  The form mode for a SponsorBlock category field: `nil` inherits, `[]` disables,
+  and anything else is a custom list.
+  """
+  def sponsorblock_mode(nil), do: "inherit"
+  def sponsorblock_mode([]), do: "disable"
+  def sponsorblock_mode(_categories), do: "custom"
+
+  def sponsorblock_mode_options do
+    [
+      {"Inherit from the media profile", "inherit"},
+      {"Off for this source", "disable"},
+      {"Choose categories for this source", "custom"}
+    ]
+  end
+
+  @doc """
+  Each profile's effective SponsorBlock lists, keyed by profile id, so the form can
+  preview what "Inherit" will use before saving.
+  """
+  def sponsorblock_profile_preview(media_profiles) do
+    Map.new(media_profiles, fn profile ->
+      {to_string(profile.id),
+       %{
+         "mark" => sponsorblock_categories_label(profile.sponsorblock_mark_categories),
+         "remove" => sponsorblock_categories_label(profile.sponsorblock_remove_categories)
+       }}
+    end)
+  end
+
+  @doc """
+  A short description of where a field's categories come from, for the form summary
+  line and the source details panel.
+  """
+  def sponsorblock_status_label(changeset, media_profiles, action) do
+    source = %Source{
+      sponsorblock_mark_categories: Ecto.Changeset.get_field(changeset, :sponsorblock_mark_categories),
+      sponsorblock_remove_categories: Ecto.Changeset.get_field(changeset, :sponsorblock_remove_categories)
+    }
+
+    sponsorblock_status_label_for(source, sponsorblock_profile_for(changeset, media_profiles), action)
+  end
+
+  @doc """
+  A short description of a saved source's SponsorBlock override for the given action.
+  """
+  def sponsorblock_status_label(%Source{} = source, action) when action in @sponsorblock_actions do
+    sponsorblock_status_label_for(source, source.media_profile, action)
+  end
+
+  defp sponsorblock_status_label_for(source, media_profile, action) do
+    field = :"sponsorblock_#{action}_categories"
+
+    case Map.fetch!(source, field) do
+      nil ->
+        inherited =
+          case media_profile do
+            %MediaProfile{} = profile -> Map.fetch!(profile, field)
+            _ -> nil
+          end
+
+        "Inherit (#{sponsorblock_categories_label(inherited)})"
+
+      [] ->
+        "Off"
+
+      categories ->
+        "Custom (#{sponsorblock_categories_label(categories)})"
+    end
+  end
+
+  defp sponsorblock_profile_for(changeset, media_profiles) do
+    profile_id = Ecto.Changeset.get_field(changeset, :media_profile_id)
+    Enum.find(media_profiles, &(to_string(&1.id) == to_string(profile_id)))
+  end
+
+  defp sponsorblock_categories_label(categories) when is_list(categories) do
+    case Enum.reject(categories, &(&1 in [nil, ""])) do
+      [] ->
+        "none"
+
+      categories ->
+        friendly =
+          MediaProfileHTML.friendly_sponsorblock_categories()
+          |> Map.new(fn {label, value} -> {value, label} end)
+
+        Enum.map_join(categories, ", ", &Map.get(friendly, &1, &1))
+    end
+  end
+
+  defp sponsorblock_categories_label(_categories), do: "none"
 
   defp index_frequency_label(nil), do: nil
 

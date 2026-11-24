@@ -29,7 +29,11 @@
       },
       sourceUrl: '',
       sourceType: '#{Ecto.Changeset.get_field(@changeset, :source_type, :automatic)}',
+      cutoffMode: '#{cutoff_form_mode(@changeset)}',
       cutoffDate: '#{f[:download_cutoff_date].value}',
+      cutoffDays: '#{to_string(f[:download_cutoff_days].value || "")}',
+      cutoffToday: '#{cutoff_today_iso()}',
+      cutoffDownloadedItems: #{Jason.encode!(@cutoff_downloaded_items)},
       indexCutoffDate: '#{f[:index_cutoff_date].value}',
       isPlaylist: #{Ecto.Changeset.get_field(@changeset, :collection_type) == :playlist},
       get sourceTypeLabel() {
@@ -49,8 +53,39 @@
         }[this.sourceType] || 'URL of a channel, playlist, or single video (required).'
       },
       get looksLikePlaylist() { return this.isPlaylist || /[?&]list=|\\/playlist/.test(this.sourceUrl) },
+      get effectiveCutoffDate() {
+        if (this.cutoffMode === 'date') return this.cutoffDate || '';
+        if (this.cutoffMode === 'days') {
+          const days = Number(this.cutoffDays);
+          if (!Number.isInteger(days) || days <= 0) return '';
+          const date = new Date(this.cutoffToday + 'T00:00:00Z');
+          date.setUTCDate(date.getUTCDate() - days);
+          return date.toISOString().slice(0, 10);
+        }
+        return '';
+      },
+      get cutoffPreviewText() {
+        if (this.cutoffMode !== 'days' || !this.effectiveCutoffDate) return '';
+        const days = Number(this.cutoffDays);
+        return 'Effective cutoff: ' + this.effectiveCutoffDate + ' for ' + days + (days === 1 ? ' day' : ' days') + ' on ' + this.cutoffToday + '.';
+      },
+      get cutoffWarningCount() {
+        if (!this.effectiveCutoffDate) return 0;
+        return this.cutoffDownloadedItems.filter(item => !item.p && item.d < this.effectiveCutoffDate).length;
+      },
+      get cutoffWarningText() {
+        const count = this.cutoffWarningCount;
+        if (count <= 0) return '';
+        const noun = count === 1 ? 'video' : 'videos';
+        return 'Warning: ' + count + ' currently downloaded, unprotected ' + noun + ' published before ' + this.effectiveCutoffDate + ' will be deleted at the next scheduled cleanup.';
+      },
+      setCutoffMode(mode) {
+        this.cutoffMode = mode;
+        if (mode !== 'date') this.cutoffDate = '';
+        if (mode !== 'days') this.cutoffDays = '';
+      },
       get indexCutoffAfterDownloadCutoff() {
-        return !!(this.indexCutoffDate && this.cutoffDate && this.indexCutoffDate > this.cutoffDate)
+        return !!(this.indexCutoffDate && this.effectiveCutoffDate && this.indexCutoffDate > this.effectiveCutoffDate)
       }
     }
     """
@@ -67,6 +102,7 @@
           {"source-indexing", "Indexing"},
           {"source-downloading", "Downloading"},
           {"source-cleanup", "Cutoff and retention"},
+          {"source-sponsorblock", "SponsorBlock"},
           {"source-advanced", "Advanced"}
         ]}
       />
@@ -607,6 +643,22 @@
 
           <section data-setting class="mt-5">
             <div class="sm:max-w-md">
+              <label for="source-cutoff-mode" class="mb-1 block text-sm font-medium text-theme-on-surface-muted">
+                Download cutoff
+              </label>
+              <select
+                id="source-cutoff-mode"
+                x-model="cutoffMode"
+                x-on:change="setCutoffMode($event.target.value)"
+                class="theme-input theme-select min-h-11 w-full rounded-m3-sm px-3 py-2 text-sm"
+              >
+                <option value="none">No cutoff</option>
+                <option value="date">Fixed date</option>
+                <option value="days">Rolling window (last N days)</option>
+              </select>
+            </div>
+
+            <div x-show="cutoffMode === 'date'" x-cloak class="mt-4 sm:max-w-md">
               <.date_picker
                 id={f[:download_cutoff_date].id}
                 name={f[:download_cutoff_date].name}
@@ -620,11 +672,45 @@
               />
             </div>
             <.error :for={error <- f[:download_cutoff_date].errors}>{translate_error(error)}</.error>
+
+            <div x-show="cutoffMode === 'days'" x-cloak class="mt-4 sm:max-w-md">
+              <.input
+                field={f[:download_cutoff_days]}
+                type="number"
+                min="1"
+                step="1"
+                label="Rolling window (days)"
+                placeholder="30"
+                x-model="cutoffDays"
+                help="Only download media published within this many days of each run."
+              />
+              <p
+                x-show="effectiveCutoffDate"
+                class="mt-2 text-sm text-theme-on-surface"
+                aria-live="polite"
+                x-text="cutoffPreviewText"
+              >
+              </p>
+            </div>
+            <.error :for={error <- f[:download_cutoff_days].errors}>{translate_error(error)}</.error>
+
+            <div
+              x-show="cutoffMode === 'days' && cutoffWarningCount > 0"
+              x-cloak
+              class="theme-status-card theme-status-card-warning mt-4"
+              role="alert"
+            >
+              <div class="flex items-start gap-3">
+                <.icon name="hero-exclamation-triangle" class="mt-0.5 h-5 w-5 shrink-0" />
+                <p class="text-sm leading-6 text-theme-on-surface" x-text="cutoffWarningText"></p>
+              </div>
+            </div>
+
             <p class="mt-2 text-sm text-theme-on-surface-muted">
-              Automatically download media published on or after this date. Scheduled cleanup also deletes unprotected
-              downloaded media from before this date, including manual downloads, even within their retention period.
-              Leave blank for no cutoff. Prevent Automatic Deletion on a media item's Edit page overrides both cutoff
-              and retention cleanup.
+              Automatically download media published on or after the cutoff. Scheduled cleanup also deletes unprotected
+              downloaded media from before it, including manual downloads, even within their retention period. A rolling
+              window moves with the current date. Choose No cutoff to disable both. Prevent Automatic Deletion on a
+              media item's Edit page overrides cutoff and retention cleanup.
             </p>
           </section>
 
@@ -690,6 +776,110 @@
               min="1"
               help="Leave blank to disable. When set, Pinchflat keeps only the newest N downloaded or pending-eligible videos for this source, ordered by publication date and ID. Items with prevent culling enabled never count towards the limit and are never removed. Watch-protected items count towards the limit but are never deleted, so total downloaded items can exceed N. Lowering this number will delete older unprotected downloaded files at the next scheduled cleanup; raising it allows older videos to be re-downloaded."
             />
+          </.form_disclosure>
+        </section>
+        <section
+          id="source-sponsorblock"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+          x-data={
+            Phoenix.json_library().encode!(%{
+              markMode: sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_mark_categories)),
+              removeMode: sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_remove_categories)),
+              profilePreview: sponsorblock_profile_preview(@media_profiles)
+            })
+          }
+        >
+          <h3 class="text-2xl text-theme-on-surface">SponsorBlock</h3>
+
+          <p class="mt-2 text-sm text-theme-on-surface-muted">
+            Applies to future downloads, quality upgrades and redownloads. Existing files are never re-cut.
+          </p>
+          <p class="mt-1 text-sm text-theme-on-surface-muted">
+            Not sure what a category covers? See the
+            <.subtle_link href="https://wiki.sponsor.ajay.app/w/Guidelines#Category_breakdown" target="_blank">
+              SponsorBlock category breakdown
+            </.subtle_link>
+            for a description of each one.
+          </p>
+
+          <.form_disclosure
+            title="Mark and remove segments"
+            open={
+              Enum.any?(
+                [:sponsorblock_mark_categories, :sponsorblock_remove_categories],
+                &Keyword.has_key?(@changeset.errors, &1)
+              )
+            }
+            data-setting-group
+          >
+            <:status>
+              Mark: {sponsorblock_status_label(@changeset, @media_profiles, :mark)} · Remove: {sponsorblock_status_label(
+                @changeset,
+                @media_profiles,
+                :remove
+              )}
+            </:status>
+
+            <div data-setting data-setting-label="Remove segments">
+              <.input
+                name="source[sponsorblock_remove_mode]"
+                id="source_sponsorblock_remove_mode"
+                type="select"
+                label="Remove these segments"
+                value={sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_remove_categories))}
+                options={sponsorblock_mode_options()}
+                help="Segments in these categories are cut out of the downloaded file entirely."
+                x-model="removeMode"
+              />
+              <p
+                class="mt-1 text-sm text-theme-on-surface-muted"
+                x-show="removeMode === 'inherit'"
+                x-text="'Uses the media profile: ' + ((profilePreview[mediaProfileId] || {}).remove || 'None')"
+              >
+              </p>
+
+              <div x-show="removeMode === 'custom'" x-cloak>
+                <.input
+                  field={f[:sponsorblock_remove_categories]}
+                  options={friendly_sponsorblock_categories()}
+                  type="checkbox_group"
+                  label="Categories to remove"
+                  value={Ecto.Changeset.get_field(@changeset, :sponsorblock_remove_categories) || []}
+                />
+              </div>
+              <.error :for={error <- f[:sponsorblock_remove_categories].errors}>{translate_error(error)}</.error>
+            </div>
+
+            <div data-setting data-setting-label="Mark segments as chapters">
+              <.input
+                name="source[sponsorblock_mark_mode]"
+                id="source_sponsorblock_mark_mode"
+                type="select"
+                label="Mark these segments as chapters"
+                value={sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_mark_categories))}
+                options={sponsorblock_mode_options()}
+                help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal."
+                x-model="markMode"
+              />
+              <p
+                class="mt-1 text-sm text-theme-on-surface-muted"
+                x-show="markMode === 'inherit'"
+                x-text="'Uses the media profile: ' + ((profilePreview[mediaProfileId] || {}).mark || 'None')"
+              >
+              </p>
+
+              <div x-show="markMode === 'custom'" x-cloak>
+                <.input
+                  field={f[:sponsorblock_mark_categories]}
+                  options={friendly_sponsorblock_categories()}
+                  type="checkbox_group"
+                  label="Categories to mark"
+                  value={Ecto.Changeset.get_field(@changeset, :sponsorblock_mark_categories) || []}
+                />
+              </div>
+              <.error :for={error <- f[:sponsorblock_mark_categories].errors}>{translate_error(error)}</.error>
+            </div>
           </.form_disclosure>
         </section>
         <section

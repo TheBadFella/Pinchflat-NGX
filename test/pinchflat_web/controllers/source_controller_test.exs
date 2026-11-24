@@ -206,6 +206,33 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute table =~ ~s(data-view="poster-grid")
     end
 
+    test "reopens the view the browser last chose", %{conn: conn} do
+      source_fixture(%{custom_name: "Remembered view source"})
+
+      table = conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources") |> html_response(200)
+      assert table =~ ~s(data-view="table")
+
+      videos =
+        conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources?type=videos") |> html_response(200)
+
+      assert videos =~ ~s(data-view="table")
+
+      explicit =
+        conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources?view=grid") |> html_response(200)
+
+      assert explicit =~ ~s(data-view="poster-grid")
+
+      unknown = conn |> put_req_cookie("pinchflat_sources_view", "sideways") |> get(~p"/sources") |> html_response(200)
+      assert unknown =~ ~s(data-view="poster-grid")
+    end
+
+    test "the view toggle remembers the choice for later visits", %{conn: conn} do
+      html = conn |> get(~p"/sources") |> html_response(200)
+
+      assert html =~ "pinchflat_sources_view="
+      assert html =~ ~s|x-on:click="remember('table')"|
+    end
+
     test "renders channel discovery in the sidebar", %{conn: conn} do
       response = conn |> get(~p"/sources") |> html_response(200)
 
@@ -752,6 +779,78 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "download cutoff modes" do
+    setup [:create_source]
+
+    test "creates a source with a rolling cutoff", %{conn: conn, create_attrs: create_attrs} do
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/5)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: Map.merge(create_attrs, %{download_cutoff_days: "30", download_cutoff_date: ""})
+        )
+
+      assert %{id: id} = redirected_params(conn)
+      source = Repo.get!(Pinchflat.Sources.Source, id)
+      assert source.download_cutoff_days == 30
+      assert is_nil(source.download_cutoff_date)
+    end
+
+    test "renders the cutoff mode selector and the rolling value", %{conn: conn} do
+      source = source_fixture(download_cutoff_days: 30)
+      media_item_with_attachments(%{source_id: source.id, uploaded_at: ~U[2026-10-24 12:00:00Z]})
+
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ ~s(id="source-cutoff-mode")
+      assert html =~ ~s(<option value="days")
+      assert html =~ "Rolling window (last N days)"
+      assert html =~ ~r/id="source_download_cutoff_days"[^>]*value="30"/
+      assert html =~ ~r/cutoffMode: (?:'|&#39;)days(?:'|&#39;)/
+      assert html =~ "cutoffWarningCount"
+      assert html =~ "2026-10-24"
+    end
+
+    test "switches between rolling, fixed, and no cutoff", %{conn: conn, source: source} do
+      conn = put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "", download_cutoff_days: "30"})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.download_cutoff_days == 30
+      assert is_nil(updated.download_cutoff_date)
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "2026-07-01", download_cutoff_days: ""})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.download_cutoff_date == ~D[2026-07-01]
+      assert is_nil(updated.download_cutoff_days)
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "", download_cutoff_days: ""})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert is_nil(updated.download_cutoff_date)
+      assert is_nil(updated.download_cutoff_days)
+    end
+
+    test "rejects a submission that sets both cutoff forms", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}", source: %{download_cutoff_date: "2026-07-01", download_cutoff_days: "30"})
+
+      assert html_response(conn, 200) =~ "must be blank when a download cutoff date is set"
+    end
+
+    test "shows the rolling cutoff on the source overview", %{conn: conn} do
+      source = source_fixture(download_cutoff_days: 30)
+      expected = Date.utc_today() |> Date.add(-30) |> Calendar.strftime("%b %-d, %Y")
+
+      html = conn |> get(~p"/sources/#{source}?#{[tab: "source"]}") |> html_response(200)
+
+      assert html =~ "Rolling 30 days (currently #{expected})"
+    end
+  end
+
   describe "title language" do
     setup [:create_source]
 
@@ -1029,6 +1128,157 @@ defmodule PinchflatWeb.SourceControllerTest do
       end
 
       assert Repo.reload!(source).keep_newest_count == nil
+    end
+  end
+
+  describe "update source SponsorBlock overrides" do
+    setup [:create_source]
+
+    test "inherit mode stores nil so the profile list keeps applying", %{conn: conn, source: source} do
+      {:ok, source} =
+        Pinchflat.Sources.update_source(source, %{
+          sponsorblock_mark_categories: ["intro"],
+          sponsorblock_remove_categories: ["sponsor"]
+        })
+
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_mark_mode" => "inherit",
+            "sponsorblock_remove_mode" => "inherit"
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_mark_categories == nil
+      assert updated.sponsorblock_remove_categories == nil
+    end
+
+    test "disable mode stores an empty list", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "disable",
+            "sponsorblock_mark_mode" => "disable"
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_remove_categories == []
+      assert updated.sponsorblock_mark_categories == []
+    end
+
+    test "custom mode stores the selected categories", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "custom",
+            "sponsorblock_remove_categories" => ["sponsor", "selfpromo"],
+            "sponsorblock_mark_mode" => "custom",
+            "sponsorblock_mark_categories" => ["intro"]
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_remove_categories == ["sponsor", "selfpromo"]
+      assert updated.sponsorblock_mark_categories == ["intro"]
+    end
+
+    test "mark and remove inherit independently", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "disable",
+            "sponsorblock_mark_mode" => "inherit"
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_remove_categories == []
+      assert updated.sponsorblock_mark_categories == nil
+    end
+
+    test "renders an unknown category error", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "custom",
+            "sponsorblock_remove_categories" => ["sponsor", "not_a_category"]
+          }
+        )
+
+      html = html_response(conn, 200)
+      assert html =~ "Editing"
+      assert Repo.reload!(source).sponsorblock_remove_categories == nil
+    end
+
+    test "renders an overlap error when a category is both marked and removed", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "custom",
+            "sponsorblock_remove_categories" => ["sponsor", "intro"],
+            "sponsorblock_mark_mode" => "custom",
+            "sponsorblock_mark_categories" => ["intro"]
+          }
+        )
+
+      html = html_response(conn, 200)
+      assert html =~ "can&#39;t mark and remove the same category: intro"
+      assert Repo.reload!(source).sponsorblock_mark_categories == nil
+    end
+
+    test "the form explains the effect and offers all three modes", %{conn: conn, source: source} do
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ "Applies to future downloads, quality upgrades and redownloads. Existing files are never re-cut."
+      assert html =~ "Inherit from the media profile"
+      assert html =~ "Off for this source"
+      assert html =~ "Choose categories for this source"
+      assert html =~ ~s(name="source[sponsorblock_mark_mode]")
+      assert html =~ ~s(name="source[sponsorblock_remove_mode]")
+    end
+
+    test "the source page shows the inherit, off and custom states", %{conn: conn} do
+      profile =
+        media_profile_fixture(%{
+          sponsorblock_remove_categories: ["sponsor"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      inheriting = source_fixture(media_profile_id: profile.id)
+      disabled = source_fixture(media_profile_id: profile.id, sponsorblock_remove_categories: [])
+      custom = source_fixture(media_profile_id: profile.id, sponsorblock_remove_categories: ["selfpromo"])
+
+      inherit_html = conn |> get(~p"/sources/#{inheriting}?#{[tab: "source"]}") |> html_response(200)
+      assert inherit_html =~ "Inherit (Sponsor)"
+
+      disabled_html = conn |> get(~p"/sources/#{disabled}?#{[tab: "source"]}") |> html_response(200)
+      assert disabled_html =~ "Off"
+
+      custom_html = conn |> get(~p"/sources/#{custom}?#{[tab: "source"]}") |> html_response(200)
+      assert custom_html =~ "Custom (Self Promotion)"
+    end
+
+    test "using a source as a template keeps its SponsorBlock overrides", %{conn: conn} do
+      source =
+        source_fixture(%{
+          sponsorblock_mark_categories: ["intro"],
+          sponsorblock_remove_categories: []
+        })
+
+      html = conn |> get(~p"/sources/new?template_id=#{source.id}") |> html_response(200)
+
+      assert html =~ ~s(value="custom")
+      assert html =~ "Inherit from the media profile"
     end
   end
 
@@ -1727,19 +1977,6 @@ defmodule PinchflatWeb.SourceControllerTest do
     %{source: source, media_item: media_item}
   end
 
-  # Downloaded, unprotected items published one day apart, oldest first. The
-  # controller only counts them, so a stored filepath is enough without copying
-  # fixture files onto disk.
-  defp create_cullable_items(source, count) do
-    for offset <- 0..(count - 1) do
-      media_item_fixture(%{
-        source_id: source.id,
-        media_filepath: "/video/#{offset}.mp4",
-        uploaded_at: DateTime.add(~U[2026-11-20 00:00:00Z], offset, :day)
-      })
-    end
-  end
-
   defp runner_function_mock(_url, :get_source_details, _opts, _ot, _addl) do
     {
       :ok,
@@ -1824,5 +2061,15 @@ defmodule PinchflatWeb.SourceControllerTest do
   defp position(response, text) do
     {index, _length} = :binary.match(response, text)
     index
+  end
+
+  defp create_cullable_items(source, count) do
+    for offset <- 0..(count - 1) do
+      media_item_fixture(%{
+        source_id: source.id,
+        media_filepath: "/video/#{offset}.mp4",
+        uploaded_at: DateTime.add(~U[2026-11-20 00:00:00Z], offset, :day)
+      })
+    end
   end
 end

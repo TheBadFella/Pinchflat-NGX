@@ -684,17 +684,21 @@ defmodule Pinchflat.Sources do
   # date the thing doing the excluding, rather than the duration/title/format
   # filters? Reuses the same query fragment the Skipped tab's reason filter uses,
   # so this can't disagree with the per-row reason shown there.
-  defp everything_before_cutoff?(%Source{download_cutoff_date: nil}, _counts), do: false
-
   defp everything_before_cutoff?(%Source{} = source, counts) do
-    before_cutoff_count =
-      MediaQuery.new()
-      |> MediaQuery.require_assoc(:source)
-      |> where(^MediaQuery.for_source(source))
-      |> where(^dynamic(not (^MediaQuery.upload_date_after_source_cutoff()) and not (^MediaQuery.downloaded())))
-      |> Repo.aggregate(:count)
+    case Source.effective_download_cutoff_date(source) do
+      nil ->
+        false
 
-    before_cutoff_count > 0 and before_cutoff_count == counts.skipped
+      _cutoff_date ->
+        before_cutoff_count =
+          MediaQuery.new()
+          |> MediaQuery.require_assoc(:source)
+          |> where(^MediaQuery.for_source(source))
+          |> where(^dynamic(not (^MediaQuery.upload_date_after_source_cutoff()) and not (^MediaQuery.downloaded())))
+          |> Repo.aggregate(:count)
+
+        before_cutoff_count > 0 and before_cutoff_count == counts.skipped
+    end
   end
 
   # Oban's queue state lives in memory, not the database. In test (and any other

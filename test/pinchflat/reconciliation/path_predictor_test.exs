@@ -5,8 +5,10 @@ defmodule Pinchflat.Reconciliation.PathPredictorTest do
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.Metadata.MetadataFileHelpers
   alias Pinchflat.Reconciliation.PathPredictor
+  alias Pinchflat.Utils.FilesystemUtils
 
   setup do
     media_item = downloaded_media_item_with_stored_metadata()
@@ -53,6 +55,73 @@ defmodule Pinchflat.Reconciliation.PathPredictorTest do
       end)
 
       assert {:error, "big bad"} = PathPredictor.predict_media_filepath(media_item)
+    end
+  end
+
+  describe "predict_media_filepath/1 with scoped yt-dlp config files" do
+    setup do
+      base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
+
+      File.rm_rf(base_dir)
+      on_exit(fn -> File.rm_rf(base_dir) end)
+
+      {:ok, %{base_dir: base_dir}}
+    end
+
+    test "passes the source config file to the offline render", %{media_item: media_item, base_dir: base_dir} do
+      source_filepath = Path.join(base_dir, "source-#{media_item.source_id}-config.txt")
+      FilesystemUtils.write_p!(source_filepath, "--restrict-filenames")
+
+      expect(YtDlpRunnerMock, :run, fn _url, :predict_filepath_from_metadata, opts, _ot, _addl ->
+        assert opts[:output] == "/tmp/test/media/%(title)S.%(ext)S"
+        assert {:config_locations, source_filepath} in opts
+        {:ok, ~s({"filename": "/tmp/test/media/cleaned_name.mp4"})}
+      end)
+
+      assert {:ok, "/tmp/test/media/cleaned_name.mp4"} = PathPredictor.predict_media_filepath(media_item)
+    end
+
+    test "passes config files in the same order as the download options", %{media_item: media_item, base_dir: base_dir} do
+      source = media_item.source
+      media_profile = source.media_profile
+
+      base_filepath = Path.join(base_dir, "base-config.txt")
+      source_filepath = Path.join(base_dir, "source-#{source.id}-config.txt")
+      media_item_filepath = Path.join(base_dir, "media-item-#{media_item.id}-config.txt")
+      media_profile_filepath = Path.join(base_dir, "media-profile-#{media_profile.id}-config.txt")
+
+      for filepath <- [base_filepath, source_filepath, media_item_filepath, media_profile_filepath] do
+        FilesystemUtils.write_p!(filepath, "--restrict-filenames")
+      end
+
+      expected_order = [
+        {:config_locations, base_filepath},
+        {:config_locations, media_profile_filepath},
+        {:config_locations, source_filepath},
+        {:config_locations, media_item_filepath}
+      ]
+
+      expect(YtDlpRunnerMock, :run, fn _url, :predict_filepath_from_metadata, opts, _ot, _addl ->
+        assert Enum.filter(opts, &match?({:config_locations, _}, &1)) == expected_order
+        {:ok, ~s({"filename": "/tmp/test/media/cleaned_name.mp4"})}
+      end)
+
+      assert {:ok, "/tmp/test/media/cleaned_name.mp4"} = PathPredictor.predict_media_filepath(media_item)
+
+      # The download build must produce the identical config list, so the two
+      # cannot drift apart.
+      {:ok, download_options} = DownloadOptionBuilder.build(media_item)
+
+      assert Enum.filter(download_options, &match?({:config_locations, _}, &1)) == expected_order
+    end
+
+    test "omits config options when no config files exist", %{media_item: media_item} do
+      expect(YtDlpRunnerMock, :run, fn _url, :predict_filepath_from_metadata, opts, _ot, _addl ->
+        refute Enum.any?(opts, &match?({:config_locations, _}, &1))
+        {:ok, ~s({"filename": "/tmp/test/media/video.mp4"})}
+      end)
+
+      assert {:ok, "/tmp/test/media/video.mp4"} = PathPredictor.predict_media_filepath(media_item)
     end
   end
 

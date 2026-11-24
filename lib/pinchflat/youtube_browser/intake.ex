@@ -586,6 +586,7 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
     index_frequency_minutes = option(opts, :index_frequency_minutes, 180)
     download_media = option(opts, :download_media, true)
     download_cutoff_date = option(opts, :download_cutoff_date, nil)
+    download_cutoff_days = option(opts, :download_cutoff_days, nil)
     options_source_key = {__MODULE__, :channel_options_source_id}
     Process.delete(options_source_key)
 
@@ -600,6 +601,7 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
       download_media: download_media,
       index_frequency_minutes: index_frequency_minutes,
       download_cutoff_date: download_cutoff_date,
+      download_cutoff_days: download_cutoff_days,
       fast_index: false,
       enabled: true
     }

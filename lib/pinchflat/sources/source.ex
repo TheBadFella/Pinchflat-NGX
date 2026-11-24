@@ -67,6 +67,7 @@ defmodule Pinchflat.Sources.Source do
     last_indexed_at
     original_url
     download_cutoff_date
+    download_cutoff_days
     index_cutoff_date
     retention_period_days
     title_filter_regex
@@ -79,6 +80,8 @@ defmodule Pinchflat.Sources.Source do
     max_duration_seconds
     watch_window_days
     keep_newest_count
+    sponsorblock_mark_categories
+    sponsorblock_remove_categories
     title_language
   )a
 
@@ -146,6 +149,9 @@ defmodule Pinchflat.Sources.Source do
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date
+    # Rolling alternative to download_cutoff_date: only download media published
+    # within this many days of the run. Mutually exclusive with the fixed date.
+    field :download_cutoff_days, :integer
     # Stop indexing a channel once it reaches media published before this date.
     # Only applied to YouTube channels — their tab listings are newest-first,
     # which is what makes an early abort on an old video safe. Playlists are
@@ -157,6 +163,10 @@ defmodule Pinchflat.Sources.Source do
     field :watch_window_days, :integer
     # nil is off; otherwise keep only the newest N downloaded/eligible items for this source.
     field :keep_newest_count, :integer
+    # nil inherits the profile list; an empty list disables that SponsorBlock action
+    # for this source even when the profile enables it.
+    field :sponsorblock_mark_categories, {:array, :string}
+    field :sponsorblock_remove_categories, {:array, :string}
     field :original_url, :string
     field :title_filter_regex, :string
     # nil disables translated titles for this source
@@ -211,6 +221,64 @@ defmodule Pinchflat.Sources.Source do
 
   def effective_watch_window_days(%__MODULE__{watch_window_days: days}), do: days
 
+  @doc """
+  Returns the effective download cutoff date for a source, changeset, or map.
+
+  A fixed `download_cutoff_date` takes precedence. Otherwise a positive
+  `download_cutoff_days` is resolved against `today` as a rolling window.
+  Returns `nil` when neither is set.
+  """
+  def effective_download_cutoff_date(source_or_changeset, today \\ Date.utc_today())
+
+  def effective_download_cutoff_date(%Ecto.Changeset{} = changeset, today) do
+    effective_cutoff(
+      get_field(changeset, :download_cutoff_date),
+      get_field(changeset, :download_cutoff_days),
+      today
+    )
+  end
+
+  def effective_download_cutoff_date(%__MODULE__{} = source, today) do
+    effective_cutoff(source.download_cutoff_date, source.download_cutoff_days, today)
+  end
+
+  def effective_download_cutoff_date(source, today) when is_map(source) do
+    effective_cutoff(Map.get(source, :download_cutoff_date), Map.get(source, :download_cutoff_days), today)
+  end
+
+  defp effective_cutoff(%Date{} = date, _days, _today), do: date
+
+  defp effective_cutoff(_date, days, today) when is_integer(days) and days > 0, do: Date.add(today, -days)
+
+  defp effective_cutoff(_date, _days, _today), do: nil
+
+  @doc """
+  Returns the SponsorBlock categories to remove for a source with a loaded media profile.
+  A nil source value inherits the profile list; an empty list disables the action.
+  """
+  def effective_sponsorblock_remove_categories(%__MODULE__{} = source, media_profile \\ nil) do
+    effective_sponsorblock_categories(source, :sponsorblock_remove_categories, media_profile)
+  end
+
+  @doc """
+  Returns the SponsorBlock categories to mark as chapters for a source with a loaded
+  media profile. A nil source value inherits the profile list; an empty list disables
+  the action.
+  """
+  def effective_sponsorblock_mark_categories(%__MODULE__{} = source, media_profile \\ nil) do
+    effective_sponsorblock_categories(source, :sponsorblock_mark_categories, media_profile)
+  end
+
+  defp effective_sponsorblock_categories(%__MODULE__{} = source, field, media_profile) do
+    effective_sponsorblock_value(Map.fetch!(source, field), media_profile || source.media_profile, field)
+  end
+
+  defp effective_sponsorblock_value(nil, %MediaProfile{} = profile, field),
+    do: Map.fetch!(profile, field) || []
+
+  defp effective_sponsorblock_value(nil, _media_profile, _field), do: []
+  defp effective_sponsorblock_value(categories, _media_profile, _field), do: categories
+
   @doc false
   def changeset(source, attrs, validation_stage \\ :initial) do
     # See above for rationale
@@ -235,6 +303,8 @@ defmodule Pinchflat.Sources.Source do
     |> normalize_download_subdirectory()
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
+    |> validate_number(:download_cutoff_days, greater_than: 0)
+    |> validate_download_cutoff_exclusivity()
     |> validate_index_cutoff_date()
     |> normalize_player_client_fallbacks()
     |> validate_player_client_fallbacks()
@@ -244,6 +314,9 @@ defmodule Pinchflat.Sources.Source do
     |> check_constraint(:watch_window_days, name: :sources_watch_window_days_check)
     |> validate_number(:keep_newest_count, greater_than: 0)
     |> check_constraint(:keep_newest_count, name: :sources_keep_newest_count_check)
+    |> validate_subset(:sponsorblock_mark_categories, MediaProfile.sponsorblock_categories())
+    |> validate_subset(:sponsorblock_remove_categories, MediaProfile.sponsorblock_categories())
+    |> validate_sponsorblock_categories_do_not_overlap()
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),
@@ -546,12 +619,22 @@ defmodule Pinchflat.Sources.Source do
     end
   end
 
+  # A source configures its download cutoff either as a fixed date or as a
+  # rolling number of days. Both at once would be ambiguous.
+  defp validate_download_cutoff_exclusivity(changeset) do
+    if get_field(changeset, :download_cutoff_date) && get_field(changeset, :download_cutoff_days) do
+      add_error(changeset, :download_cutoff_days, "must be blank when a download cutoff date is set")
+    else
+      changeset
+    end
+  end
+
   # An indexing cutoff after the download cutoff would stop indexing before
   # reaching media the download cutoff still allows — that media would never be
   # indexed, so it could never be downloaded
   defp validate_index_cutoff_date(changeset) do
     index_cutoff = get_field(changeset, :index_cutoff_date)
-    download_cutoff = get_field(changeset, :download_cutoff_date)
+    download_cutoff = effective_download_cutoff_date(changeset)
 
     if index_cutoff && download_cutoff && Date.compare(index_cutoff, download_cutoff) == :gt do
       add_error(changeset, :index_cutoff_date, "must be on or before the download cutoff date")
@@ -662,6 +745,31 @@ defmodule Pinchflat.Sources.Source do
           cs
       end
     end)
+  end
+
+  # Mirrors the profile's rule. Uses the effective lists when the profile is
+  # already loaded on the source, so an inherited list is checked against an
+  # overridden one. When it is not loaded, only the source's own values are
+  # compared, and anything left nil inherits without being checked here.
+  defp validate_sponsorblock_categories_do_not_overlap(changeset) do
+    mark = effective_sponsorblock_changeset_categories(changeset, :sponsorblock_mark_categories)
+    remove = effective_sponsorblock_changeset_categories(changeset, :sponsorblock_remove_categories)
+
+    case Enum.filter(mark, &(&1 in remove)) do
+      [] ->
+        changeset
+
+      overlap ->
+        add_error(
+          changeset,
+          :sponsorblock_mark_categories,
+          "can't mark and remove the same category: #{Enum.join(overlap, ", ")}"
+        )
+    end
+  end
+
+  defp effective_sponsorblock_changeset_categories(changeset, field) do
+    effective_sponsorblock_value(get_field(changeset, field), changeset.data.media_profile, field)
   end
 
   defp validate_min_and_max_durations(changeset) do

@@ -22,10 +22,19 @@
       <p class="text-xs text-theme-on-surface-muted">Choose a table or poster library layout.</p>
     </div>
 
+    <%!-- The cookie lets the server open the list in the chosen view after leaving and coming back. --%>
     <div
       class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
       role="group"
       aria-label="Source view"
+      x-data="{
+        remember(view) {
+          const url = new URL(location.href);
+          url.searchParams.set('view', view);
+          history.replaceState(null, '', url);
+          document.cookie = `pinchflat_sources_view=${view}; path=/; max-age=31536000; SameSite=Lax`;
+        }
+      }"
     >
       <button
         type="button"
@@ -38,7 +47,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="table"
-        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'table'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
+        x-on:click="remember('table')"
         aria-pressed={to_string(@view_mode == :table)}
         data-view-toggle="table"
       >
@@ -56,7 +65,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="grid"
-        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'grid'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
+        x-on:click="remember('grid')"
         aria-pressed={to_string(@view_mode == :grid)}
         data-view-toggle="grid"
       >
@@ -69,7 +78,7 @@
     :if={MapSet.size(@selected_ids) > 0}
     id="selected-source-actions"
     aria-label="Actions for selected sources"
-    class="mb-4 overflow-hidden rounded-m3-sm border border-theme-outline/60 bg-theme-surface"
+    class="mb-4 rounded-m3-sm border border-theme-outline/60 bg-theme-surface"
   >
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-theme-outline/60 px-4 py-3">
       <p class="text-sm font-medium text-theme-primary" role="status">
@@ -382,10 +391,14 @@
   </div>
 
   <div :if={@view_mode == :grid}>
+    <%!--
+      The tab panel scrolls sideways for wide tables and clips anything drawn past its edge.
+      This padding keeps the card focus ring visible on the outer columns.
+    --%>
     <div
       id="source-poster-grid"
       data-view="poster-grid"
-      class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+      class="grid grid-cols-1 gap-4 p-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
     >
       <article
         :for={source <- @sources}
@@ -436,6 +449,7 @@
               alt={"Artwork for #{source.custom_name}"}
               class="pointer-events-none absolute inset-0 h-full w-full object-cover"
               x-show="image_loaded"
+              x-init="image_loaded = $el.complete && $el.naturalWidth > 0"
               x-on:load="image_loaded = true"
               x-on:error="image_loaded = false"
             />

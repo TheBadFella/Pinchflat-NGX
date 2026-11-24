@@ -327,9 +327,11 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       File.write!(filepath, Phoenix.json_library().encode!(attrs))
 
       try do
-        case YtDlpMedia.predict_filepath_from_metadata(source.original_url, filepath, [
-               {:output, output} | Enum.reject(command_opts, &match?({:output, _}, &1))
-             ]) do
+        prediction_opts =
+          [{:output, output} | Enum.reject(command_opts, &match?({:output, _}, &1))] ++
+            DownloadOptionBuilder.build_config_file_options_for(item)
+
+        case YtDlpMedia.predict_filepath_from_metadata(source.original_url, filepath, prediction_opts) do
           {:ok, filename} when is_binary(filename) and filename != "" ->
             {:ok, Map.put(attrs, "filename", filename)}
 
@@ -585,7 +587,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # with a retention-based date (if applicable). Returns the more recent of the two,
   # since there's no point scanning videos older than either threshold.
   defp calculate_effective_scan_date(%Source{} = source) do
-    cutoff_date = source.download_cutoff_date
+    cutoff_date = Source.effective_download_cutoff_date(source)
     retention_date = calculate_retention_based_date(source)
 
     case {cutoff_date, retention_date} do
