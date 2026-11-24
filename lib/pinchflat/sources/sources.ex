@@ -15,6 +15,7 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.DirectoryMove
   alias Pinchflat.Sources.CustomPoster
+  alias Pinchflat.Sources.SavedTitleFilter
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.YtDlp.MediaCollection
@@ -231,6 +232,63 @@ defmodule Pinchflat.Sources do
      end)}
   rescue
     error in [Exqlite.Error, Postgrex.Error] -> {:error, Exception.message(error)}
+  end
+
+  @doc """
+  Lists the saved title filters, ordered by name.
+
+  Returns [%SavedTitleFilter{}]
+  """
+  def list_saved_title_filters do
+    SavedTitleFilter
+    |> order_by([f], asc: f.name, asc: f.id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Stores a new title filter under a name that no other stored filter uses. The
+  regex must be one the database can use, checked the same way as a source's
+  title filter.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, %Ecto.Changeset{}}
+  """
+  def create_saved_title_filter(attrs) do
+    %SavedTitleFilter{}
+    |> SavedTitleFilter.changeset(attrs)
+    |> validate_saved_title_filter_name_available()
+    |> validate_saved_title_filter_regex()
+    |> Repo.insert()
+  end
+
+  @doc """
+  Replaces the regex of a stored title filter, keeping its name. The regex is
+  checked the same way as when the filter was stored.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, %Ecto.Changeset{}} | {:error, :not_found}
+  """
+  def update_saved_title_filter(id, attrs) do
+    case Repo.get(SavedTitleFilter, id) do
+      nil ->
+        {:error, :not_found}
+
+      saved_title_filter ->
+        saved_title_filter
+        |> SavedTitleFilter.changeset(Map.take(attrs, ["regex", :regex]))
+        |> validate_saved_title_filter_regex()
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Deletes a saved title filter by id.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, :not_found}
+  """
+  def delete_saved_title_filter(id) do
+    case Repo.get(SavedTitleFilter, id) do
+      nil -> {:error, :not_found}
+      saved_title_filter -> Repo.delete(saved_title_filter)
+    end
   end
 
   @doc """
@@ -2081,4 +2139,37 @@ defmodule Pinchflat.Sources do
   end
 
   defp log_source_created(_changeset, _source), do: :ok
+
+  defp validate_saved_title_filter_name_available(%Ecto.Changeset{valid?: false} = changeset), do: changeset
+
+  defp validate_saved_title_filter_name_available(changeset) do
+    name = Ecto.Changeset.get_field(changeset, :name)
+
+    if Repo.exists?(from(f in SavedTitleFilter, where: f.name == ^name)) do
+      Ecto.Changeset.add_error(changeset, :name, "is already used by another stored filter")
+    else
+      changeset
+    end
+  end
+
+  defp validate_saved_title_filter_regex(%Ecto.Changeset{valid?: false} = changeset), do: changeset
+
+  defp validate_saved_title_filter_regex(changeset) do
+    regex = Ecto.Changeset.get_field(changeset, :regex)
+    sql = if Pinchflat.Database.postgres?(), do: "SELECT '' ~ $1", else: "SELECT regexp_like('', ?)"
+
+    # A savepoint, so a regex Postgres rejects does not abort an enclosing transaction
+    result =
+      Repo.transaction(fn ->
+        case Repo.query(sql, [regex]) do
+          {:ok, _} -> :ok
+          {:error, _error} -> Repo.rollback(:invalid_regex)
+        end
+      end)
+
+    case result do
+      {:ok, _} -> changeset
+      {:error, :invalid_regex} -> Ecto.Changeset.add_error(changeset, :regex, "is not a regex the database can use")
+    end
+  end
 end
