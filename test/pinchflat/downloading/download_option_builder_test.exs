@@ -109,7 +109,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
-      assert {:output, "/tmp/test/media/my_source/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"} in res
+      assert {:output, "/tmp/test/media/my source/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"} in res
     end
 
     test "keeps a non-Latin source name as its folder when filenames are restricted", %{media_item: media_item} do
