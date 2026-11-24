@@ -119,7 +119,7 @@ config :pinchflat, Pinchflat.Mailer, adapter: Swoosh.Adapters.Local
 # Configure esbuild (the version is required)
 config :esbuild,
   # renovate: datasource=npm depName=esbuild
-  version: "0.27.5",
+  version: "0.28.2",
   default: [
     args:
       ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
@@ -130,7 +130,7 @@ config :esbuild,
 # Configure tailwind (the version is required)
 config :tailwind,
   # renovate: datasource=github-releases depName=tailwindlabs/tailwindcss extractVersion=^v(?<version>.+)$
-  version: "4.3.0",
+  version: "4.3.5",
   default: [
     args: ~w(
       --input=css/app.css
