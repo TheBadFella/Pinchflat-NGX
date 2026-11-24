@@ -79,6 +79,8 @@ defmodule Pinchflat.Sources.Source do
     min_duration_seconds
     max_duration_seconds
     watch_window_days
+    sponsorblock_mark_categories
+    sponsorblock_remove_categories
     title_language
   )a
 
@@ -158,6 +160,10 @@ defmodule Pinchflat.Sources.Source do
     field :retention_period_days, :integer
     # nil inherits the profile value; zero explicitly disables watch window.
     field :watch_window_days, :integer
+    # nil inherits the profile list; an empty list disables that SponsorBlock action
+    # for this source even when the profile enables it.
+    field :sponsorblock_mark_categories, {:array, :string}
+    field :sponsorblock_remove_categories, {:array, :string}
     field :original_url, :string
     field :title_filter_regex, :string
     # nil disables translated titles for this source
@@ -243,6 +249,33 @@ defmodule Pinchflat.Sources.Source do
 
   defp effective_cutoff(_date, _days, _today), do: nil
 
+  @doc """
+  Returns the SponsorBlock categories to remove for a source with a loaded media profile.
+  A nil source value inherits the profile list; an empty list disables the action.
+  """
+  def effective_sponsorblock_remove_categories(%__MODULE__{} = source, media_profile \\ nil) do
+    effective_sponsorblock_categories(source, :sponsorblock_remove_categories, media_profile)
+  end
+
+  @doc """
+  Returns the SponsorBlock categories to mark as chapters for a source with a loaded
+  media profile. A nil source value inherits the profile list; an empty list disables
+  the action.
+  """
+  def effective_sponsorblock_mark_categories(%__MODULE__{} = source, media_profile \\ nil) do
+    effective_sponsorblock_categories(source, :sponsorblock_mark_categories, media_profile)
+  end
+
+  defp effective_sponsorblock_categories(%__MODULE__{} = source, field, media_profile) do
+    effective_sponsorblock_value(Map.fetch!(source, field), media_profile || source.media_profile, field)
+  end
+
+  defp effective_sponsorblock_value(nil, %MediaProfile{} = profile, field),
+    do: Map.fetch!(profile, field) || []
+
+  defp effective_sponsorblock_value(nil, _media_profile, _field), do: []
+  defp effective_sponsorblock_value(categories, _media_profile, _field), do: categories
+
   @doc false
   def changeset(source, attrs, validation_stage \\ :initial) do
     # See above for rationale
@@ -276,6 +309,9 @@ defmodule Pinchflat.Sources.Source do
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
     |> check_constraint(:watch_window_days, name: :sources_watch_window_days_check)
+    |> validate_subset(:sponsorblock_mark_categories, MediaProfile.sponsorblock_categories())
+    |> validate_subset(:sponsorblock_remove_categories, MediaProfile.sponsorblock_categories())
+    |> validate_sponsorblock_categories_do_not_overlap()
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),
@@ -704,6 +740,31 @@ defmodule Pinchflat.Sources.Source do
           cs
       end
     end)
+  end
+
+  # Mirrors the profile's rule. Uses the effective lists when the profile is
+  # already loaded on the source, so an inherited list is checked against an
+  # overridden one. When it is not loaded, only the source's own values are
+  # compared, and anything left nil inherits without being checked here.
+  defp validate_sponsorblock_categories_do_not_overlap(changeset) do
+    mark = effective_sponsorblock_changeset_categories(changeset, :sponsorblock_mark_categories)
+    remove = effective_sponsorblock_changeset_categories(changeset, :sponsorblock_remove_categories)
+
+    case Enum.filter(mark, &(&1 in remove)) do
+      [] ->
+        changeset
+
+      overlap ->
+        add_error(
+          changeset,
+          :sponsorblock_mark_categories,
+          "can't mark and remove the same category: #{Enum.join(overlap, ", ")}"
+        )
+    end
+  end
+
+  defp effective_sponsorblock_changeset_categories(changeset, field) do
+    effective_sponsorblock_value(get_field(changeset, field), changeset.data.media_profile, field)
   end
 
   defp validate_min_and_max_durations(changeset) do

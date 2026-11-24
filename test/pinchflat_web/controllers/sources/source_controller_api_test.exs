@@ -162,6 +162,191 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
     end
   end
 
+  describe "SponsorBlock overrides over JSON API" do
+    test "creates a source that inherits the profile lists", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Inherit Channel",
+           channel_id: "UC_inherit_channel",
+           playlist_id: "UC_inherit_channel",
+           playlist_title: "Inherit Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_inherit_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Inherit Channel",
+          "sponsorblock_mark_categories" => nil,
+          "sponsorblock_remove_categories" => nil
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["sponsorblock_mark_categories"] == nil
+      assert response["sponsorblock_remove_categories"] == nil
+
+      stored = Sources.get_source!(response["id"])
+      assert stored.sponsorblock_mark_categories == nil
+      assert stored.sponsorblock_remove_categories == nil
+    end
+
+    test "creates a source that disables both actions with empty lists", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Disabled Channel",
+           channel_id: "UC_disabled_channel",
+           playlist_id: "UC_disabled_channel",
+           playlist_title: "Disabled Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_disabled_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Disabled Channel",
+          "sponsorblock_mark_categories" => [],
+          "sponsorblock_remove_categories" => []
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["sponsorblock_mark_categories"] == []
+      assert response["sponsorblock_remove_categories"] == []
+
+      stored = Sources.get_source!(response["id"])
+      assert stored.sponsorblock_mark_categories == []
+      assert stored.sponsorblock_remove_categories == []
+    end
+
+    test "creates a source with custom categories", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Custom Channel",
+           channel_id: "UC_custom_channel",
+           playlist_id: "UC_custom_channel",
+           playlist_title: "Custom Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_custom_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Custom Channel",
+          "sponsorblock_mark_categories" => ["intro"],
+          "sponsorblock_remove_categories" => ["sponsor"]
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["sponsorblock_mark_categories"] == ["intro"]
+      assert response["sponsorblock_remove_categories"] == ["sponsor"]
+
+      stored = Sources.get_source!(response["id"])
+      assert stored.sponsorblock_mark_categories == ["intro"]
+      assert stored.sponsorblock_remove_categories == ["sponsor"]
+    end
+
+    test "updates a source through all three states", %{conn: conn} do
+      source = source_fixture()
+
+      custom =
+        conn
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_mark_categories" => ["intro"],
+            "sponsorblock_remove_categories" => ["sponsor"]
+          },
+          "_format" => "json"
+        })
+        |> json_response(200)
+
+      assert custom["sponsorblock_mark_categories"] == ["intro"]
+      assert custom["sponsorblock_remove_categories"] == ["sponsor"]
+
+      disabled =
+        conn
+        |> recycle()
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_mark_categories" => [],
+            "sponsorblock_remove_categories" => []
+          },
+          "_format" => "json"
+        })
+        |> json_response(200)
+
+      assert disabled["sponsorblock_mark_categories"] == []
+      assert disabled["sponsorblock_remove_categories"] == []
+      assert Sources.get_source!(source.id).sponsorblock_mark_categories == []
+      assert Sources.get_source!(source.id).sponsorblock_remove_categories == []
+
+      inherited =
+        conn
+        |> recycle()
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_mark_categories" => nil,
+            "sponsorblock_remove_categories" => nil
+          },
+          "_format" => "json"
+        })
+        |> json_response(200)
+
+      assert inherited["sponsorblock_mark_categories"] == nil
+      assert inherited["sponsorblock_remove_categories"] == nil
+      assert Sources.get_source!(source.id).sponsorblock_mark_categories == nil
+      assert Sources.get_source!(source.id).sponsorblock_remove_categories == nil
+    end
+
+    test "rejects an unknown category", %{conn: conn} do
+      source = source_fixture()
+
+      response =
+        conn
+        |> put("/sources/#{source.id}", %{
+          "source" => %{"sponsorblock_remove_categories" => ["not_a_category"]},
+          "_format" => "json"
+        })
+        |> json_response(422)
+
+      assert response["errors"]["sponsorblock_remove_categories"] != []
+      assert Sources.get_source!(source.id).sponsorblock_remove_categories == nil
+    end
+
+    test "rejects overlapping mark and remove categories", %{conn: conn} do
+      source = source_fixture()
+
+      response =
+        conn
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_remove_categories" => ["sponsor", "intro"],
+            "sponsorblock_mark_categories" => ["intro"]
+          },
+          "_format" => "json"
+        })
+        |> json_response(422)
+
+      assert "can't mark and remove the same category: intro" in response["errors"]["sponsorblock_mark_categories"]
+    end
+  end
+
   describe "download cutoff over JSON API" do
     test "creates a source with rolling cutoff days", %{conn: conn} do
       media_profile = media_profile_fixture()

@@ -102,6 +102,7 @@
           {"source-indexing", "Indexing"},
           {"source-downloading", "Downloading"},
           {"source-cleanup", "Cutoff and retention"},
+          {"source-sponsorblock", "SponsorBlock"},
           {"source-advanced", "Advanced"}
         ]}
       />
@@ -762,6 +763,110 @@
               help="Leave blank to use the media profile setting. Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain."
               html_help={true}
             />
+          </.form_disclosure>
+        </section>
+        <section
+          id="source-sponsorblock"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+          x-data={
+            Phoenix.json_library().encode!(%{
+              markMode: sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_mark_categories)),
+              removeMode: sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_remove_categories)),
+              profilePreview: sponsorblock_profile_preview(@media_profiles)
+            })
+          }
+        >
+          <h3 class="text-2xl text-theme-on-surface">SponsorBlock</h3>
+
+          <p class="mt-2 text-sm text-theme-on-surface-muted">
+            Applies to future downloads, quality upgrades and redownloads. Existing files are never re-cut.
+          </p>
+          <p class="mt-1 text-sm text-theme-on-surface-muted">
+            Not sure what a category covers? See the
+            <.subtle_link href="https://wiki.sponsor.ajay.app/w/Guidelines#Category_breakdown" target="_blank">
+              SponsorBlock category breakdown
+            </.subtle_link>
+            for a description of each one.
+          </p>
+
+          <.form_disclosure
+            title="Mark and remove segments"
+            open={
+              Enum.any?(
+                [:sponsorblock_mark_categories, :sponsorblock_remove_categories],
+                &Keyword.has_key?(@changeset.errors, &1)
+              )
+            }
+            data-setting-group
+          >
+            <:status>
+              Mark: {sponsorblock_status_label(@changeset, @media_profiles, :mark)} · Remove: {sponsorblock_status_label(
+                @changeset,
+                @media_profiles,
+                :remove
+              )}
+            </:status>
+
+            <div data-setting data-setting-label="Remove segments">
+              <.input
+                name="source[sponsorblock_remove_mode]"
+                id="source_sponsorblock_remove_mode"
+                type="select"
+                label="Remove these segments"
+                value={sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_remove_categories))}
+                options={sponsorblock_mode_options()}
+                help="Segments in these categories are cut out of the downloaded file entirely."
+                x-model="removeMode"
+              />
+              <p
+                class="mt-1 text-sm text-theme-on-surface-muted"
+                x-show="removeMode === 'inherit'"
+                x-text="'Uses the media profile: ' + ((profilePreview[mediaProfileId] || {}).remove || 'None')"
+              >
+              </p>
+
+              <div x-show="removeMode === 'custom'" x-cloak>
+                <.input
+                  field={f[:sponsorblock_remove_categories]}
+                  options={friendly_sponsorblock_categories()}
+                  type="checkbox_group"
+                  label="Categories to remove"
+                  value={Ecto.Changeset.get_field(@changeset, :sponsorblock_remove_categories) || []}
+                />
+              </div>
+              <.error :for={error <- f[:sponsorblock_remove_categories].errors}>{translate_error(error)}</.error>
+            </div>
+
+            <div data-setting data-setting-label="Mark segments as chapters">
+              <.input
+                name="source[sponsorblock_mark_mode]"
+                id="source_sponsorblock_mark_mode"
+                type="select"
+                label="Mark these segments as chapters"
+                value={sponsorblock_mode(Ecto.Changeset.get_field(@changeset, :sponsorblock_mark_categories))}
+                options={sponsorblock_mode_options()}
+                help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal."
+                x-model="markMode"
+              />
+              <p
+                class="mt-1 text-sm text-theme-on-surface-muted"
+                x-show="markMode === 'inherit'"
+                x-text="'Uses the media profile: ' + ((profilePreview[mediaProfileId] || {}).mark || 'None')"
+              >
+              </p>
+
+              <div x-show="markMode === 'custom'" x-cloak>
+                <.input
+                  field={f[:sponsorblock_mark_categories]}
+                  options={friendly_sponsorblock_categories()}
+                  type="checkbox_group"
+                  label="Categories to mark"
+                  value={Ecto.Changeset.get_field(@changeset, :sponsorblock_mark_categories) || []}
+                />
+              </div>
+              <.error :for={error <- f[:sponsorblock_mark_categories].errors}>{translate_error(error)}</.error>
+            </div>
           </.form_disclosure>
         </section>
         <section

@@ -57,6 +57,78 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "SponsorBlock category overrides" do
+    test "nil inherits the profile lists" do
+      profile =
+        media_profile_fixture(%{
+          sponsorblock_remove_categories: ["sponsor"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      source = source_fixture(%{media_profile_id: profile.id}) |> Repo.preload(:media_profile)
+
+      assert Source.effective_sponsorblock_remove_categories(source) == ["sponsor"]
+      assert Source.effective_sponsorblock_mark_categories(source) == ["intro"]
+    end
+
+    test "an empty list disables the action even when the profile enables it" do
+      profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor"]})
+
+      source =
+        source_fixture(%{media_profile_id: profile.id, sponsorblock_remove_categories: []})
+        |> Repo.preload(:media_profile)
+
+      assert Source.effective_sponsorblock_remove_categories(source) == []
+    end
+
+    test "a non-empty list replaces the profile list" do
+      profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor"]})
+
+      source =
+        source_fixture(%{media_profile_id: profile.id, sponsorblock_remove_categories: ["intro"]})
+        |> Repo.preload(:media_profile)
+
+      assert Source.effective_sponsorblock_remove_categories(source) == ["intro"]
+    end
+
+    test "an empty list is persisted as an empty list, not nil" do
+      source = source_fixture(%{sponsorblock_mark_categories: []})
+      reloaded = Repo.reload!(source)
+
+      assert reloaded.sponsorblock_mark_categories == []
+    end
+
+    test "unknown categories are rejected" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{sponsorblock_remove_categories: ["sponsor", "not_a_category"]})
+
+      assert errors_on(changeset).sponsorblock_remove_categories != []
+    end
+
+    test "a category can't be both marked and removed" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{
+          sponsorblock_remove_categories: ["sponsor", "intro"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      assert "can't mark and remove the same category: intro" in errors_on(changeset).sponsorblock_mark_categories
+    end
+
+    test "rejects a mark that overlaps the profile's remove list when remove is not overridden" do
+      profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor"]})
+      source = source_fixture(%{media_profile_id: profile.id}) |> Repo.preload(:media_profile)
+
+      changeset = Sources.change_source(source, %{sponsorblock_mark_categories: ["sponsor"]})
+
+      assert "can't mark and remove the same category: sponsor" in errors_on(changeset).sponsorblock_mark_categories
+    end
+  end
+
   describe "output_path_template/1" do
     test "returns the source's override if present" do
       source = source_fixture(%{output_path_template_override: "/override/{{ title }}.{{ ext }}"})

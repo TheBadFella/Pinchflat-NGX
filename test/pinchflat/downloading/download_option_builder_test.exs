@@ -470,6 +470,52 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
     end
   end
 
+  describe "build/1 when a source overrides sponsorblock categories" do
+    test "inherits the profile's categories when the source does not override them", %{media_item: media_item} do
+      media_item = update_media_profile_attribute(media_item, %{sponsorblock_remove_categories: ["sponsor"]})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:sponsorblock_remove, "sponsor"} in res
+    end
+
+    test "uses the source's categories instead of the profile's", %{media_item: media_item} do
+      media_item =
+        update_media_profile_attribute(media_item, %{sponsorblock_remove_categories: ["sponsor"]})
+
+      media_item = update_source_attribute(media_item, %{sponsorblock_remove_categories: ["intro"]})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:sponsorblock_remove, "intro"} in res
+      refute {:sponsorblock_remove, "sponsor"} in res
+    end
+
+    test "an empty source list removes the flag even when the profile sets it", %{media_item: media_item} do
+      media_item = update_media_profile_attribute(media_item, %{sponsorblock_remove_categories: ["sponsor"]})
+      media_item = update_source_attribute(media_item, %{sponsorblock_remove_categories: []})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      refute Keyword.has_key?(res, :sponsorblock_remove)
+    end
+
+    test "mark and remove inherit independently", %{media_item: media_item} do
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          sponsorblock_remove_categories: ["sponsor"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      media_item = update_source_attribute(media_item, %{sponsorblock_remove_categories: []})
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      refute Keyword.has_key?(res, :sponsorblock_remove)
+      assert {:sponsorblock_mark, "intro"} in res
+    end
+  end
+
   describe "build/1 when testing config file options" do
     setup do
       base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
@@ -560,6 +606,96 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
     end
   end
 
+  describe "build_config_file_options_for/1" do
+    setup do
+      base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
+
+      # Other describes in this file write config files without cleaning up, so
+      # start from a known-empty directory rather than inheriting their files.
+      File.rm_rf(base_dir)
+      on_exit(fn -> File.rm_rf(base_dir) end)
+
+      {:ok, %{base_dir: base_dir}}
+    end
+
+    test "returns [] for a media item with no config files", %{media_item: media_item} do
+      assert DownloadOptionBuilder.build_config_file_options_for(media_item) == []
+    end
+
+    test "returns [] for a source with no config files", %{media_item: media_item} do
+      assert DownloadOptionBuilder.build_config_file_options_for(media_item.source) == []
+    end
+
+    test "returns [] for unsupported input" do
+      assert DownloadOptionBuilder.build_config_file_options_for(nil) == []
+      assert DownloadOptionBuilder.build_config_file_options_for(%{}) == []
+    end
+
+    test "returns [] when the only file is blank", %{media_item: media_item, base_dir: base_dir} do
+      FilesystemUtils.write_p!(Path.join(base_dir, "base-config.txt"), " \n \n ")
+
+      assert DownloadOptionBuilder.build_config_file_options_for(media_item) == []
+    end
+
+    test "a media item uses its item, source, profile and base files", %{media_item: media_item, base_dir: base_dir} do
+      source = media_item.source
+      media_profile = source.media_profile
+
+      base_filepath = Path.join(base_dir, "base-config.txt")
+      source_filepath = Path.join(base_dir, "source-#{source.id}-config.txt")
+      media_item_filepath = Path.join(base_dir, "media-item-#{media_item.id}-config.txt")
+      media_profile_filepath = Path.join(base_dir, "media-profile-#{media_profile.id}-config.txt")
+
+      for filepath <- [base_filepath, source_filepath, media_item_filepath, media_profile_filepath] do
+        FilesystemUtils.write_p!(filepath, "-o /from-file/%(title)s.%(ext)s")
+      end
+
+      assert DownloadOptionBuilder.build_config_file_options_for(media_item) == [
+               {:config_locations, base_filepath},
+               {:config_locations, media_profile_filepath},
+               {:config_locations, source_filepath},
+               {:config_locations, media_item_filepath}
+             ]
+    end
+
+    test "a source uses only the source, profile and base files", %{media_item: media_item, base_dir: base_dir} do
+      source = media_item.source
+      media_profile = source.media_profile
+
+      base_filepath = Path.join(base_dir, "base-config.txt")
+      source_filepath = Path.join(base_dir, "source-#{source.id}-config.txt")
+      media_profile_filepath = Path.join(base_dir, "media-profile-#{media_profile.id}-config.txt")
+
+      for filepath <- [base_filepath, source_filepath, media_profile_filepath] do
+        FilesystemUtils.write_p!(filepath, "-o /from-file/%(title)s.%(ext)s")
+      end
+
+      # A media-item file must not leak into a source-only prediction.
+      FilesystemUtils.write_p!(Path.join(base_dir, "media-item-#{media_item.id}-config.txt"), "config")
+
+      assert DownloadOptionBuilder.build_config_file_options_for(source) == [
+               {:config_locations, base_filepath},
+               {:config_locations, media_profile_filepath},
+               {:config_locations, source_filepath}
+             ]
+    end
+
+    test "emits the same options as build/2 for the same item", %{media_item: media_item, base_dir: base_dir} do
+      source = media_item.source
+
+      base_filepath = Path.join(base_dir, "base-config.txt")
+      source_filepath = Path.join(base_dir, "source-#{source.id}-config.txt")
+
+      FilesystemUtils.write_p!(base_filepath, "config")
+      FilesystemUtils.write_p!(source_filepath, "config")
+
+      {:ok, download_options} = DownloadOptionBuilder.build(media_item)
+
+      assert Enum.filter(download_options, &match?({:config_locations, _}, &1)) ==
+               DownloadOptionBuilder.build_config_file_options_for(media_item)
+    end
+  end
+
   describe "build_output_path_for/1" do
     test "builds an output path for a media item", %{media_item: media_item} do
       path = DownloadOptionBuilder.build_output_path_for(media_item)
@@ -620,6 +756,16 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:format_sort, "res:1080,+codec:avc:m4a"} in options
       assert {:remux_video, "mp4"} in options
     end
+  end
+
+  defp update_source_attribute(media_item_with_preloads, attrs) do
+    media_item_with_preloads.source
+    |> Sources.change_source(attrs)
+    |> Repo.update!()
+
+    media_item_with_preloads
+    |> Repo.reload()
+    |> Repo.preload([source: :media_profile], force: true)
   end
 
   defp update_media_profile_attribute(media_item_with_preloads, attrs) do
