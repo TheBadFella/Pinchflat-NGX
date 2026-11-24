@@ -11,7 +11,10 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   attr :media_item, :map, required: true
   attr :task, :any, default: nil
 
-  @doc "Renders recovery guidance and collapsed technical details for a download failure."
+  @doc """
+  Renders a download failure as a button naming the reason. The button opens the recovery
+  guidance, retry status and collapsed technical details, so failed rows stay compact.
+  """
   def download_failure(assigns) do
     {title, advice, settings?} = DownloadFailureHelpers.explanation(assigns.media_item.last_error)
     {retry_status, scheduled_at} = DownloadFailureHelpers.retry_status(assigns.media_item, assigns.task)
@@ -25,33 +28,56 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
       |> assign(:scheduled_at, scheduled_at)
 
     ~H"""
-    <div class="download-failure theme-danger-panel min-w-0 space-y-2 rounded-m3-sm p-3 text-sm break-words">
-      <p class="font-medium">{@title}</p>
-
-      <p>{@advice}</p>
-
-      <p>
-        {@retry_status}
-        <span :if={@scheduled_at}>
-          Scheduled for <.datetime_in_zone datetime={@scheduled_at} format="%Y-%m-%d %H:%M" />.
+    <div class="min-w-0" x-data="{ open: false }">
+      <button
+        type="button"
+        class="download-failure-toggle theme-danger-panel inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-m3-sm px-2.5 text-xs font-medium sm:min-h-8"
+        aria-expanded="false"
+        x-bind:aria-expanded="open.toString()"
+        x-on:click="open = !open"
+      >
+        <CoreComponents.icon name="hero-exclamation-circle-solid" class="h-4 w-4 shrink-0" />
+        <span class="min-w-0 py-1 text-left"><span class="sr-only">Download failed: </span>{@title}</span>
+        <span class="inline-flex shrink-0 transition-transform" x-bind:class="open && 'rotate-180'">
+          <CoreComponents.icon name="hero-chevron-down" class="h-4 w-4" />
         </span>
-      </p>
+      </button>
+      <div
+        class="download-failure theme-danger-panel mt-2 min-w-0 space-y-2 rounded-m3-sm p-3 text-sm break-words"
+        x-show="open"
+        x-cloak
+      >
+        <p class="font-medium">{@title}</p>
 
-      <div class="flex flex-wrap gap-3">
-        <.link :if={@settings?} href={~p"/settings"} class="theme-touch-target inline-flex min-h-11 items-center underline">
-          Open settings
-        </.link>
+        <p>{@advice}</p>
 
-        <.link href={~p"/diagnostics"} class="theme-touch-target inline-flex min-h-11 items-center underline">
-          Open diagnostics
-        </.link>
+        <p>
+          {@retry_status}
+          <span :if={@scheduled_at}>
+            Scheduled for <.datetime_in_zone datetime={@scheduled_at} format="%Y-%m-%d %H:%M" />.
+          </span>
+        </p>
+
+        <div class="flex flex-wrap gap-3">
+          <.link
+            :if={@settings?}
+            href={~p"/settings"}
+            class="theme-touch-target inline-flex min-h-11 items-center underline"
+          >
+            Open settings
+          </.link>
+
+          <.link href={~p"/diagnostics"} class="theme-touch-target inline-flex min-h-11 items-center underline">
+            Open diagnostics
+          </.link>
+        </div>
+
+        <details>
+          <summary class="theme-touch-target min-h-11 cursor-pointer py-3 underline">Technical details</summary>
+
+          <p class="mt-2 whitespace-pre-wrap break-words text-xs">{@media_item.last_error}</p>
+        </details>
       </div>
-
-      <details>
-        <summary class="theme-touch-target min-h-11 cursor-pointer py-3 underline">Technical details</summary>
-
-        <p class="mt-2 whitespace-pre-wrap break-words text-xs">{@media_item.last_error}</p>
-      </details>
     </div>
     """
   end

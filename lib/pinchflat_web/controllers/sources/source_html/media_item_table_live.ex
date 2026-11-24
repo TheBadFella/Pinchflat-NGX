@@ -238,11 +238,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                     </div>
 
                     <div class="flex flex-wrap items-start gap-2">
-                      <.icon
-                        :if={media_item.last_error}
-                        name="hero-exclamation-circle-solid"
-                        class="theme-status-error mt-0.5 shrink-0"
-                      /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                      <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                       <div class="w-full min-w-0">
                         <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
                           <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
@@ -368,13 +364,9 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   <div class="flex items-start gap-3">
                     <.media_thumbnail media_item={media_item} size="row" />
 
-                    <section class="min-w-0 flex-1 space-y-2">
-                      <div class="flex items-start space-x-1 gap-2">
-                        <.icon
-                          :if={media_item.last_error}
-                          name="hero-exclamation-circle-solid"
-                          class="theme-status-error shrink-0"
-                        /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                    <section class="flex min-h-16 min-w-0 flex-1 flex-col justify-center gap-2">
+                      <div class="flex items-center gap-2">
+                        <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                         <.icon_button
                           :if={@media_state not in ["downloaded", "failed"]}
                           icon_name="hero-arrow-down-tray"

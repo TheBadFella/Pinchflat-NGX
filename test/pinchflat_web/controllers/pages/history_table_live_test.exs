@@ -296,14 +296,20 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
         live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest", "latest_range" => @all_time_range})
 
       assert has_element?(view, "button[phx-value-view=list][aria-pressed=true]")
+      # The list sorts by its headers, so the menu is only for the phone cards there.
+      assert has_element?(view, "form#latest-sort[class*='md:hidden']")
       view |> element("#latest-desktop-controls button[phx-value-view=grid]") |> render_click()
       refute has_element?(view, "table")
       assert has_element?(view, "button[phx-value-view=grid][aria-pressed=true]")
+      refute has_element?(view, "form#latest-sort[class*='md:hidden']")
 
-      view |> element("#latest-sort") |> render_change(%{"sort_key" => "uploaded_at", "sort_direction" => "asc"})
+      assert has_element?(view, "input#latest-sort-choice[value='inserted_at:desc']")
+      assert render(view) =~ "Recently indexed"
+      view |> element("#latest-sort") |> render_change(%{"sort" => "uploaded_at:asc"})
       assert render_element(view, "article:first-child") =~ older.title
-      view |> element("#latest-sort") |> render_change(%{"sort_key" => "uploaded_at", "sort_direction" => "desc"})
+      view |> element("#latest-sort") |> render_change(%{"sort" => "uploaded_at:desc"})
       assert render_element(view, "article:first-child") =~ newer.title
+      assert has_element?(view, "input#latest-sort-choice[value='uploaded_at:desc']")
 
       view |> element("#latest-desktop-controls button[phx-value-grouping=source]") |> render_click()
       assert has_element?(view, "section[data-source-id='#{source.id}'] article")
@@ -321,11 +327,10 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       assert has_element?(view, "dialog#latest-filter-sheet[aria-labelledby=latest-filter-title]")
       view |> element("#latest-mobile-controls button[phx-value-view=grid]") |> render_click()
       view |> element("#latest-filter-sheet button[phx-value-grouping=source]") |> render_click()
-      view |> element("#latest-mobile-sort") |> render_change(%{"sort_key" => "uploaded_at", "sort_direction" => "asc"})
+      view |> element("#latest-mobile-sort") |> render_change(%{"sort" => "uploaded_at:asc"})
 
       assert has_element?(view, "#latest-mobile-summary", "By source")
-      assert has_element?(view, "#latest-mobile-summary", "Upload date")
-      assert has_element?(view, "#latest-mobile-summary", "Oldest first")
+      assert has_element?(view, "#latest-mobile-summary", "Oldest uploads")
       assert has_element?(view, "button[phx-value-view=grid][aria-pressed=true]")
       refute has_element?(view, "table")
       assert has_element?(view, "#latest-mobile-custom-range input[name=range][value=custom]")
@@ -340,6 +345,8 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       render_click(view, "view_change", %{"view" => "invalid"})
       render_click(view, "grouping_change", %{"grouping" => "invalid"})
       render_change(view, "latest_sort", %{"sort_key" => "bad", "sort_direction" => "bad"})
+      render_change(view, "latest_sort", %{"sort" => "bad"})
+      render_change(view, "latest_sort", %{"sort" => "title:desc"})
       assert has_element?(view, "button[phx-value-view=grid][aria-pressed=true]")
       assert has_element?(view, "button[phx-value-grouping=source][aria-pressed=true]")
       assert render(view) =~ "No media indexed in this time frame."
