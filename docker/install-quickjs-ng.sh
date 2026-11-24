@@ -6,6 +6,7 @@
 # mismatch or an unsupported target aborts the image build.
 set -eu
 
+# renovate: datasource=github-releases depName=quickjs-ng/quickjs extractVersion=^v(?<version>.+)$
 QUICKJS_NG_VERSION="0.18.0"
 DOWNLOAD_PREFIX="${QUICKJS_NG_DOWNLOAD_PREFIX:-https://github.com/quickjs-ng/quickjs/releases/download/v${QUICKJS_NG_VERSION}}"
 LICENSE_URL="${QUICKJS_NG_LICENSE_URL:-https://raw.githubusercontent.com/quickjs-ng/quickjs/v${QUICKJS_NG_VERSION}/LICENSE}"
