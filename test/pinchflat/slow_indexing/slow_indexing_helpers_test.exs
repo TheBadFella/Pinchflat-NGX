@@ -1127,6 +1127,19 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
 
+    test "uses the effective rolling cutoff for dateafter" do
+      source = source_fixture(%{download_cutoff_days: 30})
+      expected_dateafter = Date.utc_today() |> Date.add(-30) |> Date.to_iso8601(:basic)
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Keyword.get(opts, :dateafter) == expected_dateafter
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
     test "inherited profile retention bounds indexing unless source sets zero or a positive override" do
       profile = Pinchflat.ProfilesFixtures.media_profile_fixture(%{retention_period_days: 5})
 

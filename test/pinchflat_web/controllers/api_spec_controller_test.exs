@@ -42,6 +42,21 @@ defmodule PinchflatWeb.ApiSpecControllerTest do
       assert translated_title["example"] == "My Translated Title"
     end
 
+    test "documents download cutoff fields", %{conn: conn} do
+      schemas = conn |> get("/api/spec") |> json_response(200) |> then(& &1["components"]["schemas"])
+
+      source_cutoff = schemas["Source"]["properties"]["download_cutoff_days"]
+      assert source_cutoff["type"] == "integer"
+      assert source_cutoff["nullable"] == true
+
+      for schema_name <- ["CreateSourceRequest", "UpdateSourceRequest"] do
+        cutoff = schemas[schema_name]["properties"]["source"]["properties"]["download_cutoff_days"]
+
+        assert cutoff["type"] == "integer"
+        assert cutoff["nullable"] == true
+      end
+    end
+
     test "routes reference the updated source and media schemas", %{conn: conn} do
       response = conn |> get("/api/spec") |> json_response(200)
 

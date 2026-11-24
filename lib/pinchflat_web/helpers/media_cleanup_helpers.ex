@@ -1,21 +1,34 @@
 defmodule PinchflatWeb.Helpers.MediaCleanupHelpers do
   @moduledoc "Explains the existing automatic deletion rules at manual download controls."
 
+  alias Pinchflat.Sources.Source
+
   @doc "Returns whether an unprotected item is before the source's inclusive download cutoff."
   def cutoff_cleanup?(%{prevent_culling: true}, _source), do: false
-  def cutoff_cleanup?(_item, %{download_cutoff_date: nil}), do: false
   def cutoff_cleanup?(%{uploaded_at: nil}, _source), do: false
 
-  def cutoff_cleanup?(%{uploaded_at: %DateTime{} = uploaded_at}, %{download_cutoff_date: cutoff}) do
-    Date.compare(DateTime.to_date(uploaded_at), cutoff) == :lt
+  def cutoff_cleanup?(%{uploaded_at: %DateTime{} = uploaded_at}, source) do
+    case Source.effective_download_cutoff_date(source) do
+      %Date{} = cutoff -> Date.compare(DateTime.to_date(uploaded_at), cutoff) == :lt
+      nil -> false
+    end
   end
 
   @doc "Explains which publication date falls before which source download cutoff date."
   def cutoff_cleanup_warning(item, source) do
+    today = Date.utc_today()
     published_on = item.uploaded_at |> DateTime.to_date() |> Date.to_iso8601()
-    cutoff = Date.to_iso8601(source.download_cutoff_date)
+    cutoff = source |> Source.effective_download_cutoff_date(today) |> Date.to_iso8601()
 
-    "This video was published on #{published_on}, before this source's download cutoff date of #{cutoff}. " <>
+    cutoff_description =
+      if is_integer(source.download_cutoff_days) and source.download_cutoff_days > 0 do
+        "this source's rolling download cutoff of #{cutoff} " <>
+          "(last #{source.download_cutoff_days} days on #{Date.to_iso8601(today)})"
+      else
+        "this source's download cutoff date of #{cutoff}"
+      end
+
+    "This video was published on #{published_on}, before #{cutoff_description}. " <>
       "Its downloaded files can be deleted at the next scheduled cleanup, even before the retention period ends."
   end
 

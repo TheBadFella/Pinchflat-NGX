@@ -238,6 +238,12 @@ defmodule PinchflatWeb.Schemas do
           nullable: true,
           description: "Only download media after this date"
         },
+        download_cutoff_days: %Schema{
+          type: :integer,
+          nullable: true,
+          description:
+            "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+        },
         retention_period_days: %Schema{
           type: :integer,
           nullable: true,
@@ -248,6 +254,13 @@ defmodule PinchflatWeb.Schemas do
           type: :integer,
           nullable: true,
           description: "Resolved source/profile age-based period (0 or null means no age-based cleanup)"
+        },
+        keep_newest_count: %Schema{
+          type: :integer,
+          nullable: true,
+          minimum: 1,
+          description:
+            "Maximum number of newest videos to keep downloaded or pending for this source. Nil disables the limit."
         },
         title_filter_regex: %Schema{type: :string, nullable: true, description: "Regex to filter media titles"},
         title_language: %Schema{
@@ -265,6 +278,22 @@ defmodule PinchflatWeb.Schemas do
           maximum: 365,
           description:
             "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
+        },
+        sponsorblock_mark_categories: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          description:
+            "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut.",
+          example: ["intro", "outro"]
+        },
+        sponsorblock_remove_categories: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          description:
+            "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut.",
+          example: ["sponsor", "selfpromo"]
         },
         series_directory: %Schema{type: :string, nullable: true, description: "Directory for series organization"},
         nfo_filepath: %Schema{type: :string, nullable: true, description: "Path to NFO file"},
@@ -490,6 +519,20 @@ defmodule PinchflatWeb.Schemas do
               description:
                 "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
             },
+            sponsorblock_mark_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
+            sponsorblock_remove_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
             enabled: %Schema{type: :boolean, description: "Whether the source is active", default: true},
             download_media: %Schema{type: :boolean, description: "Download media items", default: true},
             download_public_media: %Schema{
@@ -539,11 +582,23 @@ defmodule PinchflatWeb.Schemas do
               format: :date,
               description: "Only download media after this date (YYYY-MM-DD)"
             },
+            download_cutoff_days: %Schema{
+              type: :integer,
+              nullable: true,
+              description:
+                "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+            },
             retention_period_days: %Schema{
               type: :integer,
               nullable: true,
               minimum: 0,
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
+            },
+            keep_newest_count: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Maximum number of newest videos to keep downloaded or pending for this source"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
             title_language: %Schema{
@@ -605,6 +660,20 @@ defmodule PinchflatWeb.Schemas do
               description:
                 "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
             },
+            sponsorblock_mark_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
+            sponsorblock_remove_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
             description_locked: %Schema{
               type: :boolean,
               description: "Prevent automated metadata refreshes from changing the description"
@@ -643,11 +712,23 @@ defmodule PinchflatWeb.Schemas do
               format: :date,
               description: "Only download media after this date"
             },
+            download_cutoff_days: %Schema{
+              type: :integer,
+              nullable: true,
+              description:
+                "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+            },
             retention_period_days: %Schema{
               type: :integer,
               nullable: true,
               minimum: 0,
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
+            },
+            keep_newest_count: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Maximum number of newest videos to keep downloaded or pending for this source"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
             title_language: %Schema{

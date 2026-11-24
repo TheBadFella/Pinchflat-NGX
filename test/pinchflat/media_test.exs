@@ -8,6 +8,7 @@ defmodule Pinchflat.MediaTest do
 
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.MediaQuery
   alias Pinchflat.Metadata.MetadataFileHelpers
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
@@ -564,6 +565,149 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  @rolling_cutoff_today ~D[2026-11-24]
+
+  defp pending_ids_for(source, today) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending(today)))
+    |> Repo.all()
+    |> Enum.map(& &1.id)
+  end
+
+  defp deletable_ids_for(today) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:source)
+    |> where(^MediaQuery.deletable_based_on_source_cutoff(today))
+    |> Repo.all()
+    |> Enum.map(& &1.id)
+  end
+
+  describe "MediaQuery when testing a rolling download cutoff" do
+    test "pending includes the boundary day and later uploads but excludes earlier ones" do
+      source = source_fixture(%{download_cutoff_days: 30})
+
+      outside =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-24 12:00:00Z]
+        })
+
+      boundary =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-25 12:00:00Z]
+        })
+
+      inside =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-26 12:00:00Z]
+        })
+
+      pending_ids = MapSet.new(pending_ids_for(source, @rolling_cutoff_today))
+
+      assert pending_ids == MapSet.new([boundary.id, inside.id])
+      refute MapSet.member?(pending_ids, outside.id)
+    end
+
+    test "cleanup deletes only unprotected downloads before the rolling boundary" do
+      source = source_fixture(%{download_cutoff_days: 30})
+
+      old_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-old.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z]
+        })
+
+      boundary_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-boundary.mp4",
+          uploaded_at: ~U[2026-10-25 12:00:00Z]
+        })
+
+      protected_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-protected.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z],
+          prevent_culling: true
+        })
+
+      watched_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/rolling-watched.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z],
+          watch_postprocessing_pending: true
+        })
+
+      deletable_ids = deletable_ids_for(@rolling_cutoff_today)
+
+      assert old_download.id in deletable_ids
+      refute boundary_download.id in deletable_ids
+      refute protected_download.id in deletable_ids
+      refute watched_download.id in deletable_ids
+    end
+
+    test "a fixed cutoff date keeps its previous behavior" do
+      source = source_fixture(%{download_cutoff_date: ~D[2026-10-25]})
+
+      outside_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/fixed-old.mp4",
+          uploaded_at: ~U[2026-10-24 12:00:00Z]
+        })
+
+      boundary_pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-25 12:00:00Z]
+        })
+
+      inside_pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-10-26 12:00:00Z]
+        })
+
+      assert MapSet.new(pending_ids_for(source, @rolling_cutoff_today)) ==
+               MapSet.new([boundary_pending.id, inside_pending.id])
+
+      assert deletable_ids_for(@rolling_cutoff_today) == [outside_download.id]
+    end
+
+    test "no cutoff leaves every item pending and nothing deletable" do
+      source = source_fixture(%{download_cutoff_date: nil, download_cutoff_days: nil})
+
+      old_pending =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: ~U[2026-01-01 12:00:00Z]
+        })
+
+      old_download =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/tmp/no-cutoff.mp4",
+          uploaded_at: ~U[2026-01-01 12:00:00Z]
+        })
+
+      assert old_pending.id in pending_ids_for(source, @rolling_cutoff_today)
+      refute old_download.id in deletable_ids_for(@rolling_cutoff_today)
+      assert deletable_ids_for(@rolling_cutoff_today) == []
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing title regex" do
     test "returns only media items that match the title regex" do
       source = source_fixture(%{title_filter_regex: "(?i)^FOO$"})
@@ -707,6 +851,118 @@ defmodule Pinchflat.MediaTest do
       long_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 25})
 
       assert Media.list_pending_media_items_for(source) == [short_media_item, normal_media_item, long_media_item]
+    end
+  end
+
+  describe "list_pending_media_items_for/1 when testing keep newest count" do
+    test "only the newest counted items are pending" do
+      source = source_fixture(%{keep_newest_count: 3})
+
+      _downloaded_23 =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/23.mp4",
+          uploaded_at: ~U[2026-11-23 00:00:00Z]
+        })
+
+      _downloaded_22 =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/22.mp4",
+          uploaded_at: ~U[2026-11-22 00:00:00Z]
+        })
+
+      pending_24 =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-24 00:00:00Z]})
+
+      _undownloaded_21 =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-21 00:00:00Z]})
+
+      _undownloaded_20 =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-20 00:00:00Z]})
+
+      assert Media.list_pending_media_items_for(source) == [pending_24]
+    end
+
+    test "breaks ties on uploaded_at by keeping the higher id" do
+      source = source_fixture(%{keep_newest_count: 2})
+      uploaded_at = ~U[2026-11-24 00:00:00Z]
+
+      oldest = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: uploaded_at})
+      middle = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: uploaded_at})
+      newest = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: uploaded_at})
+
+      assert Media.list_pending_media_items_for(source) == [middle, newest]
+      refute Media.pending_download?(oldest)
+    end
+
+    # `media_items.uploaded_at` is NOT NULL, so a nil publication date cannot be
+    # stored. The ranking predicate still treats nil as oldest to stay correct if
+    # that constraint is ever relaxed, so assert the generated SQL carries the
+    # NULLS LAST ordering and the higher-id tie-break rather than inserting data
+    # the schema forbids.
+    test "the ranking predicate treats a nil uploaded_at as oldest" do
+      query =
+        MediaQuery.new()
+        |> MediaQuery.require_assoc(:media_profile)
+        |> where(^MediaQuery.pending())
+
+      {sql, _params} = Repo.to_sql(:all, query)
+
+      assert sql =~ ~r/"uploaded_at" DESC NULLS LAST/
+      assert sql =~ ~r/"id" DESC\) AS "rank"/
+    end
+
+    test "a prevent_culling item does not consume a slot in the limit" do
+      source = source_fixture(%{keep_newest_count: 2})
+
+      protected_culling =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          prevent_culling: true,
+          uploaded_at: ~U[2026-11-24 00:00:00Z]
+        })
+
+      pending_23 =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-23 00:00:00Z]})
+
+      pending_22 =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-22 00:00:00Z]})
+
+      _outside_range =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-21 00:00:00Z]})
+
+      assert Media.list_pending_media_items_for(source) == [protected_culling, pending_23, pending_22]
+    end
+
+    test "a watch-protected item counts towards the limit" do
+      source = source_fixture(%{keep_newest_count: 2})
+
+      watch_protected =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          watch_enrollment_pending_at: now(),
+          uploaded_at: ~U[2026-11-24 00:00:00Z]
+        })
+
+      pending_23 =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-23 00:00:00Z]})
+
+      _outside_range =
+        media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-22 00:00:00Z]})
+
+      assert Media.list_pending_media_items_for(source) == [watch_protected, pending_23]
+    end
+
+    test "a nil keep_newest_count does not restrict pending items" do
+      source = source_fixture(%{keep_newest_count: nil})
+
+      oldest = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-20 00:00:00Z]})
+      newest = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-11-24 00:00:00Z]})
+
+      assert Media.list_pending_media_items_for(source) == [oldest, newest]
     end
   end
 

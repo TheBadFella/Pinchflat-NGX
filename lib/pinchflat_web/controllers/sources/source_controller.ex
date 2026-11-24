@@ -7,6 +7,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias OpenApiSpex.Schema
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.Media.MediaItem
   alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
@@ -23,6 +24,9 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias PinchflatWeb.Schemas
   alias PinchflatWeb.Sources.SourceHTML
   alias PinchflatWeb.YtDlpOptionsHelpers
+
+  # Set by the view toggle on the sources page (see index_table_live.html.heex).
+  @source_view_cookie "pinchflat_sources_view"
 
   tags(["Sources"])
 
@@ -43,7 +47,10 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       _ ->
         source_type = if params["type"] == "videos", do: "videos", else: "channels"
-        initial_view_mode = source_view_mode(params["view"])
+        # An explicit ?view= wins; otherwise reopen the view the browser last chose.
+        initial_view_mode =
+          source_view_mode(params["view"]) || source_view_mode(fetch_cookies(conn).req_cookies[@source_view_cookie])
+
         render(conn, :index, source_type: source_type, initial_view_mode: initial_view_mode)
     end
   end
@@ -161,10 +168,13 @@ defmodule PinchflatWeb.Sources.SourceController do
   )
 
   def create(conn, %{"source" => source_params} = params) do
+    format = get_format(conn)
+    source_params = normalize_sponsorblock_source_params(source_params, format)
+    params = Map.put(params, "source", source_params)
     delay_automatic_download = truthy_param?(Map.get(source_params, "delay_automatic_download", false))
 
     opts =
-      if get_format(conn) == "json" do
+      if format == "json" do
         [delay_automatic_download: delay_automatic_download]
       else
         Keyword.merge(
@@ -252,6 +262,7 @@ defmodule PinchflatWeb.Sources.SourceController do
           changeset: changeset,
           media_profiles: profiles,
           available_folders: saved_source_folders(),
+          cutoff_downloaded_items: cutoff_downloaded_items(source),
           current_path: ~p"/sources/#{source}/edit"
         ],
         cookie_file_assigns() ++ Map.to_list(options)
@@ -280,7 +291,14 @@ defmodule PinchflatWeb.Sources.SourceController do
     if should_confirm_directory_move?(conn, params, source, source_params) do
       render_directory_move_confirmation(conn, source, source_params)
     else
-      do_update(conn, source, source_params)
+      confirm_keep_newest_or_update(conn, source, source_params, params)
+    end
+  end
+
+  defp confirm_keep_newest_or_update(conn, source, source_params, params) do
+    case keep_newest_confirmation(conn, params, source, source_params) do
+      %{removable_count: count} -> render_keep_newest_confirmation(conn, source, source_params, count)
+      nil -> do_update(conn, source, source_params)
     end
   end
 
@@ -701,8 +719,11 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp do_update(conn, source, source_params) do
+    format = get_format(conn)
+    source_params = normalize_sponsorblock_source_params(source_params, format)
+
     opts =
-      if get_format(conn) == "json" do
+      if format == "json" do
         []
       else
         YtDlpOptionsHelpers.options_opts(conn.params, :any)
@@ -826,6 +847,7 @@ defmodule PinchflatWeb.Sources.SourceController do
               changeset: %{changeset | action: :update},
               media_profiles: profiles,
               available_folders: saved_source_folders(),
+              cutoff_downloaded_items: cutoff_downloaded_items(source),
               current_path: ~p"/sources/#{source}/edit"
             ],
             cookie_file_assigns() ++ Map.to_list(options)
@@ -866,10 +888,47 @@ defmodule PinchflatWeb.Sources.SourceController do
     get_format(conn) != "json" && !truthy_param?(Map.get(params, "confirm_directory_move"))
   end
 
+  # Returns `%{removable_count: integer()}` when an HTML update would cull
+  # downloaded files at the next cleanup, otherwise nil. JSON requests skip the
+  # confirmation and update directly.
+  defp keep_newest_confirmation(conn, params, source, source_params) do
+    with true <- get_format(conn) != "json",
+         false <- truthy_param?(Map.get(params, "confirm_keep_newest")),
+         {:ok, new_count} <- positive_integer(source_params["keep_newest_count"]),
+         true <- is_nil(source.keep_newest_count) or new_count < source.keep_newest_count,
+         count when count > 0 <- Sources.count_removable_media_for_keep_newest(source, new_count) do
+      %{removable_count: count}
+    else
+      _ -> nil
+    end
+  end
+
+  defp positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp positive_integer(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {count, ""} when count > 0 -> {:ok, count}
+      _ -> :error
+    end
+  end
+
+  defp positive_integer(_value), do: :error
+
+  defp render_keep_newest_confirmation(conn, source, source_params, removable_count) do
+    render(conn, :confirm_keep_newest,
+      source: source,
+      source_params: source_params,
+      removable_count: removable_count,
+      new_count: source_params["keep_newest_count"],
+      # Only what was submitted: an absent payload must stay absent, or saving would clear the config file.
+      extra_params: Map.take(conn.params, ["yt_dlp_options", "yt_dlp_options_version"])
+    )
+  end
+
   defp render_directory_move_confirmation(conn, source, source_params) do
     case Sources.preview_source_directory_move(source, source_params) do
       {:ok, nil} ->
-        do_update(conn, source, source_params)
+        confirm_keep_newest_or_update(conn, source, source_params, conn.params)
 
       {:ok, directory_move_plan} ->
         profiles = media_profiles()
@@ -1093,6 +1152,35 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp truthy_param?(value) when value in [true, "true", 1, "1"], do: true
   defp truthy_param?(_value), do: false
 
+  # The HTML form posts an explicit mode alongside each checkbox group, because a
+  # browser can only submit a list (an unchecked group submits just the hidden
+  # input's empty string, which Ecto casts to []). JSON clients send the list
+  # directly, so this only rewrites the three HTML states.
+  defp normalize_sponsorblock_source_params(source_params, "json"), do: source_params
+
+  defp normalize_sponsorblock_source_params(source_params, _format) when is_map(source_params) do
+    Enum.reduce([:mark, :remove], source_params, fn action, params ->
+      field = "sponsorblock_#{action}_categories"
+      mode_key = "sponsorblock_#{action}_mode"
+
+      case Map.fetch(params, mode_key) do
+        :error ->
+          params
+
+        {:ok, mode} ->
+          params
+          |> Map.delete(mode_key)
+          |> apply_sponsorblock_mode(field, mode)
+      end
+    end)
+  end
+
+  defp normalize_sponsorblock_source_params(source_params, _format), do: source_params
+
+  defp apply_sponsorblock_mode(params, field, "inherit"), do: Map.put(params, field, nil)
+  defp apply_sponsorblock_mode(params, field, "disable"), do: Map.put(params, field, [])
+  defp apply_sponsorblock_mode(params, _field, _mode), do: params
+
   defp startable_source?(source) do
     source
     |> Media.list_pending_media_items_for()
@@ -1180,6 +1268,20 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   defp allowed_tabs_for(_source) do
     ~w(source videos pending failed active-tasks job-queue other podcast)
+  end
+
+  # Lightweight publication dates for the cutoff deletion preview. Only
+  # downloaded, unprotected items can be removed by cutoff cleanup, so the form
+  # only needs those dates.
+  defp cutoff_downloaded_items(%Source{id: source_id}) do
+    from(m in MediaItem,
+      where: m.source_id == ^source_id and not is_nil(m.media_filepath) and not is_nil(m.uploaded_at),
+      select: %{uploaded_at: m.uploaded_at, prevent_culling: m.prevent_culling}
+    )
+    |> Repo.all()
+    |> Enum.map(fn item ->
+      %{d: item.uploaded_at |> DateTime.to_date() |> Date.to_iso8601(), p: item.prevent_culling == true}
+    end)
   end
 
   defp saved_source_folders do

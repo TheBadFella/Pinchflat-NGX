@@ -162,6 +162,306 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
     end
   end
 
+  describe "keep newest over JSON API" do
+    test "creates a source with a keep_newest_count and round-trips it", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Keep Newest Channel",
+           channel_id: "UC_keep_newest_channel",
+           playlist_id: "UC_keep_newest_channel",
+           playlist_title: "Keep Newest Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_keep_newest_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Keep Newest Channel",
+          "keep_newest_count" => 4
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["keep_newest_count"] == 4
+
+      show = conn |> recycle() |> get("/sources/#{response["id"]}?_format=json") |> json_response(200)
+      assert show["keep_newest_count"] == 4
+    end
+
+    test "updates a keep_newest_count without the HTML confirmation", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: 5, download_media: false})
+
+      for offset <- 0..4 do
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/#{offset}.mp4",
+          uploaded_at: DateTime.add(~U[2026-11-20 00:00:00Z], offset, :day)
+        })
+      end
+
+      attrs = %{"source" => %{"keep_newest_count" => 2}, "_format" => "json"}
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(200)
+      assert response["keep_newest_count"] == 2
+
+      assert Sources.get_source!(source.id).keep_newest_count == 2
+    end
+  end
+
+  describe "SponsorBlock overrides over JSON API" do
+    test "creates a source that inherits the profile lists", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Inherit Channel",
+           channel_id: "UC_inherit_channel",
+           playlist_id: "UC_inherit_channel",
+           playlist_title: "Inherit Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_inherit_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Inherit Channel",
+          "sponsorblock_mark_categories" => nil,
+          "sponsorblock_remove_categories" => nil
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["sponsorblock_mark_categories"] == nil
+      assert response["sponsorblock_remove_categories"] == nil
+
+      stored = Sources.get_source!(response["id"])
+      assert stored.sponsorblock_mark_categories == nil
+      assert stored.sponsorblock_remove_categories == nil
+    end
+
+    test "creates a source that disables both actions with empty lists", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Disabled Channel",
+           channel_id: "UC_disabled_channel",
+           playlist_id: "UC_disabled_channel",
+           playlist_title: "Disabled Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_disabled_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Disabled Channel",
+          "sponsorblock_mark_categories" => [],
+          "sponsorblock_remove_categories" => []
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["sponsorblock_mark_categories"] == []
+      assert response["sponsorblock_remove_categories"] == []
+
+      stored = Sources.get_source!(response["id"])
+      assert stored.sponsorblock_mark_categories == []
+      assert stored.sponsorblock_remove_categories == []
+    end
+
+    test "creates a source with custom categories", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Custom Channel",
+           channel_id: "UC_custom_channel",
+           playlist_id: "UC_custom_channel",
+           playlist_title: "Custom Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_custom_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Custom Channel",
+          "sponsorblock_mark_categories" => ["intro"],
+          "sponsorblock_remove_categories" => ["sponsor"]
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["sponsorblock_mark_categories"] == ["intro"]
+      assert response["sponsorblock_remove_categories"] == ["sponsor"]
+
+      stored = Sources.get_source!(response["id"])
+      assert stored.sponsorblock_mark_categories == ["intro"]
+      assert stored.sponsorblock_remove_categories == ["sponsor"]
+    end
+
+    test "updates a source through all three states", %{conn: conn} do
+      source = source_fixture()
+
+      custom =
+        conn
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_mark_categories" => ["intro"],
+            "sponsorblock_remove_categories" => ["sponsor"]
+          },
+          "_format" => "json"
+        })
+        |> json_response(200)
+
+      assert custom["sponsorblock_mark_categories"] == ["intro"]
+      assert custom["sponsorblock_remove_categories"] == ["sponsor"]
+
+      disabled =
+        conn
+        |> recycle()
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_mark_categories" => [],
+            "sponsorblock_remove_categories" => []
+          },
+          "_format" => "json"
+        })
+        |> json_response(200)
+
+      assert disabled["sponsorblock_mark_categories"] == []
+      assert disabled["sponsorblock_remove_categories"] == []
+      assert Sources.get_source!(source.id).sponsorblock_mark_categories == []
+      assert Sources.get_source!(source.id).sponsorblock_remove_categories == []
+
+      inherited =
+        conn
+        |> recycle()
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_mark_categories" => nil,
+            "sponsorblock_remove_categories" => nil
+          },
+          "_format" => "json"
+        })
+        |> json_response(200)
+
+      assert inherited["sponsorblock_mark_categories"] == nil
+      assert inherited["sponsorblock_remove_categories"] == nil
+      assert Sources.get_source!(source.id).sponsorblock_mark_categories == nil
+      assert Sources.get_source!(source.id).sponsorblock_remove_categories == nil
+    end
+
+    test "rejects an unknown category", %{conn: conn} do
+      source = source_fixture()
+
+      response =
+        conn
+        |> put("/sources/#{source.id}", %{
+          "source" => %{"sponsorblock_remove_categories" => ["not_a_category"]},
+          "_format" => "json"
+        })
+        |> json_response(422)
+
+      assert response["errors"]["sponsorblock_remove_categories"] != []
+      assert Sources.get_source!(source.id).sponsorblock_remove_categories == nil
+    end
+
+    test "rejects overlapping mark and remove categories", %{conn: conn} do
+      source = source_fixture()
+
+      response =
+        conn
+        |> put("/sources/#{source.id}", %{
+          "source" => %{
+            "sponsorblock_remove_categories" => ["sponsor", "intro"],
+            "sponsorblock_mark_categories" => ["intro"]
+          },
+          "_format" => "json"
+        })
+        |> json_response(422)
+
+      assert "can't mark and remove the same category: intro" in response["errors"]["sponsorblock_mark_categories"]
+    end
+  end
+
+  describe "download cutoff over JSON API" do
+    test "creates a source with rolling cutoff days", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Rolling Channel",
+           channel_id: "UC_rolling_channel",
+           playlist_id: "UC_rolling_channel",
+           playlist_title: "Rolling Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_rolling_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Rolling Channel",
+          "download_cutoff_days" => 30
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+
+      assert response["download_cutoff_days"] == 30
+      assert response["download_cutoff_date"] == nil
+      assert Sources.get_source!(response["id"]).download_cutoff_days == 30
+    end
+
+    test "updates rolling days and clears the fixed date", %{conn: conn} do
+      source = source_fixture(download_cutoff_date: ~D[2026-07-01])
+
+      attrs = %{
+        "source" => %{"download_cutoff_date" => "", "download_cutoff_days" => 30},
+        "_format" => "json"
+      }
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(200)
+
+      assert response["download_cutoff_days"] == 30
+      assert is_nil(response["download_cutoff_date"])
+
+      updated = Sources.get_source!(source.id)
+      assert updated.download_cutoff_days == 30
+      assert is_nil(updated.download_cutoff_date)
+    end
+
+    test "rejects a source that sets both cutoff forms", %{conn: conn} do
+      source = source_fixture()
+
+      attrs = %{
+        "source" => %{"download_cutoff_date" => "2026-07-01", "download_cutoff_days" => 30},
+        "_format" => "json"
+      }
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(422)
+
+      assert response["errors"]["download_cutoff_days"] == ["must be blank when a download cutoff date is set"]
+      assert is_nil(Sources.get_source!(source.id).download_cutoff_days)
+    end
+  end
+
   describe "delete/2 JSON API" do
     test "a protected source returns JSON conflict without scheduling deletion", %{conn: conn} do
       profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()

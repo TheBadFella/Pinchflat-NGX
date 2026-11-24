@@ -63,7 +63,7 @@ defmodule Pinchflat.YtDlp.Media do
   Determines if the media at the given URL is ready to be downloaded.
   Common examples of non-downloadable media are upcoming or in-progress live streams.
 
-  Returns {:ok, :downloadable | :ignorable} | {:error, any}
+  Returns {:ok, :downloadable | :ignorable | :post_live} | {:error, any}
   """
   def get_downloadable_status(url, addl_opts \\ []) do
     get_downloadable_status(url, [], addl_opts)
@@ -247,9 +247,12 @@ defmodule Pinchflat.YtDlp.Media do
     source = Repo.preload(source, :media_profile)
     item = %MediaItem{source: source, short_form_content: true, playlist_index: media.playlist_index}
 
+    # The source's scoped config files apply to this offline render exactly as
+    # they would to a download, so the predicted Shorts path matches the real one.
     command_opts =
       [output: DownloadOptionBuilder.build_output_path_for(item)] ++
-        DownloadOptionBuilder.build_quality_options_for(source)
+        DownloadOptionBuilder.build_quality_options_for(source) ++
+        DownloadOptionBuilder.build_config_file_options_for(source)
 
     filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
 
@@ -305,9 +308,13 @@ defmodule Pinchflat.YtDlp.Media do
   defp parse_uploaded_at(%{"upload_date" => nil}), do: nil
   defp parse_uploaded_at(response), do: MetadataFileHelpers.parse_upload_date(response["upload_date"])
 
+  # `post_live` means the broadcast has ended but YouTube is still processing the
+  # recording. It is distinct from `is_live`/`is_upcoming` because the download
+  # will become possible on its own, so callers may wait instead of giving up.
   defp parse_downloadable_status(response) do
     case response["live_status"] do
-      status when status in ["is_live", "is_upcoming", "post_live"] -> {:ok, :ignorable}
+      status when status in ["is_live", "is_upcoming"] -> {:ok, :ignorable}
+      "post_live" -> {:ok, :post_live}
       status when status in ["was_live", "not_live"] -> {:ok, :downloadable}
       # This preserves my tenuous support for non-youtube sources.
       nil -> {:ok, :downloadable}

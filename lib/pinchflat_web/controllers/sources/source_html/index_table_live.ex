@@ -96,6 +96,7 @@ defmodule PinchflatWeb.Sources.IndexTableLive do
           pending_count:
             subquery(
               from m in MediaItem,
+                as: :media_item,
                 join: s in assoc(m, :source),
                 where: m.source_id == parent_as(:source).id,
                 where: ^MediaQuery.pending(),

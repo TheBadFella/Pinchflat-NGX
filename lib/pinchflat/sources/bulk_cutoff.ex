@@ -63,7 +63,9 @@ defmodule Pinchflat.Sources.BulkCutoff do
            true <- fingerprint(sources) == expected_fingerprint,
            :ok <- validate_sources(sources, cutoff) do
         Enum.map(sources, fn source ->
-          case Sources.update_source(source, %{download_cutoff_date: cutoff}, run_post_commit_tasks: false) do
+          case Sources.update_source(source, %{download_cutoff_date: cutoff, download_cutoff_days: nil},
+                 run_post_commit_tasks: false
+               ) do
             {:ok, updated} -> updated
             {:error, reason} -> Repo.rollback(reason)
           end
@@ -87,7 +89,7 @@ defmodule Pinchflat.Sources.BulkCutoff do
   defp parse_cutoff(_), do: {:error, :invalid_cutoff}
 
   defp validate_sources(sources, cutoff) do
-    if Enum.all?(sources, &Source.changeset(&1, %{download_cutoff_date: cutoff}).valid?),
+    if Enum.all?(sources, &Source.changeset(&1, %{download_cutoff_date: cutoff, download_cutoff_days: nil}).valid?),
       do: :ok,
       else: {:error, :invalid_source}
   end
