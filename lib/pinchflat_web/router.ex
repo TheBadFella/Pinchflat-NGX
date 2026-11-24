@@ -82,7 +82,8 @@ defmodule PinchflatWeb.Router do
     post "/sources/cookies/save", Sources.SourceController, :save_cookies
     post "/sources/title_filter/test", Sources.SourceController, :test_title_filter
     get "/sources/title_filters", Sources.SourceController, :list_title_filters
-    post "/sources/title_filters", Sources.SourceController, :save_title_filter
+    post "/sources/title_filters", Sources.SourceController, :create_title_filter
+    put "/sources/title_filters/:id", Sources.SourceController, :update_title_filter
     delete "/sources/title_filters/:id", Sources.SourceController, :delete_title_filter
     get "/sources/import", Sources.SourceController, :import_new
     post "/sources/import", Sources.SourceController, :import_create

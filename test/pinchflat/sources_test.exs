@@ -1698,44 +1698,64 @@ defmodule Pinchflat.SourcesTest do
   end
 
   describe "saved title filters" do
-    test "save_title_filter/1 stores a trimmed name and regex" do
-      assert {:ok, filter} = Sources.save_title_filter(%{"name" => "  No shorts ", "regex" => " (?i)^(?!.*shorts).*$ "})
+    test "create_saved_title_filter/1 stores a trimmed name and regex" do
+      assert {:ok, filter} =
+               Sources.create_saved_title_filter(%{"name" => "  No shorts ", "regex" => " (?i)^(?!.*shorts).*$ "})
 
       assert filter.name == "No shorts"
       assert filter.regex == "(?i)^(?!.*shorts).*$"
     end
 
-    test "save_title_filter/1 replaces the regex of a filter with the same name" do
-      {:ok, first} = Sources.save_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
-      {:ok, second} = Sources.save_title_filter(%{"name" => "Music", "regex" => "(?i)live"})
+    test "create_saved_title_filter/1 refuses a name another stored filter uses" do
+      {:ok, first} = Sources.create_saved_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
 
-      assert second.id == first.id
-      assert [%{name: "Music", regex: "(?i)live"}] = Sources.list_saved_title_filters()
+      assert {:error, changeset} = Sources.create_saved_title_filter(%{"name" => " Music ", "regex" => "(?i)live"})
+      assert "is already used by another stored filter" in errors_on(changeset).name
+      assert [%{id: id, regex: "(?i)music"}] = Sources.list_saved_title_filters()
+      assert id == first.id
     end
 
-    test "save_title_filter/1 requires a name and a regex" do
-      assert {:error, changeset} = Sources.save_title_filter(%{"name" => " ", "regex" => ""})
+    test "create_saved_title_filter/1 requires a name and a regex" do
+      assert {:error, changeset} = Sources.create_saved_title_filter(%{"name" => " ", "regex" => ""})
 
       assert "can't be blank" in errors_on(changeset).name
       assert "can't be blank" in errors_on(changeset).regex
     end
 
-    test "save_title_filter/1 rejects a regex the database cannot use" do
-      assert {:error, changeset} = Sources.save_title_filter(%{"name" => "Broken", "regex" => "(unclosed"})
+    test "create_saved_title_filter/1 rejects a regex the database cannot use" do
+      assert {:error, changeset} = Sources.create_saved_title_filter(%{"name" => "Broken", "regex" => "(unclosed"})
 
       assert "is not a regex the database can use" in errors_on(changeset).regex
       assert Sources.list_saved_title_filters() == []
     end
 
+    test "update_saved_title_filter/2 replaces the regex and keeps the name" do
+      {:ok, filter} = Sources.create_saved_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
+
+      assert {:ok, updated} =
+               Sources.update_saved_title_filter(filter.id, %{"name" => "Renamed", "regex" => "(?i)live"})
+
+      assert updated.id == filter.id
+      assert [%{name: "Music", regex: "(?i)live"}] = Sources.list_saved_title_filters()
+    end
+
+    test "update_saved_title_filter/2 checks the regex and reports a missing filter" do
+      {:ok, filter} = Sources.create_saved_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
+
+      assert {:error, changeset} = Sources.update_saved_title_filter(filter.id, %{"regex" => "(unclosed"})
+      assert "is not a regex the database can use" in errors_on(changeset).regex
+      assert {:error, :not_found} = Sources.update_saved_title_filter(filter.id + 1, %{"regex" => "x"})
+    end
+
     test "list_saved_title_filters/0 orders filters by name" do
-      {:ok, _} = Sources.save_title_filter(%{"name" => "Zebra", "regex" => "zebra"})
-      {:ok, _} = Sources.save_title_filter(%{"name" => "Apple", "regex" => "apple"})
+      {:ok, _} = Sources.create_saved_title_filter(%{"name" => "Zebra", "regex" => "zebra"})
+      {:ok, _} = Sources.create_saved_title_filter(%{"name" => "Apple", "regex" => "apple"})
 
       assert ["Apple", "Zebra"] = Enum.map(Sources.list_saved_title_filters(), & &1.name)
     end
 
     test "delete_saved_title_filter/1 deletes a filter" do
-      {:ok, filter} = Sources.save_title_filter(%{"name" => "Gone", "regex" => "gone"})
+      {:ok, filter} = Sources.create_saved_title_filter(%{"name" => "Gone", "regex" => "gone"})
 
       assert {:ok, _} = Sources.delete_saved_title_filter(filter.id)
       assert Sources.list_saved_title_filters() == []

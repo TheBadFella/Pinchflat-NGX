@@ -1680,6 +1680,29 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert %{"filters" => []} = conn |> delete(~p"/sources/title_filters/#{id}") |> json_response(200)
     end
 
+    test "does not let a new stored filter take an existing name", %{conn: conn} do
+      conn |> post(~p"/sources/title_filters", %{"name" => "Music", "regex" => "(?i)music"}) |> json_response(200)
+
+      response =
+        conn
+        |> post(~p"/sources/title_filters", %{"name" => "Music", "regex" => "(?i)live"})
+        |> json_response(422)
+
+      assert response["error"] =~ "Name is already used by another stored filter"
+      assert %{"filters" => [%{"regex" => "(?i)music"}]} = conn |> get(~p"/sources/title_filters") |> json_response(200)
+    end
+
+    test "updates the regex of a stored filter by id", %{conn: conn} do
+      %{"filter" => %{"id" => id}} =
+        conn |> post(~p"/sources/title_filters", %{"name" => "Music", "regex" => "(?i)music"}) |> json_response(200)
+
+      assert %{"filter" => %{"id" => ^id, "name" => "Music", "regex" => "(?i)live"}} =
+               conn |> put(~p"/sources/title_filters/#{id}", %{"regex" => "(?i)live"}) |> json_response(200)
+
+      assert %{"error" => "That stored filter no longer exists."} =
+               conn |> put(~p"/sources/title_filters/#{id + 1}", %{"regex" => "x"}) |> json_response(404)
+    end
+
     test "explains why a filter could not be saved", %{conn: conn} do
       response =
         conn

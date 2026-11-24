@@ -26,6 +26,6 @@ defmodule Pinchflat.Sources.SavedTitleFilter do
     |> validate_required([:name, :regex])
     |> validate_length(:name, max: @name_max_length)
     |> validate_length(:regex, max: @regex_max_length)
-    |> unique_constraint(:name)
+    |> unique_constraint(:name, message: "is already used by another stored filter")
   end
 end

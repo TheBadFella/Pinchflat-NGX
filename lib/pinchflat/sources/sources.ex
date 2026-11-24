@@ -246,20 +246,37 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
-  Saves a title filter under a name. Saving under a name that is already used
-  replaces that filter's regex. The regex must be one the database can use,
-  checked the same way as a source's title filter.
+  Stores a new title filter under a name that no other stored filter uses. The
+  regex must be one the database can use, checked the same way as a source's
+  title filter.
 
   Returns {:ok, %SavedTitleFilter{}} | {:error, %Ecto.Changeset{}}
   """
-  def save_title_filter(attrs) do
-    name = %SavedTitleFilter{} |> SavedTitleFilter.changeset(attrs) |> Ecto.Changeset.get_field(:name)
-    saved_title_filter = (name && Repo.get_by(SavedTitleFilter, name: name)) || %SavedTitleFilter{}
-
-    saved_title_filter
+  def create_saved_title_filter(attrs) do
+    %SavedTitleFilter{}
     |> SavedTitleFilter.changeset(attrs)
+    |> validate_saved_title_filter_name_available()
     |> validate_saved_title_filter_regex()
-    |> Repo.insert_or_update()
+    |> Repo.insert()
+  end
+
+  @doc """
+  Replaces the regex of a stored title filter, keeping its name. The regex is
+  checked the same way as when the filter was stored.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, %Ecto.Changeset{}} | {:error, :not_found}
+  """
+  def update_saved_title_filter(id, attrs) do
+    case Repo.get(SavedTitleFilter, id) do
+      nil ->
+        {:error, :not_found}
+
+      saved_title_filter ->
+        saved_title_filter
+        |> SavedTitleFilter.changeset(Map.take(attrs, ["regex", :regex]))
+        |> validate_saved_title_filter_regex()
+        |> Repo.update()
+    end
   end
 
   @doc """
@@ -2122,6 +2139,18 @@ defmodule Pinchflat.Sources do
   end
 
   defp log_source_created(_changeset, _source), do: :ok
+
+  defp validate_saved_title_filter_name_available(%Ecto.Changeset{valid?: false} = changeset), do: changeset
+
+  defp validate_saved_title_filter_name_available(changeset) do
+    name = Ecto.Changeset.get_field(changeset, :name)
+
+    if Repo.exists?(from(f in SavedTitleFilter, where: f.name == ^name)) do
+      Ecto.Changeset.add_error(changeset, :name, "is already used by another stored filter")
+    else
+      changeset
+    end
+  end
 
   defp validate_saved_title_filter_regex(%Ecto.Changeset{valid?: false} = changeset), do: changeset
 

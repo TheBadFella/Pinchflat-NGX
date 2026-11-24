@@ -1055,7 +1055,7 @@
                       <.button
                         x-show="loadedFilter()"
                         type="button"
-                        class="text-black"
+                        variant="secondary"
                         x-on:click="updateLoaded()"
                         x-bind:disabled="savedBusy"
                       >
@@ -1084,7 +1084,7 @@
                       <.button type="button" variant="outline" x-on:click="cancelAdding()">Cancel</.button>
                       <.button
                         type="button"
-                        class="text-black"
+                        variant="secondary"
                         x-on:click="saveFilter()"
                         x-bind:disabled="savedBusy || saveName.trim() === ''"
                       >

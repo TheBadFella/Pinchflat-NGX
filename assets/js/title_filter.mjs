@@ -550,9 +550,9 @@ export const savedTitleFilters = () => ({
     const filter = this.loadedFilter()
     if (!filter || this.savedBusy || this.blockedByConflict()) return
     await this.savedRequest(
-      'POST',
-      SAVED_FILTERS_PATH,
-      { name: filter.name, regex: this.regex },
+      'PUT',
+      SAVED_FILTERS_PATH + '/' + filter.id,
+      { regex: this.regex },
       'bar'
     )
   },
@@ -573,6 +573,17 @@ export const savedTitleFilters = () => ({
   async saveFilter() {
     const name = this.saveName.trim()
     if (!name || !this.regex.trim() || this.savedBusy || this.blockedByConflict()) return
+    // Storing as new never replaces another stored filter; the server checks this too
+    if (this.savedFilters.some((filter) => filter.name === name)) {
+      this.showSavedMessage(
+        'A stored filter called \u201c' +
+          name +
+          '\u201d already exists. Choose another name, or load that filter and update it.',
+        true,
+        'bar'
+      )
+      return
+    }
 
     const data = await this.savedRequest(
       'POST',

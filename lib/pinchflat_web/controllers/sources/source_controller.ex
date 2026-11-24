@@ -362,13 +362,22 @@ defmodule PinchflatWeb.Sources.SourceController do
     json(conn, %{filters: saved_title_filters_json()})
   end
 
-  def save_title_filter(conn, params) do
-    case Sources.save_title_filter(Map.take(params, ["name", "regex"])) do
-      {:ok, saved_title_filter} ->
-        json(conn, %{filter: saved_title_filter_json(saved_title_filter), filters: saved_title_filters_json()})
+  def create_title_filter(conn, params) do
+    params
+    |> Map.take(["name", "regex"])
+    |> Sources.create_saved_title_filter()
+    |> saved_title_filter_response(conn)
+  end
 
-      {:error, changeset} ->
-        conn |> put_status(:unprocessable_entity) |> json(%{error: saved_title_filter_error(changeset)})
+  def update_title_filter(conn, %{"id" => id} = params) do
+    case Integer.parse(id) do
+      {id, ""} ->
+        id
+        |> Sources.update_saved_title_filter(Map.take(params, ["regex"]))
+        |> saved_title_filter_response(conn)
+
+      _ ->
+        saved_title_filter_response({:error, :not_found}, conn)
     end
   end
 
@@ -1180,6 +1189,20 @@ defmodule PinchflatWeb.Sources.SourceController do
     |> order_by([source], asc: source.download_subdirectory)
     |> limit(200)
     |> Repo.all()
+  end
+
+  defp saved_title_filter_response({:ok, saved_title_filter}, conn) do
+    json(conn, %{filter: saved_title_filter_json(saved_title_filter), filters: saved_title_filters_json()})
+  end
+
+  defp saved_title_filter_response({:error, :not_found}, conn) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{error: "That stored filter no longer exists.", filters: saved_title_filters_json()})
+  end
+
+  defp saved_title_filter_response({:error, changeset}, conn) do
+    conn |> put_status(:unprocessable_entity) |> json(%{error: saved_title_filter_error(changeset)})
   end
 
   defp saved_title_filters_json do
