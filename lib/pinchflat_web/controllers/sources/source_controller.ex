@@ -101,7 +101,8 @@ defmodule PinchflatWeb.Sources.SourceController do
     default_source = %Source{cookie_behaviour: default_cookie_behaviour(), media_profile_id: default_profile_id}
 
     # This lets me preload the settings from another source for more efficient creation
-    cs_struct =
+    %Source{} =
+      cs_struct =
       case to_string(params["template_id"]) do
         # A fresh source pre-selects the configured default cookie behaviour;
         # cloning from a template keeps that template's cookie behaviour instead

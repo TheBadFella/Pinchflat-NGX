@@ -590,7 +590,6 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   end
 
   defp percent_change_exceeds_threshold?(nil, _last_percent), do: false
-  defp percent_change_exceeds_threshold?(_percent, nil), do: true
 
   defp percent_change_exceeds_threshold?(percent, last_percent) do
     abs(percent - last_percent) >= 2.0

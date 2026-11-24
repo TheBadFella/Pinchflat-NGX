@@ -33,7 +33,8 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
 
   def new(conn, params) do
     # Preload an existing media profile for faster creation
-    cs_struct =
+    %MediaProfile{} =
+      cs_struct =
       case to_string(params["template_id"]) do
         "" -> %MediaProfile{}
         template_id -> Repo.get(MediaProfile, template_id) || %MediaProfile{}

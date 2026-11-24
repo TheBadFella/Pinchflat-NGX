@@ -76,7 +76,6 @@ defmodule Pinchflat.LegacyMigration do
   def legacy_provenance_detected? do
     case get_state() do
       %{provenance: "legacy_pinchflat"} -> true
-      %{provenance: :legacy_pinchflat} -> true
       _ -> false
     end
   end

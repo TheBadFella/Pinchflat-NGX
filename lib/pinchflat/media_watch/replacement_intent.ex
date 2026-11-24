@@ -17,8 +17,6 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
   existing staging behaviour.
   """
 
-  require Logger
-
   alias Pinchflat.MediaWatch.OriginalArchive
 
   @version 1
