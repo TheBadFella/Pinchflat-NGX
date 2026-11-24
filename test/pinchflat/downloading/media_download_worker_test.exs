@@ -937,6 +937,40 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.media_redownloaded_at != nil
     end
 
+    test "a quality upgrade passes the source's SponsorBlock categories to yt-dlp" do
+      profile =
+        media_profile_fixture(%{
+          redownload_delay_days: 4,
+          sponsorblock_remove_categories: ["sponsor"]
+        })
+
+      source =
+        source_fixture(%{
+          media_profile_id: profile.id,
+          sponsorblock_remove_categories: ["intro"]
+        })
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          uploaded_at: now_minus(6, :days),
+          media_downloaded_at: now_minus(5, :days)
+        })
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+
+        _url, :download, opts, _ot, _addl ->
+          assert {:sponsorblock_remove, "intro"} in opts
+          refute {:sponsorblock_remove, "sponsor"} in opts
+
+          {:ok, render_metadata(:media_metadata)}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id, quality_upgrade?: true})
+    end
+
     test "ignores whether the media item is pending when re-downloaded", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
         _url, :download, _opts, _ot, _addl -> {:ok, render_metadata(:media_metadata)}

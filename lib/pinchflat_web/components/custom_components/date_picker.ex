@@ -149,8 +149,6 @@ defmodule PinchflatWeb.CustomComponents.DatePicker do
             ></button>
           </template>
         </div>
-
-        <p class="mt-3 text-xs text-theme-on-surface-muted">YYYY-MM-DD</p>
       </div>
     </div>
     """

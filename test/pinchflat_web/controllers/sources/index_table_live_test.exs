@@ -201,6 +201,21 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
+  describe "poster-grid artwork" do
+    test "shows artwork that finished loading before the page script started", %{conn: conn} do
+      source = source_fixture(custom_name: "Cached artwork")
+      session = Map.put(create_session(), "initial_view_mode", "grid")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      # Cached images (for example after the browser's back button) can load before Alpine listens for `load`.
+      img = view |> element(~s(#source-card-#{source.id} img[alt="Artwork for Cached artwork"])) |> render()
+      assert img =~ "image_loaded = $el.complete"
+      assert img =~ "$el.naturalWidth"
+      assert img =~ ~s(x-on:load="image_loaded = true")
+    end
+  end
+
   describe "poster-grid progress" do
     test "does not claim completion when the total is empty or unknown" do
       assert %{state: :empty, percent: 0, label: "No indexed media yet"} =

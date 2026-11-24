@@ -206,6 +206,33 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute table =~ ~s(data-view="poster-grid")
     end
 
+    test "reopens the view the browser last chose", %{conn: conn} do
+      source_fixture(%{custom_name: "Remembered view source"})
+
+      table = conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources") |> html_response(200)
+      assert table =~ ~s(data-view="table")
+
+      videos =
+        conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources?type=videos") |> html_response(200)
+
+      assert videos =~ ~s(data-view="table")
+
+      explicit =
+        conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources?view=grid") |> html_response(200)
+
+      assert explicit =~ ~s(data-view="poster-grid")
+
+      unknown = conn |> put_req_cookie("pinchflat_sources_view", "sideways") |> get(~p"/sources") |> html_response(200)
+      assert unknown =~ ~s(data-view="poster-grid")
+    end
+
+    test "the view toggle remembers the choice for later visits", %{conn: conn} do
+      html = conn |> get(~p"/sources") |> html_response(200)
+
+      assert html =~ "pinchflat_sources_view="
+      assert html =~ ~s|x-on:click="remember('table')"|
+    end
+
     test "renders channel discovery in the sidebar", %{conn: conn} do
       response = conn |> get(~p"/sources") |> html_response(200)
 
@@ -953,6 +980,157 @@ defmodule PinchflatWeb.SourceControllerTest do
       updated_source = Repo.reload!(source)
       refute updated_source.download_public_media
       refute updated_source.download_members_only_media
+    end
+  end
+
+  describe "update source SponsorBlock overrides" do
+    setup [:create_source]
+
+    test "inherit mode stores nil so the profile list keeps applying", %{conn: conn, source: source} do
+      {:ok, source} =
+        Pinchflat.Sources.update_source(source, %{
+          sponsorblock_mark_categories: ["intro"],
+          sponsorblock_remove_categories: ["sponsor"]
+        })
+
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_mark_mode" => "inherit",
+            "sponsorblock_remove_mode" => "inherit"
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_mark_categories == nil
+      assert updated.sponsorblock_remove_categories == nil
+    end
+
+    test "disable mode stores an empty list", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "disable",
+            "sponsorblock_mark_mode" => "disable"
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_remove_categories == []
+      assert updated.sponsorblock_mark_categories == []
+    end
+
+    test "custom mode stores the selected categories", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "custom",
+            "sponsorblock_remove_categories" => ["sponsor", "selfpromo"],
+            "sponsorblock_mark_mode" => "custom",
+            "sponsorblock_mark_categories" => ["intro"]
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_remove_categories == ["sponsor", "selfpromo"]
+      assert updated.sponsorblock_mark_categories == ["intro"]
+    end
+
+    test "mark and remove inherit independently", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "disable",
+            "sponsorblock_mark_mode" => "inherit"
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+
+      updated = Repo.reload!(source)
+      assert updated.sponsorblock_remove_categories == []
+      assert updated.sponsorblock_mark_categories == nil
+    end
+
+    test "renders an unknown category error", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "custom",
+            "sponsorblock_remove_categories" => ["sponsor", "not_a_category"]
+          }
+        )
+
+      html = html_response(conn, 200)
+      assert html =~ "Editing"
+      assert Repo.reload!(source).sponsorblock_remove_categories == nil
+    end
+
+    test "renders an overlap error when a category is both marked and removed", %{conn: conn, source: source} do
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            "sponsorblock_remove_mode" => "custom",
+            "sponsorblock_remove_categories" => ["sponsor", "intro"],
+            "sponsorblock_mark_mode" => "custom",
+            "sponsorblock_mark_categories" => ["intro"]
+          }
+        )
+
+      html = html_response(conn, 200)
+      assert html =~ "can&#39;t mark and remove the same category: intro"
+      assert Repo.reload!(source).sponsorblock_mark_categories == nil
+    end
+
+    test "the form explains the effect and offers all three modes", %{conn: conn, source: source} do
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ "Applies to future downloads, quality upgrades and redownloads. Existing files are never re-cut."
+      assert html =~ "Inherit from the media profile"
+      assert html =~ "Off for this source"
+      assert html =~ "Choose categories for this source"
+      assert html =~ ~s(name="source[sponsorblock_mark_mode]")
+      assert html =~ ~s(name="source[sponsorblock_remove_mode]")
+    end
+
+    test "the source page shows the inherit, off and custom states", %{conn: conn} do
+      profile =
+        media_profile_fixture(%{
+          sponsorblock_remove_categories: ["sponsor"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      inheriting = source_fixture(media_profile_id: profile.id)
+      disabled = source_fixture(media_profile_id: profile.id, sponsorblock_remove_categories: [])
+      custom = source_fixture(media_profile_id: profile.id, sponsorblock_remove_categories: ["selfpromo"])
+
+      inherit_html = conn |> get(~p"/sources/#{inheriting}?#{[tab: "source"]}") |> html_response(200)
+      assert inherit_html =~ "Inherit (Sponsor)"
+
+      disabled_html = conn |> get(~p"/sources/#{disabled}?#{[tab: "source"]}") |> html_response(200)
+      assert disabled_html =~ "Off"
+
+      custom_html = conn |> get(~p"/sources/#{custom}?#{[tab: "source"]}") |> html_response(200)
+      assert custom_html =~ "Custom (Self Promotion)"
+    end
+
+    test "using a source as a template keeps its SponsorBlock overrides", %{conn: conn} do
+      source =
+        source_fixture(%{
+          sponsorblock_mark_categories: ["intro"],
+          sponsorblock_remove_categories: []
+        })
+
+      html = conn |> get(~p"/sources/new?template_id=#{source.id}") |> html_response(200)
+
+      assert html =~ ~s(value="custom")
+      assert html =~ "Inherit from the media profile"
     end
   end
 

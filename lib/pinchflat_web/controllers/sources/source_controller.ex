@@ -24,6 +24,9 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias PinchflatWeb.Sources.SourceHTML
   alias PinchflatWeb.YtDlpOptionsHelpers
 
+  # Set by the view toggle on the sources page (see index_table_live.html.heex).
+  @source_view_cookie "pinchflat_sources_view"
+
   tags(["Sources"])
 
   operation(:index,
@@ -43,7 +46,10 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       _ ->
         source_type = if params["type"] == "videos", do: "videos", else: "channels"
-        initial_view_mode = source_view_mode(params["view"])
+        # An explicit ?view= wins; otherwise reopen the view the browser last chose.
+        initial_view_mode =
+          source_view_mode(params["view"]) || source_view_mode(fetch_cookies(conn).req_cookies[@source_view_cookie])
+
         render(conn, :index, source_type: source_type, initial_view_mode: initial_view_mode)
     end
   end
@@ -161,10 +167,13 @@ defmodule PinchflatWeb.Sources.SourceController do
   )
 
   def create(conn, %{"source" => source_params} = params) do
+    format = get_format(conn)
+    source_params = normalize_sponsorblock_source_params(source_params, format)
+    params = Map.put(params, "source", source_params)
     delay_automatic_download = truthy_param?(Map.get(source_params, "delay_automatic_download", false))
 
     opts =
-      if get_format(conn) == "json" do
+      if format == "json" do
         [delay_automatic_download: delay_automatic_download]
       else
         Keyword.merge(
@@ -701,8 +710,11 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   defp do_update(conn, source, source_params) do
+    format = get_format(conn)
+    source_params = normalize_sponsorblock_source_params(source_params, format)
+
     opts =
-      if get_format(conn) == "json" do
+      if format == "json" do
         []
       else
         YtDlpOptionsHelpers.options_opts(conn.params, :any)
@@ -1092,6 +1104,35 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   defp truthy_param?(value) when value in [true, "true", 1, "1"], do: true
   defp truthy_param?(_value), do: false
+
+  # The HTML form posts an explicit mode alongside each checkbox group, because a
+  # browser can only submit a list (an unchecked group submits just the hidden
+  # input's empty string, which Ecto casts to []). JSON clients send the list
+  # directly, so this only rewrites the three HTML states.
+  defp normalize_sponsorblock_source_params(source_params, "json"), do: source_params
+
+  defp normalize_sponsorblock_source_params(source_params, _format) when is_map(source_params) do
+    Enum.reduce([:mark, :remove], source_params, fn action, params ->
+      field = "sponsorblock_#{action}_categories"
+      mode_key = "sponsorblock_#{action}_mode"
+
+      case Map.fetch(params, mode_key) do
+        :error ->
+          params
+
+        {:ok, mode} ->
+          params
+          |> Map.delete(mode_key)
+          |> apply_sponsorblock_mode(field, mode)
+      end
+    end)
+  end
+
+  defp normalize_sponsorblock_source_params(source_params, _format), do: source_params
+
+  defp apply_sponsorblock_mode(params, field, "inherit"), do: Map.put(params, field, nil)
+  defp apply_sponsorblock_mode(params, field, "disable"), do: Map.put(params, field, [])
+  defp apply_sponsorblock_mode(params, _field, _mode), do: params
 
   defp startable_source?(source) do
     source

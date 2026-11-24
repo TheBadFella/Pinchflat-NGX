@@ -38,7 +38,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
           thumbnail_options ++
           metadata_options(media_profile) ++
           quality_options(media_profile) ++
-          sponsorblock_options(media_profile) ++
+          sponsorblock_options(media_item_with_preloads.source, media_profile) ++
           output_options ++
           build_config_file_options_for(media_item_with_preloads)
 
@@ -212,11 +212,12 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   end
 
   # yt-dlp accepts both flags in one invocation, so each category can be
-  # removed or marked as a chapter independently
-  defp sponsorblock_options(media_profile) do
+  # removed or marked as a chapter independently. The source inherits either
+  # list from its media profile unless it overrides them.
+  defp sponsorblock_options(source, media_profile) do
     [
-      sponsorblock_remove: Enum.join(media_profile.sponsorblock_remove_categories, ","),
-      sponsorblock_mark: Enum.join(media_profile.sponsorblock_mark_categories, ",")
+      sponsorblock_remove: Enum.join(Source.effective_sponsorblock_remove_categories(source, media_profile), ","),
+      sponsorblock_mark: Enum.join(Source.effective_sponsorblock_mark_categories(source, media_profile), ",")
     ]
     |> Enum.reject(fn {_flag, categories} -> categories == "" end)
   end
