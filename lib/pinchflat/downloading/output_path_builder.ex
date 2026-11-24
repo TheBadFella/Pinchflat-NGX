@@ -30,10 +30,9 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   end
 
   @doc """
-  Sanitizes the literal text of a yt-dlp output template the way yt-dlp
-  sanitizes field values. Folder text only loses characters Windows can't use
-  (`--windows-filenames`). When `restrict` is true, the filename (the text after
-  the last separator) also follows `--restrict-filenames`. `%(...)` fields are
+  Sanitizes the literal text in the filename part of a yt-dlp output template,
+  following `--restrict-filenames` when `restrict` is true and replacing
+  characters Windows can't use otherwise. Folders and `%(...)` fields are
   unchanged.
 
   When restricted, accented Latin letters lose their accents, but letters and
@@ -42,55 +41,50 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   Returns binary()
   """
   def sanitize_literal_text(template, restrict) do
-    # Walk back from the end: text is part of the filename until the last separator
-    {sanitized, _in_filename?} =
-      @yt_dlp_field_regex
-      |> Regex.split(template, include_captures: true)
-      |> List.foldr({[], restrict}, fn piece, {acc, in_filename?} ->
-        cond do
-          Regex.match?(@whole_yt_dlp_field_regex, piece) -> {[piece | acc], in_filename?}
-          not in_filename? -> {[sanitize_text(piece, false) | acc], false}
-          true -> sanitize_filename_end(piece, acc)
-        end
-      end)
+    pieces = Regex.split(@yt_dlp_field_regex, template, include_captures: true)
 
-    keep_emptied_components(template, Enum.join(sanitized))
-  end
+    case last_separator_index(pieces) do
+      nil ->
+        sanitize_filename(template, restrict)
 
-  defp sanitize_filename_end(piece, acc) do
-    case Regex.run(~r/\A(.*[\/\\])(.*)\z/su, piece, capture: :all_but_first) do
-      [folders, filename] -> {[restrict_filename(folders, filename) | acc], false}
-      nil -> {[sanitize_text(piece, true) | acc], true}
+      index ->
+        [directory_tail, filename_head] =
+          Regex.run(~r{\A(.*[/\\])(.*)\z}s, Enum.at(pieces, index), capture: :all_but_first)
+
+        directory = Enum.join(Enum.take(pieces, index)) <> directory_tail
+        filename = filename_head <> Enum.join(Enum.drop(pieces, index + 1))
+
+        directory <> sanitize_filename(filename, restrict)
     end
   end
 
-  defp keep_emptied_components(template, sanitized) do
-    template
-    |> path_components()
-    |> Enum.zip(path_components(sanitized))
-    |> Enum.map_join(fn
-      {original, ""} -> original
-      {_original, component} -> component
+  defp last_separator_index(pieces) do
+    pieces
+    |> Enum.with_index()
+    |> Enum.reverse()
+    |> Enum.find_value(fn {piece, index} ->
+      if not field?(piece) and String.contains?(piece, ["/", "\\"]), do: index
     end)
   end
 
-  defp path_components(path), do: Regex.split(~r{[/\\]}, path, include_captures: true)
+  defp sanitize_filename(filename, restrict) do
+    sanitized =
+      @yt_dlp_field_regex
+      |> Regex.split("/" <> filename, include_captures: true)
+      |> Enum.map_join(fn piece -> if field?(piece), do: piece, else: sanitize_text(piece, restrict) end)
+      |> String.replace_prefix("/", "")
+
+    if sanitized == "", do: filename, else: sanitized
+  end
+
+  defp field?(piece), do: Regex.match?(@whole_yt_dlp_field_regex, piece)
 
   defp sanitize_text(text, false), do: String.replace(text, @windows_unsafe_regex, "_")
 
-  defp sanitize_text(text, true), do: restrict_filename("", text)
-
-  # Folder text kept Windows-safe, followed by restricted filename text
-  defp restrict_filename(folders, filename) do
-    folder_chars =
-      folders
-      |> sanitize_text(false)
-      |> String.graphemes()
-      |> Enum.map(&{&1, false})
-
-    filename_chars = filename |> String.graphemes() |> Enum.flat_map(&restrict_grapheme/1)
-
-    (folder_chars ++ filename_chars)
+  defp sanitize_text(text, true) do
+    text
+    |> String.graphemes()
+    |> Enum.flat_map(&restrict_grapheme/1)
     |> collapse_replaced_underscores()
     |> trim_replaced_underscores()
     |> Enum.map_join(fn {char, _replaced?} -> char end)

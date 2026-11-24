@@ -99,9 +99,8 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:output, "/tmp/test/media/Titel_Eins.%(ext)s"} in res
     end
 
-    test "applies restricted filenames to the template's own text in the filename", %{media_item: media_item} do
+    test "applies restricted filenames to the template's own text", %{media_item: media_item} do
       Settings.set(restrict_filenames: true)
-      Repo.update!(Ecto.Changeset.change(media_item.source, custom_name: "My Source"))
 
       media_item =
         update_media_profile_attribute(media_item, %{
@@ -110,7 +109,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
 
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
-      assert {:output, "/tmp/test/media/My Source/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"} in res
+      assert {:output, "/tmp/test/media/my source/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"} in res
     end
 
     test "keeps a non-Latin source name as its folder when filenames are restricted", %{media_item: media_item} do
