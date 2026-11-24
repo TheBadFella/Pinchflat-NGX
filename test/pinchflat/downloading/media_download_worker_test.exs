@@ -592,6 +592,136 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
   end
 
+  describe "perform/1 when the stream ended but YouTube is still processing it" do
+    defp hours_ago(hours), do: DateTime.add(now(), -hours * 60, :minute)
+
+    test "snoozes for 30 minutes and reports the next check without failing the item" do
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert {:snooze, 1800} = MediaDownloadWorker.perform(job)
+
+      task = Repo.reload!(task)
+      media_item = Repo.reload!(media_item)
+
+      assert is_nil(media_item.media_filepath)
+      assert is_nil(media_item.error_type)
+      refute media_item.prevent_download
+      assert is_nil(media_item.last_error)
+
+      assert task.progress_status =~ "Stream ended"
+      assert task.progress_status =~ "still processing"
+      assert task.progress_status =~ "Next check at"
+      assert task.progress_status =~ "UTC"
+    end
+
+    test "a later recheck downloads the recording once it is processed" do
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert {:snooze, 1800} = MediaDownloadWorker.perform(job)
+
+      expect(YtDlpRunnerMock, :run, 3, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "was_live"})}
+
+        _url, :download, opts, _ot, _addl ->
+          assert :no_simulate in opts
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      assert :ok = MediaDownloadWorker.perform(job)
+
+      downloaded = Repo.reload!(media_item)
+      assert is_binary(downloaded.media_filepath)
+      assert %DateTime{} = downloaded.media_downloaded_at
+      assert is_nil(downloaded.last_error)
+    end
+
+    test "gives up after 72 hours from the upload time" do
+      media_item =
+        media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: hours_ago(73)})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+
+      assert media_item.last_error =~ "still processing the recording after 72 hours"
+      assert media_item.error_type == :transient
+      refute media_item.prevent_download
+      assert is_nil(media_item.media_filepath)
+    end
+
+    test "the upload time is the limit even when the job is older" do
+      # `uploaded_at` is required and NOT NULL at the database level, so the job's
+      # insert time is only a fallback for records that predate that constraint.
+      # This proves the upload time takes precedence.
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      job =
+        %Oban.Job{
+          id: media_item.id,
+          args: %{"id" => media_item.id},
+          inserted_at: hours_ago(73) |> DateTime.truncate(:second),
+          max_attempts: 20,
+          attempt: 1,
+          queue: "media_fetching",
+          worker: "Pinchflat.Downloading.MediaDownloadWorker",
+          state: "executing"
+        }
+
+      assert {:snooze, 1800} = MediaDownloadWorker.perform(job)
+
+      media_item = Repo.reload!(media_item)
+      assert is_nil(media_item.last_error)
+    end
+
+    test "is_live keeps today's behavior and does not snooze or wait" do
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "is_live"})}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+      assert media_item.error_type == :transient
+      refute media_item.prevent_download
+      # Unchanged precheck behavior: the item is recorded as unsuitable, not waited on.
+      assert media_item.last_error =~ "isn't suitable for download yet"
+      assert is_nil(media_item.media_filepath)
+    end
+  end
+
   describe "perform/1 when testing forced downloads" do
     test "ignores 'prevent_download' if forced", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn

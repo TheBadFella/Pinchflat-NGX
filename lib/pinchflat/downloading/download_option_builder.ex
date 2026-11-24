@@ -40,7 +40,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
           quality_options(media_profile) ++
           sponsorblock_options(media_item_with_preloads.source, media_profile) ++
           output_options ++
-          config_file_options(media_item_with_preloads)
+          build_config_file_options_for(media_item_with_preloads)
 
       {:ok, built_options}
     end
@@ -222,31 +222,75 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     |> Enum.reject(fn {_flag, categories} -> categories == "" end)
   end
 
-  # This is put here instead of the CommandRunner module because it should only
-  # be applied to downloading - if it were in CommandRunner it would apply to
-  # all yt-dlp commands (like indexing)
-  defp config_file_options(media_item) do
-    base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
-    # Ordered by priority - the first file has the highest priority
-    filenames = [
-      "media-item-#{media_item.id}-config.txt",
-      "source-#{media_item.source_id}-config.txt",
-      "media-profile-#{media_item.source.media_profile_id}-config.txt",
+  @doc """
+  Builds the yt-dlp `--config-locations` options for a media item or source.
+
+  Scoped config files live in `extras/yt-dlp-configs`. This is the single source
+  of truth for them: `build/2` uses it for downloads, and the offline
+  `--load-info-json` path predictions use it so a prediction cannot drift from
+  the real download. Only files that exist and are non-empty are returned.
+
+  These stay out of the CommandRunner module on purpose: they must not apply to
+  every yt-dlp command (such as indexing). Predictions add them explicitly to
+  match the download argument list.
+
+  A media item uses its own file, its source, its media profile and the base
+  file. A source (used where there is no item yet) uses the source, profile and
+  base files. Files are emitted lowest priority first because yt-dlp applies
+  later `--config-locations` files over earlier ones, so the item file wins.
+
+  Returns [{:config_locations, binary()}]
+  """
+  def build_config_file_options_for(item_or_source)
+
+  def build_config_file_options_for(%MediaItem{} = media_item) do
+    source = loaded_source(media_item.source)
+    source_id = media_item.source_id || (source && source.id)
+    profile_id = source && source.media_profile_id
+
+    config_file_options([
+      scoped_config_filename("media-item", media_item.id),
+      scoped_config_filename("source", source_id),
+      scoped_config_filename("media-profile", profile_id),
       "base-config.txt"
-    ]
+    ])
+  end
 
-    config_filepaths =
-      Enum.reduce(filenames, [], fn filename, acc ->
-        filepath = Path.join(base_dir, filename)
+  def build_config_file_options_for(%Source{} = source) do
+    config_file_options([
+      scoped_config_filename("source", source.id),
+      scoped_config_filename("media-profile", source.media_profile_id),
+      "base-config.txt"
+    ])
+  end
 
-        if FSUtils.exists_and_nonempty?(filepath) do
-          [filepath | acc]
-        else
-          acc
-        end
-      end)
+  def build_config_file_options_for(_other), do: []
 
-    Enum.map(config_filepaths, fn filepath -> {:config_locations, filepath} end)
+  # The association is `%Ecto.Association.NotLoaded{}` unless the caller
+  # preloaded it, and an unloaded source must not contribute an id.
+  defp loaded_source(%Source{} = source), do: source
+  defp loaded_source(_other), do: nil
+
+  defp scoped_config_filename(prefix, id) when is_integer(id), do: "#{prefix}-#{id}-config.txt"
+  defp scoped_config_filename(_prefix, _absence), do: nil
+
+  # Filenames arrive highest priority first, so prepending reverses them into the
+  # order yt-dlp needs: later files override earlier ones.
+  defp config_file_options(filenames) do
+    base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
+
+    filenames
+    |> Enum.reject(&is_nil/1)
+    |> Enum.reduce([], fn filename, acc ->
+      filepath = Path.join(base_dir, filename)
+
+      if FSUtils.exists_and_nonempty?(filepath) do
+        [filepath | acc]
+      else
+        acc
+      end
+    end)
+    |> Enum.map(fn filepath -> {:config_locations, filepath} end)
   end
 
   defp output_options(media_item_with_preloads, override_opts) do
