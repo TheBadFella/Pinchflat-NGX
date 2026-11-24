@@ -266,6 +266,22 @@ defmodule PinchflatWeb.Schemas do
           description:
             "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
         },
+        sponsorblock_mark_categories: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          description:
+            "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut.",
+          example: ["intro", "outro"]
+        },
+        sponsorblock_remove_categories: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          description:
+            "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut.",
+          example: ["sponsor", "selfpromo"]
+        },
         series_directory: %Schema{type: :string, nullable: true, description: "Directory for series organization"},
         nfo_filepath: %Schema{type: :string, nullable: true, description: "Path to NFO file"},
         poster_filepath: %Schema{type: :string, nullable: true, description: "Path to poster image"},
@@ -490,6 +506,20 @@ defmodule PinchflatWeb.Schemas do
               description:
                 "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
             },
+            sponsorblock_mark_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
+            sponsorblock_remove_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
             enabled: %Schema{type: :boolean, description: "Whether the source is active", default: true},
             download_media: %Schema{type: :boolean, description: "Download media items", default: true},
             download_public_media: %Schema{
@@ -604,6 +634,20 @@ defmodule PinchflatWeb.Schemas do
               maximum: 365,
               description:
                 "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
+            },
+            sponsorblock_mark_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
+            sponsorblock_remove_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
             },
             description_locked: %Schema{
               type: :boolean,
