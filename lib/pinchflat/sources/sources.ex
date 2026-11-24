@@ -328,6 +328,26 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Counts the currently downloaded items a source would lose at the next cleanup
+  if its keep-newest limit became `target_count`.
+
+  Only items the cleanup itself would delete are counted: downloaded, not
+  `prevent_culling`, not watch-protected, outside the newest `target_count`
+  counted items, and without an active download job. Watch-protected items
+  occupy a counted slot but are never counted as removable.
+
+  Returns integer()
+  """
+  def count_removable_media_for_keep_newest(%Source{} = source, target_count)
+      when is_integer(target_count) and target_count > 0 do
+    MediaQuery.new()
+    |> where(^MediaQuery.removable_beyond_keep_newest(source.id, target_count))
+    |> Repo.aggregate(:count)
+  end
+
+  def count_removable_media_for_keep_newest(%Source{}, _target_count), do: 0
+
+  @doc """
   Returns the relevant output path template for a source.
   Shorts prefer the source's Shorts override, then the profile's Shorts template.
   Without a Shorts template, uses the primary source override or profile template.

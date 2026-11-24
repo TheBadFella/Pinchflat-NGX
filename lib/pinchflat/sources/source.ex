@@ -78,6 +78,7 @@ defmodule Pinchflat.Sources.Source do
     min_duration_seconds
     max_duration_seconds
     watch_window_days
+    keep_newest_count
     title_language
   )a
 
@@ -154,6 +155,8 @@ defmodule Pinchflat.Sources.Source do
     field :retention_period_days, :integer
     # nil inherits the profile value; zero explicitly disables watch window.
     field :watch_window_days, :integer
+    # nil is off; otherwise keep only the newest N downloaded/eligible items for this source.
+    field :keep_newest_count, :integer
     field :original_url, :string
     field :title_filter_regex, :string
     # nil disables translated titles for this source
@@ -239,6 +242,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
     |> check_constraint(:watch_window_days, name: :sources_watch_window_days_check)
+    |> validate_number(:keep_newest_count, greater_than: 0)
+    |> check_constraint(:keep_newest_count, name: :sources_keep_newest_count_check)
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),

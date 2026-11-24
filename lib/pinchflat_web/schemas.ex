@@ -249,6 +249,13 @@ defmodule PinchflatWeb.Schemas do
           nullable: true,
           description: "Resolved source/profile age-based period (0 or null means no age-based cleanup)"
         },
+        keep_newest_count: %Schema{
+          type: :integer,
+          nullable: true,
+          minimum: 1,
+          description:
+            "Maximum number of newest videos to keep downloaded or pending for this source. Nil disables the limit."
+        },
         title_filter_regex: %Schema{type: :string, nullable: true, description: "Regex to filter media titles"},
         title_language: %Schema{
           type: :string,
@@ -545,6 +552,12 @@ defmodule PinchflatWeb.Schemas do
               minimum: 0,
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
             },
+            keep_newest_count: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Maximum number of newest videos to keep downloaded or pending for this source"
+            },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
             title_language: %Schema{
               type: :string,
@@ -648,6 +661,12 @@ defmodule PinchflatWeb.Schemas do
               nullable: true,
               minimum: 0,
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
+            },
+            keep_newest_count: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Maximum number of newest videos to keep downloaded or pending for this source"
             },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
             title_language: %Schema{

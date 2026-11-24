@@ -16,6 +16,28 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def source_list_path(_return_to), do: ~p"/sources"
 
   @doc """
+  Hidden inputs that resubmit an edit from a confirmation page: the `source` params
+  (list values become `source[key][]` inputs) plus any top-level `extra_params`,
+  such as the yt-dlp options payload, exactly as they were submitted.
+  """
+  attr :source_params, :map, required: true
+  attr :extra_params, :map, default: %{}
+
+  def resubmitted_source_inputs(assigns) do
+    ~H"""
+    <%= for {key, value} <- @source_params do %>
+      <input
+        :for={item <- if(is_list(value), do: value, else: [value || ""])}
+        type="hidden"
+        name={if is_list(value), do: "source[#{key}][]", else: "source[#{key}]"}
+        value={item}
+      />
+    <% end %>
+    <input :for={{key, value} <- @extra_params} type="hidden" name={key} value={value} />
+    """
+  end
+
+  @doc """
   Renders a source form.
   """
   attr :changeset, Ecto.Changeset, required: true
@@ -856,6 +878,11 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Retention period",
         retention_policy_label(source),
         "Age is counted from download time. Blank inherits the profile; 0 disables age-based cleanup. Changing the profile can make older downloads eligible at next cleanup. Cutoff cleanup can delete files sooner based on publication date; protected media is excluded from both"
+      ),
+      field(
+        "Keep newest",
+        if(source.keep_newest_count, do: "Newest #{source.keep_newest_count}", else: nil),
+        "Pinchflat keeps only the newest N downloaded or pending-eligible videos for this source. Older unprotected downloads are deleted at the next scheduled cleanup"
       )
     ]
   end

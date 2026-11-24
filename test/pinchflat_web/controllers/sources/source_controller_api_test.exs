@@ -162,6 +162,57 @@ defmodule PinchflatWeb.Sources.SourceControllerApiTest do
     end
   end
 
+  describe "keep newest over JSON API" do
+    test "creates a source with a keep_newest_count and round-trips it", %{conn: conn} do
+      media_profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Keep Newest Channel",
+           channel_id: "UC_keep_newest_channel",
+           playlist_id: "UC_keep_newest_channel",
+           playlist_title: "Keep Newest Channel - videos"
+         })}
+      end)
+
+      attrs = %{
+        "source" => %{
+          "original_url" => "https://www.youtube.com/channel/UC_keep_newest_channel",
+          "media_profile_id" => media_profile.id,
+          "custom_name" => "Keep Newest Channel",
+          "keep_newest_count" => 4
+        },
+        "_format" => "json"
+      }
+
+      response = conn |> post("/sources", attrs) |> json_response(201)
+      assert response["keep_newest_count"] == 4
+
+      show = conn |> recycle() |> get("/sources/#{response["id"]}?_format=json") |> json_response(200)
+      assert show["keep_newest_count"] == 4
+    end
+
+    test "updates a keep_newest_count without the HTML confirmation", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: 5, download_media: false})
+
+      for offset <- 0..4 do
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: "/video/#{offset}.mp4",
+          uploaded_at: DateTime.add(~U[2026-11-20 00:00:00Z], offset, :day)
+        })
+      end
+
+      attrs = %{"source" => %{"keep_newest_count" => 2}, "_format" => "json"}
+
+      response = conn |> put("/sources/#{source.id}", attrs) |> json_response(200)
+      assert response["keep_newest_count"] == 2
+
+      assert Sources.get_source!(source.id).keep_newest_count == 2
+    end
+  end
+
   describe "delete/2 JSON API" do
     test "a protected source returns JSON conflict without scheduling deletion", %{conn: conn} do
       profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()

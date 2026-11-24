@@ -1631,6 +1631,31 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "change_source/3 when testing keep newest count validation" do
+    test "accepts nil and positive counts" do
+      source = source_fixture()
+
+      assert %{errors: []} = Sources.change_source(source, %{keep_newest_count: nil})
+      assert %{errors: []} = Sources.change_source(source, %{keep_newest_count: 1})
+      assert %{errors: []} = Sources.change_source(source, %{keep_newest_count: 50})
+    end
+
+    test "rejects zero and negative counts" do
+      source = source_fixture()
+
+      assert "must be greater than 0" in errors_on(Sources.change_source(source, %{keep_newest_count: 0})).keep_newest_count
+
+      assert "must be greater than 0" in errors_on(Sources.change_source(source, %{keep_newest_count: -1})).keep_newest_count
+    end
+
+    test "persists an accepted count" do
+      source = source_fixture()
+
+      assert {:ok, %Source{keep_newest_count: 3}} =
+               Sources.update_source(source, %{keep_newest_count: 3}, run_post_commit_tasks: false)
+    end
+  end
+
   defp playlist_mock(_url, :get_source_details, _opts, _ot, _addl) do
     {:ok, playlist_return()}
   end

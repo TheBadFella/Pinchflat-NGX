@@ -12,6 +12,11 @@ defmodule Pinchflat.Media.MediaQuery do
 
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Sources.AvailabilityPolicy
+  alias Pinchflat.Tasks.Task
+
+  # Mirrors DownloadingHelpers' active job states so the keep-newest cleanup
+  # does not delete a file that a queued or running download will still write.
+  @active_download_job_states [:available, :scheduled, :retryable, :executing, :suspended]
 
   # This allows the module to be aliased and query methods to be used
   # all in one go
@@ -278,6 +283,72 @@ defmodule Pinchflat.Media.MediaQuery do
   def pending do
     dynamic(
       [mi],
+      ^pending_ignoring_keep_newest() and ^within_keep_newest_count()
+    )
+  end
+
+  # Download eligibility for a source whose `keep_newest_count` is nil or whose
+  # item is among the newest counted items. An item outside the newest N is not
+  # pending, so lowering N never downloads a backlog that the cleanup would then
+  # delete.
+  #
+  # This ranks the counted items once with a window function rather than
+  # counting newer rows per candidate. A correlated count is O(items x items)
+  # within a large source: on a 51k-item source it took ~1.2s per query against
+  # ~15-24ms here (measured in issue #288 M1), which made the whole request time
+  # out. The `prevent_culling` escape keeps those items pending without letting
+  # them consume a slot, matching the correlated form.
+  def within_keep_newest_count do
+    dynamic(
+      [mi, source],
+      is_nil(source.keep_newest_count) or
+        ^culling_prevented() or
+        mi.id in subquery(counted_items_within_keep_newest_count())
+    )
+  end
+
+  # Downloaded items outside the newest N for a source that set the limit. The
+  # caller must still apply the download-job guard before deleting files.
+  def deletable_beyond_keep_newest_count do
+    dynamic(
+      [mi, source],
+      not is_nil(source.keep_newest_count) and
+        ^downloaded() and
+        not (^culling_prevented()) and
+        not (^watch_protected()) and
+        not (^within_keep_newest_count()) and
+        not (^active_download_job())
+    )
+  end
+
+  # Downloaded items a source would lose if its keep-newest limit became
+  # `target_count`. Ranks against the counted items for that source alone, so it
+  # works when the source has no stored limit yet. Mirrors
+  # `deletable_beyond_keep_newest_count/0` so the pre-save confirmation matches
+  # what the cleanup would actually delete.
+  def removable_beyond_keep_newest(source_id, target_count)
+      when is_integer(source_id) and is_integer(target_count) and target_count > 0 do
+    within =
+      from(r in subquery(counted_items_ranked(false, source_id)),
+        where: r.rank <= ^target_count,
+        select: r.id
+      )
+
+    dynamic(
+      [mi],
+      ^downloaded() and
+        not (^culling_prevented()) and
+        not (^watch_protected()) and
+        mi.id not in subquery(within) and
+        not (^active_download_job())
+    )
+  end
+
+  # The other `pending/0` rules without the keep-newest ranking, so the counted
+  # subquery cannot recurse into itself.
+  defp pending_ignoring_keep_newest do
+    dynamic(
+      [mi],
       is_nil(mi.media_filepath) and
         not (^download_prevented()) and
         ^AvailabilityPolicy.query_condition() and
@@ -286,6 +357,88 @@ defmodule Pinchflat.Media.MediaQuery do
         ^matches_source_title_regex() and
         ^meets_min_and_max_duration()
     )
+  end
+
+  # Counted items are downloaded or would be pending, and never `prevent_culling`.
+  # Watch-protected items count here but are excluded from deletion separately.
+  #
+  # Ranked once per source: `uploaded_at` descending, then `id` descending, so a
+  # nil `uploaded_at` ranks as oldest. Ties on `uploaded_at` are broken by the
+  # higher `id`. Only sources that set the limit are ranked, so a database where
+  # no source opts in produces no rows here.
+  defp counted_items_within_keep_newest_count do
+    from(r in subquery(counted_items_ranked(true, nil)),
+      where: r.rank <= r.keep_newest_count,
+      select: r.id
+    )
+  end
+
+  # Shared ranking used by both the stored-limit query and the pre-save
+  # confirmation. With `require_limit?` it only ranks sources that have a
+  # `keep_newest_count` set; with `source_id` it ranks one source regardless of
+  # its current limit, so a first-time or lowered value can be previewed.
+  defp counted_items_ranked(require_limit?, source_id) do
+    counted =
+      dynamic(
+        [kni, kns, knmp],
+        (^downloaded() or ^pending_ignoring_keep_newest()) and not (^culling_prevented())
+      )
+
+    ranked =
+      from(kni in MediaItem,
+        join: kns in assoc(kni, :source),
+        join: knmp in assoc(kns, :media_profile),
+        where: ^counted,
+        select: %{
+          id: kni.id,
+          keep_newest_count: kns.keep_newest_count,
+          rank:
+            over(row_number(),
+              partition_by: kni.source_id,
+              order_by: [desc_nulls_last: kni.uploaded_at, desc: kni.id]
+            )
+        }
+      )
+      |> maybe_require_keep_newest(require_limit?)
+      |> maybe_for_source(source_id)
+
+    ranked
+  end
+
+  defp maybe_require_keep_newest(query, true), do: where(query, [kni, kns, _knmp], not is_nil(kns.keep_newest_count))
+  defp maybe_require_keep_newest(query, false), do: query
+
+  defp maybe_for_source(query, nil), do: query
+
+  defp maybe_for_source(query, source_id) when is_integer(source_id),
+    do: where(query, [kni, _kns, _knmp], kni.source_id == ^source_id)
+
+  # The cleanup step must not delete a file that a queued or running download
+  # will still write. Mirrors DownloadingHelpers' active job states.
+  defp active_download_job do
+    state_filter = active_download_job_state_filter()
+
+    dynamic(
+      [mi],
+      exists(
+        from task in Task,
+          join: job in assoc(task, :job),
+          where: task.media_item_id == parent_as(:media_item).id,
+          where: fragment("? LIKE ?", job.worker, ^"%.MediaDownloadWorker"),
+          where: ^state_filter,
+          select: 1
+      )
+    )
+  end
+
+  defp active_download_job_state_filter do
+    states = Enum.map(@active_download_job_states, &to_string/1)
+
+    if Pinchflat.Database.postgres?() do
+      dynamic([_task, job], fragment("?::text", job.state) in ^states)
+    else
+      dynamic([_task, job], fragment("CAST(? AS text)", job.state) in ^states)
+    end
   end
 
   # Not downloaded and skipped by the source's rules (format, title, duration, cutoff or availability),
