@@ -1,7 +1,6 @@
 name: Bug Report
 description: Report something that is not working in Pinchflat-NGX.
 title: '[Bug] '
-labels: ['Bug']
 type: Bug
 body:
   - type: markdown
