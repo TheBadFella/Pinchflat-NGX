@@ -22,10 +22,19 @@
       <p class="text-xs text-theme-on-surface-muted">Choose a table or poster library layout.</p>
     </div>
 
+    <%!-- The cookie lets the server open the list in the chosen view after leaving and coming back. --%>
     <div
       class="inline-flex items-center gap-1 rounded-m3-sm border border-theme-outline bg-theme-surface p-1"
       role="group"
       aria-label="Source view"
+      x-data="{
+        remember(view) {
+          const url = new URL(location.href);
+          url.searchParams.set('view', view);
+          history.replaceState(null, '', url);
+          document.cookie = `pinchflat_sources_view=${view}; path=/; max-age=31536000; SameSite=Lax`;
+        }
+      }"
     >
       <button
         type="button"
@@ -38,7 +47,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="table"
-        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'table'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
+        x-on:click="remember('table')"
         aria-pressed={to_string(@view_mode == :table)}
         data-view-toggle="table"
       >
@@ -56,7 +65,7 @@
         ]}
         phx-click="view_change"
         phx-value-view="grid"
-        x-on:click="const u = new URL(location.href); u.searchParams.set('view', 'grid'); history.replaceState(null, '', u.pathname + '?' + u.searchParams.toString())"
+        x-on:click="remember('grid')"
         aria-pressed={to_string(@view_mode == :grid)}
         data-view-toggle="grid"
       >

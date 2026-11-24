@@ -206,6 +206,33 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute table =~ ~s(data-view="poster-grid")
     end
 
+    test "reopens the view the browser last chose", %{conn: conn} do
+      source_fixture(%{custom_name: "Remembered view source"})
+
+      table = conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources") |> html_response(200)
+      assert table =~ ~s(data-view="table")
+
+      videos =
+        conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources?type=videos") |> html_response(200)
+
+      assert videos =~ ~s(data-view="table")
+
+      explicit =
+        conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources?view=grid") |> html_response(200)
+
+      assert explicit =~ ~s(data-view="poster-grid")
+
+      unknown = conn |> put_req_cookie("pinchflat_sources_view", "sideways") |> get(~p"/sources") |> html_response(200)
+      assert unknown =~ ~s(data-view="poster-grid")
+    end
+
+    test "the view toggle remembers the choice for later visits", %{conn: conn} do
+      html = conn |> get(~p"/sources") |> html_response(200)
+
+      assert html =~ "pinchflat_sources_view="
+      assert html =~ ~s|x-on:click="remember('table')"|
+    end
+
     test "renders channel discovery in the sidebar", %{conn: conn} do
       response = conn |> get(~p"/sources") |> html_response(200)
 
