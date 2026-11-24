@@ -221,6 +221,36 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       end
     end
 
+    test "moves items the source's rules skip from Latest to the Excluded tab", %{conn: conn} do
+      profile = Pinchflat.ProfilesFixtures.media_profile_fixture(%{shorts_behaviour: :exclude})
+      source = source_fixture(media_profile_id: profile.id)
+      item = &media_item_fixture(Map.merge(%{source_id: source.id, media_filepath: nil}, &1))
+
+      short = item.(%{title: "Excluded short", short_form_content: true})
+      video = item.(%{title: "Pending video", short_form_content: false})
+      prevented_short = item.(%{title: "Prevented short", short_form_content: true, prevent_download: true})
+
+      {:ok, latest, _} =
+        live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest", "latest_range" => @all_time_range})
+
+      refute has_element?(latest, "[data-media-status='#{short.id}']")
+      assert has_element?(latest, "tbody [data-media-status='#{video.id}']", "Pending")
+      assert has_element?(latest, "tbody [data-media-status='#{prevented_short.id}']", "Prevented")
+
+      render_click(latest, "grouping_change", %{"grouping" => "source"})
+      refute render(latest) =~ short.title
+
+      {:ok, excluded, _} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "excluded"})
+      html = render(excluded)
+      assert html =~ short.title
+      refute html =~ video.title
+      refute html =~ prevented_short.title
+      assert has_element?(excluded, "#excluded-explanation", "shorts or")
+
+      {:ok, pending, _} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "pending"})
+      refute render(pending) =~ short.title
+    end
+
     test "groups sources by their latest indexed item before paginating", %{conn: conn} do
       first_source = source_fixture(custom_name: "Recently active")
       second_source = source_fixture(custom_name: "Other source")

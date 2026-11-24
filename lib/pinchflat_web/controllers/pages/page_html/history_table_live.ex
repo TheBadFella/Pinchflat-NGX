@@ -66,6 +66,11 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         sort_direction={@sort_direction}
         time_range={@time_range}
       />
+      <p :if={@media_state == "excluded"} id="excluded-explanation" class="mb-4 text-sm text-theme-on-surface-muted">
+        These items are not downloaded because their source's rules skip them: the media profile's shorts or
+        livestream setting, its title filter or duration limits, a publication date before the source's download
+        cutoff, or availability. They stay indexed. To get one, download it manually or change those rules.
+      </p>
       <span class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
@@ -1137,6 +1142,12 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     )
   end
 
+  defp generate_base_query_for_state("excluded") do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.excluded()))
+  end
+
   defp generate_base_query_for_state("failed") do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
@@ -1217,7 +1228,13 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   defp latest_query(time_range, grouping) do
-    query = filter_indexed_time(MediaQuery.new(), time_range)
+    # Items the source's rules skip have their own Excluded tab, so Latest only shows media that will download.
+    query =
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:media_profile)
+      |> where(^dynamic(not (^MediaQuery.excluded())))
+      |> filter_indexed_time(time_range)
+
     if grouping == "source", do: group_sources(query), else: query
   end
 

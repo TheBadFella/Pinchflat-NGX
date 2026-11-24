@@ -100,5 +100,12 @@
         session: %{"media_state" => "downloaded"}
       )}
     </:tab>
+    <:tab title="Excluded" id="excluded">
+      {live_render(
+        @conn,
+        Pinchflat.Pages.HistoryTableLive,
+        session: %{"media_state" => "excluded"}
+      )}
+    </:tab>
   </.tabbed_layout>
 </div>
