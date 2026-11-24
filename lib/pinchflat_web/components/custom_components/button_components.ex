@@ -157,8 +157,10 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
         <% end %>
       </button>
 
+      <%!-- x-cloak keeps every menu hidden until Alpine starts, so a list of rows doesn't flash open on load. --%>
       <div
         x-show="dropdownOpen"
+        x-cloak
         x-on:click.outside="dropdownOpen = false"
         x-ref="menu"
         x-bind:style="menuStyle"

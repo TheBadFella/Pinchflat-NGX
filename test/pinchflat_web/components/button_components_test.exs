@@ -42,4 +42,14 @@ defmodule PinchflatWeb.ButtonComponentsTest do
       refute html =~ ~s(href="/sources/new")
     end
   end
+
+  test "dropdown menus stay hidden until the page script opens them" do
+    html =
+      render_component(&ButtonComponents.button_dropdown/1,
+        text: "More actions",
+        option: [%{inner_block: fn _, _ -> "Start all" end}]
+      )
+
+    assert html =~ ~r/<div[^>]*x-show="dropdownOpen"[^>]*x-cloak/
+  end
 end

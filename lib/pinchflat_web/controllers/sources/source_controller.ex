@@ -24,6 +24,9 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias PinchflatWeb.Sources.SourceHTML
   alias PinchflatWeb.YtDlpOptionsHelpers
 
+  # Set by the view toggle on the sources page (see index_table_live.html.heex).
+  @source_view_cookie "pinchflat_sources_view"
+
   tags(["Sources"])
 
   operation(:index,
@@ -43,7 +46,10 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       _ ->
         source_type = if params["type"] == "videos", do: "videos", else: "channels"
-        initial_view_mode = source_view_mode(params["view"])
+        # An explicit ?view= wins; otherwise reopen the view the browser last chose.
+        initial_view_mode =
+          source_view_mode(params["view"]) || source_view_mode(fetch_cookies(conn).req_cookies[@source_view_cookie])
+
         render(conn, :index, source_type: source_type, initial_view_mode: initial_view_mode)
     end
   end
