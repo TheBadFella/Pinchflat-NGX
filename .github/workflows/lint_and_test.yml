@@ -67,13 +67,32 @@ jobs:
         run: |
           docker compose exec -T phx mix deps.get && yarn install && cd assets && yarn install && cd ..
 
-      - name: Create and Migrate database
-        run: |
-          docker compose exec -T phx mix ecto.create
-          docker compose exec -T phx mix ecto.migrate
-
+      # On PostgreSQL, PostgresTransferTest migrates its SQLite fixture with a
+      # SQLite-adapter build of the app. Compiling that build alongside mix check
+      # keeps about a minute of compiling out of the test partitions.
       - name: Run code checks
-        run: docker compose exec -T phx mix check --no-fix --no-retry
+        run: |
+          fixture_build=""
+          if [ "${{ matrix.database }}" = "postgres" ]; then
+            docker compose exec -T -e MIX_ENV=test -e DATABASE_ADAPTER=sqlite \
+              -e MIX_BUILD_PATH=/app/_build/sqlite_transfer_fixture phx mix compile \
+              > "${RUNNER_TEMP}/sqlite-fixture-build.log" 2>&1 &
+            fixture_build=$!
+          fi
+          status=0
+          docker compose exec -T phx mix check --no-fix --no-retry --except ex_unit || status=$?
+          if [ -n "$fixture_build" ] && ! wait "$fixture_build"; then
+            echo "::warning::The SQLite fixture build failed; PostgresTransferTest will compile it itself."
+            cat "${RUNNER_TEMP}/sqlite-fixture-build.log"
+          fi
+          exit "$status"
+
+      # The suite runs as parallel partitions, each in its own container with a
+      # private /tmp and its own database. The mix test alias creates and
+      # migrates each partition's database.
+      - name: Run tests
+        if: ${{ !cancelled() }}
+        run: tooling/test_partitions.sh 4
 
       # These tests change PostgreSQL column types, so they run against their own
       # database rather than the one the main suite used. They reuse this job's
