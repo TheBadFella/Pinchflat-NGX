@@ -12,10 +12,6 @@ defmodule Pinchflat.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      preferred_cli_env: [
-        check: :test,
-        credo: :test
-      ],
       test_coverage: [
         ignore_modules: [
           Pinchflat.HTTP.HTTPClient,
@@ -37,6 +33,19 @@ defmodule Pinchflat.MixProject do
       mod: {Pinchflat.Application, []},
       extra_applications: [:logger, :runtime_tools, :inets, :os_mon]
     ]
+  end
+
+  def cli do
+    [preferred_envs: [check: :test, credo: :test]]
+  end
+
+  # Regenerates the ERD only when MIX_ENV is unset (local development).
+  defp maybe_create_erd(_args) do
+    if System.get_env("MIX_ENV") in [nil, ""] and Mix.shell().cmd("yarn run create-erd") == 0 do
+      :ok
+    else
+      Mix.shell().info("No ERD generated")
+    end
   end
 
   # Specifies which paths to compile per environment.
@@ -106,11 +115,11 @@ defmodule Pinchflat.MixProject do
       "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"],
       "ecto.migrate": [
         "ecto.migrate",
-        ~s(cmd [ -z "$MIX_ENV" ] && yarn run create-erd || echo "No ERD generated")
+        &maybe_create_erd/1
       ],
       "ecto.rollback": [
         "ecto.rollback",
-        ~s(cmd [ -z "$MIX_ENV" ] && yarn run create-erd || echo "No ERD generated")
+        &maybe_create_erd/1
       ],
       "version.bump": "cmd ./tooling/version_bump.sh"
     ]
