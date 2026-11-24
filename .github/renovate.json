@@ -66,6 +66,24 @@
       "groupName": "bgutil POT provider"
     },
     {
+      "description": "FFmpeg follows yt-dlp's month-end autobuilds, the ones yt-dlp keeps after daily builds are deleted",
+      "matchPackageNames": ["yt-dlp/FFmpeg-Builds"],
+      "groupName": "FFmpeg",
+      "versioning": "regex:^autobuild-(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})-(?<build>\\d{2})-(?<revision>\\d{2})$",
+      "allowedVersions": "/^autobuild-\\d{4}-(01-31|02-2[89]|03-31|04-30|05-31|06-30|07-31|08-31|09-30|10-31|11-30|12-31)-/",
+      "prBodyNotes": [
+        "This moves to a newer FFmpeg master build. Before merging, check a download that merges formats and embeds metadata, thumbnails and subtitles."
+      ]
+    },
+    {
+      "description": "The Scalar script tag carries a Subresource Integrity hash that Renovate cannot update",
+      "matchPackageNames": ["@scalar/api-reference"],
+      "groupName": "Scalar API reference",
+      "prBodyNotes": [
+        "Update the `integrity` sha384 in `lib/pinchflat_web/controllers/api_docs_controller.ex` and its test before merging, or browsers block the script and `/api/docs` renders blank. Compute it with `curl -sL https://cdn.jsdelivr.net/npm/@scalar/api-reference@{{{newVersion}}}/dist/browser/standalone.js | openssl dgst -sha384 -binary | openssl base64 -A`."
+      ]
+    },
+    {
       "description": "QuickJS-NG downloads are checksum-pinned",
       "matchPackageNames": ["quickjs-ng/quickjs"],
       "groupName": "QuickJS-NG",
