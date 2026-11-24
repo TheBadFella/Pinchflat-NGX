@@ -1537,7 +1537,7 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
 
     test "a replacement slower than the lease window succeeds when heartbeats keep ownership" do
       {item, watch} = watched_item()
-      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace", lease_seconds: 1)
+      {:ok, lease} = MediaWatch.claim_lease(item.id, "replace", lease_seconds: 3)
       staged = staged_file("replacement artifact")
 
       assert {:ok, updated} =
@@ -1546,8 +1546,8 @@ defmodule Pinchflat.MediaWatch.ReplacementFenceTest do
                  item,
                  %{source_map: %{staged => item.media_filepath}},
                  fn pre_images ->
-                   # A transfer far longer than the original one-second lease.
-                   Process.sleep(1_500)
+                   # A transfer longer than the original three-second lease.
+                   Process.sleep(4_000)
                    stage_incoming!(staged, item.media_filepath, pre_images)
                    {:ok, %{"filepath" => item.media_filepath}}
                  end,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pinchflat-NGX: YouTube quick add
 // @namespace    https://github.com/TheBadFella/Pinchflat-NGX
-// @version      1.3.0-pinchflat-ngx
+// @version      1.4.0-pinchflat-ngx
 // @description  Add Pinchflat-NGX sources from YouTube with the full New Source form prefilled.
 // @author       Adapted by TheBadFella; contributed originally by Asinin3 (https://github.com/Asinin3)
 // @downloadURL  __PINCHFLAT_BASE__/browser/userscripts/youtube-quick-add-source.user.js
@@ -11,46 +11,97 @@
 // @license      AGPL-3.0-or-later
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
+// @match        __PINCHFLAT_BASE__/sources/new*
 // @grant        GM_openInTab
+// @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @connect      __PINCHFLAT_HOST__
 // @run-at       document-idle
 // ==/UserScript==
 //
-// PINCHFLAT_BASE is set by your Pinchflat-ngx instance when you install from its hosted URL.
+// PINCHFLAT_BASE, @match and @connect are set by your Pinchflat-ngx instance when you install from its hosted URL.
 
 ;(() => {
   /** External base URL from Pinchflat Settings (no trailing slash). */
   const PINCHFLAT_BASE = __PINCHFLAT_BASE_JS__
+  const BASE = PINCHFLAT_BASE.replace(/\/$/, '')
 
   const LOGO_DATA_URI =
     'data:image/png;base64,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'
 
   const DEFAULTS = {
+    markAdded: true,
     skipUpcoming: true,
     channelPagesOnly: false,
-    hideShorts: false
+    hideShorts: false,
+    closeAfterSave: false
   }
 
   const SETTINGS = [
+    ['markAdded', 'Mark sources already in Pinchflat'],
     ['skipUpcoming', 'Skip upcoming streams & premieres'],
     ['channelPagesOnly', 'Only show thumbnail buttons on channel pages'],
-    ['hideShorts', 'Hide buttons on Shorts']
+    ['hideShorts', 'Hide buttons on Shorts'],
+    ['closeAfterSave', 'Close Pinchflat tab after saving a source']
   ]
 
   const cfg = {}
   for (const k of Object.keys(DEFAULTS)) cfg[k] = GM_getValue(k, DEFAULTS[k])
 
-  const newSourceUrl = (info) => {
+  if (location.href.startsWith(`${BASE}/sources/new`)) {
+    const token = new URLSearchParams(location.hash.slice(1)).get('pf-close')
+    const action = new URL(`${BASE}/sources`).pathname
+    let saving = false
+
+    const isSourcePage = (url) => {
+      const path = new URL(url).pathname.replace(/\/$/, '')
+      const rest = path.slice(action.length + 1)
+      return path.startsWith(`${action}/`) && rest !== 'new' && !rest.includes('/')
+    }
+
+    const onSubmit = async (e) => {
+      const form = e.target
+      if (new URL(form.action).pathname !== action) return
+      e.preventDefault()
+      if (saving) return
+      saving = true
+      const res = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form, e.submitter)
+      }).catch(() => null)
+      if (!res) {
+        form.submit()
+      } else if (res.ok && isSourcePage(res.url)) {
+        GM_setValue('quickAddSaved', `${token}:${Date.now()}`)
+        location.assign(res.url)
+      } else {
+        const html = await res.text()
+        document.open()
+        document.write(html)
+        document.close()
+        saving = false
+        document.addEventListener('submit', onSubmit, true)
+      }
+    }
+
+    if (token) document.addEventListener('submit', onSubmit, true)
+    return
+  }
+
+  if (!/(^|\.)youtube\.com$/.test(location.hostname)) return
+
+  const newSourceUrl = (info, token) => {
     if (!info?.url) return null
-    const base = PINCHFLAT_BASE.replace(/\/$/, '')
-    const target = new URL(`${base}/sources/new`)
+    const target = new URL(`${BASE}/sources/new`)
     target.searchParams.set('original_url', info.url)
     if (info.name) target.searchParams.set('custom_name', info.name)
     if (info.type) target.searchParams.set('source_type', info.type)
     target.searchParams.set('download_members_only_media', 'false')
+    if (token) target.hash = `pf-close=${token}`
     return target.toString()
   }
 
@@ -240,6 +291,8 @@
       : null
   }
 
+  const quickTabs = new Map()
+
   const send = async (info) => {
     if (!info?.url) return
     if (info.type === 'playlist') {
@@ -251,13 +304,82 @@
         /* use page-derived name */
       }
     }
-    const openUrl = newSourceUrl(info)
-    if (openUrl) GM_openInTab(openUrl, { active: true })
+    const token = cfg.closeAfterSave ? Math.random().toString(36).slice(2) : ''
+    const openUrl = newSourceUrl(info, token)
+    if (!openUrl) return
+    const tab = GM_openInTab(openUrl, { active: true, setParent: !!token })
+    if (token && tab) {
+      quickTabs.set(token, tab)
+      tab.onclose = () => quickTabs.delete(token)
+    }
+  }
+
+  const SOURCES_TTL = 5 * 60 * 1000
+  let known = new Set()
+  let fetchedAt = 0
+
+  const keyOf = (href) => {
+    const u = abs(href)
+    if (!u) return null
+    const path = u.pathname.replace(/\/$/, '')
+    const handle = path.match(/^\/(@[^/]+)/)
+    if (handle) return `channel:${handle[1].toLowerCase()}`
+    const id = path.match(/^\/channel\/([^/]+)/)
+    if (id) return `channel:${id[1]}`
+    const legacy = path.match(/^\/((?:c|user)\/[^/]+)/)
+    if (legacy) return `channel:${legacy[1].toLowerCase()}`
+    const short = path.match(/^\/(?:shorts|live)\/([^/]+)/)
+    if (short) return `video:${short[1]}`
+    const list = u.searchParams.get('list')
+    if (path === '/playlist' && list) return `playlist:${list}`
+    const video = u.searchParams.get('v')
+    if (path === '/watch' && video) return `video:${video}`
+    return null
+  }
+
+  const sourceKeys = (s) =>
+    [keyOf(s.original_url), s.collection_id && `${s.collection_type}:${s.collection_id}`].filter(
+      Boolean
+    )
+
+  const isAdded = (info) => cfg.markAdded && !!info && known.has(keyOf(info.url))
+
+  const fetchSources = (maxAge = SOURCES_TTL) => {
+    if (!cfg.markAdded) return
+    if (!fetchedAt) {
+      const cache = GM_getValue('sourceCache')
+      if (cache?.base === PINCHFLAT_BASE) {
+        known = new Set(cache.keys)
+        fetchedAt = cache.at
+      }
+    }
+    if (Date.now() - fetchedAt < maxAge) return
+    GM_xmlhttpRequest({
+      method: 'GET',
+      url: `${BASE}/sources`,
+      headers: { Accept: 'application/json' },
+      onload: (r) => {
+        let list
+        try {
+          list = JSON.parse(r.responseText).data
+        } catch {
+          return
+        }
+        if (r.status !== 200 || !Array.isArray(list)) return
+        known = new Set(list.flatMap(sourceKeys))
+        fetchedAt = Date.now()
+        GM_setValue('sourceCache', { base: PINCHFLAT_BASE, at: fetchedAt, keys: [...known] })
+        paintFloat()
+        tick()
+      }
+    })
   }
 
   const BTN = 30
-  const BG = LOGO_DATA_URI ? '#212121' : '#e62117'
-  const BG_HOVER = LOGO_DATA_URI ? '#3a3a3a' : '#c91910'
+  const BG = '#212121'
+  const BG_HOVER = '#3a3a3a'
+  const BADGE = '#e62117'
+  const GREEN = '#34a853'
   const NS = 'http://www.w3.org/2000/svg'
 
   const iconSvg = (d, size) => {
@@ -281,6 +403,8 @@
   const PERSON =
     'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'
   const PLAY = 'M8 5v14l11-7z'
+  const CHECK = 'M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'
+  const ADDED = 'Already in Pinchflat'
   const SPRING = 'cubic-bezier(.34,1.56,.64,1)'
 
   const plusSvg = (size) => {
@@ -301,13 +425,21 @@
     img.style.cssText = 'display:block;width:100%;height:100%;object-fit:contain'
     const badge = mk(
       'span',
-      `position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;border-radius:50%;background:#e62117;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 1.5px ${BG}`
+      `position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;border-radius:50%;background:${BADGE};color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 1.5px ${BG}`
     )
     badge.dataset.pfBadge = '1'
     badge.style.transition = `transform .3s ${SPRING}`
     badge.append(plusSvg(9))
     wrap.append(img, badge)
     return wrap
+  }
+
+  const markAdded = (el, added) => {
+    if (el.dataset.pfAdded === String(added)) return
+    el.dataset.pfAdded = String(added)
+    const badge = Q('[data-pf-badge]', el)
+    badge.style.background = added ? GREEN : BADGE
+    badge.firstElementChild.firstElementChild.setAttribute('d', added ? CHECK : PLUS)
   }
 
   const makeBtn = (label) => {
@@ -318,7 +450,7 @@
     b.type = 'button'
     b.title = label
     b.setAttribute('aria-label', label)
-    b.append(LOGO_DATA_URI ? logoIcon() : plusSvg(18))
+    b.append(logoIcon())
     b.onmouseenter = () => {
       b.style.background = BG_HOVER
       b.style.transform = 'scale(1.06)'
@@ -400,6 +532,19 @@
     return !!t.closest?.(PREVIEW) && e.clientY >= rect.bottom - BAR_PX
   }
 
+  const paintFloat = () => {
+    if (!cur) return
+    const added = isAdded(cur.info)
+    const label = added
+      ? ADDED
+      : cur.info.type === 'playlist'
+        ? 'Add this entire playlist to Pinchflat'
+        : 'Add this video to Pinchflat'
+    fb.title = label
+    fb.setAttribute('aria-label', label)
+    markAdded(fb, added)
+  }
+
   const place = (rect) =>
     Object.assign(fb.style, {
       left: rect.left + 9 + 'px',
@@ -427,12 +572,7 @@
     if (!info) return hide()
 
     cur = { info, rect, card, thumb }
-    const label =
-      info.type === 'playlist'
-        ? 'Add this entire playlist to Pinchflat'
-        : 'Add this video to Pinchflat'
-    fb.title = label
-    fb.setAttribute('aria-label', label)
+    paintFloat()
     place(rect)
     show()
   }
@@ -492,16 +632,15 @@
   const makeWatchCombo = () => {
     const root = mk(
       'div',
-      `display:inline-flex;align-items:center;box-sizing:border-box;width:${BTN}px;height:${BTN}px;overflow:hidden;background:${BG};color:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.35);transition:width ${DUR}s ${EASE},border-radius ${DUR}s ${EASE}`
+      `display:inline-flex;align-items:center;box-sizing:border-box;width:${BTN}px;height:${BTN}px;background:${BG};color:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.35);transition:width ${DUR}s ${EASE},border-radius ${DUR}s ${EASE}`
     )
     const toggle = mk(
       'button',
-      `width:${BTN}px;height:${BTN}px;min-width:${BTN}px;padding:0;border:none;background:transparent;color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;transition:background .15s`
+      `width:${BTN}px;height:${BTN}px;min-width:${BTN}px;padding:0;border:none;border-radius:8px;background:transparent;color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;transition:background .15s,border-radius ${DUR}s ${EASE}`
     )
     toggle.type = 'button'
-    const icon = LOGO_DATA_URI ? logoIcon() : plusSvg(18)
-    toggle.append(icon)
-    const spin = Q('[data-pf-badge]', toggle) || icon
+    toggle.append(logoIcon())
+    const spin = Q('[data-pf-badge]', toggle)
     toggle.onmouseenter = () => (toggle.style.background = 'rgba(255,255,255,.14)')
     toggle.onmouseleave = () => (toggle.style.background = 'transparent')
 
@@ -523,6 +662,7 @@
       open = false
       root.style.width = BTN + 'px'
       root.style.borderRadius = '8px'
+      toggle.style.borderRadius = '8px'
       opts.style.transitionDelay = `${DUR}s`
       opts.style.visibility = 'hidden'
       for (const c of opts.children) {
@@ -533,6 +673,13 @@
       spin.style.transform = ''
       setLabel()
       if (restoreFocus) toggle.focus()
+    }
+
+    const markSeg = (b, d, title, added) => {
+      b.firstElementChild.firstElementChild.setAttribute('d', added ? CHECK : d)
+      b.firstElementChild.style.color = added ? GREEN : ''
+      b.title = added ? ADDED : title
+      b.setAttribute('aria-label', b.title)
     }
 
     const seg = (label, d, title, getInfo) => {
@@ -558,7 +705,12 @@
     const chBtn = seg('Channel', PERSON, 'Add this channel to Pinchflat', watchChannel)
     const vdBtn = seg('Video', PLAY, 'Add this video to Pinchflat', watchVideo)
     opts.append(chBtn, vdBtn)
-    root.append(toggle, opts)
+    const clip = mk(
+      'div',
+      `display:flex;flex:1 1 auto;min-width:0;height:${BTN}px;overflow:hidden;border-radius:0 ${BTN / 2}px ${BTN / 2}px 0`
+    )
+    clip.append(opts)
+    root.append(toggle, clip)
 
     const expand = () => {
       const ch = watchChannel()
@@ -566,9 +718,14 @@
       chBtn.style.display = ch ? 'inline-flex' : 'none'
       vdBtn.style.display = vd ? 'inline-flex' : 'none'
       if (!ch && !vd) return
+      const chAdded = isAdded(ch)
+      const vdAdded = isAdded(vd)
+      markSeg(chBtn, PERSON, 'Add this channel to Pinchflat', chAdded)
+      markSeg(vdBtn, PLAY, 'Add this video to Pinchflat', vdAdded)
       open = true
       root.style.width = BTN + opts.offsetWidth + 'px'
       root.style.borderRadius = BTN / 2 + 'px'
+      toggle.style.borderRadius = `${BTN / 2}px 0 0 ${BTN / 2}px`
       opts.style.transitionDelay = '0s'
       opts.style.visibility = 'visible'
       ;[...opts.children].forEach((c, i) => {
@@ -576,7 +733,7 @@
         c.style.opacity = '1'
         c.style.transform = 'none'
       })
-      spin.style.transform = 'rotate(45deg)'
+      spin.style.transform = chAdded || vdAdded ? '' : 'rotate(45deg)'
       setLabel()
     }
 
@@ -599,6 +756,7 @@
       key: 'watch',
       make: makeWatchCombo,
       get: () => (onWatch() ? watchVideo() || watchChannel() : null),
+      added: () => isAdded(watchVideo()) || isAdded(watchChannel()),
       host: () => Q('ytd-watch-metadata h1, #title h1')?.parentElement
     },
     {
@@ -663,9 +821,12 @@
           }
         host.append(b)
       }
-      document
-        .querySelectorAll(`[data-pf-key="${s.key}"]`)
-        .forEach((b) => (b.style.display = info ? 'inline-flex' : 'none'))
+      const added = s.added ? s.added() : isAdded(info)
+      document.querySelectorAll(`[data-pf-key="${s.key}"]`).forEach((b) => {
+        b.style.display = info ? 'inline-flex' : 'none'
+        markAdded(b, added)
+        if (!s.make) b.title = added ? ADDED : s.label
+      })
     })
   }
 
@@ -689,6 +850,7 @@
         GM_setValue(key, cfg[key])
         toast(`Pinchflat: ${label} — ${cfg[key] ? 'on' : 'off'}`)
         hide()
+        fetchSources()
         tick()
         if (canRebuildMenu) buildMenu()
       })
@@ -696,10 +858,19 @@
   }
   buildMenu()
 
+  GM_addValueChangeListener('quickAddSaved', (_name, _old, value, remote) => {
+    if (remote) quickTabs.get(String(value).split(':')[0])?.close()
+  })
+
+  fetchSources()
   setInterval(tick, 1000)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) fetchSources(15000)
+  })
   document.addEventListener('yt-navigate-finish', () => {
     hide()
     combos.forEach((c) => c.collapse())
+    fetchSources()
     tick()
   })
 })()
