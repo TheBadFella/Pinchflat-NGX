@@ -449,6 +449,7 @@
               alt={"Artwork for #{source.custom_name}"}
               class="pointer-events-none absolute inset-0 h-full w-full object-cover"
               x-show="image_loaded"
+              x-init="image_loaded = $el.complete && $el.naturalWidth > 0"
               x-on:load="image_loaded = true"
               x-on:error="image_loaded = false"
             />
