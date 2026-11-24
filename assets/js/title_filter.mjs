@@ -12,9 +12,14 @@
 // - Postgres only accepts a case option at the very start of the regex, as `(?i)`. When every
 //   list ignores case the regex starts with `(?i)`. When the lists differ, the lists that ignore
 //   case spell each letter as a pair instead, the letter as typed first (`[Ss]`, `[tT]`), so
-//   the lists read back exactly as they were entered. Only A-Z are spelled out this way.
+//   the lists read back exactly as they were entered.
+// - In a Postgres database with the plain C locale, `(?i)` only ignores case for A-Z, so letters
+//   outside A-Z (Cyrillic, Greek, accented letters...) are always spelled as pairs (`[оО]`).
+// - Both databases treat `\w` as any Unicode letter, digit or underscore, so word edges work
+//   for non-Latin words. The builder decides where edges go with the same Unicode rule.
 const WORD_START = '(?<!\\w)'
 const WORD_END = '(?!\\w)'
+const WORD_CHAR = /[\p{L}\p{N}_]/u
 const LISTS = ['any', 'all', 'none']
 
 export const defaultOptions = () => ({
@@ -46,24 +51,40 @@ export const splitTerms = (text) => {
   return out.map((term) => term.trim()).filter((term) => term.replace(/\*/g, '').length > 0)
 }
 
-const spellCaseless = (text) =>
-  text.replace(
-    /[A-Za-z]/g,
-    (char) =>
-      '[' + char + (char === char.toLowerCase() ? char.toUpperCase() : char.toLowerCase()) + ']'
-  )
+// The other case of a letter, or null when it has none (or changes length, like ß -> SS)
+const otherCase = (char) => {
+  const other = char === char.toLowerCase() ? char.toUpperCase() : char.toLowerCase()
+  return other !== char && other.length === 1 && char.length === 1 ? other : null
+}
+
+const isCased = (char) => otherCase(char) !== null
+
+// Spells letters as [typed, other case]. `ascii` false leaves A-Z to a leading (?i).
+const spellCaseless = (text, ascii) =>
+  text.replace(/\p{L}/gu, (char) => {
+    const other = otherCase(char)
+    if (!other || (!ascii && char.charCodeAt(0) < 128)) return char
+    return '[' + char + other + ']'
+  })
 
 // One search term -> regex. "*" is a wildcard; whole-word marks the word edges of the term.
-const termToRegex = (raw, whole, caselessLetters = false) => {
+// spell: 'all' spells every letter (no (?i) in this regex), 'nonAscii' only letters outside A-Z
+// (the regex starts with (?i)), null spells nothing (the list matches capital letters).
+const termToRegex = (raw, whole, spell = null) => {
   let body = raw.split('*').map(escapeRegex).join('.*')
-  if (caselessLetters) body = spellCaseless(body)
-  const isWordChar = (char) => whole && /\w/.test(char)
+  if (spell) body = spellCaseless(body, spell === 'all')
+  const chars = [...raw]
+  const isWordChar = (char) => whole && WORD_CHAR.test(char)
   return (
-    (isWordChar(raw[0]) ? WORD_START : '') +
+    (isWordChar(chars[0]) ? WORD_START : '') +
     body +
-    (isWordChar(raw[raw.length - 1]) ? WORD_END : '')
+    (isWordChar(chars[chars.length - 1]) ? WORD_END : '')
   )
 }
+
+// The same regex for JavaScript, whose \w only covers A-Z, digits and underscore
+const toJsWordEdges = (source) =>
+  source.split(WORD_START).join('(?<![\\p{L}\\p{N}_])').split(WORD_END).join('(?![\\p{L}\\p{N}_])')
 
 // state: { any, all, none, options: { any: { whole, matchCase }, all: ..., none: ... } }
 //   all  -> every one must appear     (?=.*A)(?=.*B)
@@ -75,8 +96,8 @@ export const buildRegex = (state) => {
   if (used.length === 0) return ''
 
   const allCaseless = used.every((key) => !options[key].matchCase)
-  const toRegex = (key) => (term) =>
-    termToRegex(term, options[key].whole, !allCaseless && !options[key].matchCase)
+  const spellFor = (key) => (options[key].matchCase ? null : allCaseless ? 'nonAscii' : 'all')
+  const toRegex = (key) => (term) => termToRegex(term, options[key].whole, spellFor(key))
   const parts = []
 
   all.forEach((term) => parts.push('(?=.*' + toRegex('all')(term) + ')'))
@@ -111,7 +132,7 @@ export const parseRegex = (regex) => {
     while (i < rest.length && rest[i] !== '|' && rest[i] !== ')') {
       const char = rest[i]
       const edge = [WORD_START, WORD_END].find((token) => rest.startsWith(token, i))
-      const spelled = rest.slice(i, i + 4).match(/^\[([A-Za-z])([A-Za-z])\]$/)
+      const spelled = rest.slice(i, i + 4).match(/^\[(\p{L})(\p{L})\]$/u)
       if (edge) {
         stat.bounded++
         i += edge.length
@@ -140,7 +161,7 @@ export const parseRegex = (regex) => {
       } else if ('([{}]+?^$.'.includes(char)) {
         return null
       } else {
-        if (/[A-Za-z]/.test(char)) stat.plain++
+        if (isCased(char)) stat.plain++
         term += char
         i++
       }
@@ -165,8 +186,9 @@ export const parseRegex = (regex) => {
       const term = readTerm(stat)
       if (!term) return null
       result[key].push(term)
-      if (/\w/.test(term[0])) stat.edges++
-      if (/\w/.test(term[term.length - 1])) stat.edges++
+      const chars = [...term]
+      if (WORD_CHAR.test(chars[0])) stat.edges++
+      if (WORD_CHAR.test(chars[chars.length - 1])) stat.edges++
       if (grouped && rest[i] === '|') {
         i++
         continue
@@ -184,9 +206,9 @@ export const parseRegex = (regex) => {
 
   for (const key of LISTS) {
     const stat = stats[key]
-    // Spelled-out and plain letters in one list never come from the builder
-    if (stat.spelled > 0 && stat.plain > 0) return null
-    if (caselessPrefix && stat.spelled > 0) return null
+    // Without (?i), a list that ignores case spells every letter, so spelled and plain letters
+    // together never come from the builder. With (?i), letters outside A-Z are spelled.
+    if (!caselessPrefix && stat.spelled > 0 && stat.plain > 0) return null
 
     result.options[key].whole = stat.edges === 0 ? true : stat.bounded > 0
     result.options[key].matchCase = caselessPrefix ? false : stat.spelled === 0 && stat.plain > 0
@@ -219,7 +241,7 @@ export const findConflicts = ({ any, all, none, options }) => {
 
   for (const blocked of none) {
     const matcher = new RegExp(
-      termToRegex(blocked, options.none.whole),
+      toJsWordEdges(termToRegex(blocked, options.none.whole)),
       options.none.matchCase ? 'u' : 'iu'
     )
     const alwaysFound = (key) => (term) =>
@@ -350,7 +372,10 @@ export const titleFilterBuilder = (initialRegex = '') => ({
   addTerms(key, text) {
     let changed = false
     for (const term of splitTerms(text.replace(/\r?\n/g, ','))) {
-      if (!this.terms[key].some((existing) => existing.toLowerCase() === term.toLowerCase())) {
+      const same = this.options[key].matchCase
+        ? (existing) => existing === term
+        : (existing) => existing.toLowerCase() === term.toLowerCase()
+      if (!this.terms[key].some(same)) {
         this.terms[key].push(term)
         changed = true
       }

@@ -1675,6 +1675,28 @@ defmodule Pinchflat.SourcesTest do
     })
   end
 
+  describe "test_title_filter/2 with title filter builder regexes" do
+    # Regexes as the source form's title filter builder writes them, checked with the
+    # database matcher that decides downloads (SQLite or PostgreSQL, whichever this run uses)
+    test "keeps whole words and ignores case for non-Latin words" do
+      regex = "(?i)^(?=.*(?<!\\w)[оО][бБ][зЗ][оО][рР](?!\\w)).*$"
+
+      assert {:ok, results} = Sources.test_title_filter(regex, ["Новый обзор", "НОВЫЙ ОБЗОР", "Обзоры новинок"])
+      assert Enum.map(results, & &1.match) == [true, true, false]
+    end
+
+    test "applies each word list's own case and whole-word settings" do
+      regex =
+        "^(?=.*(?<!\\w)[Оо][бБ][зЗ][оО][рР](?!\\w))(?=.*(?:(?<!\\w)Review(?!\\w)))" <>
+          "(?!.*(?:(?<!\\w)[cC][aA][fF][éÉ](?!\\w))).*$"
+
+      titles = ["ОБЗОР and Review", "обзор and review", "Обзор Review at CAFÉ", "Обзор Review at cafés"]
+
+      assert {:ok, results} = Sources.test_title_filter(regex, titles)
+      assert Enum.map(results, & &1.match) == [true, false, false, true]
+    end
+  end
+
   describe "saved title filters" do
     test "save_title_filter/1 stores a trimmed name and regex" do
       assert {:ok, filter} = Sources.save_title_filter(%{"name" => "  No shorts ", "regex" => " (?i)^(?!.*shorts).*$ "})
