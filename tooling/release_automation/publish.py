@@ -25,10 +25,10 @@ from .versioning import (
 
 LOGGER = logging.getLogger(__name__)
 
+# The PostgreSQL schema migration tests run inside the postgres job.
 REQUIRED_CHECKS = (
     "Build, Lint, and Test (sqlite)",
     "Build, Lint, and Test (postgres)",
-    "PostgreSQL schema migration tests",
 )
 
 SUCCESS_CONCLUSIONS = {"success"}

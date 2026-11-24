@@ -15,7 +15,6 @@ DEFAULT_REPOSITORY = "TheBadFella/Pinchflat-NGX"
 REQUIRED_CHECK_NAMES = (
     "Build, Lint, and Test (sqlite)",
     "Build, Lint, and Test (postgres)",
-    "PostgreSQL schema migration tests",
 )
 
 
