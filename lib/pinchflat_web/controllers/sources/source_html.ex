@@ -337,7 +337,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         <button
           type="button"
           x-data="{ copied: false }"
-          x-on:click={"copyWithCallbacks(String.raw`#{@json}`, () => copied = true, () => copied = false)"}
+          data-json={@json}
+          x-on:click="copyWithCallbacks($el.dataset.json, () => copied = true, () => copied = false)"
         >
           Copy JSON
           <span x-show="copied" x-cloak x-transition.duration.150ms><.icon name="hero-check" class="h-4 w-4" /></span>

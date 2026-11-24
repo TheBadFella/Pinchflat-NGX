@@ -1584,6 +1584,16 @@ defmodule PinchflatWeb.SourceControllerTest do
       end
     end
 
+    test "copies the source JSON from a data attribute, not from script", %{conn: conn} do
+      source = source_fixture(%{custom_name: "Name with ${alert(1)} and `ticks`"})
+
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      refute response =~ "String.raw"
+      assert response =~ "copyWithCallbacks($el.dataset.json"
+      assert response =~ "data-json="
+    end
+
     test "renders the videos tab label and normalizes downloaded alias", %{conn: conn} do
       source = source_fixture()
 
