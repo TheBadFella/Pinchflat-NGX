@@ -288,6 +288,16 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  # Not downloaded and skipped by the source's rules (format, title, duration, cutoff or availability),
+  # rather than prevented by the user or held back by a failure. Requires the media_profile assoc.
+  # CASE turns a NULL (e.g. from a NULL error_type) into "excluded" so this and its negation never both
+  # drop an item. It also keeps SQLite short-circuiting, so regexp_like never sees a NULL pattern.
+  def excluded do
+    kept = dynamic(^pending() or ^download_prevented() or ^download_failed())
+
+    dynamic([mi], not (^downloaded()) and fragment("(CASE WHEN ? THEN 0 ELSE 1 END) = 1", ^kept))
+  end
+
   def download_failed do
     dynamic([mi], (not is_nil(mi.last_error) or mi.error_type == :permanent) and is_nil(mi.media_filepath))
   end
