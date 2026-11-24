@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "baseBranchPatterns": ["dev"],
   "timezone": "America/Regina",
   "schedule": ["before 7am on monday"],
   "labels": ["Dependencies"],
