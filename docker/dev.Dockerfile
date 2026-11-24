@@ -137,7 +137,9 @@ WORKDIR /app
 COPY mix.exs mix.lock ./
 # Install Elixir deps
 # NOTE: this has to be before the bulk copy to ensure that deps are cached
-RUN MIX_ENV=dev mix deps.get && MIX_ENV=dev mix deps.compile
+# CI only runs MIX_ENV=test, so it passes COMPILE_DEV_DEPS=0 to skip the dev build.
+ARG COMPILE_DEV_DEPS=1
+RUN if [ "${COMPILE_DEV_DEPS}" = "1" ]; then MIX_ENV=dev mix deps.get && MIX_ENV=dev mix deps.compile; fi
 RUN MIX_ENV=test mix deps.get && MIX_ENV=test mix deps.compile
 
 COPY . ./
