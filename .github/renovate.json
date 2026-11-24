@@ -76,6 +76,14 @@
       ]
     },
     {
+      "description": "The Scalar script tag carries a Subresource Integrity hash that Renovate cannot update",
+      "matchPackageNames": ["@scalar/api-reference"],
+      "groupName": "Scalar API reference",
+      "prBodyNotes": [
+        "Update the `integrity` sha384 in `lib/pinchflat_web/controllers/api_docs_controller.ex` and its test before merging, or browsers block the script and `/api/docs` renders blank. Compute it with `curl -sL https://cdn.jsdelivr.net/npm/@scalar/api-reference@{{{newVersion}}}/dist/browser/standalone.js | openssl dgst -sha384 -binary | openssl base64 -A`."
+      ]
+    },
+    {
       "description": "QuickJS-NG downloads are checksum-pinned",
       "matchPackageNames": ["quickjs-ng/quickjs"],
       "groupName": "QuickJS-NG",
