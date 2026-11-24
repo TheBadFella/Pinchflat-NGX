@@ -1055,6 +1055,82 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "keep newest confirmation" do
+    test "lowering the limit shows the removal count before saving", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: 5, download_media: false})
+
+      create_cullable_items(source, 5)
+
+      html = conn |> put(~p"/sources/#{source}", source: %{keep_newest_count: "2"}) |> html_response(200)
+
+      assert html =~ "Confirm Keep Newest Limit"
+      assert html =~ "3 older downloads"
+      assert html =~ ~s(name="confirm_keep_newest")
+      assert Repo.reload!(source).keep_newest_count == 5
+    end
+
+    test "the confirmation resubmits yt-dlp options and list params", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: 5, download_media: false})
+
+      create_cullable_items(source, 5)
+
+      html =
+        conn
+        |> put(~p"/sources/#{source}", %{
+          "source" => %{"keep_newest_count" => "2", "example_list" => ["", "a"]},
+          "yt_dlp_options" => "--no-mtime",
+          "yt_dlp_options_version" => "any"
+        })
+        |> html_response(200)
+
+      assert html =~ ~s(name="yt_dlp_options" value="--no-mtime")
+      assert html =~ ~s(name="yt_dlp_options_version" value="any")
+      assert html =~ ~s(name="source[example_list][]" value="a")
+    end
+
+    test "the confirmation omits yt-dlp options that were not submitted", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: 5, download_media: false})
+
+      create_cullable_items(source, 5)
+
+      html = conn |> put(~p"/sources/#{source}", source: %{keep_newest_count: "2"}) |> html_response(200)
+
+      refute html =~ ~s(name="yt_dlp_options")
+    end
+
+    test "confirming persists the new limit and redirects", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: 5, download_media: false})
+
+      create_cullable_items(source, 5)
+
+      conn =
+        put(conn, ~p"/sources/#{source}", %{"source" => %{"keep_newest_count" => "2"}, "confirm_keep_newest" => "true"})
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      assert Repo.reload!(source).keep_newest_count == 2
+    end
+
+    test "setting a limit with no removable files updates without confirmation", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: nil, download_media: false})
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{keep_newest_count: "3"})
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      assert Repo.reload!(source).keep_newest_count == 3
+    end
+
+    test "rejects a zero or negative limit with a changeset error", %{conn: conn} do
+      source = source_fixture(%{keep_newest_count: nil, download_media: false})
+
+      for invalid <- ["0", "-1"] do
+        conn = put(conn, ~p"/sources/#{source}", source: %{keep_newest_count: invalid})
+        assert html_response(conn, 200) =~ "must be greater than 0"
+      end
+
+      assert Repo.reload!(source).keep_newest_count == nil
+    end
+  end
+
   describe "update source SponsorBlock overrides" do
     setup [:create_source]
 
@@ -1985,5 +2061,15 @@ defmodule PinchflatWeb.SourceControllerTest do
   defp position(response, text) do
     {index, _length} = :binary.match(response, text)
     index
+  end
+
+  defp create_cullable_items(source, count) do
+    for offset <- 0..(count - 1) do
+      media_item_fixture(%{
+        source_id: source.id,
+        media_filepath: "/video/#{offset}.mp4",
+        uploaded_at: DateTime.add(~U[2026-11-20 00:00:00Z], offset, :day)
+      })
+    end
   end
 end

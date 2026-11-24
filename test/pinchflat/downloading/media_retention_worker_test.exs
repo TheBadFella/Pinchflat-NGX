@@ -5,8 +5,9 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
   import Pinchflat.ProfilesFixtures
   import Pinchflat.SourcesFixtures
 
-  alias Pinchflat.Media
+  alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Downloading.MediaRetentionWorker
+  alias Pinchflat.Media
 
   setup do
     stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "", 0} end)
@@ -347,6 +348,214 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
 
       refute Repo.reload!(old_media_item).culled_at
     end
+  end
+
+  describe "perform/1 when testing keep-newest retention" do
+    test "deletes the oldest files beyond the newest N and leaves prevent_download false" do
+      source = source_fixture(%{keep_newest_count: 3})
+
+      items =
+        for day <- 20..24 do
+          media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(day)})
+        end
+
+      oldest = Enum.at(items, 0)
+      second_oldest = Enum.at(items, 1)
+      newest_three = Enum.take(items, -3)
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      refute File.exists?(oldest.media_filepath)
+      refute File.exists?(second_oldest.media_filepath)
+
+      assert Enum.all?(newest_three, &File.exists?(&1.media_filepath))
+
+      for item <- [oldest, second_oldest] do
+        reloaded = Repo.reload!(item)
+        assert reloaded.culled_at
+        refute reloaded.prevent_download
+        assert is_nil(reloaded.media_filepath)
+      end
+
+      assert Enum.all?(newest_three, fn item -> is_nil(Repo.reload!(item).culled_at) end)
+    end
+
+    test "raising the limit makes previously culled items pending and download again" do
+      source = source_fixture(%{keep_newest_count: 3})
+
+      items =
+        for day <- 20..24 do
+          media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(day)})
+        end
+
+      culled_ids = items |> Enum.take(2) |> Enum.map(& &1.id)
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      # The two oldest fall outside the newest three, so they are not pending.
+      assert Media.list_pending_media_items_for(source) == []
+      assert DownloadingHelpers.enqueue_pending_download_tasks(source) == 0
+
+      {:ok, _source} =
+        Pinchflat.Sources.update_source(source, %{keep_newest_count: 5}, run_post_commit_tasks: false)
+
+      # Raising N brings the culled items back into range, so they download again.
+      assert Media.list_pending_media_items_for(source) |> Enum.map(& &1.id) |> Enum.sort() == Enum.sort(culled_ids)
+      assert DownloadingHelpers.enqueue_pending_download_tasks(source) == 2
+    end
+
+    test "does not remove a prevent_culling item and does not count it towards N" do
+      source = source_fixture(%{keep_newest_count: 3})
+
+      newest_protected =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          prevent_culling: true,
+          uploaded_at: published_at(24)
+        })
+
+      unprotected =
+        for day <- 20..23 do
+          media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(day)})
+        end
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(newest_protected.media_filepath)
+
+      # The protected item does not consume a slot, so 21, 22 and 23 survive.
+      for item <- Enum.take(unprotected, -3) do
+        assert File.exists?(item.media_filepath)
+      end
+
+      refute File.exists?(Enum.at(unprotected, 0).media_filepath)
+    end
+
+    test "counts a watch-protected item towards N and never removes it" do
+      source = source_fixture(%{keep_newest_count: 2})
+
+      watch_protected =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          watch_enrollment_pending_at: now(),
+          uploaded_at: published_at(24)
+        })
+
+      items =
+        for day <- 20..23 do
+          media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(day)})
+        end
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(watch_protected.media_filepath)
+      assert File.exists?(Enum.at(items, 3).media_filepath)
+      refute File.exists?(Enum.at(items, 0).media_filepath)
+      refute File.exists?(Enum.at(items, 1).media_filepath)
+      refute File.exists?(Enum.at(items, 2).media_filepath)
+    end
+
+    test "does not remove items with an active download job" do
+      source = source_fixture(%{keep_newest_count: 2})
+
+      oldest_with_job = media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(20)})
+      _newer = media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(23)})
+      _newest = media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(24)})
+
+      # The item stays downloaded (media_filepath is set), but a queued download
+      # job must keep the cleanup from deleting the file underneath it.
+      assert {:ok, _task} =
+               Pinchflat.Downloading.MediaDownloadWorker.kickoff_with_task(oldest_with_job, %{force: true})
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      assert File.exists?(oldest_with_job.media_filepath)
+      assert Repo.reload!(oldest_with_job).media_filepath
+      refute Repo.reload!(oldest_with_job).culled_at
+    end
+
+    test "retention, cutoff and count limit each remove distinct items and protection overrides all three" do
+      source =
+        source_fixture(%{
+          keep_newest_count: 2,
+          download_cutoff_date: Date.new!(2026, 11, 21),
+          retention_period_days: 1
+        })
+
+      protected =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          prevent_culling: true,
+          uploaded_at: published_at(18),
+          media_downloaded_at: now_minus(30, :days)
+        })
+
+      past_retention =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: published_at(19),
+          media_downloaded_at: now_minus(30, :days)
+        })
+
+      before_cutoff =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: published_at(20),
+          media_downloaded_at: now()
+        })
+
+      beyond_count =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: published_at(21),
+          media_downloaded_at: now()
+        })
+
+      kept_a =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: published_at(23),
+          media_downloaded_at: now()
+        })
+
+      kept_b =
+        media_item_with_attachments(%{
+          source_id: source.id,
+          uploaded_at: published_at(24),
+          media_downloaded_at: now()
+        })
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      # The protected item survives every rule, even though it is old enough and
+      # beyond the count limit.
+      assert File.exists?(protected.media_filepath)
+
+      # Each independent rule removes its own item; the two newest stay.
+      refute File.exists?(past_retention.media_filepath)
+      refute File.exists?(before_cutoff.media_filepath)
+      refute File.exists?(beyond_count.media_filepath)
+      assert File.exists?(kept_a.media_filepath)
+      assert File.exists?(kept_b.media_filepath)
+    end
+
+    test "leaves sources without keep_newest_count untouched" do
+      source = source_fixture(%{keep_newest_count: nil})
+
+      items =
+        for day <- 20..24 do
+          media_item_with_attachments(%{source_id: source.id, uploaded_at: published_at(day)})
+        end
+
+      assert :ok = perform_job(MediaRetentionWorker, %{})
+
+      assert Enum.all?(items, &File.exists?(&1.media_filepath))
+      assert Enum.all?(items, fn item -> is_nil(Repo.reload!(item).culled_at) end)
+    end
+  end
+
+  defp published_at(day) do
+    DateTime.new!(Date.new!(2026, 11, day), ~T[00:00:00], "Etc/UTC")
   end
 
   defp prepare_records_for_retention_date(retention_period_days \\ 2) do

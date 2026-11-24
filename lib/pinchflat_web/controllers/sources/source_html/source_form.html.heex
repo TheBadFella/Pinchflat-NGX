@@ -716,7 +716,12 @@
 
           <.form_disclosure
             title="Retention and watch window"
-            open={Enum.any?([:retention_period_days, :watch_window_days], &Keyword.has_key?(@changeset.errors, &1))}
+            open={
+              Enum.any?(
+                [:retention_period_days, :watch_window_days, :keep_newest_count],
+                &Keyword.has_key?(@changeset.errors, &1)
+              )
+            }
             data-setting-group
           >
             <:status>
@@ -762,6 +767,14 @@
               max="365"
               help="Leave blank to use the media profile setting. Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain."
               html_help={true}
+            />
+
+            <.input
+              field={f[:keep_newest_count]}
+              type="number"
+              label="Keep newest (videos)"
+              min="1"
+              help="Leave blank to disable. When set, Pinchflat keeps only the newest N downloaded or pending-eligible videos for this source, ordered by publication date and ID. Items with prevent culling enabled never count towards the limit and are never removed. Watch-protected items count towards the limit but are never deleted, so total downloaded items can exceed N. Lowering this number will delete older unprotected downloaded files at the next scheduled cleanup; raising it allows older videos to be re-downloaded."
             />
           </.form_disclosure>
         </section>

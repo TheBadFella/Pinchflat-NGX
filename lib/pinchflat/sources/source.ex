@@ -79,6 +79,7 @@ defmodule Pinchflat.Sources.Source do
     min_duration_seconds
     max_duration_seconds
     watch_window_days
+    keep_newest_count
     sponsorblock_mark_categories
     sponsorblock_remove_categories
     title_language
@@ -160,6 +161,8 @@ defmodule Pinchflat.Sources.Source do
     field :retention_period_days, :integer
     # nil inherits the profile value; zero explicitly disables watch window.
     field :watch_window_days, :integer
+    # nil is off; otherwise keep only the newest N downloaded/eligible items for this source.
+    field :keep_newest_count, :integer
     # nil inherits the profile list; an empty list disables that SponsorBlock action
     # for this source even when the profile enables it.
     field :sponsorblock_mark_categories, {:array, :string}
@@ -309,6 +312,8 @@ defmodule Pinchflat.Sources.Source do
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
     |> check_constraint(:watch_window_days, name: :sources_watch_window_days_check)
+    |> validate_number(:keep_newest_count, greater_than: 0)
+    |> check_constraint(:keep_newest_count, name: :sources_keep_newest_count_check)
     |> validate_subset(:sponsorblock_mark_categories, MediaProfile.sponsorblock_categories())
     |> validate_subset(:sponsorblock_remove_categories, MediaProfile.sponsorblock_categories())
     |> validate_sponsorblock_categories_do_not_overlap()

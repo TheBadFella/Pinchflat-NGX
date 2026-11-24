@@ -291,7 +291,14 @@ defmodule PinchflatWeb.Sources.SourceController do
     if should_confirm_directory_move?(conn, params, source, source_params) do
       render_directory_move_confirmation(conn, source, source_params)
     else
-      do_update(conn, source, source_params)
+      confirm_keep_newest_or_update(conn, source, source_params, params)
+    end
+  end
+
+  defp confirm_keep_newest_or_update(conn, source, source_params, params) do
+    case keep_newest_confirmation(conn, params, source, source_params) do
+      %{removable_count: count} -> render_keep_newest_confirmation(conn, source, source_params, count)
+      nil -> do_update(conn, source, source_params)
     end
   end
 
@@ -881,10 +888,47 @@ defmodule PinchflatWeb.Sources.SourceController do
     get_format(conn) != "json" && !truthy_param?(Map.get(params, "confirm_directory_move"))
   end
 
+  # Returns `%{removable_count: integer()}` when an HTML update would cull
+  # downloaded files at the next cleanup, otherwise nil. JSON requests skip the
+  # confirmation and update directly.
+  defp keep_newest_confirmation(conn, params, source, source_params) do
+    with true <- get_format(conn) != "json",
+         false <- truthy_param?(Map.get(params, "confirm_keep_newest")),
+         {:ok, new_count} <- positive_integer(source_params["keep_newest_count"]),
+         true <- is_nil(source.keep_newest_count) or new_count < source.keep_newest_count,
+         count when count > 0 <- Sources.count_removable_media_for_keep_newest(source, new_count) do
+      %{removable_count: count}
+    else
+      _ -> nil
+    end
+  end
+
+  defp positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp positive_integer(value) when is_binary(value) do
+    case Integer.parse(String.trim(value)) do
+      {count, ""} when count > 0 -> {:ok, count}
+      _ -> :error
+    end
+  end
+
+  defp positive_integer(_value), do: :error
+
+  defp render_keep_newest_confirmation(conn, source, source_params, removable_count) do
+    render(conn, :confirm_keep_newest,
+      source: source,
+      source_params: source_params,
+      removable_count: removable_count,
+      new_count: source_params["keep_newest_count"],
+      # Only what was submitted: an absent payload must stay absent, or saving would clear the config file.
+      extra_params: Map.take(conn.params, ["yt_dlp_options", "yt_dlp_options_version"])
+    )
+  end
+
   defp render_directory_move_confirmation(conn, source, source_params) do
     case Sources.preview_source_directory_move(source, source_params) do
       {:ok, nil} ->
-        do_update(conn, source, source_params)
+        confirm_keep_newest_or_update(conn, source, source_params, conn.params)
 
       {:ok, directory_move_plan} ->
         profiles = media_profiles()

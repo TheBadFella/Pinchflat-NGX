@@ -111,7 +111,7 @@
             end
           }
         />
-        <input :for={{key, value} <- @source_params} type="hidden" name={"source[#{key}]"} value={value || ""} />
+        <.resubmitted_source_inputs source_params={@source_params} />
         <.button rounding="rounded-m3-sm">Save and Move Files</.button>
       </.form>
     </div>

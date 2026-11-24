@@ -340,6 +340,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     pending_subquery =
       from(
         m in MediaItem,
+        as: :media_item,
         inner_join: s in assoc(m, :source),
         inner_join: mp in assoc(s, :media_profile),
         select: %{pending_count: count(m.id), source_id: m.source_id},
