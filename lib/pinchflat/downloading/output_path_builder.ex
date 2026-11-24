@@ -9,6 +9,11 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   @default_padding_width 2
   @max_padding_width 6
 
+  @yt_dlp_field_regex ~r/%%|%\((?:[^()]|\([^()]*\))*\)[#0\-+ ]*\d*(?:\.\d+)?[hlL]?[diouxXeEfFgGcrsaBjhlqDSU]/u
+  @whole_yt_dlp_field_regex Regex.compile!("\\A(?:" <> Regex.source(@yt_dlp_field_regex) <> ")\\z", "u")
+  @windows_unsafe_regex ~r/[<>:"|?*\x00-\x1f\x7f]/u
+  @restricted_chars String.graphemes("|*<>!&'()[]{}$;`^,#")
+
   @doc """
   Encodes a display name as one literal filename component, without interpreting
   template syntax or allowing directory separators.
@@ -22,6 +27,90 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
       |> String.replace("%", "%%")
 
     {:literal, if(component == "", do: "_", else: component)}
+  end
+
+  @doc """
+  Sanitizes the literal text of a yt-dlp output template the way yt-dlp
+  sanitizes field values, following `--restrict-filenames` when `restrict`
+  is true and `--windows-filenames` otherwise. `%(...)` fields are unchanged.
+
+  Returns binary()
+  """
+  def sanitize_literal_text(template, restrict) do
+    sanitized =
+      @yt_dlp_field_regex
+      |> Regex.split(template, include_captures: true)
+      |> Enum.map_join(fn piece ->
+        if Regex.match?(@whole_yt_dlp_field_regex, piece),
+          do: piece,
+          else: sanitize_text(piece, restrict)
+      end)
+
+    keep_emptied_components(template, sanitized)
+  end
+
+  defp keep_emptied_components(template, sanitized) do
+    template
+    |> path_components()
+    |> Enum.zip(path_components(sanitized))
+    |> Enum.map_join(fn
+      {original, ""} -> original
+      {_original, component} -> component
+    end)
+  end
+
+  defp path_components(path), do: Regex.split(~r{[/\\]}, path, include_captures: true)
+
+  defp sanitize_text(text, false), do: String.replace(text, @windows_unsafe_regex, "_")
+
+  defp sanitize_text(text, true) do
+    text
+    |> :unicode.characters_to_nfkd_binary()
+    |> String.replace(~r/\p{Mn}/u, "")
+    |> String.graphemes()
+    |> Enum.flat_map(&restrict_char/1)
+    |> collapse_replaced_underscores()
+    |> trim_replaced_underscores()
+    |> Enum.map_join(fn {char, _replaced?} -> char end)
+  end
+
+  defp restrict_char("/"), do: [{"/", false}]
+  defp restrict_char(char) when char in ["?", "\""], do: []
+  defp restrict_char(":"), do: [{"_", true}, {"-", true}]
+  defp restrict_char(<<codepoint::utf8>>) when codepoint < 32 or codepoint == 127, do: []
+
+  defp restrict_char(char) do
+    if char in @restricted_chars or byte_size(char) > 1 or String.trim(char) == "",
+      do: [{"_", true}],
+      else: [{char, false}]
+  end
+
+  defp collapse_replaced_underscores(chars) do
+    chars
+    |> Enum.reduce([], fn
+      {"_", replaced?}, [{"_", previous_replaced?} | rest] when replaced? or previous_replaced? ->
+        [{"_", replaced? and previous_replaced?} | rest]
+
+      char, acc ->
+        [char | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  defp trim_replaced_underscores(chars) do
+    chars
+    |> Enum.with_index()
+    |> Enum.reject(fn
+      {{"_", true}, index} ->
+        previous = if index > 0, do: Enum.at(chars, index - 1)
+        following = Enum.at(chars, index + 1)
+
+        match?({"/", _}, previous) or match?({"/", _}, following) or match?({".", _}, following)
+
+      _ ->
+        false
+    end)
+    |> Enum.map(fn {char, _index} -> char end)
   end
 
   @doc """
