@@ -68,14 +68,9 @@ RUN set -eux; \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-# Install ffmpeg
-RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
-    "linux/amd64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"   ;; \
-    "linux/arm64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
-    *)               echo ""        ;; esac) && \
-    curl -L ${FFMPEG_DOWNLOAD} --output /tmp/ffmpeg.tar.xz && \
-    tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffmpeg" && \
-    tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffprobe"
+# Install the pinned ffmpeg and ffprobe
+COPY docker/install-ffmpeg.sh /tmp/install-ffmpeg.sh
+RUN sh /tmp/install-ffmpeg.sh /usr/bin && rm -f /tmp/install-ffmpeg.sh
 
 # Install Yarn and project tooling
 RUN set -eux; \
