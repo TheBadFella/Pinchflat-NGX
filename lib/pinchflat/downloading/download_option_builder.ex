@@ -7,6 +7,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   alias Pinchflat.Downloading.OutputPathBuilder
   alias Pinchflat.Downloading.QualityOptionBuilder
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Settings
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
   alias Pinchflat.YtDlp.PoTokenProvider
@@ -278,7 +279,13 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   defp build_relative_output_path(string, media_item_with_preloads, template_options) do
     additional_options_map = Map.merge(output_options_map(media_item_with_preloads), template_options)
     {:ok, output_path} = OutputPathBuilder.build(string, additional_options_map)
-    relative_output_path = output_path |> String.trim_leading("/") |> String.trim_leading("\\")
+
+    relative_output_path =
+      output_path
+      |> OutputPathBuilder.sanitize_literal_text(Settings.get!(:restrict_filenames))
+      |> String.trim_leading("/")
+      |> String.trim_leading("\\")
+
     source_subdirectory = media_item_with_preloads.source.download_subdirectory
 
     [source_subdirectory, relative_output_path]

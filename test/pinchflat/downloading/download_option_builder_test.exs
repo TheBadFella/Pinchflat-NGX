@@ -6,6 +6,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
 
   alias Pinchflat.Sources
   alias Pinchflat.Profiles
+  alias Pinchflat.Settings
   alias Pinchflat.Utils.FilesystemUtils
   alias Pinchflat.Downloading.DownloadOptionBuilder
 
@@ -96,6 +97,46 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert {:ok, res} = DownloadOptionBuilder.build(media_item)
 
       assert {:output, "/tmp/test/media/Titel_Eins.%(ext)s"} in res
+    end
+
+    test "applies restricted filenames to the template's own text", %{media_item: media_item} do
+      Settings.set(restrict_filenames: true)
+
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          output_path_template: "{{ source_custom_name }}/{{ upload_yyyy_mm_dd }} - {{ title }}.{{ ext }}"
+        })
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/my source/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"} in res
+    end
+
+    test "keeps a non-Latin source name as its folder when filenames are restricted", %{media_item: media_item} do
+      Settings.set(restrict_filenames: true)
+      Repo.update!(Ecto.Changeset.change(media_item.source, custom_name: "Лонгплей"))
+
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          output_path_template: "{{ source_custom_name }}/{{ title }}.{{ ext }}"
+        })
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/Лонгплей/%(title)S.%(ext)S"} in res
+    end
+
+    test "leaves spaces in the template's own text when filenames aren't restricted", %{media_item: media_item} do
+      Settings.set(restrict_filenames: false)
+
+      media_item =
+        update_media_profile_attribute(media_item, %{
+          output_path_template: "{{ upload_yyyy_mm_dd }} - {{ title }}.{{ ext }}"
+        })
+
+      assert {:ok, res} = DownloadOptionBuilder.build(media_item)
+
+      assert {:output, "/tmp/test/media/%(upload_date>%Y-%m-%d)S - %(title)S.%(ext)S"} in res
     end
 
     test "rejects a template that escapes the media root even without staging", %{media_item: item} do

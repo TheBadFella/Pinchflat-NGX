@@ -70,6 +70,23 @@ defmodule Pinchflat.ShortsOutputTemplateTest do
     assert DownloadOptionBuilder.build_output_path_for(source) == "/tmp/test/media/main/%(title)S.%(ext)S"
   end
 
+  test "restricted filenames apply to the Shorts template's own text" do
+    Pinchflat.Settings.set(restrict_filenames: true)
+
+    profile =
+      media_profile_fixture(%{
+        output_path_template: "main/{{ title }}.{{ ext }}",
+        output_path_template_shorts: "My Shorts/{{ upload_yyyy_mm_dd }} - {{ title }}.{{ ext }}"
+      })
+
+    source = source_fixture(%{media_profile_id: profile.id})
+    item = media_item_fixture(%{source_id: source.id, short_form_content: true})
+    item = Pinchflat.Repo.preload(item, source: :media_profile)
+
+    assert DownloadOptionBuilder.build_output_path_for(item) ==
+             "/tmp/test/media/My Shorts/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"
+  end
+
   test "fast indexing persists the corrected Shorts prediction", %{source: source} do
     expect(HTTPClientMock, :get, fn _ -> {:ok, "<yt:videoId>short-id</yt:videoId>"} end)
 

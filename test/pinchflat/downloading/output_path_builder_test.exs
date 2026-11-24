@@ -25,6 +25,61 @@ defmodule Pinchflat.Downloading.OutputPathBuilderTest do
     end
   end
 
+  describe "sanitize_literal_text/2" do
+    test "when restricted, restricts the filename's own text but not yt-dlp fields" do
+      assert OutputPathBuilder.sanitize_literal_text(
+               "/%(channel)S/%(upload_date>%Y-%m-%d)S - %(title)S.%(ext)S",
+               true
+             ) == "/%(channel)S/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"
+    end
+
+    test "leaves folder names unchanged in both modes" do
+      template = "/%(channel)S %(upload_date>%Y-%m-%d)S/Season 1: Extras?\\%(upload_date>%Y-%m-%d)S - %(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text(template, true) ==
+               "/%(channel)S %(upload_date>%Y-%m-%d)S/Season 1: Extras?\\%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text(template, false) == template
+    end
+
+    test "when restricted, transliterates accents and drops or replaces unsafe characters" do
+      assert OutputPathBuilder.sanitize_literal_text("Season 1/Café: Q&A?.%(ext)s", true) ==
+               "Season 1/Cafe_-_Q_A.%(ext)s"
+    end
+
+    test "when restricted, doesn't leave replacement underscores at filename or extension boundaries" do
+      assert OutputPathBuilder.sanitize_literal_text("/%(channel)S/[Archive] %(title)S [%(id)S].%(ext)S", true) ==
+               "/%(channel)S/Archive_%(title)S_%(id)S.%(ext)S"
+    end
+
+    test "when restricted, keeps a filename that would sanitize to nothing" do
+      assert OutputPathBuilder.sanitize_literal_text("/%(channel)S/Лонгплей", true) == "/%(channel)S/Лонгплей"
+    end
+
+    test "when restricted, keeps letters with no ASCII form in the filename" do
+      assert OutputPathBuilder.sanitize_literal_text("/%(channel)S/Лонгплей Live %(title)S.%(ext)S", true) ==
+               "/%(channel)S/Лонгплей_Live_%(title)S.%(ext)S"
+
+      assert OutputPathBuilder.sanitize_literal_text("/%(channel)S/Обзор \u{1F3B5} Café.%(ext)S", true) ==
+               "/%(channel)S/Обзор_Cafe.%(ext)S"
+    end
+
+    test "when restricted, keeps a folder and filename split inside one piece of text apart" do
+      assert OutputPathBuilder.sanitize_literal_text("/Лонгплей Live/Кинопоиск %(title)S.%(ext)S", true) ==
+               "/Лонгплей Live/Кинопоиск_%(title)S.%(ext)S"
+    end
+
+    test "field defaults and %% escapes are left intact" do
+      assert OutputPathBuilder.sanitize_literal_text("%(title|Untitled video)s 100%%.%(ext)s", true) ==
+               "%(title|Untitled video)s_100%%.%(ext)s"
+    end
+
+    test "when not restricted, replaces characters Windows can't use and keeps spaces" do
+      assert OutputPathBuilder.sanitize_literal_text("Folder: One?/Q&A: part 1?.%(ext)S", false) ==
+               "Folder: One?/Q&A_ part 1_.%(ext)S"
+    end
+  end
+
   describe "padded_integer/1" do
     test "pads to 2 digits by default and to the template's width when given" do
       options = %{"media_playlist_index" => OutputPathBuilder.padded_integer(7)}
