@@ -9,8 +9,6 @@ defmodule Pinchflat.YoutubeBrowser.Provider.YtDlp do
 
   alias Pinchflat.YtDlp.CommandRunner
 
-  require Logger
-
   @max_buffer_bytes 8 * 1024 * 1024
   @default_limit 25
   @max_query_length 200

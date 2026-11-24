@@ -61,7 +61,6 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           @variant_class,
           @class
         ]}
-        aria-disabled={if @disabled, do: "true", else: nil}
         {@rest}
       >
         {render_slot(@inner_block)}
@@ -222,7 +221,6 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
             @variant_class,
             @class
           ]}
-          aria-disabled={if @disabled, do: "true", else: nil}
           {@rest}
         >
           <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} />

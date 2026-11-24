@@ -129,11 +129,6 @@ defmodule PinchflatWeb.Settings.SettingController do
           "Storage check failed: unable to determine available disk space for #{location} storage."
         )
         |> redirect(to: redirect_target)
-
-      {:error, reason, location} ->
-        conn
-        |> put_flash(:error, "Storage check failed for #{location}: #{inspect(reason)}.")
-        |> redirect(to: redirect_target)
     end
   end
 end

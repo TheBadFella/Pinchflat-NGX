@@ -648,8 +648,6 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       path_shared_by_other_source?(from_path, source_id)
   end
 
-  defp path_shared_by_other_media_item?(nil, _media_item_id), do: false
-
   defp path_shared_by_other_media_item?(from_path, media_item_id) do
     scalar_query =
       from(m in MediaItem,
@@ -691,8 +689,6 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       Repo.exists?(subtitles_query)
     end
   end
-
-  defp path_shared_by_other_source?(nil, _source_id), do: false
 
   defp path_shared_by_other_source?(from_path, source_id) do
     query =

@@ -1,7 +1,7 @@
 # Find eligible builder and runner images on Docker Hub. We use Ubuntu/Debian
 # instead of Alpine to avoid DNS resolution issues in production.
 # renovate: datasource=github-releases depName=elixir-lang/elixir extractVersion=^v(?<version>.+)$
-ARG ELIXIR_VERSION=1.19.7
+ARG ELIXIR_VERSION=1.20.5
 # renovate: datasource=github-tags depName=erlang/otp versioning=loose extractVersion=^OTP-(?<version>.+)$
 ARG OTP_VERSION=28.5.0.8
 # renovate: datasource=docker depName=debian versioning=regex:^(?<compatibility>[a-z]+)-(?<major>\d{8})-slim$

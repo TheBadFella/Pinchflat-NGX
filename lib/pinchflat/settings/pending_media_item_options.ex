@@ -10,8 +10,6 @@ defmodule Pinchflat.Settings.PendingMediaItemOptions do
 
   import Ecto.Query, warn: false
 
-  require Logger
-
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Repo
