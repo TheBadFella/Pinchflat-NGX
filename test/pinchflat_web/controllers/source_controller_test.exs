@@ -236,6 +236,22 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html =~ ~s|x-on:click="remember('table')"|
     end
 
+    test "starts the selected tab from the search term in the URL", %{conn: conn} do
+      source_fixture(%{custom_name: "Zebra channel"})
+      source_fixture(%{custom_name: "Other channel"})
+      source_fixture(%{custom_name: "Zebra video", collection_type: :video})
+
+      channels = conn |> get(~p"/sources?q=zebra") |> html_response(200)
+      assert channels =~ "Zebra channel"
+      refute channels =~ "Other channel"
+      refute channels =~ "Zebra video"
+      assert channels =~ ~s(id="source-search-input")
+
+      videos = conn |> get(~p"/sources?type=videos&q=zebra") |> html_response(200)
+      assert videos =~ "Zebra video"
+      refute videos =~ "Zebra channel"
+    end
+
     test "renders channel discovery in the sidebar", %{conn: conn} do
       response = conn |> get(~p"/sources") |> html_response(200)
 

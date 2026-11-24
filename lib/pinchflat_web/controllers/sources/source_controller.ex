@@ -23,6 +23,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Settings.YtDlpConfigFile
   alias PinchflatWeb.Schemas
   alias PinchflatWeb.Sources.SourceHTML
+  alias PinchflatWeb.Sources.SourceLive.IndexTableLive
   alias PinchflatWeb.YtDlpOptionsHelpers
 
   # Set by the view toggle on the sources page (see index_table_live.html.heex).
@@ -51,9 +52,15 @@ defmodule PinchflatWeb.Sources.SourceController do
         initial_view_mode =
           source_view_mode(params["view"]) || source_view_mode(fetch_cookies(conn).req_cookies[@source_view_cookie])
 
+        search_term = IndexTableLive.normalize_search_term(params["q"])
+
         conn
         |> PinchflatWeb.Layouts.put_toast_flash()
-        |> render(:index, source_type: source_type, initial_view_mode: initial_view_mode)
+        |> render(:index,
+          source_type: source_type,
+          initial_view_mode: initial_view_mode,
+          search_term: search_term
+        )
     end
   end
 

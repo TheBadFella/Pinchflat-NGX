@@ -19,6 +19,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   @default_view_mode :grid
   @media_total_sort_keys [:pending_count, :downloaded_count, :media_size_bytes]
+  @max_search_term_length 200
   @source_tabs [{"channels", "Channels & Playlists"}, {"videos", "Individual Videos"}]
   # How long a first click on a bulk action stays armed, and how long its button stays green after running.
   @bulk_arm_ms 4_000
@@ -80,7 +81,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   def source_tab_path(type, _view_mode), do: ~p"/sources?#{[type: type]}"
 
   @doc """
-  Returns the lowercase noun used in messages about a source tab.
+  Returns the lowercase noun used in search messages for a source tab.
   """
   def source_type_noun(:videos), do: "individual videos"
   def source_type_noun(:channels), do: "channels & playlists"
@@ -90,6 +91,19 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   """
   def source_type_title(:videos), do: "Individual Videos"
   def source_type_title(:channels), do: "Channels & Playlists"
+
+  @doc """
+  Trims a search term and returns nil when nothing is left to search for.
+  Long terms are cut to #{@max_search_term_length} characters.
+  """
+  def normalize_search_term(term) when is_binary(term) do
+    case term |> String.trim() |> String.slice(0, @max_search_term_length) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  def normalize_search_term(_term), do: nil
 
   @doc """
   Describes source download progress without treating an unknown or empty
@@ -274,6 +288,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     limit = session["results_per_page"]
     source_type = if session["source_type"] == "videos", do: :videos, else: :channels
+    search_term = normalize_search_term(session["initial_search_term"])
 
     initial_params =
       Map.merge(
@@ -284,6 +299,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           sort_direction: session["initial_sort_direction"],
           view_mode: normalize_view_mode(session["initial_view_mode"]),
           grid_sort: {session["initial_sort_key"], session["initial_sort_direction"]},
+          search_term: search_term,
           refresh_pending: false,
           selected_ids: MapSet.new(),
           selection_scope: :page,
@@ -297,7 +313,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           media_profiles: Enum.reject(Profiles.list_media_profiles(), & &1.marked_for_deletion_at),
           timezone: Application.fetch_env!(:pinchflat, :timezone)
         },
-        get_pagination_attributes(base_sources_query(source_type), 1, limit)
+        search_pagination_attributes(source_type, search_term, 1, limit)
       )
 
     socket
@@ -311,7 +327,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     socket
     |> keep_selection_across_pages()
-    |> assign(get_pagination_attributes(base_sources_query(assigns.source_type), new_page, assigns.limit))
+    |> assign(search_pagination_attributes(assigns.source_type, assigns.search_term, new_page, assigns.limit))
     |> set_sources()
     |> then(&{:noreply, &1})
   end
@@ -329,6 +345,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     |> assign(new_params)
     |> set_sources()
     |> then(&{:noreply, &1})
+  end
+
+  def handle_event("search", params, socket) do
+    {:noreply, apply_search(socket, normalize_search_term(params["q"]))}
+  end
+
+  def handle_event("clear_search", _params, socket) do
+    {:noreply, apply_search(socket, nil)}
   end
 
   def handle_event("assign_source_profile", %{"id" => id, "profile_id" => profile_id}, socket) do
@@ -460,6 +484,26 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 
+  defp apply_search(%{assigns: assigns} = socket, search_term) do
+    socket
+    |> assign(:search_term, search_term)
+    |> assign(selected_ids: MapSet.new(), selection_scope: :page)
+    |> assign(search_pagination_attributes(assigns.source_type, search_term, 1, assigns.limit))
+    |> set_sources()
+  end
+
+  # While searching, the unfiltered total is counted too for the "Showing X of Y" summary.
+  defp search_pagination_attributes(source_type, search_term, page, limit) do
+    attributes = get_pagination_attributes(base_sources_query(source_type, search_term), page, limit)
+
+    tab_record_count =
+      if search_term,
+        do: Repo.aggregate(base_sources_query(source_type, nil), :count, :id),
+        else: attributes.total_record_count
+
+    Map.put(attributes, :tab_record_count, tab_record_count)
+  end
+
   defp normalize_view_mode(mode) when mode in [:table, "table"], do: :table
   defp normalize_view_mode(mode) when mode in [:grid, "grid"], do: :grid
   defp normalize_view_mode(_mode), do: @default_view_mode
@@ -474,21 +518,21 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     sources =
       if sort_key in @media_total_sort_keys do
         # Ordering by a media total needs that total for every source before the page is cut.
-        sources_query(assigns.source_type, nil)
+        sources_query(assigns.source_type, assigns.search_term, nil)
         |> order_by(^order)
         |> limit(^assigns.limit)
         |> offset(^assigns.offset)
         |> Repo.all()
       else
         page_ids =
-          base_sources_query(assigns.source_type)
+          base_sources_query(assigns.source_type, assigns.search_term)
           |> order_by(^order)
           |> limit(^assigns.limit)
           |> offset(^assigns.offset)
           |> select([s], s.id)
           |> Repo.all()
 
-        sources_query(assigns.source_type, page_ids)
+        sources_query(assigns.source_type, assigns.search_term, page_ids)
         |> where([s], s.id in ^page_ids)
         |> order_by(^order)
         |> Repo.all()
@@ -587,12 +631,12 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     "#{label} for #{summary.sources} #{noun}: #{counts}.#{skipped}"
   end
 
-  # Selects every source in the tab. Past the bulk action limit it
+  # Selects every source in the tab (or the search results). Past the bulk action limit it
   # selects the page instead, and the selection banner explains why.
   defp select_all(%{assigns: assigns} = socket) do
     if assigns.total_record_count <= Sources.selection_limit() do
       ids =
-        base_sources_query(assigns.source_type)
+        base_sources_query(assigns.source_type, assigns.search_term)
         |> select([s], s.id)
         |> Repo.all()
         |> MapSet.new(&to_string/1)
@@ -656,16 +700,17 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
-  defp base_sources_query(source_type) do
+  defp base_sources_query(source_type, search_term) do
     from s in Source,
       as: :source,
       inner_join: mp in assoc(s, :media_profile),
       where: ^source_type_filter(source_type),
+      where: ^search_filter(search_term),
       where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at)
   end
 
   # `source_ids` limits the media totals to the sources on the current page; nil totals every source.
-  defp sources_query(source_type, source_ids) do
+  defp sources_query(source_type, search_term, source_ids) do
     for_sources = if source_ids, do: dynamic([m], m.source_id in ^source_ids), else: true
 
     downloaded_subquery =
@@ -701,7 +746,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
         group_by: m.source_id
       )
 
-    from [s, mp] in base_sources_query(source_type),
+    from [s, mp] in base_sources_query(source_type, search_term),
       left_join: d in subquery(downloaded_subquery),
       on: d.source_id == s.id,
       left_join: p in subquery(pending_subquery),
@@ -718,6 +763,21 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
         media_count: coalesce(i.media_count, 0)
       }
   end
+
+  # LIKE wildcards in the term are escaped so they match literally.
+  defp search_filter(nil), do: true
+
+  defp search_filter(search_term) do
+    pattern = "%" <> escape_like_pattern(String.downcase(search_term)) <> "%"
+
+    dynamic(
+      [s],
+      fragment("LOWER(?) LIKE ? ESCAPE '\\'", s.custom_name, ^pattern) or
+        fragment("LOWER(?) LIKE ? ESCAPE '\\'", s.collection_name, ^pattern)
+    )
+  end
+
+  defp escape_like_pattern(term), do: String.replace(term, ["\\", "%", "_"], &("\\" <> &1))
 
   defp source_type_filter(:videos), do: dynamic([s], s.collection_type == :video)
   defp source_type_filter(:channels), do: dynamic([s], is_nil(s.collection_type) or s.collection_type != :video)

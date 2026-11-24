@@ -811,12 +811,32 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
     end
 
-    test "keeps the actions on the toolbar row and the cutoff form behind its button", %{conn: conn} do
+    test "select all only covers the sources matching the search", %{conn: conn} do
+      zebra_a = source_fixture(custom_name: "Zebra A")
+      zebra_b = source_fixture(custom_name: "Zebra B")
+      other = source_fixture(custom_name: "Other")
+      session = Map.put(create_session(), "results_per_page", 1)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+      search(view, "zebra")
+
+      click_element(view, "#source-select-all-mobile")
+
+      assert has_element?(view, "#selected-source-cutoff input[value='#{zebra_a.id}']")
+      assert has_element?(view, "#selected-source-cutoff input[value='#{zebra_b.id}']")
+      refute has_element?(view, "#selected-source-cutoff input[value='#{other.id}']")
+
+      search(view, "other")
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
+    end
+
+    test "keeps the actions on the search row and the cutoff form behind its button", %{conn: conn} do
       source_fixture()
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
       click_element(view, "#source-select-all-mobile")
 
+      assert has_element?(view, "#source-toolbar #source-search-form")
       assert has_element?(view, "#source-toolbar #selected-source-actions")
 
       assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"]))
@@ -996,6 +1016,193 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
+  describe "searching" do
+    test "searches every page of the selected tab", %{conn: conn} do
+      source_fixture(custom_name: "Alpha zebra")
+      source_fixture(custom_name: "Bravo")
+      source_fixture(custom_name: "Charlie Zebra")
+      source_fixture(custom_name: "Zebra video", collection_type: :video)
+      session = Map.put(create_session(), "results_per_page", 1)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+      assert render_element(view, "#source-table") =~ "Alpha zebra"
+
+      search(view, "zebra")
+
+      assert summary_text(view) == "Showing 2 of 3 channels & playlists for “zebra”"
+      assert text(render_element(view, "nav[aria-label=Pagination]")) =~ "Page 1 of 2"
+      assert render_element(view, "#source-table") =~ "Alpha zebra"
+
+      click_element(view, "button.pagination-next")
+
+      assert render_element(view, "#source-table") =~ "Charlie Zebra"
+      refute render(view) =~ "Bravo"
+      refute render(view) =~ "Zebra video"
+    end
+
+    test "only searches individual videos on the videos tab", %{conn: conn} do
+      source_fixture(custom_name: "Zebra channel")
+      source_fixture(custom_name: "Zebra video", collection_type: :video)
+      source_fixture(custom_name: "Other video", collection_type: :video)
+      session = Map.put(create_session(), "source_type", "videos")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert has_element?(view, ~s(#source-search-input[placeholder="Search individual videos"]))
+
+      search(view, "zebra")
+
+      assert summary_text(view) == "Showing 1 of 2 individual videos for “zebra”"
+      assert render(view) =~ "Zebra video"
+      refute render(view) =~ "Zebra channel"
+      refute render(view) =~ "Other video"
+    end
+
+    test "matches the collection name but not the URL", %{conn: conn} do
+      source_fixture(custom_name: "Renamed one", collection_name: "Original Zebra Channel")
+      source_fixture(custom_name: "Renamed two", original_url: "https://www.youtube.com/@zebrahandle")
+      source_fixture(custom_name: "Unrelated")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      html = search(view, "ZEBRA")
+      assert html =~ "Renamed one"
+      refute html =~ "Renamed two"
+      refute html =~ "Unrelated"
+    end
+
+    test "treats LIKE wildcards in the term literally", %{conn: conn} do
+      source_fixture(custom_name: "100% Zebra")
+      source_fixture(custom_name: "100 Zebra")
+      source_fixture(custom_name: "a_b Zebra")
+      source_fixture(custom_name: "acb Zebra")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      html = search(view, "100%")
+      assert html =~ "100% Zebra"
+      refute html =~ "100 Zebra"
+
+      html = search(view, "a_b")
+      assert html =~ "a_b Zebra"
+      refute html =~ "acb Zebra"
+    end
+
+    test "shows a no-match state that clears the search", %{conn: conn} do
+      source_fixture(custom_name: "Zebra source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      search(view, "nothing-matches")
+
+      assert has_element?(view, "#source-search-empty h3", "No channels & playlists match “nothing-matches”")
+      refute has_element?(view, "h3", "No channels or playlists yet")
+      assert has_element?(view, ~s(#source-search-input[value="nothing-matches"]))
+      assert has_element?(view, ~s(button[aria-label="Clear search"]))
+
+      click_element(view, "#source-search-empty button", "Clear Search")
+
+      assert render_element(view, "#source-table") =~ "Zebra source"
+      refute has_element?(view, "#source-search-empty")
+      refute has_element?(view, ~s(button[aria-label="Clear search"]))
+      assert summary_text(view) == ""
+    end
+
+    test "clears the search from the field action", %{conn: conn} do
+      source_fixture(custom_name: "Zebra source")
+      source_fixture(custom_name: "Other source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      refute search(view, "zebra") =~ "Other source"
+
+      click_element(view, ~s(button[aria-label="Clear search"]))
+
+      assert render_element(view, "#source-table") =~ "Other source"
+    end
+
+    test "treats a blank term as no search", %{conn: conn} do
+      source_fixture(custom_name: "Zebra source")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert search(view, "   ") =~ "Zebra source"
+      assert summary_text(view) == ""
+      refute has_element?(view, ~s(button[aria-label="Clear search"]))
+    end
+
+    test "keeps the search while sorting by a media total and switching views", %{conn: conn} do
+      zebra_a = source_fixture(custom_name: "Zebra A")
+      zebra_b = source_fixture(custom_name: "Zebra B")
+      source_fixture(custom_name: "Other source")
+      media_item_fixture(source_id: zebra_b.id, media_filepath: nil)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      search(view, "zebra")
+      click_element(view, "th button", "Pending")
+      click_element(view, "th button", "Pending")
+
+      assert render_element(view, "tbody tr:first-child") =~ zebra_b.custom_name
+      assert render_element(view, "tbody tr:last-child") =~ zebra_a.custom_name
+      refute render(view) =~ "Other source"
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      grid = render_element(view, "#source-poster-grid")
+      assert grid =~ zebra_a.custom_name
+      assert grid =~ zebra_b.custom_name
+      refute grid =~ "Other source"
+    end
+
+    test "returns to the first page and clears the selection", %{conn: conn} do
+      source_fixture(custom_name: "Zebra A")
+      second = source_fixture(custom_name: "Zebra B")
+      session = Map.put(create_session(), "results_per_page", 1)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      click_element(view, "button.pagination-next")
+      render_click(view, "toggle_source_selection", %{"id" => to_string(second.id)})
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="1"]))
+
+      search(view, "zebra")
+
+      assert text(render_element(view, "nav[aria-label=Pagination]")) =~ "Page 1 of 2"
+      assert render_element(view, "#source-table") =~ "Zebra A"
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
+    end
+
+    test "starts from a trimmed search term in the session", %{conn: conn} do
+      source_fixture(custom_name: "Zebra source")
+      source_fixture(custom_name: "Other source")
+      session = Map.put(create_session(), "initial_search_term", "  zebra  ")
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert html =~ "Zebra source"
+      refute html =~ "Other source"
+      assert has_element?(view, ~s(#source-search-input[value="zebra"]))
+    end
+
+    test "hides the search when the tab has no sources", %{conn: conn} do
+      source_fixture(custom_name: "Channel only")
+      session = Map.put(create_session(), "source_type", "videos")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      refute has_element?(view, "#source-search-form")
+      assert has_element?(view, "h3", "No individual videos yet")
+    end
+
+    test "normalizes search terms" do
+      assert IndexTableLive.normalize_search_term(nil) == nil
+      assert IndexTableLive.normalize_search_term(" ") == nil
+      assert IndexTableLive.normalize_search_term(" zebra ") == "zebra"
+      assert IndexTableLive.normalize_search_term(String.duplicate("a", 250)) == String.duplicate("a", 200)
+    end
+  end
+
   describe "view mode defaults" do
     test "opens the poster grid by default", %{conn: conn} do
       source_fixture(custom_name: "Default grid source")
@@ -1044,6 +1251,22 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     view
     |> element(selector)
     |> render()
+  end
+
+  defp search(view, term) do
+    view
+    |> element("#source-search-form")
+    |> render_change(%{"q" => term})
+  end
+
+  defp summary_text(view), do: view |> render_element("#source-search-summary") |> text()
+
+  defp text(html) do
+    html
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.replace(~r/\s+/, " ")
+    |> String.replace("&amp;", "&")
+    |> String.trim()
   end
 
   defp row_retention(view, source) do

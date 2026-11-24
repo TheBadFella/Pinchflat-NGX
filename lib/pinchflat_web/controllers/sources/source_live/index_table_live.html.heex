@@ -2,7 +2,7 @@
   <:tab :for={{type, title} <- source_tabs()} id={type} title={title}>
     <div>
       <div
-        :if={@sources != []}
+        :if={@tab_record_count > 0 or @search_term != nil}
         id="source-toolbar"
         class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
       >
@@ -19,6 +19,55 @@
               phx-click="toggle_select_all"
             />
           </div>
+          <form
+            id="source-search-form"
+            role="search"
+            class="min-w-0 flex-1 sm:w-80 sm:flex-none lg:w-96"
+            phx-change="search"
+            phx-submit="search"
+            x-data="{
+              setSearchParam(term) {
+                const url = new URL(location.href);
+                term.trim() ? url.searchParams.set('q', term.trim()) : url.searchParams.delete('q');
+                history.replaceState(null, '', url);
+              },
+              clearSearchInput() {
+                const input = document.getElementById('source-search-input');
+                input.value = '';
+                input.focus();
+                this.setSearchParam('');
+              }
+            }"
+            x-on:input.debounce.200ms="setSearchParam($event.target.value)"
+            x-on:clear-source-search.window="clearSearchInput()"
+          >
+            <.input
+              type="text"
+              id="source-search-input"
+              name="q"
+              value={@search_term}
+              placeholder={"Search #{source_type_noun(@source_type)}"}
+              aria-label={"Search #{source_type_noun(@source_type)}"}
+              autocomplete="off"
+              enterkeyhint="search"
+              phx-debounce="200"
+            >
+              <:input_action>
+                <button
+                  :if={@search_term}
+                  type="button"
+                  class="theme-field-action hover:bg-transparent"
+                  aria-label="Clear search"
+                  phx-click={JS.push("clear_search") |> JS.dispatch("clear-source-search")}
+                >
+                  <.icon name="hero-x-mark" class="h-5 w-5" />
+                </button>
+                <span :if={!@search_term} class="theme-field-action pointer-events-none" aria-hidden="true">
+                  <.icon name="hero-magnifying-glass" class="h-5 w-5" />
+                </span>
+              </:input_action>
+            </.input>
+          </form>
           <.button
             :if={@view_mode == :grid}
             id="source-select-all-grid"
@@ -192,6 +241,17 @@
         </div>
       </div>
 
+      <p
+        id="source-search-summary"
+        class={["text-sm text-theme-on-surface-muted", @search_term && "-mt-2 mb-4"]}
+        role="status"
+      >
+        <span :if={@search_term}>
+          Showing <.localized_number number={@total_record_count} /> of
+          <.localized_number number={@tab_record_count} /> {source_type_noun(@source_type)} for “{@search_term}”
+        </span>
+      </p>
+
       <%!-- Always rendered so the date picker is ready when the panel opens. --%>
       <.form
         for={%{}}
@@ -263,13 +323,36 @@
             </button>
           <% true -> %>
             <span>
-              All {length(@sources)} on this page are selected. Bulk actions work on up to {selection_limit()} sources at a time.
+              All {length(@sources)} on this page are selected. Bulk actions work on up to {selection_limit()} sources at a time, so search to narrow the list before selecting everything.
             </span>
         <% end %>
       </div>
+
+      <div
+        :if={@sources == [] and @search_term != nil}
+        id="source-search-empty"
+        class="mb-5 rounded-m3-sm bg-theme-surface p-5 text-theme-on-surface"
+      >
+        <h3 class="font-semibold">No {source_type_noun(@source_type)} match “{@search_term}”</h3>
+        <p class="mt-2 text-sm text-theme-on-surface-muted">
+          Search checks source names and YouTube channel and playlist names.
+          Try another term, or clear the search to see all {source_type_noun(@source_type)}.
+        </p>
+        <.button
+          type="button"
+          variant="outline"
+          class="mt-4"
+          phx-click={JS.push("clear_search") |> JS.dispatch("clear-source-search")}
+        >
+          Clear Search
+        </.button>
+      </div>
     </div>
 
-    <div :if={@sources == []} class="mb-5 rounded-m3-sm bg-theme-surface p-5 text-theme-on-surface">
+    <div
+      :if={@sources == [] and is_nil(@search_term)}
+      class="mb-5 rounded-m3-sm bg-theme-surface p-5 text-theme-on-surface"
+    >
       <%= if @source_type == :videos do %>
         <h3 class="font-semibold">No individual videos yet</h3>
         <p class="mt-2 text-sm text-theme-on-surface-muted">
