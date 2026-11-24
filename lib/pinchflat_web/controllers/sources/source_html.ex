@@ -11,6 +11,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   embed_templates "source_html/*"
 
+  @source_jobs [
+    {:download_pending, "Download Pending", "Click again to download pending"},
+    {:redownload_existing, "Redownload Existing", "Click again to redownload"},
+    {:force_index, "Force Index", "Click again to index"},
+    {:refresh_metadata, "Refresh Metadata", "Click again to refresh"},
+    {:sync_files, "Sync Files on Disk", "Click again to sync files"}
+  ]
+
+  @source_switches [
+    {:start, "hero-play-solid", "Start All", "Click again to start"},
+    {:pause, "hero-pause-solid", "Pause All", "Click again to pause"},
+    {:stop, "hero-stop-solid", "Stop All", "Click again to stop"}
+  ]
+
   @doc """
   Returns the Sources tab path, accepting only known local list destinations.
   """
@@ -178,19 +192,251 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
+  Describes a source for its status icon.
+
+  A disabled source always shows as disabled. An enabled source shows as
+  downloading while it has download jobs running or queued, otherwise its
+  bolt is green with Download Media on and purple with it off.
+
+  Returns a map with `:label`, `:icon`, `:class` (the round icon badge) and
+  `:pill_class` (the bordered pill on a source's page).
+  """
+  def source_status(%{enabled: false}, _downloading?),
+    do: %{label: "Disabled", icon: "hero-pause", class: "theme-badge-neutral", pill_class: "theme-pill-warning"}
+
+  def source_status(_source, true),
+    do: %{label: "Downloading", icon: "hero-clock", class: "theme-badge-warning", pill_class: "theme-pill-warning"}
+
+  def source_status(%{download_media: false}, _downloading?),
+    do: %{
+      label: "Enabled, Download Media off",
+      icon: "hero-bolt",
+      class: "theme-badge-info",
+      pill_class: "theme-pill-info"
+    }
+
+  def source_status(_source, _downloading?),
+    do: %{
+      label: "Enabled",
+      icon: "hero-bolt",
+      class: "theme-badge-success",
+      pill_class: "theme-pill-success"
+    }
+
+  @doc """
+  The status icon shown in the source list, or a labelled pill on a source's page.
+  """
+  attr :source, :map, required: true
+  attr :downloading, :boolean, required: true
+  attr :id_prefix, :string, required: true
+  attr :show_label, :boolean, default: false, doc: "write the status beside the icon"
+  attr :tooltip_position, :string, default: "top"
+
+  def source_status_icon(assigns) do
+    assigns = assign(assigns, :status, source_status(assigns.source, assigns.downloading))
+
+    ~H"""
+    <span
+      :if={@show_label}
+      id={"source-status-#{@id_prefix}-#{@source.id}"}
+      class={["theme-pill", @status.pill_class]}
+      data-source-status={@status.label}
+    >
+      <.icon name={@status.icon} class="h-3.5 w-3.5" aria-hidden="true" />
+      {@status.label}
+    </span>
+    <.tooltip :if={!@show_label} tooltip={@status.label} position={@tooltip_position} tooltip_class="text-nowrap">
+      <.source_status_badge id_prefix={@id_prefix} source={@source} status={@status} />
+    </.tooltip>
+    """
+  end
+
+  attr :id_prefix, :string, required: true
+  attr :source, :map, required: true
+  attr :status, :map, required: true
+
+  defp source_status_badge(assigns) do
+    ~H"""
+    <span
+      id={"source-status-#{@id_prefix}-#{@source.id}"}
+      class={["inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full", @status.class]}
+      data-source-status={@status.label}
+    >
+      <.icon name={@status.icon} class="h-4 w-4" aria-hidden="true" />
+      <span class="sr-only">{@status.label}</span>
+    </span>
+    """
+  end
+
+  @doc """
+  The source actions menu, shared by a source's page and the sources list. Actions that queue
+  work or change downloads run on a second click. Download Pending and Redownload Existing
+  only appear while Download Media is on and there are items for them to act on.
+  """
+  attr :source, :map, required: true
+  attr :pending_count, :integer, required: true
+  attr :downloaded_count, :integer, required: true
+  attr :json, :string, default: nil, doc: "the source as JSON, which adds Copy JSON"
+  attr :return_to, :string, default: nil, doc: "a source list path to return to; actions otherwise stay on the source"
+  attr :text, :string, default: nil
+  attr :icon_name, :string, default: nil
+  attr :aria_label, :string, default: nil
+  attr :tooltip, :string, default: nil
+  attr :tooltip_position, :string, default: "bottom"
+  attr :edit_path, :string, default: nil, doc: "adds Edit to the menu"
+  attr :on_delete, :any, default: nil, doc: "a JS command for a Delete option"
+  attr :row_option_class, :string, default: nil, doc: "classes for Edit and Delete, to show them only when needed"
+
+  def source_actions_menu(assigns) do
+    assigns =
+      assigns
+      |> assign(:jobs, Enum.filter(@source_jobs, &source_job_available?(&1, assigns)))
+      |> assign(:switches, @source_switches)
+      |> assign(:feed_path, ~p"/sources/#{assigns.source.uuid}/feed" <> ".xml")
+
+    ~H"""
+    <.button_dropdown
+      text={@text}
+      icon_name={@icon_name}
+      aria_label={@aria_label}
+      tooltip={@tooltip}
+      tooltip_position={@tooltip_position}
+      variant="outline"
+      size="compact"
+      class="shrink-0"
+    >
+      <:option :if={@edit_path}>
+        <.link href={@edit_path} class={@row_option_class}>Edit</.link>
+      </:option>
+      <:option :if={@on_delete}>
+        <button
+          type="button"
+          class={["text-theme-error!", @row_option_class]}
+          x-on:click="dropdownOpen = false"
+          phx-click={@on_delete}
+        >
+          Delete
+        </button>
+      </:option>
+      <:option :if={@edit_path || @on_delete}>
+        <div class={["h-px w-full bg-theme-outline/70", @row_option_class]}></div>
+      </:option>
+
+      <:option>
+        <.link
+          href={@feed_path}
+          x-data="{ copied: false }"
+          x-on:click={"$event.preventDefault(); copyWithCallbacks(new URL('#{@feed_path}', location.origin).href, () => copied = true, () => copied = false)"}
+        >
+          Copy RSS Feed
+          <span x-show="copied" x-cloak x-transition.duration.150ms><.icon name="hero-check" class="h-4 w-4" /></span>
+        </.link>
+      </:option>
+
+      <:option :if={@json}>
+        <button
+          type="button"
+          x-data="{ copied: false }"
+          x-on:click={"copyWithCallbacks(String.raw`#{@json}`, () => copied = true, () => copied = false)"}
+        >
+          Copy JSON
+          <span x-show="copied" x-cloak x-transition.duration.150ms><.icon name="hero-check" class="h-4 w-4" /></span>
+        </button>
+      </:option>
+
+      <:option><.link href={~p"/sources/new?template_id=#{@source.id}"}>Use as Template</.link></:option>
+      <:option>
+        <div class="h-px w-full bg-theme-outline/70"></div>
+      </:option>
+
+      <:option :for={{job, label, confirm_label} <- @jobs}>
+        <.confirm_action_form
+          action={source_action_path(@source, job)}
+          return_to={@return_to}
+          label={label}
+          confirm_label={confirm_label}
+        />
+      </:option>
+
+      <:option><.link href={~p"/reconciliation?source_id=#{@source.id}"}>Reconcile Files</.link></:option>
+      <:option>
+        <div class="h-px w-full bg-theme-outline/70"></div>
+      </:option>
+
+      <:option :for={{switch, icon, label, confirm_label} <- @switches}>
+        <.confirm_action_form
+          action={source_action_path(@source, switch)}
+          return_to={@return_to}
+          icon={icon}
+          label={label}
+          confirm_label={confirm_label}
+        />
+      </:option>
+    </.button_dropdown>
+    """
+  end
+
+  @doc """
+  The delete confirmation shared by a source's page and the sources list. It offers keeping
+  or deleting the downloaded files.
+  """
+  attr :id, :string, required: true
+  attr :form_id, :string, default: nil
+  attr :count, :integer, required: true
+  attr :action, :string, required: true
+  attr :method, :string, default: "post"
+  attr :return_to, :string, default: nil
+  attr :source_ids, :list, default: []
+
+  def source_delete_dialog(assigns) do
+    ~H"""
+    <.modal id={@id} compact>
+      <h3 id={"#{@id}-title"} class="pr-8 text-lg font-semibold text-theme-on-surface">
+        {if @count == 1, do: "Delete Source?", else: "Delete #{@count} sources?"}
+      </h3>
+      <p id={"#{@id}-description"} class="mt-2 text-sm text-theme-on-surface-muted">
+        Indexing and downloads stop. Choose whether to keep the downloaded files. This can't be undone.
+      </p>
+      <.form
+        for={%{}}
+        id={@form_id}
+        action={@action}
+        method={@method}
+        class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"
+      >
+        <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
+        <input :for={id <- @source_ids} type="hidden" name="source_ids[]" value={id} />
+        <.button type="button" variant="outline" size="compact" phx-click={hide_modal(@id)}>Cancel</.button>
+        <.button type="submit" variant="danger" size="compact" disabled={@count == 0}>
+          {if @count == 1, do: "Delete Source", else: "Delete Sources"}
+        </.button>
+        <.button
+          type="submit"
+          variant="danger-solid"
+          size="compact"
+          name="delete_files"
+          value="true"
+          disabled={@count == 0}
+        >
+          {if @count == 1, do: "Delete Source + Files", else: "Delete Sources + Files"}
+        </.button>
+      </.form>
+    </.modal>
+    """
+  end
+
+  @doc """
   Library-style source header: artwork, collection type, status, compact URL,
   next index time, and description.
   """
   attr :source, :any, required: true
   attr :status, :atom, required: true
+  attr :downloading, :boolean, default: false
   attr :pending_tasks, :list, required: true
 
   def source_library_header(assigns) do
-    status_pill = status_pill(assigns.status)
-
     assigns =
       assigns
-      |> assign(:status_pill, status_pill)
       |> assign(:next_check, next_check_at(assigns.pending_tasks))
       |> assign(:has_poster, source_image?(assigns.source, :poster))
       |> assign(:url_label, source_url_label(assigns.source.original_url))
@@ -216,9 +462,9 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <.collection_type_badge collection_type={@source.collection_type} />
-            <span class={["inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", @status_pill.class]}>
-              <.icon name={@status_pill.icon} class="h-3.5 w-3.5" />
-              {@status_pill.label}
+            <.source_status_icon source={@source} downloading={@downloading} id_prefix="header" show_label />
+            <span :if={@status == :error} class="theme-pill theme-pill-error">
+              <.icon name="hero-exclamation-triangle" class="h-3.5 w-3.5" /> Error
             </span>
           </div>
 
@@ -1258,30 +1504,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
-  Presentation attributes for the header status pill given `Sources.status/1`.
-  """
-  def status_pill(:paused),
-    do: %{
-      label: "Paused",
-      icon: "hero-pause",
-      class: "bg-theme-warning/10 text-theme-warning border border-theme-warning/40"
-    }
-
-  def status_pill(:error),
-    do: %{
-      label: "Error",
-      icon: "hero-exclamation-triangle",
-      class: "bg-theme-error/10 text-theme-error border border-theme-error/40"
-    }
-
-  def status_pill(_active),
-    do: %{
-      label: "Active",
-      icon: "hero-check-circle",
-      class: "bg-theme-success/10 text-theme-success border border-theme-success/40"
-    }
-
-  @doc """
   A compact, human-friendly label for a source's original URL. YouTube handle and
   channel URLs collapse to just the `@handle` (e.g.
   `https://www.youtube.com/@some-fake-channel` → `@some-fake-channel`), playlist
@@ -1387,4 +1609,54 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     |> Date.add(-days)
     |> Date.to_iso8601()
   end
+
+  attr :action, :string, required: true
+  attr :return_to, :string, default: nil
+  attr :icon, :string, default: nil
+  attr :label, :string, required: true
+  attr :confirm_label, :string, required: true
+
+  defp confirm_action_form(assigns) do
+    ~H"""
+    <.form
+      for={%{}}
+      action={@action}
+      method="post"
+      class="w-full"
+      x-data="{ submitting: false }"
+      x-on:submit="submitting = true"
+    >
+      <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
+      <button
+        type="submit"
+        x-bind:disabled="submitting"
+        x-data="{ confirming: false }"
+        x-on:click="if (!confirming) { $event.preventDefault(); confirming = true }"
+        x-on:blur="confirming = false"
+        x-bind:class="confirming && 'theme-status-warning'"
+      >
+        <.icon :if={@icon} name={@icon} class="h-4 w-4" />
+        <span x-show="!confirming">{@label}</span>
+        <span x-show="confirming" x-cloak>{@confirm_label}</span>
+      </button>
+    </.form>
+    """
+  end
+
+  defp source_job_available?({:download_pending, _, _}, assigns),
+    do: assigns.source.download_media == true and assigns.pending_count > 0
+
+  defp source_job_available?({:redownload_existing, _, _}, assigns),
+    do: assigns.source.download_media == true and assigns.downloaded_count > 0
+
+  defp source_job_available?(_job, _assigns), do: true
+
+  defp source_action_path(source, :download_pending), do: ~p"/sources/#{source.id}/force_download_pending"
+  defp source_action_path(source, :redownload_existing), do: ~p"/sources/#{source.id}/force_redownload"
+  defp source_action_path(source, :force_index), do: ~p"/sources/#{source.id}/force_index"
+  defp source_action_path(source, :refresh_metadata), do: ~p"/sources/#{source.id}/force_metadata_refresh"
+  defp source_action_path(source, :sync_files), do: ~p"/sources/#{source.id}/sync_files_on_disk"
+  defp source_action_path(source, :start), do: ~p"/sources/#{source.id}/start_all"
+  defp source_action_path(source, :pause), do: ~p"/sources/#{source.id}/pause_all"
+  defp source_action_path(source, :stop), do: ~p"/sources/#{source.id}/stop_all"
 end

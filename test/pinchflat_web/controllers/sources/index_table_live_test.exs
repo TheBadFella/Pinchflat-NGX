@@ -42,7 +42,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute render(view) =~ first.custom_name
       media_item_fixture(source_id: second.id)
       send(view.pid, :throttled_refresh)
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(6)") == "1"
       refute render(view) =~ "A channel"
       assert has_element?(view, "input[name='return_to'][value='/sources?type=videos']")
     end
@@ -115,8 +115,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "2"
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "0"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(5)") == "2"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(6)") == "0"
     end
 
     test "names the collection type of each source", %{conn: conn} do
@@ -125,8 +125,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(2)") =~ "Channel"
-      assert cell_text(view, "tbody tr:last-child td:nth-of-type(2)") =~ "Playlist"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") =~ "Channel"
+      assert cell_text(view, "tbody tr:last-child td:nth-of-type(4)") =~ "Playlist"
     end
 
     test "shows pending and downloaded counts for sources with downloaded media", %{conn: conn} do
@@ -136,8 +136,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "1"
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(5)") == "1"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(6)") == "1"
     end
 
     test "renders the table view when selected and exposes the poster grid toggle", %{conn: conn} do
@@ -155,7 +155,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       grid_html = render_element(view, "#source-poster-grid")
       assert grid_html =~ source.custom_name
       assert grid_html =~ ~s(data-artwork-fallback)
-      assert grid_html =~ ~s(aria-label="Open source Grid candidate")
+      assert grid_html =~ ~s(href="/sources/#{source.id}")
+      assert grid_html =~ ~s(href="/sources/#{source.id}/edit")
       assert grid_html =~ ~s(aria-label="Monitor Grid candidate")
     end
 
@@ -198,6 +199,23 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       click_element(view, ~s([data-view-toggle="table"]))
       assert render_element(view, "#source-table") =~ source_b.custom_name
       refute render_element(view, "#source-table") =~ source_a.custom_name
+    end
+
+    test "sorting the table leaves the grid in its default order", %{conn: conn} do
+      alpha = source_fixture(custom_name: "Alpha")
+      bravo = source_fixture(custom_name: "Bravo")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      click_element(view, ~s(th button[data-label="Name"]))
+      assert ordered_source_ids(render_element(view, "#source-table")) == [bravo.id, alpha.id]
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+      assert ordered_source_ids(render_element(view, "#source-poster-grid")) == [alpha.id, bravo.id]
+
+      click_element(view, ~s([data-view-toggle="table"]))
+      assert ordered_source_ids(render_element(view, "#source-table")) == [bravo.id, alpha.id]
+      assert has_element?(view, ~s(th[aria-sort="descending"] button[data-label="Name"]))
     end
   end
 
@@ -253,19 +271,20 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
 
     test "clicking a different row will sort by that attribute", %{conn: conn} do
-      source1 = source_fixture(custom_name: "Source_A", enabled: true)
-      source2 = source_fixture(custom_name: "Source_A", enabled: false)
+      source1 = source_fixture(custom_name: "Source_A")
+      source2 = source_fixture(custom_name: "Source_B")
+      media_item_fixture(source_id: source1.id)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       # Click the row to change the sort field
-      click_element(view, "th button", "Enabled?")
+      click_element(view, "th button", "Downloaded")
 
       assert render_element(view, "tbody tr:first-child") =~ source2.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source1.custom_name
 
-      # Click the row to again change the sort direcation
-      click_element(view, "th button", "Enabled?")
+      # Click the row to again change the sort direction
+      click_element(view, "th button", "Downloaded")
       assert render_element(view, "tbody tr:first-child") =~ source1.custom_name
       assert render_element(view, "tbody tr:last-child") =~ source2.custom_name
     end
@@ -418,12 +437,95 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
+  describe "status icon" do
+    test "shows the state as a label for screen readers and on hover", %{conn: conn} do
+      source = source_fixture(custom_name: "Paused source", download_media: false)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      icon = render_element(view, "#source-status-table-#{source.id}")
+      refute icon =~ "title="
+      assert has_element?(view, "#source-table td", "Enabled, Download Media off")
+      assert icon =~ "Enabled, Download Media off"
+      refute has_element?(view, "button#source-status-table-#{source.id}")
+      assert has_element?(view, "th button", "Enabled?")
+    end
+
+    test "has four states: disabled, downloading, and a bolt for Download Media on or off" do
+      for download_media <- [true, false], downloading <- [true, false] do
+        assert %{label: "Disabled", icon: "hero-pause", class: "theme-badge-neutral"} =
+                 IndexTableLive.source_status(%{enabled: false, download_media: download_media}, downloading)
+      end
+
+      for download_media <- [true, false] do
+        assert %{label: "Downloading", icon: "hero-clock", class: "theme-badge-warning"} =
+                 IndexTableLive.source_status(%{enabled: true, download_media: download_media}, true)
+      end
+
+      assert %{label: "Enabled, Download Media off", icon: "hero-bolt", class: "theme-badge-info"} =
+               IndexTableLive.source_status(%{enabled: true, download_media: false}, false)
+
+      assert %{label: "Enabled", icon: "hero-bolt", class: "theme-badge-success"} =
+               IndexTableLive.source_status(%{enabled: true, download_media: true}, false)
+    end
+
+    test "shows the downloading state while download jobs are running or queued", %{conn: conn} do
+      for {state, expected} <- [{"executing", "Downloading"}, {"available", "Downloading"}, {"completed", "Enabled"}] do
+        source = source_fixture()
+        media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
+
+        {:ok, job} =
+          %{id: media_item.id}
+          |> Pinchflat.Downloading.MediaDownloadWorker.new()
+          |> Oban.insert()
+
+        {:ok, job} = job |> Ecto.Changeset.change(state: state) |> Repo.update()
+        {:ok, _task} = Pinchflat.Tasks.create_task(job, media_item)
+
+        {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+        assert has_element?(view, ~s(#source-status-table-#{source.id}[data-source-status="#{expected}"])),
+               "expected #{expected} for a #{state} job"
+      end
+    end
+  end
+
+  describe "retention column" do
+    test "shows the effective retention with its origin for assistive tech and on hover", %{conn: conn} do
+      profile = media_profile_fixture(%{retention_period_days: 30})
+      inherited = source_fixture(custom_name: "Inherited", media_profile_id: profile.id)
+      override = source_fixture(custom_name: "Override", media_profile_id: profile.id, retention_period_days: 1)
+      off = source_fixture(custom_name: "Off", media_profile_id: profile.id, retention_period_days: 0)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s(th span[data-label="Retention"] [data-icon="hero-archive-box-x-mark"]))
+      assert row_retention(view, inherited) =~ "30 days"
+      assert row_retention(view, inherited) =~ "30 days (profile default)"
+      assert row_retention(view, override) =~ "1 day (source override)"
+      assert row_retention(view, off) =~ "Off"
+      assert row_retention(view, off) =~ "No age-based cleanup (source override)"
+    end
+
+    test "uses a short label" do
+      assert IndexTableLive.retention_short_label(%{
+               retention_period_days: nil,
+               media_profile: %{retention_period_days: 7}
+             }) ==
+               "7 days"
+
+      assert IndexTableLive.retention_short_label(%{retention_period_days: 1, media_profile: nil}) == "1 day"
+      assert IndexTableLive.retention_short_label(%{retention_period_days: 0, media_profile: nil}) == "Off"
+      assert IndexTableLive.retention_short_label(%{retention_period_days: nil, media_profile: nil}) == "Off"
+    end
+  end
+
   describe "live PubSub updates" do
     test "updates source counts when job:state change event is broadcast", %{conn: conn} do
       source = source_fixture(custom_name: "A_Live_Update_Source")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "0"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(5)") == "0"
 
       # Add a pending media item after mount
       media_item_fixture(%{source_id: source.id, media_filepath: nil})
@@ -432,7 +534,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       PinchflatWeb.Endpoint.broadcast("job:state", "change", nil)
       :timer.sleep(50)
 
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(3)") == "1"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(5)") == "1"
     end
 
     test "ignores job:progress updates because they do not change source totals", %{conn: conn} do
@@ -444,7 +546,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       PinchflatWeb.Endpoint.broadcast("job:progress", "update", %{job_id: 123})
       :timer.sleep(50)
 
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "0"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(6)") == "0"
     end
 
     test "throttles rapid job:state events and applies later changes on the trailing refresh", %{conn: conn} do
@@ -459,10 +561,438 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       media_item_fixture(%{source_id: source.id})
       Enum.each(1..5, fn _ -> PinchflatWeb.Endpoint.broadcast("job:state", "change", nil) end)
       :timer.sleep(50)
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "0"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(6)") == "0"
 
       send(view.pid, :throttled_refresh)
-      assert cell_text(view, "tbody tr:first-child td:nth-of-type(4)") == "1"
+      assert cell_text(view, "tbody tr:first-child td:nth-of-type(6)") == "1"
+    end
+  end
+
+  describe "tab header" do
+    test "puts the view toggle on the tab row without the old view heading", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s(header nav a[aria-current="page"]), "Channels & Playlists")
+      assert has_element?(view, "header nav a", "Individual Videos")
+      assert has_element?(view, ~s([data-view-toggle="grid"]), "Poster Grid")
+      assert has_element?(view, ~s(header [role="group"][aria-label="Source view"] [data-view-toggle="grid"]))
+      refute html =~ "Choose a table or poster library layout."
+      refute has_element?(view, "p", "Source view")
+    end
+
+    test "keeps the selected view in the tab links", %{conn: conn} do
+      source_fixture()
+      session = Map.put(create_session(), "source_type", "videos")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      assert has_element?(view, ~s(header nav a[href="/sources?type=channels&view=table"]))
+      assert has_element?(view, ~s(header nav a[href="/sources?type=videos&view=table"][aria-current="page"]))
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+
+      assert has_element?(view, ~s(header nav a[href="/sources?type=channels"]))
+      assert has_element?(view, ~s(header nav a[href="/sources?type=videos"][aria-current="page"]))
+    end
+  end
+
+  describe "table columns" do
+    test "shows pending and downloaded headers as labelled, sortable icons", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      for {label, icon} <- [{"Pending", "hero-queue-list"}, {"Downloaded", "hero-check-circle"}] do
+        assert has_element?(view, ~s(th button[data-label="#{label}"] [data-icon="#{icon}"]))
+        assert has_element?(view, ~s(th button[data-label="#{label}"] span.sr-only), label)
+        # The column name shows in the styled tooltip, not the browser's title.
+        assert has_element?(view, ~s(th [role="tooltip"][popover="manual"]), label)
+      end
+    end
+
+    test "shows the source type as an icon with its name on hover when the table is narrow", %{conn: conn} do
+      source_fixture(collection_type: :playlist)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s(#source-table td span[class*="@max-5xl:hidden"]), "Playlist")
+      assert has_element?(view, ~s(#source-table td [data-tooltip-anchor] [data-icon="hero-queue-list"]))
+      assert has_element?(view, ~s(#source-table td [role="tooltip"]), "Playlist")
+    end
+
+    test "marks the sorted column with one arrow above or below its label", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      refute has_element?(view, ~s(th button[data-label="Pending"] [data-sort-arrow]))
+      # The button's overlay fills its header cell, so clicking anywhere in the cell sorts.
+      assert has_element?(view, ~s(th.relative button[data-label="Pending"][class*="after:inset-0"]))
+
+      click_element(view, ~s(th button[data-label="Pending"]))
+
+      direction =
+        if has_element?(view, ~s(th[aria-sort="ascending"] button[data-label="Pending"])), do: "asc", else: "desc"
+
+      arrow = if direction == "asc", do: "up", else: "down"
+
+      assert has_element?(
+               view,
+               ~s(th[class*="bg-theme-primary/10"] button[data-label="Pending"][data-sorted="#{direction}"])
+             )
+
+      assert has_element?(view, ~s(th button[data-label="Pending"].text-theme-primary [data-sort-arrow="#{arrow}"] svg))
+      arrows = view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(~s(th button[data-label="Pending"] svg))
+      assert Enum.count(arrows) == 1
+      refute has_element?(view, ~s(th button[data-label="Downloaded"][data-sorted]))
+    end
+  end
+
+  describe "changing a media profile from the list" do
+    test "assigns the chosen profile without a success toast", %{conn: conn} do
+      current = media_profile_fixture(name: "Current profile")
+      target = media_profile_fixture(name: "Target profile")
+      source = source_fixture(custom_name: "Profile source", media_profile_id: current.id)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      option = ~s(#source-table button[phx-click="assign_source_profile"][phx-value-profile_id="#{target.id}"])
+      assert has_element?(view, option)
+
+      click_element(view, option)
+
+      assert Repo.reload!(source).media_profile_id == target.id
+
+      refute has_element?(view, "#source-notice-toasts [role=status]")
+      assert has_element?(view, ~s(#source-table button[aria-label^="Target profile, change"]))
+
+      assert has_element?(view, ~s(#source-table button[aria-current="true"][phx-value-profile_id="#{target.id}"]))
+    end
+
+    test "marks the current profile and does not offer it as a change", %{conn: conn} do
+      current = media_profile_fixture(name: "Current profile")
+      source_fixture(media_profile_id: current.id)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      current_option = ~s(#source-table button[phx-value-profile_id="#{current.id}"])
+      assert has_element?(view, current_option <> ~s([disabled][aria-current="true"]))
+      refute render_element(view, current_option) =~ "bg-theme-primary/15"
+    end
+
+    test "leaves the source unchanged for a profile that is not offered", %{conn: conn} do
+      current = media_profile_fixture()
+      deleted = media_profile_fixture(marked_for_deletion_at: DateTime.utc_now())
+      source = source_fixture(media_profile_id: current.id)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "assign_source_profile", %{"id" => to_string(source.id), "profile_id" => to_string(deleted.id)})
+
+      assert Repo.reload!(source).media_profile_id == current.id
+      assert render_element(view, "#source-notice-toasts") =~ "Could not change the media profile."
+    end
+  end
+
+  describe "selecting sources" do
+    test "the select-all checkbox selects and clears every source", %{conn: conn} do
+      first = source_fixture(custom_name: "First")
+      second = source_fixture(custom_name: "Second")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      click_element(view, "#source-select-all-mobile")
+      assert has_element?(view, "#source-select-all-mobile[checked]")
+      assert has_element?(view, "#selected-source-actions", "2 selected")
+      assert has_element?(view, "#selected-source-cutoff input[value='#{first.id}']")
+      assert has_element?(view, "#selected-source-cutoff input[value='#{second.id}']")
+      refute has_element?(view, "#source-select-all")
+
+      click_element(view, "#source-select-all-mobile")
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]), "None selected")
+
+      for action <- ["#pause-selected-sources button", "#resume-selected-sources button", "button[phx-click]"] do
+        assert has_element?(view, "#selected-source-actions #{action}[disabled]")
+      end
+
+      refute has_element?(view, "button[aria-label='Clear selection']")
+
+      assert has_element?(view, "#selected-source-profile button[x-ref=trigger][disabled]")
+      assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"][disabled]))
+    end
+
+    test "the table header checkbox selects every source, and the status column is not sortable", %{conn: conn} do
+      first = source_fixture(custom_name: "First")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, "#source-table th #source-select-all-table")
+      assert has_element?(view, ~s(#source-table th span[data-label="Status"]))
+      refute has_element?(view, ~s(#source-table th button[data-label="Status"]))
+
+      click_element(view, "#source-select-all-table")
+      assert has_element?(view, "#source-select-all-table[checked]")
+      assert has_element?(view, "#selected-source-cutoff input[value='#{first.id}']")
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+      assert has_element?(view, ~s(#source-select-all-grid[aria-pressed="true"]), "Clear All")
+      refute has_element?(view, "#source-select-all-table")
+      refute has_element?(view, "#source-select-all-mobile")
+    end
+
+    test "poster cards open the source and their corner tick selects them", %{conn: conn} do
+      first = source_fixture(custom_name: "First")
+      second = source_fixture(custom_name: "Second")
+      session = Map.put(create_session(), "initial_view_mode", "grid")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      refute has_element?(view, "#source-poster-grid input[name=source_selection]")
+      refute render_element(view, "#source-poster-grid") =~ "Not monitored"
+      assert has_element?(view, "#source-select-all-grid", "Select All")
+
+      assert has_element?(
+               view,
+               ~s(#source-card-#{first.id} a[aria-label="Open source First"][href="/sources/#{first.id}"])
+             )
+
+      assert has_element?(view, ~s(#source-card-#{first.id} a[href="/sources/#{first.id}/edit"]))
+      assert has_element?(view, ~s(#source-card-#{first.id} button[aria-label="More actions for First"]))
+      assert has_element?(view, ~s(#source-card-#{first.id} h3.line-clamp-2[title="First"]))
+      assert has_element?(view, ~s(#source-card-#{first.id} .theme-source-card-head #source-status-grid-#{first.id}))
+
+      delete = ~s(#source-card-#{first.id} button[aria-label="Delete First"])
+      assert has_element?(view, delete <> ".theme-outline-button")
+      refute has_element?(view, delete <> ".theme-danger-button")
+
+      click_element(view, "#source-select-grid-#{first.id}")
+
+      assert has_element?(view, ~s(#source-card-#{first.id}[data-selected="true"].ring-2))
+      assert has_element?(view, ~s(#source-select-grid-#{first.id}[aria-pressed="true"]))
+      assert has_element?(view, ~s(#source-card-#{second.id}[data-selected="false"]))
+      assert has_element?(view, "#selected-source-actions", "1 selected")
+
+      click_element(view, "#source-select-grid-#{first.id}")
+      assert has_element?(view, ~s(#source-card-#{first.id}[data-selected="false"]))
+
+      click_element(view, "#source-select-all-grid")
+      assert has_element?(view, "#selected-source-actions", "2 selected")
+    end
+
+    test "selects every source in the tab and keeps it across pages", %{conn: conn} do
+      first = source_fixture(custom_name: "First")
+      second = source_fixture(custom_name: "Second")
+      third = source_fixture(custom_name: "Third")
+      video = source_fixture(custom_name: "Video", collection_type: :video)
+      session = Map.put(create_session(), "results_per_page", 2)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+
+      click_element(view, "#source-select-all-mobile")
+      assert has_element?(view, "#source-select-all", "All 3 channels & playlists are selected.")
+      assert has_element?(view, "#source-select-all-mobile[checked]")
+
+      for source <- [first, second, third] do
+        assert has_element?(view, "#selected-source-cutoff input[value='#{source.id}']")
+      end
+
+      refute has_element?(view, "#selected-source-cutoff input[value='#{video.id}']")
+
+      click_element(view, "button.pagination-next")
+      assert has_element?(view, "#selected-source-actions", "3 selected")
+      assert has_element?(view, "#source-select-table-#{third.id}[checked]")
+
+      click_element(view, "#source-select-table-#{third.id}")
+      assert has_element?(view, "#source-select-all", "2 of 3 channels & playlists are selected.")
+
+      click_element(view, "#source-select-all button", "Clear Selection")
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
+    end
+
+    test "keeps the actions on the toolbar row and the cutoff form behind its button", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, "#source-select-all-mobile")
+
+      assert has_element?(view, "#source-toolbar #selected-source-actions")
+
+      assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"]))
+      # The panel is always rendered (hidden) and the button toggles it on the client.
+      assert has_element?(view, "form#selected-source-cutoff.hidden")
+      toggle = view |> element("#selected-source-cutoff-toggle") |> render()
+      assert toggle =~ "#selected-source-cutoff"
+      assert toggle =~ ~s(aria-expanded="false")
+      refute render(view) =~ "cutoffOpen"
+    end
+  end
+
+  describe "bulk actions" do
+    test "pause needs a second click, then runs without leaving the page", %{conn: conn} do
+      first = source_fixture(custom_name: "First", download_media: true)
+      second = source_fixture(custom_name: "Second", download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      view |> element("#pause-selected-sources button") |> render_click()
+      assert has_element?(view, ~s(#pause-selected-sources button[data-armed="true"].theme-confirm-pending), "Pause 2?")
+      assert Pinchflat.Repo.reload!(first).download_media
+
+      view |> element("#pause-selected-sources button") |> render_click()
+      refute Pinchflat.Repo.reload!(first).download_media
+      refute Pinchflat.Repo.reload!(second).download_media
+      assert has_element?(view, "#pause-selected-sources button.theme-success-button", "Paused")
+      refute has_element?(view, "#source-notice-toasts [role=status]")
+
+      send(view.pid, {:clear_done, :pause})
+      assert has_element?(view, "#pause-selected-sources button.theme-outline-button", "Pause")
+    end
+
+    test "an armed action lapses and needs both clicks again", %{conn: conn} do
+      source = source_fixture(custom_name: "Only", download_media: false)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+      view |> element("#resume-selected-sources button") |> render_click()
+
+      ref = :sys.get_state(view.pid).socket.assigns.armed |> elem(2)
+      send(view.pid, {:disarm_bulk, ref})
+      assert has_element?(view, ~s(#resume-selected-sources button[data-armed="false"]), "Resume")
+      refute Pinchflat.Repo.reload!(source).download_media
+    end
+
+    test "changing the selection disarms an armed action", %{conn: conn} do
+      first = source_fixture(custom_name: "First", download_media: true)
+      second = source_fixture(custom_name: "Second", download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_source_selection", %{"id" => "#{first.id}"})
+      view |> element("#pause-selected-sources button") |> render_click()
+
+      render_click(view, "toggle_source_selection", %{"id" => "#{second.id}"})
+      assert has_element?(view, ~s(#pause-selected-sources button[data-armed="false"]))
+
+      view |> element("#pause-selected-sources button") |> render_click()
+      assert Pinchflat.Repo.reload!(first).download_media
+    end
+
+    test "a media profile choice needs a second click", %{conn: conn} do
+      current = media_profile_fixture(name: "Current")
+      target = media_profile_fixture(name: "Target")
+      source = source_fixture(custom_name: "Source", media_profile_id: current.id)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+      option = ~s(#selected-source-profile button[phx-value-profile_id="#{target.id}"])
+
+      view |> element(option) |> render_click()
+      assert has_element?(view, option <> ~s([data-armed="true"]), "Use Target for 1?")
+      assert Pinchflat.Repo.reload!(source).media_profile_id == current.id
+
+      view |> element(option) |> render_click()
+      assert Pinchflat.Repo.reload!(source).media_profile_id == target.id
+      assert has_element?(view, "#selected-source-profile button.theme-success-button", "Profile Changed")
+    end
+  end
+
+  describe "source actions" do
+    test "each source's More actions menu has the source page's actions", %{conn: conn} do
+      busy = source_fixture(custom_name: "Busy")
+      media_item_fixture(source_id: busy.id, media_filepath: nil)
+      media_item_fixture(source_id: busy.id)
+      empty = source_fixture(custom_name: "Empty")
+      session = Map.put(create_session(), "initial_view_mode", "grid")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+      card = render_element(view, "#source-card-#{busy.id}")
+
+      for label <-
+            ["Copy RSS Feed", "Use as Template", "Download Pending", "Redownload Existing", "Force Index"] ++
+              ["Refresh Metadata", "Sync Files on Disk", "Reconcile Files", "Start All", "Stop All"] do
+        assert card =~ label
+      end
+
+      assert card =~ ~s(action="/sources/#{busy.id}/force_index")
+      assert card =~ ~s(href="/reconciliation?source_id=#{busy.id}")
+      assert card =~ ~s(href="/sources/new?template_id=#{busy.id}")
+      assert card =~ ~s(name="return_to" value="/sources")
+      refute card =~ "Copy JSON"
+
+      empty_card = render_element(view, "#source-card-#{empty.id}")
+      refute empty_card =~ "Download Pending"
+      refute empty_card =~ "Redownload Existing"
+      assert empty_card =~ "Force Index"
+    end
+
+    test "a narrow table moves Edit and Delete into the row's More actions", %{conn: conn} do
+      source = source_fixture(custom_name: "Narrow")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s(#source-table div[class*="@max-4xl:hidden"] a[href="/sources/#{source.id}/edit"]))
+
+      assert has_element?(
+               view,
+               ~s(#source-table li a[class*="@max-4xl:flex"][href="/sources/#{source.id}/edit"]),
+               "Edit"
+             )
+
+      assert has_element?(
+               view,
+               ~s(#source-table li button[class*="@max-4xl:flex"][phx-click*="confirm_delete"]),
+               "Delete"
+             )
+
+      refute has_element?(view, ~s(#source-poster-grid li a[href="/sources/#{source.id}/edit"]))
+    end
+
+    test "the selection's More actions queue a job for every selected source on a second click", %{conn: conn} do
+      sources = [source_fixture(custom_name: "First"), source_fixture(custom_name: "Second")]
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      assert has_element?(view, "#selected-source-jobs button[x-ref=trigger][disabled]")
+
+      render_click(view, "toggle_select_all")
+      option = ~s(#selected-source-jobs button[phx-value-action="force_index"])
+
+      view |> element(option) |> render_click()
+      assert has_element?(view, option <> ~s([data-armed="true"]), "Force Index for 2?")
+      assert [] = all_enqueued(worker: Pinchflat.SlowIndexing.MediaCollectionIndexingWorker)
+
+      view |> element(option) |> render_click()
+      render_async(view)
+
+      enqueued = all_enqueued(worker: Pinchflat.SlowIndexing.MediaCollectionIndexingWorker)
+      assert Enum.sort(Enum.map(enqueued, & &1.args["id"])) == Enum.sort(Enum.map(sources, & &1.id))
+      assert render_element(view, "#source-notice-toasts") =~ "Force Index for 2 sources: 2 queued."
+      refute has_element?(view, "#selected-source-jobs button[x-ref=trigger][disabled]")
+    end
+
+    test "the selection's More actions only reconcile one source at a time", %{conn: conn} do
+      first = source_fixture(custom_name: "First")
+      second = source_fixture(custom_name: "Second")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "toggle_source_selection", %{"id" => "#{first.id}"})
+      assert has_element?(view, ~s(#selected-source-jobs a[href="/reconciliation?source_id=#{first.id}"]))
+
+      render_click(view, "toggle_source_selection", %{"id" => "#{second.id}"})
+      assert has_element?(view, "#selected-source-jobs button[disabled]", "One source at a time")
+      refute has_element?(view, "#selected-source-jobs a[href^='/reconciliation']")
+    end
+
+    test "ignores unknown bulk actions", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+      render_click(view, "bulk_job", %{"action" => "delete_everything"})
+
+      refute has_element?(view, ~s(#selected-source-jobs button[data-armed="true"]))
     end
   end
 
@@ -516,11 +1046,24 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     |> render()
   end
 
+  defp row_retention(view, source) do
+    view
+    |> element("#source-retention-#{source.id}")
+    |> render()
+  end
+
   defp cell_text(view, selector) do
     view
     |> render_element(selector)
     |> String.replace(~r/<[^>]*>/, "")
     |> String.trim()
+  end
+
+  defp ordered_source_ids(html) do
+    ~r/data-source-id="(\d+)"/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> Enum.map(fn [id] -> String.to_integer(id) end)
+    |> Enum.dedup()
   end
 
   defp source_ids(html) do
@@ -551,12 +1094,17 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       assert has_element?(view, ~s(button[aria-label="More actions for Action source"]))
       assert html =~ ~s(name="return_to" value="/sources")
-      assert html =~ ~s(action="/sources/#{source.id}")
-      assert has_element?(view, ~s(form[action="/sources/#{source.id}"] input[name="_method"][value="delete"]))
-      assert html =~ "Delete Action source? This deletes the source only and does not delete files."
-      assert html =~ "Start all"
-      assert html =~ "Pause all"
-      assert html =~ "Stop all"
+      refute html =~ "data-confirm"
+
+      # Delete Source opens the shared delete dialog for just this source.
+      view |> element(~s(#source-table button[aria-label="Delete Action source"])) |> render_click()
+      assert has_element?(view, "#delete-selected-sources-modal-title", "Delete Source?")
+      refute has_element?(view, "#source-table .theme-dropdown-option button", "Delete Source")
+      assert has_element?(view, "#delete-selected-sources input[name='source_ids[]'][value='#{source.id}']")
+      assert has_element?(view, "#delete-selected-sources button[name=delete_files]", "Delete Source + Files")
+      assert html =~ "Start All"
+      assert html =~ "Pause All"
+      assert html =~ "Stop All"
     end
 
     test "keeps the selection checkbox accessible without visible Select label text", %{conn: conn} do

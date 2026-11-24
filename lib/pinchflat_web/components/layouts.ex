@@ -5,6 +5,19 @@ defmodule PinchflatWeb.Layouts do
   embed_templates "layouts/partials/*"
 
   @doc """
+  Whether the page asked for its flash messages as toasts (see `put_toast_flash/1`).
+  """
+  def toast_flash?(%Plug.Conn{private: private}), do: Map.get(private, :pinchflat_toast_flash, false)
+  def toast_flash?(_conn), do: false
+
+  @doc """
+  Shows this response's flash messages as toasts that fade out without moving the page.
+
+  Returns %Plug.Conn{}
+  """
+  def put_toast_flash(conn), do: Plug.Conn.put_private(conn, :pinchflat_toast_flash, true)
+
+  @doc """
   Renders a sidebar menu item link
 
   ## Examples

@@ -130,6 +130,18 @@ defmodule Pinchflat.Media do
   end
 
   @doc """
+  Counts the media items Download Pending would queue for a source.
+
+  Returns integer()
+  """
+  def count_pending_media_items_for(%Source{} = source) do
+    source
+    |> pending_media_items_query()
+    |> exclude(:order_by)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  @doc """
   Returns pending media items for a given source with only `:id` loaded from the
   database, for callers that only need to enqueue work.
 

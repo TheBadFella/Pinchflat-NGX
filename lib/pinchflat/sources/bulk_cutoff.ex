@@ -89,9 +89,19 @@ defmodule Pinchflat.Sources.BulkCutoff do
   defp parse_cutoff(_), do: {:error, :invalid_cutoff}
 
   defp validate_sources(sources, cutoff) do
-    if Enum.all?(sources, &Source.changeset(&1, %{download_cutoff_date: cutoff, download_cutoff_days: nil}).valid?),
-      do: :ok,
-      else: {:error, :invalid_source}
+    invalid =
+      Enum.reject(sources, &Source.changeset(&1, %{download_cutoff_date: cutoff, download_cutoff_days: nil}).valid?)
+
+    index_conflicts =
+      for source <- invalid,
+          source.index_cutoff_date && cutoff && Date.compare(source.index_cutoff_date, cutoff) == :gt,
+          do: {source.custom_name, source.index_cutoff_date}
+
+    cond do
+      invalid == [] -> :ok
+      length(index_conflicts) == length(invalid) -> {:error, {:index_cutoff_after, index_conflicts}}
+      true -> {:error, :invalid_source}
+    end
   end
 
   defp fingerprint(sources) do

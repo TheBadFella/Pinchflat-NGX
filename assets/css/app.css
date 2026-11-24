@@ -46,6 +46,12 @@
 }
 
 @layer components {
+  /* Source grid card head: name, type row and profile row, with room for a two-line name
+     (2 x 20px name + 44px toggle row + 36px profile row + two 12px gaps). */
+  .theme-source-card-head {
+    @apply min-h-36 max-sm:min-h-38;
+  }
+
   .theme-switch-target {
     @apply relative inline-flex min-h-11 w-14 items-center;
   }
@@ -376,6 +382,9 @@
     .theme-touch-target {
       @apply min-h-11! min-w-11!;
     }
+    .theme-source-card-head {
+      @apply min-h-38;
+    }
   }
 
   .theme-outline-button,
@@ -460,6 +469,16 @@
     @apply border-theme-error/80 bg-theme-error text-theme-on-error transition hover:border-theme-error hover:bg-theme-error/90;
   }
 
+  /* Bottom-right stack for toasts, which float over the page instead of pushing it down. */
+  .theme-toast-stack {
+    @apply pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:left-auto sm:right-6 sm:w-96;
+  }
+
+  /* A button waiting for its second click to confirm. */
+  .theme-confirm-pending {
+    @apply border-theme-warning bg-theme-warning/10 text-theme-warning hover:border-theme-warning hover:bg-theme-warning/15;
+  }
+
   .theme-danger-panel {
     @apply bg-theme-error/10 text-theme-error;
   }
@@ -470,6 +489,35 @@
 
   .theme-badge-warning {
     @apply bg-theme-warning/25 text-theme-warning;
+  }
+
+  /* Bordered status pills, such as the status on a source's page. */
+  .theme-pill {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium;
+  }
+
+  .theme-pill-success {
+    @apply border-theme-success/40 bg-theme-success/10 text-theme-success;
+  }
+
+  .theme-pill-warning {
+    @apply border-theme-warning/40 bg-theme-warning/10 text-theme-warning;
+  }
+
+  .theme-pill-info {
+    @apply border-theme-primary/40 bg-theme-primary/10 text-theme-primary;
+  }
+
+  .theme-pill-error {
+    @apply border-theme-error/40 bg-theme-error/10 text-theme-error;
+  }
+
+  .theme-badge-info {
+    @apply bg-theme-primary/20 text-theme-primary;
+  }
+
+  .theme-badge-neutral {
+    @apply bg-theme-surface-4 text-theme-on-surface-muted;
   }
 
   .theme-badge-dev {

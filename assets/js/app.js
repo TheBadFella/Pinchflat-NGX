@@ -27,18 +27,22 @@ import { datePicker } from './date_picker.mjs'
 import { responsiveDialog } from './responsive_dialog.mjs'
 import { browseSearch } from './browse_search.mjs'
 import { savedTitleFilters, titleFilterBuilder } from './title_filter.mjs'
+import { installTooltips, keepOpenTooltip } from './tooltips.mjs'
 
 window.Alpine = Alpine
 window.pinchflatDatePicker = datePicker
 window.pinchflatTitleFilterBuilder = titleFilterBuilder
 window.pinchflatSavedTitleFilters = savedTitleFilters
 Alpine.start()
+installTooltips()
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute('content')
 let liveSocket = new LiveSocket(document.body.dataset.socketPath, Socket, {
   params: { _csrf_token: csrfToken },
   dom: {
     onBeforeElUpdated(from, to) {
+      keepOpenTooltip(from, to)
+
       if (from._x_dataStack) {
         window.Alpine.clone(from, to)
       }

@@ -51,7 +51,9 @@ defmodule PinchflatWeb.Sources.SourceController do
         initial_view_mode =
           source_view_mode(params["view"]) || source_view_mode(fetch_cookies(conn).req_cookies[@source_view_cookie])
 
-        render(conn, :index, source_type: source_type, initial_view_mode: initial_view_mode)
+        conn
+        |> PinchflatWeb.Layouts.put_toast_flash()
+        |> render(:index, source_type: source_type, initial_view_mode: initial_view_mode)
     end
   end
 
@@ -242,6 +244,8 @@ defmodule PinchflatWeb.Sources.SourceController do
           media_statistics: Media.source_media_statistics(source),
           blocking_conditions: Sources.blocking_conditions(source, indexing_failed?: indexing_failed?),
           source_status: Sources.status(source, indexing_failed?: indexing_failed?),
+          downloading: MapSet.member?(Sources.downloading_source_ids([source.id]), source.id),
+          pending_count: Media.count_pending_media_items_for(source),
           pending_tasks: pending_tasks
         )
     end
@@ -527,7 +531,10 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       {:error, _reason} ->
         conn
-        |> put_flash(:error, "Could not pause the selection. Refresh and select up to 100 available sources.")
+        |> put_flash(
+          :error,
+          "Could not pause the selection. Refresh and select up to #{Sources.selection_limit()} available sources."
+        )
         |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
     end
   end
@@ -543,7 +550,44 @@ defmodule PinchflatWeb.Sources.SourceController do
 
       {:error, _reason} ->
         conn
-        |> put_flash(:error, "Could not resume the selection. Refresh and select up to 100 available sources.")
+        |> put_flash(
+          :error,
+          "Could not resume the selection. Refresh and select up to #{Sources.selection_limit()} available sources."
+        )
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
+    end
+  end
+
+  def delete_selected(conn, params) do
+    delete_files = params["delete_files"] == "true"
+
+    case Sources.delete_selected_sources(params["source_ids"], delete_files: delete_files) do
+      {:ok, sources} ->
+        noun = if length(sources) == 1, do: "source", else: "sources"
+
+        message =
+          if delete_files,
+            do: "Deleting #{length(sources)} #{noun} and their downloaded files. This may take a while.",
+            else: "Deleting #{length(sources)} #{noun}. Downloaded files are kept. This may take a while."
+
+        conn
+        |> put_flash(:info, message)
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
+
+      {:error, :watch_protected} ->
+        conn
+        |> put_flash(
+          :error,
+          "Nothing was deleted. End watch protection for the selected sources' watched videos first."
+        )
+        |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(
+          :error,
+          "Could not delete the selection. Refresh and select up to #{Sources.selection_limit()} available sources."
+        )
         |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
     end
   end
@@ -568,7 +612,8 @@ defmodule PinchflatWeb.Sources.SourceController do
           conn
           |> put_flash(
             :error,
-            "Could not update media profile for the selection. Select a media profile and up to 100 available sources."
+            "Could not update media profile for the selection. " <>
+              "Select a media profile and up to #{Sources.selection_limit()} available sources."
           )
           |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
       end
@@ -625,45 +670,50 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
-  def force_download_pending(conn, %{"source_id" => id}) do
+  def force_download_pending(conn, %{"source_id" => id} = params) do
     wrap_forced_action(
       conn,
+      params,
       id,
       "Forcing download of pending media items.",
       &DownloadingHelpers.retry_pending_download_tasks/1
     )
   end
 
-  def force_redownload(conn, %{"source_id" => id}) do
+  def force_redownload(conn, %{"source_id" => id} = params) do
     wrap_forced_action(
       conn,
+      params,
       id,
       "Forcing re-download of downloaded media items.",
       &DownloadingHelpers.kickoff_redownload_for_existing_media/1
     )
   end
 
-  def force_index(conn, %{"source_id" => id}) do
+  def force_index(conn, %{"source_id" => id} = params) do
     wrap_forced_action(
       conn,
+      params,
       id,
       "Index enqueued.",
       &SlowIndexingHelpers.kickoff_indexing_task(&1, %{force: true})
     )
   end
 
-  def force_metadata_refresh(conn, %{"source_id" => id}) do
+  def force_metadata_refresh(conn, %{"source_id" => id} = params) do
     wrap_forced_action(
       conn,
+      params,
       id,
       "Metadata refresh enqueued.",
       &SourceMetadataStorageWorker.kickoff_with_task/1
     )
   end
 
-  def sync_files_on_disk(conn, %{"source_id" => id}) do
+  def sync_files_on_disk(conn, %{"source_id" => id} = params) do
     wrap_forced_action(
       conn,
+      params,
       id,
       "File sync enqueued.",
       &FileSyncingWorker.kickoff_with_task/1
@@ -952,13 +1002,22 @@ defmodule PinchflatWeb.Sources.SourceController do
     end
   end
 
-  defp wrap_forced_action(conn, source_id, message, fun) do
+  # From the sources list (a `return_to`), the message names the source and the list is reloaded.
+  defp wrap_forced_action(conn, params, source_id, message, fun) do
     source = Sources.get_source!(source_id)
     feedback = PinchflatWeb.Helpers.JobActionHelpers.feedback(fun.(source), message)
 
-    conn
-    |> put_flash(feedback.type, feedback.message)
-    |> redirect(to: ~p"/sources/#{source}")
+    case params["return_to"] do
+      return_to when is_binary(return_to) and return_to != "" ->
+        conn
+        |> put_flash(feedback.type, "#{source.custom_name}: #{feedback.message}")
+        |> redirect(to: SourceHTML.source_list_path(return_to))
+
+      _ ->
+        conn
+        |> put_flash(feedback.type, feedback.message)
+        |> redirect(to: ~p"/sources/#{source}")
+    end
   end
 
   defp redirect_target_for(params, source, fallback) do
