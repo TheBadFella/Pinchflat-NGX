@@ -1,0 +1,85 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranchPatterns": ["dev"],
+  "timezone": "America/Regina",
+  "schedule": ["before 7am on monday"],
+  "labels": ["Dependencies"],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "prConcurrentLimit": 10,
+  "nix": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions annotated with a '# renovate:' comment on the line above",
+      "managerFilePatterns": [
+        "/^docker/.+\\.Dockerfile$/",
+        "/^docker/.+\\.sh$/",
+        "/^config/config\\.exs$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\s*(?:ARG\\s+)?[A-Za-z0-9_]+\\s*[=:]\\s*\"?(?<currentValue>[^\"\\s]+)\"?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Apprise installed with pipx inside a RUN instruction",
+      "managerFilePatterns": ["/^docker/.+\\.Dockerfile$/"],
+      "matchStrings": ["pipx install apprise==(?<currentValue>[^\\s]+)"],
+      "datasourceTemplate": "pypi",
+      "depNameTemplate": "apprise"
+    },
+    {
+      "customType": "regex",
+      "description": "Scalar API reference loaded from jsDelivr",
+      "managerFilePatterns": ["/^lib/pinchflat_web/controllers/api_docs_controller\\.ex$/"],
+      "matchStrings": ["@scalar/api-reference@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@scalar/api-reference"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group minor and patch updates into one weekly PR, like the previous Dependabot group",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "dependencies"
+    },
+    {
+      "description": "Elixir, OTP and Debian come from one combined hexpm/elixir image tag",
+      "matchPackageNames": ["elixir-lang/elixir", "erlang/otp", "debian"],
+      "groupName": "Elixir runtime image",
+      "minimumReleaseAge": "3 days",
+      "prBodyNotes": [
+        "The Dockerfiles build `hexpm/elixir:<elixir>-erlang-<otp>-debian-<debian>`. Check that this exact tag exists on Docker Hub before merging; hexpm publishes new combinations a few days after upstream releases."
+      ]
+    },
+    {
+      "description": "Keep the bgutil plugin zip and provider server on the same version",
+      "matchPackageNames": [
+        "Brainicism/bgutil-ytdlp-pot-provider",
+        "brainicism/bgutil-ytdlp-pot-provider"
+      ],
+      "groupName": "bgutil POT provider"
+    },
+    {
+      "description": "QuickJS-NG downloads are checksum-pinned",
+      "matchPackageNames": ["quickjs-ng/quickjs"],
+      "groupName": "QuickJS-NG",
+      "prBodyNotes": [
+        "Update the SHA-256 values in `docker/install-quickjs-ng.sh` for both assets and the LICENSE before merging. The image build fails until they match."
+      ]
+    },
+    {
+      "description": "Refresh flake.lock monthly; other lock files follow their dependency updates",
+      "matchManagers": ["nix"],
+      "lockFileMaintenance": {
+        "enabled": true,
+        "schedule": ["before 7am on the first day of the month"]
+      }
+    }
+  ]
+}
