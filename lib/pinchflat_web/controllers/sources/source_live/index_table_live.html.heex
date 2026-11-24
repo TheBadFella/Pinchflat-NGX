@@ -382,10 +382,14 @@
   </div>
 
   <div :if={@view_mode == :grid}>
+    <%!--
+      The tab panel scrolls sideways for wide tables and clips anything drawn past its edge.
+      This padding keeps the card focus ring visible on the outer columns.
+    --%>
     <div
       id="source-poster-grid"
       data-view="poster-grid"
-      class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+      class="grid grid-cols-1 gap-4 p-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
     >
       <article
         :for={source <- @sources}
