@@ -643,19 +643,19 @@
 
           <section data-setting class="mt-5">
             <div class="sm:max-w-md">
-              <label for="source-cutoff-mode" class="mb-1 block text-sm font-medium text-theme-on-surface-muted">
-                Download cutoff
-              </label>
-              <select
-                id="source-cutoff-mode"
-                x-model="cutoffMode"
-                x-on:change="setCutoffMode($event.target.value)"
-                class="theme-input theme-select min-h-11 w-full rounded-m3-sm px-3 py-2 text-sm"
-              >
-                <option value="none">No cutoff</option>
-                <option value="date">Fixed date</option>
-                <option value="days">Rolling window (last N days)</option>
-              </select>
+              <.label for="source-cutoff-mode">Download cutoff</.label>
+              <div class="theme-field-shell">
+                <select
+                  id="source-cutoff-mode"
+                  x-model="cutoffMode"
+                  x-on:change="setCutoffMode($event.target.value)"
+                  class="theme-input theme-select w-full rounded-m3-sm py-2.5 pl-4 pr-10 outline-none transition"
+                >
+                  <option value="none">No cutoff</option>
+                  <option value="date">Fixed date</option>
+                  <option value="days">Rolling window (last N days)</option>
+                </select>
+              </div>
             </div>
 
             <div x-show="cutoffMode === 'date'" x-cloak class="mt-4 sm:max-w-md">
