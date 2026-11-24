@@ -14,12 +14,10 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Reconciliation
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.SourceImport
+  alias Pinchflat.Sources.SourceActions
   alias Pinchflat.Profiles.MediaProfile
-  alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Downloading.DownloadingHelpers
-  alias Pinchflat.SlowIndexing.SlowIndexingHelpers
-  alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias Pinchflat.Settings.YtDlpConfigFile
   alias PinchflatWeb.Schemas
   alias PinchflatWeb.Sources.SourceHTML
@@ -683,7 +681,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       params,
       id,
       "Forcing download of pending media items.",
-      &DownloadingHelpers.retry_pending_download_tasks/1
+      &SourceActions.kickoff(:download_pending, &1)
     )
   end
 
@@ -693,7 +691,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       params,
       id,
       "Forcing re-download of downloaded media items.",
-      &DownloadingHelpers.kickoff_redownload_for_existing_media/1
+      &SourceActions.kickoff(:redownload_existing, &1)
     )
   end
 
@@ -703,7 +701,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       params,
       id,
       "Index enqueued.",
-      &SlowIndexingHelpers.kickoff_indexing_task(&1, %{force: true})
+      &SourceActions.kickoff(:force_index, &1)
     )
   end
 
@@ -713,7 +711,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       params,
       id,
       "Metadata refresh enqueued.",
-      &SourceMetadataStorageWorker.kickoff_with_task/1
+      &SourceActions.kickoff(:refresh_metadata, &1)
     )
   end
 
@@ -723,7 +721,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       params,
       id,
       "File sync enqueued.",
-      &FileSyncingWorker.kickoff_with_task/1
+      &SourceActions.kickoff(:sync_files, &1)
     )
   end
 

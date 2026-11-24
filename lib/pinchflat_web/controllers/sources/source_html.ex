@@ -11,13 +11,13 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   embed_templates "source_html/*"
 
-  @source_jobs [
-    {:download_pending, "Download Pending", "Click again to download pending"},
-    {:redownload_existing, "Redownload Existing", "Click again to redownload"},
-    {:force_index, "Force Index", "Click again to index"},
-    {:refresh_metadata, "Refresh Metadata", "Click again to refresh"},
-    {:sync_files, "Sync Files on Disk", "Click again to sync files"}
-  ]
+  @job_confirm_labels %{
+    download_pending: "Click again to download pending",
+    redownload_existing: "Click again to redownload",
+    force_index: "Click again to index",
+    refresh_metadata: "Click again to refresh",
+    sync_files: "Click again to sync files"
+  }
 
   @source_switches [
     {:start, "hero-play-solid", "Start All", "Click again to start"},
@@ -290,7 +290,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   def source_actions_menu(assigns) do
     assigns =
       assigns
-      |> assign(:jobs, Enum.filter(@source_jobs, &source_job_available?(&1, assigns)))
+      |> assign(:jobs, source_jobs(assigns))
       |> assign(:switches, @source_switches)
       |> assign(:feed_path, ~p"/sources/#{assigns.source.uuid}/feed" <> ".xml")
 
@@ -378,23 +378,36 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
-  The delete confirmation shared by a source's page and the sources list. It offers keeping
-  or deleting the downloaded files.
+  The delete confirmation shared by a source's page and the sources list. It names the sources
+  and offers keeping or deleting the downloaded files.
   """
   attr :id, :string, required: true
   attr :form_id, :string, default: nil
-  attr :count, :integer, required: true
+  attr :names, :list, required: true, doc: "the custom names of the sources being deleted"
   attr :action, :string, required: true
   attr :method, :string, default: "post"
   attr :return_to, :string, default: nil
   attr :source_ids, :list, default: []
+  attr :on_cancel, JS, default: %JS{}
 
   def source_delete_dialog(assigns) do
+    assigns =
+      assigns
+      |> assign(:count, length(assigns.names))
+      |> assign(:listed, Enum.take(assigns.names, 5))
+
     ~H"""
-    <.modal id={@id} compact>
+    <.modal id={@id} compact on_cancel={@on_cancel}>
       <h3 id={"#{@id}-title"} class="pr-8 text-lg font-semibold text-theme-on-surface">
-        {if @count == 1, do: "Delete Source?", else: "Delete #{@count} sources?"}
+        {case @names do
+          [name] -> "Delete #{name}?"
+          _names -> "Delete #{@count} sources?"
+        end}
       </h3>
+      <ul :if={@count > 1} id={"#{@id}-names"} class="mt-2 list-disc pl-5 text-sm text-theme-on-surface">
+        <li :for={name <- @listed} class="truncate">{name}</li>
+        <li :if={@count > length(@listed)}>and {@count - length(@listed)} more</li>
+      </ul>
       <p id={"#{@id}-description"} class="mt-2 text-sm text-theme-on-surface-muted">
         Indexing and downloads stop. Choose whether to keep the downloaded files. This can't be undone.
       </p>
@@ -407,7 +420,9 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       >
         <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
         <input :for={id <- @source_ids} type="hidden" name="source_ids[]" value={id} />
-        <.button type="button" variant="outline" size="compact" phx-click={hide_modal(@id)}>Cancel</.button>
+        <.button type="button" variant="outline" size="compact" phx-click={JS.exec("data-cancel", to: "##{@id}")}>
+          Cancel
+        </.button>
         <.button type="submit" variant="danger" size="compact" disabled={@count == 0}>
           {if @count == 1, do: "Delete Source", else: "Delete Sources"}
         </.button>
@@ -1631,8 +1646,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       <button
         type="submit"
         x-bind:disabled="submitting"
-        x-data="{ confirming: false }"
-        x-on:click="if (!confirming) { $event.preventDefault(); confirming = true }"
+        x-data="{ confirming: false, armedAt: 0 }"
+        x-on:click="if (!confirming) { $event.preventDefault(); confirming = true; armedAt = Date.now() } else if (Date.now() - armedAt < 400) { $event.preventDefault() }"
         x-on:blur="confirming = false"
         x-bind:class="confirming && 'theme-status-warning'"
       >
@@ -1644,10 +1659,16 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     """
   end
 
-  defp source_job_available?({:download_pending, _, _}, assigns),
+  defp source_jobs(assigns) do
+    for {job, label} <- Pinchflat.Sources.SourceActions.jobs(),
+        source_job_available?(job, assigns),
+        do: {job, label, Map.fetch!(@job_confirm_labels, job)}
+  end
+
+  defp source_job_available?(:download_pending, assigns),
     do: assigns.source.download_media == true and assigns.pending_count > 0
 
-  defp source_job_available?({:redownload_existing, _, _}, assigns),
+  defp source_job_available?(:redownload_existing, assigns),
     do: assigns.source.download_media == true and assigns.downloaded_count > 0
 
   defp source_job_available?(_job, _assigns), do: true

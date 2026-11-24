@@ -11,12 +11,26 @@ defmodule Pinchflat.Sources.SourceActions do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
 
-  @actions [:download_pending, :redownload_existing, :force_index, :refresh_metadata, :sync_files]
+  @jobs [
+    {:download_pending, "Download Pending"},
+    {:redownload_existing, "Redownload Existing"},
+    {:force_index, "Force Index"},
+    {:refresh_metadata, "Refresh Metadata"},
+    {:sync_files, "Sync Files on Disk"}
+  ]
+  @actions Keyword.keys(@jobs)
 
   @doc """
-  Returns the actions `run/2` accepts.
+  Returns the actions with their button labels, in menu order.
+
+  Returns [{atom(), String.t()}]
   """
-  def actions, do: @actions
+  def jobs, do: @jobs
+
+  @doc """
+  Returns the button label for an action.
+  """
+  def label(action), do: Keyword.fetch!(@jobs, action)
 
   @doc """
   Queues `action` for each selected source, using the same jobs as the source page.
@@ -30,20 +44,27 @@ defmodule Pinchflat.Sources.SourceActions do
   def run(action, ids) when action in @actions do
     with {:ok, sources} <- Sources.get_selected_sources(ids) do
       summary = %{sources: length(sources), queued: 0, duplicates: 0, failed: 0, skipped: 0}
-      {:ok, Enum.reduce(sources, summary, &tally(&2, kickoff(action, &1)))}
+      {:ok, Enum.reduce(sources, summary, &tally(&2, bulk_kickoff(action, &1)))}
     end
   end
 
   def run(_action, _ids), do: {:error, :invalid_action}
 
-  defp kickoff(action, %Source{download_media: false}) when action in [:download_pending, :redownload_existing],
+  @doc """
+  Queues `action` for one source, as its page's menu does.
+
+  Returns what the underlying helper returns: {:ok, task}, {:error, reason} or a list of those.
+  """
+  def kickoff(:download_pending, source), do: DownloadingHelpers.retry_pending_download_tasks(source)
+  def kickoff(:redownload_existing, source), do: DownloadingHelpers.kickoff_redownload_for_existing_media(source)
+  def kickoff(:force_index, source), do: SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
+  def kickoff(:refresh_metadata, source), do: SourceMetadataStorageWorker.kickoff_with_task(source)
+  def kickoff(:sync_files, source), do: FileSyncingWorker.kickoff_with_task(source)
+
+  defp bulk_kickoff(action, %Source{download_media: false}) when action in [:download_pending, :redownload_existing],
     do: :skipped
 
-  defp kickoff(:download_pending, source), do: DownloadingHelpers.retry_pending_download_tasks(source)
-  defp kickoff(:redownload_existing, source), do: DownloadingHelpers.kickoff_redownload_for_existing_media(source)
-  defp kickoff(:force_index, source), do: SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
-  defp kickoff(:refresh_metadata, source), do: SourceMetadataStorageWorker.kickoff_with_task(source)
-  defp kickoff(:sync_files, source), do: FileSyncingWorker.kickoff_with_task(source)
+  defp bulk_kickoff(action, source), do: kickoff(action, source)
 
   defp tally(summary, :skipped), do: Map.update!(summary, :skipped, &(&1 + 1))
   defp tally(summary, results) when is_list(results), do: Enum.reduce(results, summary, &tally(&2, &1))

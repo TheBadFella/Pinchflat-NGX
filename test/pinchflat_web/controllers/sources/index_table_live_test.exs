@@ -894,6 +894,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#pause-selected-sources button[data-armed="true"].theme-confirm-pending), "Pause 2?")
       assert Pinchflat.Repo.reload!(first).download_media
 
+      ripen_armed(view)
       view |> element("#pause-selected-sources button") |> render_click()
       refute Pinchflat.Repo.reload!(first).download_media
       refute Pinchflat.Repo.reload!(second).download_media
@@ -902,6 +903,22 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       send(view.pid, {:clear_done, :pause})
       assert has_element?(view, "#pause-selected-sources button.theme-outline-button", "Pause")
+    end
+
+    test "a double-click arms the action without running it", %{conn: conn} do
+      source = source_fixture(custom_name: "Only", download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      view |> element("#pause-selected-sources button") |> render_click()
+      view |> element("#pause-selected-sources button") |> render_click()
+      assert Pinchflat.Repo.reload!(source).download_media
+      assert has_element?(view, ~s(#pause-selected-sources button[data-armed="true"]), "Pause 1?")
+
+      ripen_armed(view)
+      view |> element("#pause-selected-sources button") |> render_click()
+      refute Pinchflat.Repo.reload!(source).download_media
     end
 
     test "an armed action lapses and needs both clicks again", %{conn: conn} do
@@ -945,6 +962,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, option <> ~s([data-armed="true"]), "Use Target for 1?")
       assert Pinchflat.Repo.reload!(source).media_profile_id == current.id
 
+      ripen_armed(view)
       view |> element(option) |> render_click()
       assert Pinchflat.Repo.reload!(source).media_profile_id == target.id
       assert has_element?(view, "#selected-source-profile button.theme-success-button", "Profile Changed")
@@ -1015,6 +1033,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, option <> ~s([data-armed="true"]), "Force Index for 2?")
       assert [] = all_enqueued(worker: Pinchflat.SlowIndexing.MediaCollectionIndexingWorker)
 
+      ripen_armed(view)
       view |> element(option) |> render_click()
       render_async(view)
 
@@ -1354,7 +1373,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       # Delete Source opens the shared delete dialog for just this source.
       view |> element(~s(#source-table button[aria-label="Delete Action source"])) |> render_click()
-      assert has_element?(view, "#delete-selected-sources-modal-title", "Delete Source?")
+      assert has_element?(view, "#delete-selected-sources-modal-title", "Delete Action source?")
       refute has_element?(view, "#source-table .theme-dropdown-option button", "Delete Source")
       assert has_element?(view, "#delete-selected-sources input[name='source_ids[]'][value='#{source.id}']")
       assert has_element?(view, "#delete-selected-sources button[name=delete_files]", "Delete Source + Files")
@@ -1382,5 +1401,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert html =~ ~s(action="/sources/#{source.id}/start_all")
       assert html =~ ~s(name="return_to" value="/sources?type=videos")
     end
+  end
+
+  # Lets an armed bulk action accept its confirming click, as it does once the double-click window passes.
+  defp ripen_armed(view) do
+    ref = :sys.get_state(view.pid).socket.assigns.armed |> elem(2)
+    send(view.pid, {:ripen_bulk, ref})
   end
 end

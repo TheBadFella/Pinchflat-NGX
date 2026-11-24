@@ -23,14 +23,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   @source_tabs [{"channels", "Channels & Playlists"}, {"videos", "Individual Videos"}]
   # How long a first click on a bulk action stays armed, and how long its button stays green after running.
   @bulk_arm_ms 4_000
+  # A confirming click sooner than this after arming is ignored, so a double-click can't run an action.
+  @bulk_ripen_ms 400
   @bulk_done_ms 900
-  @bulk_jobs [
-    {"download_pending", :download_pending, "Download Pending"},
-    {"redownload_existing", :redownload_existing, "Redownload Existing"},
-    {"force_index", :force_index, "Force Index"},
-    {"refresh_metadata", :refresh_metadata, "Refresh Metadata"},
-    {"sync_files", :sync_files, "Sync Files on Disk"}
-  ]
 
   defdelegate source_status(source, downloading?), to: SourceHTML
 
@@ -269,7 +264,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     """
   end
 
-  defp bulk_jobs, do: @bulk_jobs
+  defp bulk_jobs, do: for({job, label} <- SourceActions.jobs(), do: {to_string(job), job, label})
 
   defp notice_kind({:success, _text}), do: :info
   defp notice_kind({:error, _text}), do: :error
@@ -319,6 +314,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           armed: nil,
           done_action: nil,
           delete_ids: [],
+          delete_names: [],
           job_running: nil,
           notice_id: 0,
           downloading_ids: MapSet.new(),
@@ -390,7 +386,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   def handle_event("bulk_job", %{"action" => name}, socket) do
-    case {List.keyfind(@bulk_jobs, name, 0), socket.assigns.job_running} do
+    case {List.keyfind(bulk_jobs(), name, 0), socket.assigns.job_running} do
       {{_name, job, _label}, nil} -> bulk_click(socket, {:job, job})
       _ignored -> {:noreply, socket}
     end
@@ -419,12 +415,16 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   def handle_event("confirm_delete", %{"id" => id}, socket) do
     ids = if Enum.any?(socket.assigns.sources, &(to_string(&1.id) == to_string(id))), do: [to_string(id)], else: []
-    {:noreply, assign(socket, :delete_ids, ids)}
+    {:noreply, assign_delete(socket, ids)}
   end
 
   def handle_event("confirm_delete", _params, socket) do
-    {:noreply, assign(socket, :delete_ids, Enum.sort(socket.assigns.selected_ids))}
+    {:noreply, assign_delete(socket, Enum.sort(socket.assigns.selected_ids))}
   end
+
+  # Cancelling empties the dialog, so it can't post an earlier choice if the next open
+  # doesn't reach the server.
+  def handle_event("cancel_delete", _params, socket), do: {:noreply, assign_delete(socket, [])}
 
   def handle_event("select_all", _params, socket), do: select_all(socket)
 
@@ -445,11 +445,17 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     {:noreply, throttled_set_sources(socket)}
   end
 
-  def handle_info({:disarm_bulk, ref}, %{assigns: %{armed: {_action, _ids, ref}}} = socket) do
+  def handle_info({:disarm_bulk, ref}, %{assigns: %{armed: {_action, _ids, ref, _ripe}}} = socket) do
     {:noreply, assign(socket, :armed, nil)}
   end
 
   def handle_info({:disarm_bulk, _ref}, socket), do: {:noreply, socket}
+
+  def handle_info({:ripen_bulk, ref}, %{assigns: %{armed: {action, ids, ref, false}}} = socket) do
+    {:noreply, assign(socket, :armed, {action, ids, ref, true})}
+  end
+
+  def handle_info({:ripen_bulk, _ref}, socket), do: {:noreply, socket}
 
   def handle_info({:clear_done, action}, %{assigns: %{done_action: action}} = socket) do
     {:noreply, assign(socket, :done_action, nil)}
@@ -574,17 +580,21 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       ids == [] ->
         {:noreply, socket}
 
-      armed?(assigns.armed, action, ids) ->
+      match?({^action, ^ids, _ref, true}, assigns.armed) ->
         run_bulk_action(assign(socket, :armed, nil), action, ids)
+
+      armed?(assigns.armed, action, ids) ->
+        {:noreply, socket}
 
       true ->
         ref = make_ref()
+        Process.send_after(self(), {:ripen_bulk, ref}, @bulk_ripen_ms)
         Process.send_after(self(), {:disarm_bulk, ref}, @bulk_arm_ms)
-        {:noreply, assign(socket, :armed, {action, ids, ref})}
+        {:noreply, assign(socket, :armed, {action, ids, ref, false})}
     end
   end
 
-  defp armed?({action, ids, _ref}, action, ids), do: true
+  defp armed?({action, ids, _ref, _ripe}, action, ids), do: true
   defp armed?(_armed, _action, _ids), do: false
 
   defp armed_for?(armed, action, selected_ids), do: armed?(armed, action, Enum.sort(selected_ids))
@@ -620,10 +630,22 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
+  defp assign_delete(socket, ids) do
+    names =
+      from(s in Source,
+        where: s.id in ^Enum.map(ids, &String.to_integer/1),
+        order_by: s.custom_name,
+        select: s.custom_name
+      )
+      |> Repo.all()
+
+    assign(socket, delete_ids: ids, delete_names: names)
+  end
+
   defp put_notice(socket, notice), do: assign(socket, notice: notice, notice_id: socket.assigns.notice_id + 1)
 
   defp bulk_job_message(job, summary) do
-    {_name, _job, label} = List.keyfind(@bulk_jobs, job, 1)
+    label = SourceActions.label(job)
     noun = if summary.sources == 1, do: "source", else: "sources"
 
     counts =

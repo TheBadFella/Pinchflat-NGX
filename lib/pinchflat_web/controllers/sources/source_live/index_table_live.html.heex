@@ -286,8 +286,9 @@
       <SourceHTML.source_delete_dialog
         id="delete-selected-sources-modal"
         form_id="delete-selected-sources"
-        count={length(@delete_ids)}
+        names={@delete_names}
         action={~p"/sources/delete_selected"}
+        on_cancel={JS.push("cancel_delete")}
         return_to={@return_to}
         source_ids={@delete_ids}
       />

@@ -4,6 +4,7 @@ defmodule PinchflatWeb.BulkSourceDeleteTest do
   import Phoenix.LiveViewTest
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
+  import Pinchflat.ProfilesFixtures
 
   alias Pinchflat.Repo
   alias Pinchflat.Sources.SourceDeletionWorker
@@ -30,6 +31,28 @@ defmodule PinchflatWeb.BulkSourceDeleteTest do
     refute Repo.reload!(untouched).marked_for_deletion_at
     refute_enqueued(worker: SourceDeletionWorker, args: %{"id" => untouched.id})
     assert File.exists?(item.media_filepath)
+  end
+
+  test "refuses the whole selection while a source has watch-protected videos", %{conn: conn} do
+    profile = media_profile_fixture() |> Ecto.Changeset.change(watch_window_days: 14) |> Repo.update!()
+    protected = source_fixture(media_profile_id: profile.id)
+    other = source_fixture()
+    path = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "bulk-#{Ecto.UUID.generate()}.mp4")
+    File.write!(path, "original")
+    item = media_item_fixture(source_id: protected.id, media_filepath: path)
+    {:ok, _watch} = Pinchflat.MediaWatch.enroll_on_first_completion(item, Repo.preload(protected, :media_profile))
+
+    conn =
+      post(conn, "/sources/delete_selected", %{
+        "source_ids" => ["#{protected.id}", "#{other.id}"],
+        "delete_files" => "true"
+      })
+
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "End watch protection"
+    refute Repo.reload!(protected).marked_for_deletion_at
+    refute Repo.reload!(other).marked_for_deletion_at
+    refute_enqueued(worker: SourceDeletionWorker)
+    assert File.exists?(path)
   end
 
   test "deletes the downloaded files too when asked", %{conn: conn} do
@@ -90,6 +113,8 @@ defmodule PinchflatWeb.BulkSourceDeleteTest do
     refute has_element?(view, "#selected-source-actions button.theme-danger-button[disabled]")
     view |> element("#selected-source-actions button.theme-danger-button") |> render_click()
     assert has_element?(view, "#delete-selected-sources-modal-title", "Delete 2 sources?")
+    assert has_element?(view, "#delete-selected-sources-modal-names li", "First")
+    assert has_element?(view, "#delete-selected-sources-modal-names li", "Second")
     assert has_element?(view, "#delete-selected-sources-modal", "Choose whether to keep the downloaded files.")
     assert has_element?(view, "#delete-selected-sources input[name='source_ids[]'][value='#{first.id}']")
     assert has_element?(view, "#delete-selected-sources input[name='source_ids[]'][value='#{second.id}']")
@@ -102,6 +127,11 @@ defmodule PinchflatWeb.BulkSourceDeleteTest do
            )
 
     refute render(view) =~ "data-confirm"
+
+    # Cancelling empties the dialog, so a later open that doesn't reach the server can't post this selection.
+    render_click(view, "cancel_delete")
+    refute has_element?(view, "#delete-selected-sources input[name='source_ids[]']")
+    assert has_element?(view, "#delete-selected-sources button[type=submit][disabled]", "Delete Sources")
 
     # The bulk buttons need a second click instead of a browser dialog.
     view |> element("#pause-selected-sources button") |> render_click()
