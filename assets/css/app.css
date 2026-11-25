@@ -49,7 +49,11 @@
   /* Source grid card head: name, type row and profile row, with room for a two-line name
      (2 x 20px name + 44px toggle row + 36px profile row + two 12px gaps). */
   .theme-source-card-head {
-    @apply min-h-36 max-sm:min-h-38;
+    @apply min-h-30;
+  }
+
+  .theme-source-card-head-compact {
+    @apply min-h-20;
   }
 
   .theme-switch-target {
@@ -387,7 +391,10 @@
       @apply min-h-11! min-w-11!;
     }
     .theme-source-card-head {
-      @apply min-h-38;
+      @apply min-h-39;
+    }
+    .theme-source-card-head-compact {
+      @apply min-h-25;
     }
   }
 
