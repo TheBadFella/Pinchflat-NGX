@@ -30,6 +30,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
     attr :label_icon, :string, doc: "an icon shown instead of the label, which stays the accessible name"
     attr :header, :any, doc: "rendered content for the header cell instead of the label, such as a select-all checkbox"
     attr :class, :string
+    attr :column_class, :string, doc: "classes for the header and the cells, such as hiding the column when narrow"
     attr :sort_key, :string
   end
 
@@ -51,7 +52,8 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                   if(@compact, do: "whitespace-nowrap px-2", else: "px-4"),
                   header_padding(@compact, col[:sort_key] && !col[:header]),
                   col[:sort_key] && !col[:header] && "relative",
-                  col[:label_icon] && "text-center"
+                  col[:label_icon] && "text-center",
+                  col[:column_class]
                 ]}
                 aria-sort={column_sort(@sort_key, @sort_direction, col[:sort_key])}
               >
@@ -87,7 +89,8 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                 class={[
                   "text-theme-on-surface-muted",
                   if(@compact, do: "px-2 py-2.5", else: "px-4 py-5"),
-                  col[:class]
+                  col[:class],
+                  col[:column_class]
                 ]}
               >
                 {render_slot(col, @row_item.(row))}

@@ -117,6 +117,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
 
   slot :option, required: true
   slot :trigger, doc: "content for a compact chip trigger, such as a value in a table cell, instead of a button"
+  attr :chevron_class, :string, default: nil, doc: "classes for a chip trigger's chevron, such as hiding it when narrow"
 
   def button_dropdown(assigns) do
     size_class = button_size_class(assigns.size)
@@ -279,7 +280,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       :variant_class,
       :disabled,
       :align,
-      :trigger
+      :trigger,
+      :chevron_class
     ])
   end
 
@@ -295,6 +297,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :disabled, :boolean, default: false
   attr :align, :string, default: "end"
   attr :trigger, :list, default: []
+  attr :chevron_class, :string, default: nil
 
   defp dropdown_trigger(assigns) do
     ~H"""
@@ -334,7 +337,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           {render_slot(@trigger)}
           <CoreComponents.icon
             name="hero-chevron-down"
-            class="h-3.5 w-3.5 shrink-0 opacity-70 transition-transform"
+            class={"h-3.5 w-3.5 shrink-0 opacity-70 transition-transform #{@chevron_class}"}
             x-bind:class="dropdownOpen && 'rotate-180'"
           />
         <% @icon_name -> %>

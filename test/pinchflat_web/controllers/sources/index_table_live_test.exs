@@ -663,6 +663,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       assert has_element?(view, ~s(th button[data-label="Index Frequency"] [data-icon="hero-clock"]))
       assert render_element(view, "#source-indexing-#{daily.id}") =~ "Daily"
+      assert render_element(view, "#source-indexing-mobile-#{daily.id}") =~ "Daily"
+      assert has_element?(view, "#source-retention-mobile-#{daily.id}")
+      refute has_element?(view, "article p", "Retention:")
       assert render_element(view, "#source-indexing-#{daily.id}") =~ "Indexed every day"
       assert render_element(view, "#source-indexing-#{fast.id}") =~ "10 Min"
       assert render_element(view, "#source-indexing-#{once.id}") =~ "Indexed only once"

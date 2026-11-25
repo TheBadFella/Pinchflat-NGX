@@ -1588,7 +1588,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       [_, header] = String.split(response, ~s(id="source-library-header"), parts: 2)
 
       assert header =~
-               ~r/id="source-status-header-#{source.id}".*?<\/span>\s*<\/div>.*?Channel\s*<\/span>\s*<a[^>]*href="#{Regex.escape(source.original_url)}"/s
+               ~r/id="source-status-header-#{source.id}".*?<\/span>\s*<\/div>.*?Channel\s*<\/span>\s*<\/span>\s*<a[^>]*href="#{Regex.escape(source.original_url)}"/s
     end
 
     test "renders grouped source details instead of a raw attribute dump", %{conn: conn} do

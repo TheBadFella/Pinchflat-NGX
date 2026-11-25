@@ -222,6 +222,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :saved, :any, default: nil, doc: "changes after each save, which closes the popover"
   attr :show_icon, :boolean, default: false
   attr :class, :string, default: nil
+  attr :chevron_class, :string, default: nil
 
   defp source_retention(assigns) do
     source = assigns.source
@@ -239,6 +240,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       tooltip_position="top"
       tooltip_class="text-center"
       class={"w-fit #{@class}"}
+      chevron_class={@chevron_class}
     >
       <:trigger>
         <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
@@ -250,7 +252,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
         <form
           id={"retention-form-#{@source.id}-#{@id}"}
           phx-submit="set_source_cutoff"
-          class="w-72 px-4 pb-2 text-left"
+          class="w-72 max-w-full px-4 pb-2 text-left"
         >
           <span :if={@saved} id={"retention-saved-#{@id}-#{@saved}"} class="hidden" x-init="dropdownOpen = false"></span>
           <input type="hidden" name="source_id" value={@source.id} />
@@ -386,6 +388,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :id, :string, default: nil
   attr :class, :string, default: nil
   attr :show_icon, :boolean, default: false
+  attr :chevron_class, :string, default: nil
 
   defp source_index_frequency(assigns) do
     {short, full} = index_frequency_labels(assigns.source)
@@ -404,6 +407,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       tooltip_position="top"
       tooltip_class="text-center"
       class={"w-fit #{@class}"}
+      chevron_class={@chevron_class}
     >
       <:trigger>
         <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
@@ -479,6 +483,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :source, :map, required: true
   attr :media_profiles, :list, required: true
   attr :text_class, :string, default: "max-w-48 truncate"
+  attr :chevron_class, :string, default: nil
 
   defp source_profile_picker(assigns) do
     ~H"""
@@ -488,6 +493,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       tooltip_position="top"
       align="start"
       class="w-fit"
+      chevron_class={@chevron_class}
     >
       <:trigger><span class={@text_class}>{@source.media_profile.name}</span></:trigger>
       <:option :for={profile <- @media_profiles}>
