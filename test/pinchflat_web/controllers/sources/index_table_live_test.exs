@@ -1129,6 +1129,31 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "#pause-selected-sources button span.max-sm\\:sr-only")
     end
 
+    test "turns automatic downloads off and on from the bulk More actions menu", %{conn: conn} do
+      source = source_fixture(custom_name: "Bulk downloads", download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      off = ~s(#selected-source-jobs button[phx-value-action="pause"])
+      on = ~s(#selected-source-jobs button[phx-value-action="resume"])
+      assert has_element?(view, off, "Disable Automatic Downloads")
+      assert has_element?(view, on, "Enable Automatic Downloads")
+
+      view |> element(off) |> render_click()
+      assert has_element?(view, ~s(#{off}[data-armed="true"]), "Disable Automatic Downloads for 1?")
+      assert Repo.reload!(source).download_media
+
+      ripen_armed(view)
+      view |> element(off) |> render_click()
+      refute Repo.reload!(source).download_media
+
+      view |> element(on) |> render_click()
+      ripen_armed(view)
+      view |> element(on) |> render_click()
+      assert Repo.reload!(source).download_media
+    end
+
     test "sets the index frequency of the selected sources on a second click", %{conn: conn} do
       daily = source_fixture(custom_name: "Daily", index_frequency_minutes: 24 * 60)
       fast = source_fixture(custom_name: "Fast", fast_index: true, index_frequency_minutes: 30 * 24 * 60)
@@ -1249,20 +1274,25 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       card = render_element(view, "#source-card-#{busy.id}")
 
       for label <-
-            ["Copy RSS Feed", "Use as Template", "Download Pending", "Redownload Existing", "Force Index"] ++
-              ["Refresh Metadata", "Sync Files on Disk", "Reconcile Files", "Start All", "Stop All"] do
+            ["Use as Template", "Download Pending", "Redownload Existing", "Force Index"] ++
+              ["Refresh Metadata", "Sync Files on Disk", "Reconcile Files", "Downloads"] do
         assert card =~ label
       end
 
-      assert card =~ ~s(action="/sources/#{busy.id}/force_index")
+      menu = ~s(#source-card-#{busy.id} button[phx-click="source_job"][phx-value-id="#{busy.id}"])
+      assert has_element?(view, ~s(#{menu}[phx-value-action="force_index"]))
+      assert has_element?(view, ~s(#{menu}[phx-value-action="download_pending"]))
       assert card =~ ~s(href="/reconciliation?source_id=#{busy.id}")
       assert card =~ ~s(href="/sources/new?template_id=#{busy.id}")
-      assert card =~ ~s(name="return_to" value="/sources")
+      refute card =~ ~s(action="/sources/#{busy.id}/force_index")
       refute card =~ "Copy JSON"
+      refute card =~ "Copy RSS Feed"
 
       empty_card = render_element(view, "#source-card-#{empty.id}")
+      refute empty_card =~ ~s(phx-value-action="download_pending")
+      refute empty_card =~ ~s(phx-value-action="redownload_existing")
       refute empty_card =~ "Download Pending"
-      refute empty_card =~ "Redownload Existing"
+      assert empty_card =~ ~r/Redownload Existing\s*<span[^>]*>Nothing downloaded/
       assert empty_card =~ "Force Index"
     end
 
@@ -1629,17 +1659,20 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "source action controls" do
-    test "row menus keep start, pause, stop and delete destinations", %{conn: conn} do
+    test "row menus run their actions without leaving the list", %{conn: conn} do
       source = source_fixture(custom_name: "Action source")
 
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      for action <- ["start_all", "pause_all", "stop_all"] do
-        assert html =~ ~s(action="/sources/#{source.id}/#{action}")
+      for action <- ["start", "pause", "stop"] do
+        assert has_element?(
+                 view,
+                 ~s(#source-table button[phx-click="source_switch"][phx-value-action="#{action}"][phx-value-id="#{source.id}"])
+               )
       end
 
+      refute html =~ ~s(action="/sources/#{source.id}/start_all")
       assert has_element?(view, ~s(button[aria-label="More actions for Action source"]))
-      assert html =~ ~s(name="return_to" value="/sources")
       refute html =~ "data-confirm"
 
       # Delete Source opens the shared delete dialog for just this source.
@@ -1648,9 +1681,42 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "#source-table .theme-dropdown-option button", "Delete Source")
       assert has_element?(view, "#delete-selected-sources input[name='source_ids[]'][value='#{source.id}']")
       assert has_element?(view, "#delete-selected-sources button[name=delete_files]", "Delete Source + Files")
-      assert html =~ "Start All"
-      assert html =~ "Pause All"
-      assert html =~ "Stop All"
+
+      for label <- ["Start All", "Pause All", "Stop All"] do
+        assert has_element?(view, ~s(#source-table button[aria-label="#{label}: Action source"]))
+      end
+    end
+
+    test "a row's actions report a notice and keep the list in place", %{conn: conn} do
+      source = source_fixture(custom_name: "Live actions", download_media: true)
+      media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      job = ~s(#source-table button[phx-click="source_job"][phx-value-id="#{source.id}"])
+
+      view |> element(~s(#{job}[phx-value-action="force_index"])) |> render_click()
+      assert render(view) =~ "Force Index for 1 source"
+
+      view
+      |> element(~s(#source-table button[phx-click="source_automatic_downloads"][phx-value-id="#{source.id}"]))
+      |> render_click()
+
+      refute Repo.reload!(source).download_media
+      assert render(view) =~ "Automatic downloads disabled for Live actions."
+
+      view
+      |> element(~s(#source-table button[phx-click="source_automatic_downloads"][phx-value-enabled="true"]))
+      |> render_click()
+
+      assert Repo.reload!(source).download_media
+
+      view
+      |> element(
+        ~s(#source-table button[phx-click="source_switch"][phx-value-action="start"][phx-value-id="#{source.id}"])
+      )
+      |> render_click()
+
+      assert render(view) =~ "Live actions: downloads started."
     end
 
     test "keeps the selection checkbox accessible without visible Select label text", %{conn: conn} do
@@ -1663,13 +1729,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "label > span:not(.sr-only)", "Select")
     end
 
-    test "keeps the individual-video return path on the action forms", %{conn: conn} do
+    test "keeps the Individual Videos tab for row actions and deletes", %{conn: conn} do
       source = source_fixture(custom_name: "Video source", collection_type: :video)
       session = Map.merge(create_session(), %{"source_type" => "videos"})
 
-      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: session)
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
 
-      assert html =~ ~s(action="/sources/#{source.id}/start_all")
+      assert has_element?(view, ~s(button[phx-click="source_switch"][phx-value-id="#{source.id}"]))
+      refute html =~ ~s(action="/sources/#{source.id}/start_all")
       assert html =~ ~s(name="return_to" value="/sources?type=videos")
     end
   end

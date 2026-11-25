@@ -83,6 +83,7 @@
               source={@source}
               pending_count={@pending_count}
               downloaded_count={@media_statistics.downloaded}
+              downloading={@downloading}
               json={Jason.Formatter.pretty_print(Phoenix.json_library().encode!(@source))}
               text="Actions"
             />

@@ -122,6 +122,7 @@
             <.bulk_action_button
               action="pause"
               label="Pause"
+              tooltip="Turn off automatic downloads for the selected sources"
               confirm_label={"Pause #{MapSet.size(@selected_ids)}?"}
               done_label="Paused"
               icon="hero-pause-solid"
@@ -135,6 +136,7 @@
             <.bulk_action_button
               action="resume"
               label="Resume"
+              tooltip="Turn on automatic downloads for the selected sources"
               confirm_label={"Resume #{MapSet.size(@selected_ids)}?"}
               done_label="Resumed"
               icon="hero-play-solid"
@@ -287,6 +289,29 @@
                   class="flex-col items-start! gap-0! disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Reconcile Files <span class="text-xs font-normal">One source at a time</span>
+                </button>
+              </:option>
+              <:option>
+                <div class="h-px w-full bg-theme-outline/70"></div>
+              </:option>
+              <:option :for={
+                {action, icon, label} <- [
+                  {:pause, "hero-bolt-slash-solid", "Disable Automatic Downloads"},
+                  {:resume, "hero-bolt-solid", "Enable Automatic Downloads"}
+                ]
+              }>
+                <button
+                  type="button"
+                  phx-click="bulk_action"
+                  phx-value-action={action}
+                  data-armed={to_string(armed_for?(@armed, action, @selected_ids))}
+                  x-on:click="if ($el.dataset.armed === 'true') dropdownOpen = false"
+                  class={armed_for?(@armed, action, @selected_ids) && "theme-status-warning"}
+                >
+                  <.icon name={icon} class="h-4 w-4" />
+                  {if armed_for?(@armed, action, @selected_ids),
+                    do: "#{label} for #{MapSet.size(@selected_ids)}?",
+                    else: label}
                 </button>
               </:option>
             </.button_dropdown>
@@ -455,7 +480,11 @@
                 />
               </.tooltip>
               <.source_delete_button source={source} />
-              <.source_row_actions source={source} return_to={@return_to} />
+              <.source_row_actions
+                source={source}
+                return_to={@return_to}
+                downloading={MapSet.member?(@downloading_ids, source.id)}
+              />
             </div>
           </div>
 
@@ -636,7 +665,12 @@
                 </.tooltip>
                 <.source_delete_button source={source} />
               </div>
-              <.source_row_actions source={source} return_to={@return_to} fold_edit_delete />
+              <.source_row_actions
+                source={source}
+                return_to={@return_to}
+                downloading={MapSet.member?(@downloading_ids, source.id)}
+                fold_edit_delete
+              />
             </div>
           </:col>
         </.table>
@@ -733,7 +767,12 @@
                   size="compact"
                 />
                 <.source_delete_button source={source} tooltip_position="bottom" />
-                <.source_row_actions source={source} return_to={@return_to} tooltip_position="bottom" />
+                <.source_row_actions
+                  source={source}
+                  return_to={@return_to}
+                  downloading={MapSet.member?(@downloading_ids, source.id)}
+                  tooltip_position="bottom"
+                />
               </div>
             </div>
 

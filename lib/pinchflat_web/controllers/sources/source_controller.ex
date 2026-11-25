@@ -8,7 +8,6 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
-  alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Reconciliation
@@ -17,7 +16,6 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Sources.SourceActions
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Sources.SourceDeletionWorker
-  alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.Settings.YtDlpConfigFile
   alias PinchflatWeb.Schemas
   alias PinchflatWeb.Sources.SourceHTML
@@ -510,19 +508,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def start_all(conn, %{"source_id" => id} = params) do
-    source = Sources.get_source!(id)
-
-    if startable_source?(source) do
-      {:ok, source} = Sources.update_source(source, %{enabled: true, download_media: true})
-
-      conn
-      |> put_flash(:info, "Source started.")
-      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
-    else
-      conn
-      |> put_flash(:info, "Nothing to download for this source.")
-      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
-    end
+    switch_downloads(conn, params, id, :start, "Source started.", "Nothing to download for this source.")
   end
 
   def pause_selected(conn, params) do
@@ -626,36 +612,58 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def pause_all(conn, %{"source_id" => id} = params) do
-    source = Sources.get_source!(id)
-
-    if active_downloads_for_source?(source) || queued_downloads_for_source?(source) do
-      {:ok, source} = Sources.update_source(source, %{download_media: false})
-      DownloadingHelpers.dequeue_pending_download_tasks(source, include_executing: true)
-
-      conn
-      |> put_flash(:info, "Source downloads paused.")
-      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
-    else
-      conn
-      |> put_flash(:info, "No active downloads to pause for this source.")
-      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
-    end
+    switch_downloads(
+      conn,
+      params,
+      id,
+      :pause,
+      "Source downloads paused.",
+      "No active downloads to pause for this source."
+    )
   end
 
   def stop_all(conn, %{"source_id" => id} = params) do
+    switch_downloads(conn, params, id, :stop, "Source stopped.", "Nothing to stop for this source.")
+  end
+
+  defp switch_downloads(conn, params, id, action, done_message, idle_message) do
     source = Sources.get_source!(id)
 
-    if stoppable_source?(source) do
-      {:ok, source} = Sources.update_source(source, %{enabled: false, download_media: false})
-      DownloadingHelpers.dequeue_pending_download_tasks(source, include_executing: true)
+    {kind, message} =
+      case SourceActions.switch(action, source) do
+        {:ok, _source} -> {:info, done_message}
+        :nothing_to_do -> {:info, idle_message}
+        {:error, _changeset} -> {:error, "Could not change this source's downloads."}
+      end
 
-      conn
-      |> put_flash(:info, "Source stopped.")
-      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
-    else
-      conn
-      |> put_flash(:info, "Nothing to stop for this source.")
-      |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    conn
+    |> put_flash(kind, message)
+    |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+  end
+
+  @doc """
+  Turns a source's automatic downloads (Download Media) on or off from its actions menu.
+  Turning them off cancels queued and running downloads; turning them on queues the pending
+  items when the source is enabled. Existing files are kept either way.
+  """
+  def set_automatic_downloads(conn, %{"source_id" => id, "enabled" => enabled} = params) do
+    source = Sources.get_source!(id)
+
+    {result, message} =
+      if enabled == "true",
+        do: {Sources.resume_selected_sources([id]), "Automatic downloads enabled."},
+        else: {Sources.pause_selected_sources([id]), "Automatic downloads disabled."}
+
+    case result do
+      {:ok, _sources} ->
+        conn
+        |> put_flash(:info, message)
+        |> redirect(to: redirect_target_for(params, source, ~p"/sources/#{source}"))
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Could not change automatic downloads for this source.")
+        |> redirect(to: redirect_target_for(params, source, ~p"/sources/#{source}"))
     end
   end
 
@@ -1244,36 +1252,6 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp apply_sponsorblock_mode(params, field, "inherit"), do: Map.put(params, field, nil)
   defp apply_sponsorblock_mode(params, field, "disable"), do: Map.put(params, field, [])
   defp apply_sponsorblock_mode(params, _field, _mode), do: params
-
-  defp startable_source?(source) do
-    source
-    |> Media.list_pending_media_items_for()
-    |> Enum.any?()
-  end
-
-  defp stoppable_source?(source) do
-    active_downloads_for_source?(source) || queued_downloads_for_source?(source)
-  end
-
-  defp active_downloads_for_source?(source) do
-    count_download_tasks_for_source(source, ["executing"]) > 0
-  end
-
-  defp queued_downloads_for_source?(source) do
-    count_download_tasks_for_source(source, ["available", "scheduled", "retryable"]) > 0
-  end
-
-  defp count_download_tasks_for_source(source, states) do
-    from(t in Task,
-      join: j in assoc(t, :job),
-      join: mi in assoc(t, :media_item),
-      where: mi.source_id == ^source.id,
-      where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
-      where: j.state in ^states,
-      select: count(t.id)
-    )
-    |> Repo.one()
-  end
 
   defp merge_selected_media_ids(source, selected_media_ids, selection_range) do
     range_selected_ids =

@@ -192,6 +192,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :return_to, :string, required: true
   attr :tooltip_position, :string, default: "top"
   attr :fold_edit_delete, :boolean, default: false, doc: "list Edit and Delete in the menu when the table is narrow"
+  attr :downloading, :boolean, default: false
 
   defp source_row_actions(assigns) do
     ~H"""
@@ -202,6 +203,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       source={@source}
       pending_count={@source.pending_count}
       downloaded_count={@source.downloaded_count}
+      downloading={@downloading}
+      show_feed={false}
+      live
       return_to={@return_to}
       icon_name="hero-ellipsis-vertical-solid"
       aria_label={"More actions for #{@source.custom_name}"}
@@ -443,29 +447,32 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :armed, :boolean, required: true
   attr :done, :boolean, required: true
   attr :disabled, :boolean, default: false
+  attr :tooltip, :string, required: true
 
   # The first click arms the action and the second runs it; the button then turns green briefly.
   defp bulk_action_button(assigns) do
     ~H"""
-    <.button
-      type="button"
-      variant={if @done, do: "success", else: "outline"}
-      size="compact"
-      class={["gap-1.5 transition-colors duration-300", @armed && "theme-confirm-pending"]}
-      disabled={@disabled}
-      phx-click="bulk_action"
-      phx-value-action={@action}
-      data-armed={to_string(@armed)}
-    >
-      <.icon name={if @done, do: "hero-check", else: @icon} class="h-4 w-4" />
-      <span class={!@done && !@armed && "max-sm:sr-only"}>
-        {cond do
-          @done -> @done_label
-          @armed -> @confirm_label
-          true -> @label
-        end}
-      </span>
-    </.button>
+    <.tooltip tooltip={@tooltip} position="top" tooltip_class="text-center">
+      <.button
+        type="button"
+        variant={if @done, do: "success", else: "outline"}
+        size="compact"
+        class={["gap-1.5 transition-colors duration-300", @armed && "theme-confirm-pending"]}
+        disabled={@disabled}
+        phx-click="bulk_action"
+        phx-value-action={@action}
+        data-armed={to_string(@armed)}
+      >
+        <.icon name={if @done, do: "hero-check", else: @icon} class="h-4 w-4" />
+        <span class={!@done && !@armed && "max-sm:sr-only"}>
+          {cond do
+            @done -> @done_label
+            @armed -> @confirm_label
+            true -> @label
+          end}
+        </span>
+      </.button>
+    </.tooltip>
     """
   end
 
@@ -541,6 +548,12 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   defp cutoff_attrs(_params), do: {:ok, %{"download_cutoff_date" => nil, "download_cutoff_days" => nil}}
+
+  defp listed_source(socket, id), do: Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
+
+  defp switch_done(:start), do: "downloads started"
+  defp switch_done(:pause), do: "downloads paused"
+  defp switch_done(:stop), do: "source stopped"
 
   defp parse_whole_days(value, minimum, name) do
     case String.trim(value || "") do
@@ -683,7 +696,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   def handle_event("assign_source_profile", %{"id" => id, "profile_id" => profile_id}, socket) do
-    source = Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
+    source = listed_source(socket, id)
     profile = Enum.find(socket.assigns.media_profiles, &(to_string(&1.id) == profile_id))
 
     # The new profile name on the picker confirms the change, so only a failure gets a toast.
@@ -696,7 +709,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   def handle_event("toggle_source_enabled", %{"id" => id}, socket) do
-    with %{} = listed <- Enum.find(socket.assigns.sources, &(to_string(&1.id) == id)),
+    with %{} = listed <- listed_source(socket, id),
          {:ok, _source} <-
            id |> Sources.get_source!() |> Sources.update_source(%{"enabled" => to_string(!listed.enabled)}) do
       {:noreply, set_sources(socket)}
@@ -708,7 +721,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   def handle_event("set_source_cutoff", %{"source_id" => id} = params, socket) do
-    with %{} <- Enum.find(socket.assigns.sources, &(to_string(&1.id) == id)),
+    with %{} <- listed_source(socket, id),
          {:ok, attrs} <- cutoff_attrs(params) do
       source = Sources.get_source!(id)
       removal = cutoff_removal(source, attrs)
@@ -728,9 +741,52 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
+  def handle_event("source_job", %{"id" => id, "action" => action}, socket) do
+    with %{} <- listed_source(socket, id),
+         {_name, job, _label} <- List.keyfind(bulk_jobs(), action, 0),
+         {:ok, summary} <- SourceActions.run(job, [id]) do
+      kind = if summary.failed > 0, do: :error, else: :success
+      {:noreply, socket |> put_notice({kind, bulk_job_message(job, summary)}) |> set_sources()}
+    else
+      _error -> {:noreply, put_notice(socket, {:error, "Could not queue this action. Reload the page and try again."})}
+    end
+  end
+
+  def handle_event("source_automatic_downloads", %{"id" => id, "enabled" => enabled}, socket) do
+    {change, done} =
+      if enabled == "true",
+        do: {&Sources.resume_selected_sources/1, "enabled"},
+        else: {&Sources.pause_selected_sources/1, "disabled"}
+
+    with %{} = source <- listed_source(socket, id),
+         {:ok, _sources} <- change.([id]) do
+      notice = {:success, "Automatic downloads #{done} for #{source.custom_name}."}
+      {:noreply, socket |> put_notice(notice) |> set_sources()}
+    else
+      _error ->
+        notice = {:error, "Could not change automatic downloads. Reload the page and try again."}
+        {:noreply, put_notice(socket, notice)}
+    end
+  end
+
+  def handle_event("source_switch", %{"id" => id, "action" => action}, socket) when action in ~w(start pause stop) do
+    action = String.to_existing_atom(action)
+
+    notice =
+      with %{} <- listed_source(socket, id),
+           {:ok, source} <- SourceActions.switch(action, Sources.get_source!(id)) do
+        {:success, "#{source.custom_name}: #{switch_done(action)}."}
+      else
+        :nothing_to_do -> {:success, "Nothing to #{action} for this source."}
+        _error -> {:error, "Could not change this source's downloads. Reload the page and try again."}
+      end
+
+    {:noreply, socket |> put_notice(notice) |> set_sources()}
+  end
+
   def handle_event("set_source_index_frequency", %{"id" => id, "minutes" => minutes}, socket) do
     allowed = Enum.map(SourceHTML.friendly_index_frequencies(), fn {_label, value} -> to_string(value) end)
-    source = Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
+    source = listed_source(socket, id)
 
     with true <- minutes in allowed,
          %{} <- source,

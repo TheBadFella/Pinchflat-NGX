@@ -170,18 +170,34 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ ~s(data-source-status="Indexing Enabled, No Automatic Downloads")
     end
 
+    test "greys out the Downloads switches that would do nothing", %{conn: conn} do
+      idle = source_fixture(%{custom_name: "Idle Source"})
+      waiting = source_fixture(%{custom_name: "Waiting Source"})
+      media_item_fixture(source_id: waiting.id, media_filepath: nil)
+
+      response = conn |> get(~p"/sources?view=table") |> html_response(200)
+
+      for label <- ["Start All", "Pause All", "Stop All"] do
+        assert response =~ ~r/<button[^>]*\sdisabled\s[^>]*aria-label="#{label}: Idle Source"/
+      end
+
+      refute response =~ ~r/<button[^>]*\sdisabled\s[^>]*aria-label="Start All: Waiting Source"/
+      assert response =~ ~r/<button[^>]*\sdisabled\s[^>]*aria-label="Pause All: Waiting Source"/
+      assert response =~ "Start All: nothing pending"
+      assert response =~ "Pause All: nothing downloading"
+    end
+
     test "renders source row controls", %{conn: conn} do
       source_fixture(%{custom_name: "Controllable Source"})
 
       conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
-      assert response =~ "Start All"
-      assert response =~ "Pause All"
-      assert response =~ "Stop All"
-      assert response =~ "Click again to start"
-      assert response =~ "Click again to pause"
-      assert response =~ "Click again to stop"
+      for label <- ["Start All", "Pause All", "Stop All"] do
+        assert response =~ ~s(aria-label="#{label}: Controllable Source")
+      end
+
+      refute response =~ "Click again"
       refute response =~ "Start downloads for Controllable Source?"
     end
 
@@ -1625,7 +1641,7 @@ defmodule PinchflatWeb.SourceControllerTest do
         assert response =~ label
       end
 
-      assert response =~ "Click again to start"
+      refute response =~ "Click again"
       refute response =~ "Start downloads for Dropdown Source?"
       refute response =~ "Are you sure"
 
@@ -1637,18 +1653,24 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Delete Source + Files"
     end
 
-    test "hides Download Pending and Redownload Existing when there is nothing for them to do", %{conn: conn} do
+    test "hides Download Pending with nothing pending and disables Redownload Existing with the reason", %{conn: conn} do
       empty = source_fixture()
       paused = source_fixture(download_media: false)
       media_item_fixture(source_id: paused.id, media_filepath: nil)
       media_item_fixture(source_id: paused.id)
 
-      for source <- [empty, paused] do
-        response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+      empty_html = conn |> get(~p"/sources/#{empty}") |> html_response(200)
+      refute empty_html =~ "Download Pending"
+      assert empty_html =~ ~r/Redownload Existing\s*<span[^>]*>Nothing downloaded/
 
-        refute response =~ "Download Pending"
-        refute response =~ "Redownload Existing"
-        assert response =~ "Force Index"
+      paused_html = conn |> get(~p"/sources/#{paused}") |> html_response(200)
+      assert paused_html =~ ~r/Redownload Existing\s*<span[^>]*>Automatic downloads are off/
+
+      for html <- [empty_html, paused_html] do
+        refute html =~ "force_download_pending"
+        refute html =~ "force_redownload"
+        assert html =~ "Force Index"
+        assert html =~ "Copy RSS Feed"
       end
     end
 
@@ -1854,6 +1876,46 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Nothing to stop for this source."
       assert Repo.reload!(source).enabled
       assert Repo.reload!(source).download_media
+    end
+  end
+
+  describe "set_automatic_downloads" do
+    test "turns automatic downloads off and cancels queued downloads", %{conn: conn} do
+      source = source_fixture(%{download_media: true})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+      Pinchflat.Downloading.DownloadingHelpers.enqueue_pending_download_tasks(source)
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+
+      conn = post(conn, ~p"/sources/#{source.id}/automatic_downloads?enabled=false", %{"return_to" => "/sources"})
+
+      assert redirected_to(conn) == "/sources"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Automatic downloads disabled."
+      refute Repo.reload!(source).download_media
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "turns automatic downloads on and queues pending items", %{conn: conn} do
+      source = source_fixture(%{download_media: false, enabled: true})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil})
+
+      conn = post(conn, ~p"/sources/#{source.id}/automatic_downloads?enabled=true")
+
+      assert redirected_to(conn) == ~p"/sources/#{source}"
+      assert Repo.reload!(source).download_media
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "the actions menu offers the opposite of the current setting", %{conn: conn} do
+      on = source_fixture(%{download_media: true})
+      off = source_fixture(%{download_media: false})
+
+      on_html = conn |> get(~p"/sources/#{on}") |> html_response(200)
+      off_html = conn |> get(~p"/sources/#{off}") |> html_response(200)
+
+      assert on_html =~ "Disable Automatic Downloads"
+      assert on_html =~ ~s(action="/sources/#{on.id}/automatic_downloads?enabled=false")
+      assert off_html =~ "Enable Automatic Downloads"
+      assert off_html =~ ~s(action="/sources/#{off.id}/automatic_downloads?enabled=true")
     end
   end
 
