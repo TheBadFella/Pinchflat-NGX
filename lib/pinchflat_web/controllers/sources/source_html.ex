@@ -557,7 +557,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
-            <.collection_type_badge collection_type={@source.collection_type} />
             <.source_status_pill source={@source} downloading={@downloading} id_prefix="header" />
             <span :if={@status == :error} class="theme-pill theme-pill-error">
               <.icon name="hero-exclamation-triangle" class="h-3.5 w-3.5" /> Error
@@ -565,16 +564,19 @@ defmodule PinchflatWeb.Sources.SourceHTML do
           </div>
 
           <div class="mt-2 flex flex-col items-start gap-1.5 text-sm text-theme-on-surface-muted">
-            <a
-              :if={@source.original_url}
-              href={@source.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={@source.original_url}
-              class="text-theme-primary hover:underline"
-            >
-              {@url_label}
-            </a>
+            <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+              <.collection_type_badge collection_type={@source.collection_type} />
+              <a
+                :if={@source.original_url}
+                href={@source.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={@source.original_url}
+                class="min-w-0 break-all text-theme-primary hover:underline"
+              >
+                {@url_label}
+              </a>
+            </div>
             <span :if={@next_check == :now}>Next check: checking now</span>
             <span :if={match?(%DateTime{}, @next_check)}>
               Next check: <.datetime_in_zone datetime={@next_check} format="%Y-%m-%d %H:%M" />

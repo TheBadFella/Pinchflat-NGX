@@ -1581,6 +1581,16 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "manual selection mode"
     end
 
+    test "shows the source type beside its link, below the status", %{conn: conn} do
+      source = source_fixture(%{collection_type: :channel})
+
+      response = conn |> get(~p"/sources/#{source}") |> html_response(200)
+      [_, header] = String.split(response, ~s(id="source-library-header"), parts: 2)
+
+      assert header =~
+               ~r/id="source-status-header-#{source.id}".*?<\/span>\s*<\/div>.*?Channel\s*<\/span>\s*<a[^>]*href="#{Regex.escape(source.original_url)}"/s
+    end
+
     test "renders grouped source details instead of a raw attribute dump", %{conn: conn} do
       source = source_fixture(%{custom_name: "Library Details Source", description: "A channel description"})
 
