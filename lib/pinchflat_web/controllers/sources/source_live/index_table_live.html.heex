@@ -173,7 +173,7 @@
             </.button_dropdown>
           </div>
 
-          <div id="selected-source-frequency">
+          <div :if={@source_type != :videos} id="selected-source-frequency">
             <.button_dropdown
               text={if @done_action == :frequency, do: "Frequency Changed", else: "Index Frequency"}
               text_class={if @done_action == :frequency, do: "", else: "max-sm:sr-only"}
@@ -200,7 +200,7 @@
             </.button_dropdown>
           </div>
 
-          <div id="selected-source-cutoff-menu">
+          <div :if={@source_type != :videos} id="selected-source-cutoff-menu">
             <.button_dropdown
               text="Download Cutoff"
               text_class="max-sm:sr-only"
@@ -465,12 +465,14 @@
                   <div class="mt-1 flex flex-wrap items-center gap-2">
                     <.source_profile_picker source={source} media_profiles={@media_profiles} />
                     <.source_index_frequency
+                      :if={@source_type != :videos}
                       source={source}
                       id={"source-indexing-mobile-#{source.id}"}
                       show_icon
                       class="text-xs text-theme-on-surface-muted"
                     />
                     <.source_retention
+                      :if={@source_type != :videos}
                       source={source}
                       id={"source-retention-mobile-#{source.id}"}
                       timezone={@timezone}
@@ -652,6 +654,7 @@
 
           <:col
             :let={source}
+            :if={@source_type != :videos}
             label="Index Frequency"
             label_icon="hero-clock"
             sort_key="index_frequency"
@@ -667,6 +670,7 @@
 
           <:col
             :let={source}
+            :if={@source_type != :videos}
             label="Download Retention Cutoff"
             label_icon="hero-archive-box-x-mark"
             sort_key="download_cutoff"
@@ -835,7 +839,7 @@
                     collection_type={source.collection_type}
                     label_class="@max-3xs:sr-only"
                   />
-                  <div class="pointer-events-auto shrink-0">
+                  <div :if={@source_type != :videos} class="pointer-events-auto shrink-0">
                     <.source_index_frequency
                       source={source}
                       id={"source-indexing-grid-#{source.id}"}
@@ -843,9 +847,16 @@
                       class="text-xs text-theme-on-surface-muted"
                     />
                   </div>
+                  <div :if={@source_type == :videos} class="pointer-events-auto max-w-full">
+                    <.source_profile_picker
+                      source={source}
+                      media_profiles={@media_profiles}
+                      text_class="max-w-32 truncate"
+                    />
+                  </div>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-between gap-2">
+                <div :if={@source_type != :videos} class="flex flex-wrap items-center justify-between gap-2">
                   <div class="pointer-events-auto max-w-full">
                     <.source_profile_picker
                       source={source}
@@ -867,7 +878,7 @@
               </div>
 
               <div class="mt-auto space-y-3">
-                <dl class="grid grid-cols-2 gap-3 text-sm">
+                <dl :if={@source_type != :videos} class="grid grid-cols-2 gap-3 text-sm">
                   <div class="rounded-m3-sm bg-theme-surface-2/70 p-3">
                     <dt class="text-theme-on-surface-muted">Downloaded</dt>
 

@@ -703,8 +703,30 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       session = Map.put(create_session(), "source_type", "videos")
       {:ok, videos, _html} = live_isolated(conn, IndexTableLive, session: session)
-      assert render_element(videos, "#source-indexing-#{video.id}") =~ "Once"
       refute has_element?(videos, ~s(button[phx-click="set_source_index_frequency"]))
+      render_hook(videos, "set_source_index_frequency", %{"id" => to_string(video.id), "minutes" => "60"})
+      assert Repo.reload!(video).index_frequency_minutes == 0
+    end
+
+    test "leaves index frequency and the download cutoff off the Individual Videos tab", %{conn: conn} do
+      video = source_fixture(custom_name: "A video", collection_type: :video, index_frequency_minutes: 0)
+      session = Map.put(create_session(), "source_type", "videos")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+      render_click(view, "toggle_select_all")
+
+      refute has_element?(view, ~s(th button[data-label="Index Frequency"]))
+      refute has_element?(view, ~s(th button[data-label="Download Retention Cutoff"]))
+      refute has_element?(view, "#source-indexing-#{video.id}")
+      refute has_element?(view, "#source-retention-mobile-#{video.id}")
+      refute has_element?(view, "#selected-source-frequency")
+      refute has_element?(view, "#selected-source-cutoff-menu")
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+      refute has_element?(view, "#source-indexing-grid-#{video.id}")
+      refute has_element?(view, "#source-retention-grid-#{video.id}")
+      refute render_element(view, "#source-card-#{video.id}") =~ "Downloaded"
+      assert has_element?(view, ~s(#source-card-#{video.id} button[aria-label$="change the media profile for A video"]))
     end
 
     test "uses a short label with the full wording for the tooltip" do
