@@ -486,8 +486,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       icon = render_element(view, "#source-status-table-#{source.id}")
       refute icon =~ "title="
-      assert has_element?(view, "#source-table td", "Enabled, Download Media off")
-      assert icon =~ "Enabled, Download Media off"
+      assert has_element?(view, "#source-table td", "Indexing Enabled, No Automatic Downloads")
+      assert icon =~ "Indexing Enabled, No Automatic Downloads"
       refute has_element?(view, "button#source-status-table-#{source.id}")
       assert has_element?(view, "th button", "Enabled?")
     end
@@ -503,15 +503,19 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
                  IndexTableLive.source_status(%{enabled: true, download_media: download_media}, true)
       end
 
-      assert %{label: "Enabled, Download Media off", icon: "hero-bolt", class: "theme-badge-info"} =
+      assert %{label: "Indexing Enabled, No Automatic Downloads", icon: "hero-bolt", class: "theme-badge-info"} =
                IndexTableLive.source_status(%{enabled: true, download_media: false}, false)
 
-      assert %{label: "Enabled", icon: "hero-bolt", class: "theme-badge-success"} =
+      assert %{label: "Indexing Enabled, Automatically Downloads", icon: "hero-bolt", class: "theme-badge-success"} =
                IndexTableLive.source_status(%{enabled: true, download_media: true}, false)
     end
 
     test "shows the downloading state while download jobs are running or queued", %{conn: conn} do
-      for {state, expected} <- [{"executing", "Downloading"}, {"available", "Downloading"}, {"completed", "Enabled"}] do
+      for {state, expected} <- [
+            {"executing", "Downloading"},
+            {"available", "Downloading"},
+            {"completed", "Indexing Enabled, Automatically Downloads"}
+          ] do
         source = source_fixture()
         media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
 

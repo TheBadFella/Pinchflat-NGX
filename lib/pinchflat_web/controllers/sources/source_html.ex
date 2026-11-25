@@ -209,7 +209,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   def source_status(%{download_media: false}, _downloading?),
     do: %{
-      label: "Enabled, Download Media off",
+      label: "Indexing Enabled, No Automatic Downloads",
       icon: "hero-bolt",
       class: "theme-badge-info",
       pill_class: "theme-pill-info"
@@ -217,7 +217,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   def source_status(_source, _downloading?),
     do: %{
-      label: "Enabled",
+      label: "Indexing Enabled, Automatically Downloads",
       icon: "hero-bolt",
       class: "theme-badge-success",
       pill_class: "theme-pill-success"

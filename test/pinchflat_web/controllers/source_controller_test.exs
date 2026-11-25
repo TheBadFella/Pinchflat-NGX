@@ -166,8 +166,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       conn = get(conn, ~p"/sources?view=table")
       response = html_response(conn, 200)
 
-      assert response =~ ~s(data-source-status="Enabled")
-      assert response =~ ~s(data-source-status="Enabled, Download Media off")
+      assert response =~ ~s(data-source-status="Indexing Enabled, Automatically Downloads")
+      assert response =~ ~s(data-source-status="Indexing Enabled, No Automatic Downloads")
     end
 
     test "renders source row controls", %{conn: conn} do
@@ -1603,7 +1603,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       html = conn |> get(~p"/sources/#{source}") |> html_response(200)
 
       assert html =~ ~s(id="source-status-header-#{source.id}")
-      assert html =~ ~s(data-source-status="Enabled, Download Media off")
+      assert html =~ ~s(data-source-status="Indexing Enabled, No Automatic Downloads")
       assert html =~ "theme-pill-info"
 
       html = conn |> get(~p"/sources/#{disabled}") |> html_response(200)
