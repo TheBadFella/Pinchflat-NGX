@@ -211,6 +211,7 @@ defmodule PinchflatWeb.SourceControllerTest do
 
     test "reopens the view the browser last chose", %{conn: conn} do
       source_fixture(%{custom_name: "Remembered view source"})
+      source_fixture(%{custom_name: "Remembered view video", collection_type: :video})
 
       table = conn |> put_req_cookie("pinchflat_sources_view", "table") |> get(~p"/sources") |> html_response(200)
       assert table =~ ~s(data-view="table")

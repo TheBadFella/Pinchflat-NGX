@@ -53,6 +53,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
       assert html =~ "No individual videos yet"
       assert has_element?(view, "a[href='/browse']", "Browse YouTube")
+      refute has_element?(view, "#source-table")
+    end
+
+    test "leaves out the table header when a tab has no sources", %{conn: conn} do
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      assert has_element?(view, "h3", "No channels or playlists yet")
+      refute has_element?(view, "#source-table")
+      refute has_element?(view, "th")
     end
   end
 
@@ -1149,6 +1157,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       assert has_element?(view, "#source-search-empty h3", "No channels & playlists match “nothing-matches”")
       refute has_element?(view, "h3", "No channels or playlists yet")
+      refute has_element?(view, "#source-table")
       assert has_element?(view, ~s(#source-search-input[value="nothing-matches"]))
       assert has_element?(view, ~s(button[aria-label="Clear search"]))
 

@@ -485,8 +485,8 @@
         </article>
       </div>
 
-      <div id="source-table" data-view="table" class="@container hidden md:block">
-        <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction} compact>
+      <div :if={@sources != []} id="source-table" data-view="table" class="@container hidden md:block">
+        <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction} compact rounded={false}>
           <:col
             :let={source}
             label="Select"
@@ -520,7 +520,7 @@
             />
           </:col>
 
-          <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
+          <:col :let={source} label="Name" sort_key="custom_name" class="w-full min-w-40 whitespace-normal align-middle">
             <div data-source-id={source.id} class="min-w-0 leading-6 text-pretty break-words whitespace-normal">
               <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
             </div>
@@ -566,7 +566,7 @@
             </.subtle_link>
           </:col>
 
-          <:col :let={source} label="Size" sort_key="media_size_bytes">
+          <:col :let={source} label="Size" sort_key="media_size_bytes" class="whitespace-nowrap">
             <.readable_filesize byte_size={source.media_size_bytes} />
           </:col>
 

@@ -19,6 +19,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
   attr :sort_key, :atom, default: nil
   attr :sort_direction, :atom, default: nil
   attr :compact, :boolean, default: false, doc: "tighter padding; wrapping columns shrink before it scrolls"
+  attr :rounded, :boolean, default: true
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -34,7 +35,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
 
   def table(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
+    <div class={["overflow-hidden bg-theme-surface-1 shadow-m3-1", @rounded && "rounded-m3-lg"]}>
       <div class="overflow-x-auto overflow-y-hidden">
         <table class={[
           "min-w-full table-auto text-theme-on-surface",
@@ -47,7 +48,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                 :for={col <- @col}
                 class={[
                   "font-medium text-theme-on-surface",
-                  if(@compact, do: "px-2", else: "px-4"),
+                  if(@compact, do: "whitespace-nowrap px-2", else: "px-4"),
                   header_padding(@compact, col[:sort_key] && !col[:header]),
                   col[:sort_key] && !col[:header] && "relative",
                   col[:label_icon] && "text-center",
