@@ -31,7 +31,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
   @doc """
   Returns the effective retention as a short value for the source table, such as
-  "30 days" or "Off". The full wording, including where it comes from, is
+  "30 Days" or "Off". The full wording, including where it comes from, is
   `SourceHTML.retention_policy_label/1`.
   """
   def retention_short_label(source) do
@@ -44,10 +44,43 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     case days do
       days when days in [nil, 0] -> "Off"
-      1 -> "1 day"
-      days -> "#{days} days"
+      1 -> "1 Day"
+      days -> "#{days} Days"
     end
   end
+
+  @doc """
+  Returns how often a source is indexed as a short value for the source list,
+  such as "Daily" or "10 Min" for fast indexing, and the full wording for its
+  tooltip.
+
+  Returns `{short_label, full_label}`.
+  """
+  def index_frequency_labels(%{fast_index: true}),
+    do: {"10 Min", "Fast indexing checks for new uploads every 10 minutes, with a full index monthly"}
+
+  def index_frequency_labels(%{index_frequency_minutes: minutes}) when is_integer(minutes) and minutes > 0 do
+    short =
+      case minutes do
+        1440 -> "Daily"
+        10_080 -> "Weekly"
+        43_200 -> "Monthly"
+        60 -> "Hourly"
+        minutes when rem(minutes, 60) == 0 -> "#{div(minutes, 60)} Hours"
+        minutes -> "#{minutes} Min"
+      end
+
+    {short, "Indexed every #{index_frequency_phrase(minutes)}"}
+  end
+
+  def index_frequency_labels(_source), do: {"Once", "Indexed only once, when the source was added"}
+
+  defp index_frequency_phrase(1440), do: "day"
+  defp index_frequency_phrase(10_080), do: "week"
+  defp index_frequency_phrase(43_200), do: "30 days"
+  defp index_frequency_phrase(60), do: "hour"
+  defp index_frequency_phrase(minutes) when rem(minutes, 60) == 0, do: "#{div(minutes, 60)} hours"
+  defp index_frequency_phrase(minutes), do: "#{minutes} minutes"
 
   @doc """
   Returns the poster URL used by the source library card.
@@ -183,19 +216,112 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :class, :string, default: nil
 
   defp source_retention(assigns) do
+    assigns =
+      assign(assigns,
+        policy: SourceHTML.retention_policy_label(assigns.source),
+        profile_default:
+          retention_short_label(%{retention_period_days: nil, media_profile: assigns.source.media_profile})
+      )
+
     ~H"""
-    <.tooltip
-      position="top"
-      tooltip={"Retention: #{SourceHTML.retention_policy_label(@source)}. Age is counted from download time."}
+    <.button_dropdown
+      tooltip={"Retention: #{@policy}. Age is counted from download time. Click to change."}
+      tooltip_position="top"
       tooltip_class="text-center"
+      class={"w-fit #{@class}"}
     >
-      <span id={@id} class={["inline-flex items-center gap-1 whitespace-nowrap", @class]}>
-        <.icon :if={@show_icon} name="hero-archive-box-x-mark" class="h-4 w-4" aria-hidden="true" />
-        {retention_short_label(@source)}<span class="sr-only">, {SourceHTML.retention_policy_label(@source)}</span>
-      </span>
-    </.tooltip>
+      <:trigger>
+        <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
+          <.icon :if={@show_icon} name="hero-archive-box-x-mark" class="h-4 w-4" aria-hidden="true" />
+          {retention_short_label(@source)}<span class="sr-only">, {@policy}. Change retention</span>
+        </span>
+      </:trigger>
+      <:option>
+        <form
+          id={"#{@id}-form"}
+          phx-submit="set_source_retention"
+          class="w-64 px-4 py-2 text-left"
+          x-on:submit="dropdownOpen = false"
+        >
+          <div class="space-y-2">
+            <input type="hidden" name="source_id" value={@source.id} />
+            <.input
+              type="number"
+              id={"#{@id}-days"}
+              name="retention_period_days"
+              value={@source.retention_period_days}
+              label="Retention override (days)"
+              placeholder={"Inherit (#{@profile_default})"}
+              min="0"
+              step="1"
+            />
+            <p class="text-xs text-theme-on-surface-muted">
+              Leave blank to follow the media profile ({@profile_default}). Enter 0 to turn off age-based cleanup.
+            </p>
+            <.button type="submit" size="compact" class="w-full">Apply</.button>
+          </div>
+        </form>
+      </:option>
+    </.button_dropdown>
     """
   end
+
+  attr :source, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :string, default: nil
+  attr :show_icon, :boolean, default: false
+
+  defp source_index_frequency(assigns) do
+    {short, full} = index_frequency_labels(assigns.source)
+    assigns = assign(assigns, short: short, full: full, locked: index_frequency_locked?(assigns.source))
+
+    ~H"""
+    <.tooltip :if={@locked} position="top" tooltip={"#{@full}."} tooltip_class="text-center">
+      <span id={@id} class={["inline-flex items-center gap-1 whitespace-nowrap", @class]}>
+        <.icon :if={@show_icon} name="hero-clock" class="h-4 w-4 text-theme-tertiary" aria-hidden="true" />
+        {@short}<span class="sr-only">, {@full}</span>
+      </span>
+    </.tooltip>
+    <.button_dropdown
+      :if={!@locked}
+      tooltip={"#{@full}. Click to change."}
+      tooltip_position="top"
+      tooltip_class="text-center"
+      class={"w-fit #{@class}"}
+    >
+      <:trigger>
+        <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
+          <.icon :if={@show_icon} name="hero-clock" class="h-4 w-4 text-theme-tertiary" aria-hidden="true" />
+          {@short}<span class="sr-only">, {@full}. Change index frequency</span>
+        </span>
+      </:trigger>
+      <:option :for={{label, minutes} <- SourceHTML.friendly_index_frequencies()}>
+        <button
+          type="button"
+          phx-click="set_source_index_frequency"
+          phx-value-id={@source.id}
+          phx-value-minutes={minutes}
+          x-on:click="dropdownOpen = false"
+          disabled={minutes == @source.index_frequency_minutes}
+          aria-current={if minutes == @source.index_frequency_minutes, do: "true"}
+          class="gap-1.5 px-2.5 disabled:cursor-default"
+        >
+          <.icon
+            name="hero-check"
+            class={"h-4 w-4 shrink-0 text-theme-primary #{if minutes != @source.index_frequency_minutes, do: "invisible"}"}
+            aria-hidden="true"
+          />
+          {label}
+        </button>
+      </:option>
+    </.button_dropdown>
+    """
+  end
+
+  # Fast indexing fixes the full index at monthly, and individual videos are only indexed once.
+  defp index_frequency_locked?(%{fast_index: true}), do: true
+  defp index_frequency_locked?(%{collection_type: :video}), do: true
+  defp index_frequency_locked?(_source), do: false
 
   attr :action, :string, required: true
   attr :label, :string, required: true
@@ -236,16 +362,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp source_profile_picker(assigns) do
     ~H"""
     <.button_dropdown
-      text={@source.media_profile.name}
-      text_class={@text_class}
       aria_label={"#{@source.media_profile.name}, change the media profile for #{@source.custom_name}"}
       tooltip="Change Media Profile"
       tooltip_position="top"
-      variant="outline"
-      size="compact"
       align="start"
       class="w-fit"
     >
+      <:trigger><span class={@text_class}>{@source.media_profile.name}</span></:trigger>
       <:option :for={profile <- @media_profiles}>
         <button
           type="button"
@@ -267,6 +390,19 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       </:option>
     </.button_dropdown>
     """
+  end
+
+  defp parse_retention_days(days) do
+    case String.trim(days) do
+      "" ->
+        {:ok, nil}
+
+      trimmed ->
+        case Integer.parse(trimmed) do
+          {days, ""} when days >= 0 -> {:ok, days}
+          _invalid -> :error
+        end
+    end
   end
 
   defp bulk_jobs, do: for({job, label} <- SourceActions.jobs(), do: {to_string(job), job, label})
@@ -378,6 +514,35 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     else
       notice = {:error, "Could not change the media profile. Reload the page and try again."}
       {:noreply, socket |> put_notice(notice) |> set_sources()}
+    end
+  end
+
+  def handle_event("set_source_retention", %{"source_id" => id, "retention_period_days" => days}, socket) do
+    with %{} <- Enum.find(socket.assigns.sources, &(to_string(&1.id) == id)),
+         {:ok, days} <- parse_retention_days(days),
+         {:ok, _source} <- id |> Sources.get_source!() |> Sources.update_source(%{"retention_period_days" => days}) do
+      {:noreply, set_sources(socket)}
+    else
+      _error ->
+        notice = {:error, "Could not change the retention. Enter a whole number of days, 0 or more, or leave it blank."}
+        {:noreply, socket |> put_notice(notice) |> set_sources()}
+    end
+  end
+
+  def handle_event("set_source_index_frequency", %{"id" => id, "minutes" => minutes}, socket) do
+    allowed = Enum.map(SourceHTML.friendly_index_frequencies(), fn {_label, value} -> to_string(value) end)
+    source = Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
+
+    with true <- minutes in allowed,
+         %{} <- source,
+         false <- index_frequency_locked?(source),
+         {:ok, _source} <-
+           id |> Sources.get_source!() |> Sources.update_source(%{"index_frequency_minutes" => minutes}) do
+      {:noreply, set_sources(socket)}
+    else
+      _error ->
+        notice = {:error, "Could not change the index frequency. Reload the page and try again."}
+        {:noreply, socket |> put_notice(notice) |> set_sources()}
     end
   end
 
@@ -505,6 +670,35 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   defp sort_attr(:enabled), do: dynamic([s], s.enabled)
+
+  # Most frequent first when ascending: fast indexing counts as its 10-minute check, and sources
+  # indexed only once sort after every schedule.
+  defp sort_attr(:index_frequency) do
+    dynamic(
+      [s],
+      fragment(
+        "CASE WHEN ? THEN 10 WHEN ? <= 0 THEN 2147483647 ELSE ? END",
+        s.fast_index,
+        s.index_frequency_minutes,
+        s.index_frequency_minutes
+      )
+    )
+  end
+
+  # Shortest retention first when ascending, with retention off (no age-based cleanup) last.
+  defp sort_attr(:retention) do
+    dynamic(
+      [s, mp],
+      fragment(
+        "CASE WHEN COALESCE(?, ?, 0) = 0 THEN 2147483647 ELSE COALESCE(?, ?, 0) END",
+        s.retention_period_days,
+        mp.retention_period_days,
+        s.retention_period_days,
+        mp.retention_period_days
+      )
+    )
+  end
+
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 
   defp apply_search(%{assigns: assigns} = socket, search_term) do

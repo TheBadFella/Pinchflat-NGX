@@ -983,7 +983,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     [
       {"Only once when first created", -1},
       {"30 minutes", 30},
-      {"1 Hour", 60},
+      {"Hourly", 60},
       {"3 Hours", 3 * 60},
       {"6 Hours", 6 * 60},
       {"12 Hours", 12 * 60},

@@ -287,6 +287,10 @@
     @apply inline-flex min-h-11 items-center justify-center rounded-m3-sm px-4 py-2 text-center text-sm font-medium leading-5 whitespace-nowrap shadow-m3-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .theme-chip-trigger {
+    @apply inline-flex h-7 items-center gap-1 rounded-full border border-theme-outline pl-2 pr-1.5 text-xs font-medium whitespace-nowrap text-theme-on-surface transition hover:border-theme-primary hover:bg-theme-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 disabled:cursor-default disabled:opacity-60;
+  }
+
   .theme-filter-button {
     @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-theme-bg;
   }

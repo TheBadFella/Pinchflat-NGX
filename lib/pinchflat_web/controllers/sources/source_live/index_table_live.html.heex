@@ -574,8 +574,24 @@
             <.source_profile_picker source={source} media_profiles={@media_profiles} text_class="max-w-38 truncate" />
           </:col>
 
-          <:col :let={source} label="Retention" label_icon="hero-archive-box-x-mark" class="text-center">
-            <.source_retention source={source} id={"source-retention-#{source.id}"} />
+          <:col
+            :let={source}
+            label="Index Frequency"
+            label_icon="hero-clock"
+            sort_key="index_frequency"
+            class="text-center"
+          >
+            <.source_index_frequency source={source} id={"source-indexing-#{source.id}"} class="mx-auto" />
+          </:col>
+
+          <:col
+            :let={source}
+            label="Download Retention Cutoff"
+            label_icon="hero-archive-box-x-mark"
+            sort_key="retention"
+            class="text-center"
+          >
+            <.source_retention source={source} id={"source-retention-#{source.id}"} class="mx-auto" />
           </:col>
 
           <:col :let={source} label="Enabled?" sort_key="enabled">
@@ -734,7 +750,13 @@
                   <div class="pointer-events-auto min-w-0">
                     <.source_profile_picker source={source} media_profiles={@media_profiles} />
                   </div>
-                  <div class="pointer-events-auto shrink-0">
+                  <div class="pointer-events-auto flex shrink-0 items-center gap-3">
+                    <.source_index_frequency
+                      source={source}
+                      id={"source-indexing-grid-#{source.id}"}
+                      show_icon
+                      class="text-xs text-theme-on-surface-muted"
+                    />
                     <.source_retention
                       source={source}
                       id={"source-retention-grid-#{source.id}"}

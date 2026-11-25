@@ -106,6 +106,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
 
   attr :tooltip, :string, default: nil, doc: "a styled tooltip for the trigger, used instead of the browser title"
   attr :tooltip_position, :string, default: "bottom"
+  attr :tooltip_class, :string, default: "text-nowrap"
 
   attr :align, :string,
     default: "end",
@@ -113,6 +114,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
     doc: "end lines the menu up with the trigger's right edge; start opens it below the left edge"
 
   slot :option, required: true
+  slot :trigger, doc: "content for a compact chip trigger, such as a value in a table cell, instead of a button"
 
   def button_dropdown(assigns) do
     size_class = button_size_class(assigns.size)
@@ -131,7 +133,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       x-on:resize.window="dropdownOpen = false"
       class={["relative flex", @class]}
     >
-      <TextComponents.tooltip :if={@tooltip} tooltip={@tooltip} position={@tooltip_position} tooltip_class="text-nowrap">
+      <TextComponents.tooltip :if={@tooltip} tooltip={@tooltip} position={@tooltip_position} tooltip_class={@tooltip_class}>
         <.dropdown_trigger {trigger_assigns(assigns)} />
       </TextComponents.tooltip>
       <.dropdown_trigger :if={!@tooltip} {trigger_assigns(assigns)} title={@aria_label} />
@@ -264,7 +266,17 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   end
 
   defp trigger_assigns(assigns) do
-    Map.take(assigns, [:text, :text_class, :icon_name, :aria_label, :size_class, :variant_class, :disabled, :align])
+    Map.take(assigns, [
+      :text,
+      :text_class,
+      :icon_name,
+      :aria_label,
+      :size_class,
+      :variant_class,
+      :disabled,
+      :align,
+      :trigger
+    ])
   end
 
   attr :text, :string, default: nil
@@ -276,6 +288,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :variant_class, :string, default: nil
   attr :disabled, :boolean, default: false
   attr :align, :string, default: "end"
+  attr :trigger, :list, default: []
 
   defp dropdown_trigger(assigns) do
     ~H"""
@@ -298,26 +311,37 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           : { top: (rect.bottom + 8) + 'px', ...side, maxHeight: Math.min(480, below) + 'px' };
         dropdownOpen = !dropdownOpen;
       "
-      class={[
-        if(@icon_name, do: "theme-icon-button", else: ["theme-button gap-2.5", @size_class]),
-        @variant_class
-      ]}
+      class={
+        cond do
+          @trigger != [] -> "theme-chip-trigger"
+          @icon_name -> ["theme-icon-button", @variant_class]
+          true -> ["theme-button gap-2.5", @size_class, @variant_class]
+        end
+      }
       aria-label={@aria_label}
       title={@title}
       disabled={@disabled}
       data-align={@align}
     >
-      <%= if @icon_name do %>
-        <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
-        <span class="sr-only">{@text || @aria_label}</span>
-      <% else %>
-        <span :if={@text_class} class={@text_class}>{@text}</span>
-        {if is_nil(@text_class), do: @text}
-        <CoreComponents.icon
-          name="hero-chevron-down"
-          class="h-4 w-4 fill-current duration-200 ease-linear"
-          x-bind:class="dropdownOpen && 'rotate-180'"
-        />
+      <%= cond do %>
+        <% @trigger != [] -> %>
+          {render_slot(@trigger)}
+          <CoreComponents.icon
+            name="hero-chevron-down"
+            class="h-3.5 w-3.5 shrink-0 opacity-70 transition-transform"
+            x-bind:class="dropdownOpen && 'rotate-180'"
+          />
+        <% @icon_name -> %>
+          <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
+          <span class="sr-only">{@text || @aria_label}</span>
+        <% true -> %>
+          <span :if={@text_class} class={@text_class}>{@text}</span>
+          {if is_nil(@text_class), do: @text}
+          <CoreComponents.icon
+            name="hero-chevron-down"
+            class="h-4 w-4 fill-current duration-200 ease-linear"
+            x-bind:class="dropdownOpen && 'rotate-180'"
+          />
       <% end %>
     </button>
     """

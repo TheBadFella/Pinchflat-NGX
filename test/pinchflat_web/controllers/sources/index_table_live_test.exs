@@ -544,12 +544,37 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert has_element?(view, ~s(th span[data-label="Retention"] [data-icon="hero-archive-box-x-mark"]))
-      assert row_retention(view, inherited) =~ "30 days"
+      assert has_element?(
+               view,
+               ~s(th button[data-label="Download Retention Cutoff"] [data-icon="hero-archive-box-x-mark"])
+             )
+
+      assert row_retention(view, inherited) =~ "30 Days"
       assert row_retention(view, inherited) =~ "30 days (profile default)"
       assert row_retention(view, override) =~ "1 day (source override)"
       assert row_retention(view, off) =~ "Off"
       assert row_retention(view, off) =~ "No age-based cleanup (source override)"
+    end
+
+    test "changes a source's retention from the list", %{conn: conn} do
+      profile = media_profile_fixture(%{retention_period_days: 30})
+      source = source_fixture(custom_name: "Editable", media_profile_id: profile.id)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s|#source-retention-#{source.id}-days[placeholder="Inherit (30 days)"]|)
+
+      view |> form("#source-retention-#{source.id}-form", %{retention_period_days: "7"}) |> render_submit()
+      assert Repo.reload!(source).retention_period_days == 7
+      assert row_retention(view, source) =~ "7 days (source override)"
+
+      view |> form("#source-retention-#{source.id}-form", %{retention_period_days: ""}) |> render_submit()
+      assert Repo.reload!(source).retention_period_days == nil
+      assert row_retention(view, source) =~ "30 days (profile default)"
+
+      view |> form("#source-retention-#{source.id}-form", %{retention_period_days: "-2"}) |> render_submit()
+      assert Repo.reload!(source).retention_period_days == nil
+      assert render(view) =~ "Could not change the retention"
     end
 
     test "uses a short label" do
@@ -557,11 +582,110 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
                retention_period_days: nil,
                media_profile: %{retention_period_days: 7}
              }) ==
-               "7 days"
+               "7 Days"
 
-      assert IndexTableLive.retention_short_label(%{retention_period_days: 1, media_profile: nil}) == "1 day"
+      assert IndexTableLive.retention_short_label(%{retention_period_days: 1, media_profile: nil}) == "1 Day"
       assert IndexTableLive.retention_short_label(%{retention_period_days: 0, media_profile: nil}) == "Off"
       assert IndexTableLive.retention_short_label(%{retention_period_days: nil, media_profile: nil}) == "Off"
+    end
+  end
+
+  describe "indexing column" do
+    test "shows how often each source is indexed in the table and the poster grid", %{conn: conn} do
+      daily = source_fixture(custom_name: "Daily", index_frequency_minutes: 24 * 60)
+      fast = source_fixture(custom_name: "Fast", fast_index: true)
+      once = source_fixture(custom_name: "Once", index_frequency_minutes: -1)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s(th button[data-label="Index Frequency"] [data-icon="hero-clock"]))
+      assert render_element(view, "#source-indexing-#{daily.id}") =~ "Daily"
+      assert render_element(view, "#source-indexing-#{daily.id}") =~ "Indexed every day"
+      assert render_element(view, "#source-indexing-#{fast.id}") =~ "10 Min"
+      assert render_element(view, "#source-indexing-#{once.id}") =~ "Indexed only once"
+
+      session = Map.put(create_session(), "initial_view_mode", "grid")
+      {:ok, grid, _html} = live_isolated(conn, IndexTableLive, session: session)
+      assert render_element(grid, "#source-indexing-grid-#{daily.id}") =~ "Daily"
+    end
+
+    test "changes a source's index frequency from the list", %{conn: conn} do
+      source = source_fixture(custom_name: "Editable", index_frequency_minutes: 24 * 60)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      option = ~s(#source-table button[phx-click="set_source_index_frequency"][phx-value-id="#{source.id}"])
+
+      for {label, _minutes} <- PinchflatWeb.Sources.SourceHTML.friendly_index_frequencies() do
+        assert has_element?(view, option, label)
+      end
+
+      assert has_element?(view, ~s(#{option}[aria-current="true"]), "Daily (recommended)")
+
+      view |> element(~s(#{option}[phx-value-minutes="360"])) |> render_click()
+
+      assert Repo.reload!(source).index_frequency_minutes == 360
+      assert render_element(view, "#source-indexing-#{source.id}") =~ "6 Hours"
+    end
+
+    test "leaves the index frequency read-only with fast indexing or for a single video", %{conn: conn} do
+      fast = source_fixture(custom_name: "Fast", fast_index: true)
+      video = source_fixture(custom_name: "Video", collection_type: :video, index_frequency_minutes: 0)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      refute has_element?(view, ~s(button[phx-click="set_source_index_frequency"][phx-value-id="#{fast.id}"]))
+
+      render_hook(view, "set_source_index_frequency", %{"id" => to_string(fast.id), "minutes" => "360"})
+      assert Repo.reload!(fast).index_frequency_minutes == fast.index_frequency_minutes
+
+      session = Map.put(create_session(), "source_type", "videos")
+      {:ok, videos, _html} = live_isolated(conn, IndexTableLive, session: session)
+      assert render_element(videos, "#source-indexing-#{video.id}") =~ "Once"
+      refute has_element?(videos, ~s(button[phx-click="set_source_index_frequency"]))
+    end
+
+    test "uses a short label with the full wording for the tooltip" do
+      assert {"Daily", "Indexed every day"} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 1440})
+
+      assert {"30 Min", "Indexed every 30 minutes"} =
+               IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 30})
+
+      assert {"Hourly", "Indexed every hour"} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 60})
+      assert {"6 Hours", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 360})
+      assert {"Monthly", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 43_200})
+      assert {"10 Min", _} = IndexTableLive.index_frequency_labels(%{fast_index: true, index_frequency_minutes: 43_200})
+      assert {"Once", _} = IndexTableLive.index_frequency_labels(%{fast_index: false, index_frequency_minutes: 0})
+      assert {"Once", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: -1})
+    end
+  end
+
+  describe "sorting by index frequency and retention" do
+    test "orders sources by how often they are indexed, with fast indexing first and once-only last",
+         %{conn: conn} do
+      weekly = source_fixture(custom_name: "A weekly", index_frequency_minutes: 7 * 24 * 60)
+      once = source_fixture(custom_name: "B once", index_frequency_minutes: -1)
+      fast = source_fixture(custom_name: "C fast", fast_index: true, index_frequency_minutes: 30 * 24 * 60)
+      hourly = source_fixture(custom_name: "D hourly", index_frequency_minutes: 60)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "sort_update", %{"sort_key" => "index_frequency"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [fast.id, hourly.id, weekly.id, once.id]
+
+      render_click(view, "sort_update", %{"sort_key" => "index_frequency"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [once.id, weekly.id, hourly.id, fast.id]
+    end
+
+    test "orders sources by their effective retention, with retention off last", %{conn: conn} do
+      profile = media_profile_fixture(%{retention_period_days: 30})
+      inherited = source_fixture(custom_name: "A inherited", media_profile_id: profile.id)
+      off = source_fixture(custom_name: "B off", media_profile_id: profile.id, retention_period_days: 0)
+      short = source_fixture(custom_name: "C short", media_profile_id: profile.id, retention_period_days: 3)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "sort_update", %{"sort_key" => "retention"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [short.id, inherited.id, off.id]
     end
   end
 
