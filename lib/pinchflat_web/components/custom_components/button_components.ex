@@ -98,7 +98,9 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :text, :string, default: nil
   attr :text_class, :string, default: nil, doc: "classes for the trigger text, such as truncation for long values"
   attr :leading_icon, :string, default: nil, doc: "an icon before the trigger text"
-  attr :short_text, :string, default: nil, doc: "a shorter label shown instead of the text below the lg breakpoint"
+  attr :short_text, :string, default: nil, doc: "a shorter label shown instead of the text when narrow"
+  attr :short_class, :string, default: "lg:hidden", doc: "when the short label shows"
+  attr :long_class, :string, default: "max-lg:hidden", doc: "when the full label hides for the short one"
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :class, :string, default: ""
@@ -232,6 +234,9 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
     """
   end
 
+  defp compact_gap("theme-button-compact"), do: "gap-1.5"
+  defp compact_gap(_size_class), do: "gap-2.5"
+
   defp button_size_class("compact"), do: "theme-button-compact"
   defp button_size_class("large"), do: "theme-button-large"
   defp button_size_class(_), do: ""
@@ -274,6 +279,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       :text_class,
       :leading_icon,
       :short_text,
+      :short_class,
+      :long_class,
       :icon_name,
       :aria_label,
       :size_class,
@@ -289,6 +296,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :text_class, :string, default: nil
   attr :leading_icon, :string, default: nil
   attr :short_text, :string, default: nil
+  attr :short_class, :string, default: nil
+  attr :long_class, :string, default: nil
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :title, :string, default: nil
@@ -324,7 +333,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
         cond do
           @trigger != [] -> "theme-chip-trigger"
           @icon_name -> ["theme-icon-button", @variant_class]
-          true -> ["theme-button gap-2.5", @size_class, @variant_class]
+          true -> ["theme-button", compact_gap(@size_class), @size_class, @variant_class]
         end
       }
       aria-label={@aria_label}
@@ -345,13 +354,13 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           <span class="sr-only">{@text || @aria_label}</span>
         <% true -> %>
           <CoreComponents.icon :if={@leading_icon} name={@leading_icon} class="-mr-1 h-4 w-4" />
-          <span :if={@short_text} class="lg:hidden">{@short_text}</span>
-          <span :if={@text_class} class={[@text_class, @short_text && "max-lg:hidden"]}>{@text}</span>
-          <span :if={is_nil(@text_class) && @short_text} class="max-lg:hidden">{@text}</span>
+          <span :if={@short_text} class={@short_class}>{@short_text}</span>
+          <span :if={@text_class} class={[@text_class, @short_text && @long_class]}>{@text}</span>
+          <span :if={is_nil(@text_class) && @short_text} class={@long_class}>{@text}</span>
           {if is_nil(@text_class) && is_nil(@short_text), do: @text}
           <CoreComponents.icon
             name="hero-chevron-down"
-            class="h-4 w-4 fill-current duration-200 ease-linear"
+            class="-mr-1 h-3.5 w-3.5 fill-current duration-200 ease-linear"
             x-bind:class="dropdownOpen && 'rotate-180'"
           />
       <% end %>

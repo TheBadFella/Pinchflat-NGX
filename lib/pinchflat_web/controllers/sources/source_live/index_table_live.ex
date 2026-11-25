@@ -444,40 +444,84 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp index_frequency_locked?(%{collection_type: :video}), do: true
   defp index_frequency_locked?(_source), do: false
 
-  attr :action, :string, required: true
-  attr :label, :string, required: true
-  attr :confirm_label, :string, required: true
-  attr :done_label, :string, required: true
-  attr :icon, :string, required: true
-  attr :armed, :boolean, required: true
-  attr :done, :boolean, required: true
-  attr :disabled, :boolean, default: false
-  attr :tooltip, :string, required: true
+  @bulk_switches [
+    {:resume, "hero-play-solid", "Resume", "Resumed",
+     "Resume downloads for the selected sources and queue their pending items"},
+    {:pause, "hero-pause-solid", "Pause", "Paused",
+     "Pause downloads for the selected sources and cancel queued and running ones"},
+    {:stop, "hero-stop-solid", "Stop", "Stopped",
+     "Stop the selected sources: pause their downloads and turn off indexing"}
+  ]
 
-  # The first click arms the action and the second runs it; the button then turns green briefly.
-  defp bulk_action_button(assigns) do
+  attr :armed, :any, required: true
+  attr :done_action, :any, required: true
+  attr :selected_ids, :any, required: true
+
+  # One chip for Resume, Pause and Stop. Clicking an icon arms it and the chip asks to confirm;
+  # the second click runs it and the chip turns green briefly.
+  defp bulk_downloads(assigns) do
+    count = MapSet.size(assigns.selected_ids)
+
+    active =
+      Enum.find(@bulk_switches, fn {action, _icon, _label, _done, _tip} ->
+        armed_for?(assigns.armed, action, assigns.selected_ids) or assigns.done_action == action
+      end)
+
+    assigns =
+      assign(assigns,
+        switches: @bulk_switches,
+        active: active,
+        count: count,
+        done: active && assigns.done_action == elem(active, 0)
+      )
+
     ~H"""
-    <.tooltip tooltip={@tooltip} position="top" tooltip_class="text-center">
-      <.button
-        type="button"
-        variant={if @done, do: "success", else: "outline"}
-        size="compact"
-        class={["gap-1.5 transition-colors duration-300", @armed && "theme-confirm-pending"]}
-        disabled={@disabled}
-        phx-click="bulk_action"
-        phx-value-action={@action}
-        data-armed={to_string(@armed)}
-      >
-        <.icon name={if @done, do: "hero-check", else: @icon} class="h-4 w-4" />
-        <span class={!@done && !@armed && "max-sm:sr-only"}>
-          {cond do
-            @done -> @done_label
-            @armed -> @confirm_label
-            true -> @label
-          end}
-        </span>
-      </.button>
-    </.tooltip>
+    <div
+      id="selected-source-downloads"
+      role="group"
+      aria-label="Downloads for the selected sources"
+      class={[
+        "inline-flex min-h-9 items-center rounded-m3-sm border text-xs font-medium transition-colors duration-300 max-sm:min-h-11",
+        cond do
+          @done -> "theme-success-button"
+          @active -> "theme-confirm-pending"
+          true -> "theme-outline-button"
+        end,
+        @count == 0 && "opacity-50"
+      ]}
+    >
+      <%= if @active do %>
+        <% {action, icon, label, done_label, _tip} = @active %>
+        <div id={"#{action}-selected-sources"} class="self-stretch">
+          <button
+            type="button"
+            class="flex h-full items-center gap-1.5 px-3"
+            phx-click="bulk_action"
+            phx-value-action={action}
+            data-armed={to_string(!@done)}
+          >
+            <.icon name={if @done, do: "hero-check", else: icon} class="h-4 w-4" />
+            {if @done, do: done_label, else: "#{label} #{@count}?"}
+          </button>
+        </div>
+      <% else %>
+        <span class="pl-3 pr-1 max-sm:sr-only">Downloads</span>
+        <div :for={{action, icon, label, _done, tip} <- @switches} id={"#{action}-selected-sources"}>
+          <.tooltip tooltip={tip} position="top" tooltip_class="text-center">
+            <button
+              type="button"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-m3-xs transition hover:bg-theme-surface-3 disabled:cursor-not-allowed max-sm:h-11 max-sm:w-11"
+              disabled={@count == 0}
+              phx-click="bulk_action"
+              phx-value-action={action}
+              data-armed="false"
+            >
+              <.icon name={icon} class="h-4 w-4" /><span class="sr-only">{label}</span>
+            </button>
+          </.tooltip>
+        </div>
+      <% end %>
+    </div>
     """
   end
 
@@ -556,6 +600,17 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   defp cutoff_attrs(_params), do: {:ok, %{"download_cutoff_date" => nil, "download_cutoff_days" => nil}}
+
+  defp selection_toggle_text(selected_ids, total) do
+    if all_selected?(selected_ids, total), do: "Selected: All", else: "Selected: #{MapSet.size(selected_ids)}"
+  end
+
+  defp selection_toggle_label(selected_ids, total) do
+    case MapSet.size(selected_ids) do
+      0 -> "Select every source"
+      count -> "#{selection_toggle_text(selected_ids, total)}. Clear the selection of #{count}"
+    end
+  end
 
   defp listed_source(socket, id), do: Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
 
@@ -809,7 +864,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   # Bulk actions run on a second click for the same selection, within @bulk_arm_ms.
-  def handle_event("bulk_action", %{"action" => action}, socket) when action in ["pause", "resume"] do
+  def handle_event("bulk_action", %{"action" => action}, socket) when action in ["pause", "resume", "stop"] do
     bulk_click(socket, String.to_existing_atom(action))
   end
 
@@ -843,6 +898,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       |> set_sources()
       |> then(&{:noreply, &1})
     end
+  end
+
+  def handle_event("toggle_selection", _params, %{assigns: assigns} = socket) do
+    if MapSet.size(assigns.selected_ids) > 0, do: clear_selection(socket), else: select_all(socket)
   end
 
   def handle_event("toggle_select_all", _params, %{assigns: assigns} = socket) do
@@ -1121,6 +1180,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       case action do
         :pause -> Sources.pause_selected_sources(ids)
         :resume -> Sources.resume_selected_sources(ids)
+        :stop -> Sources.stop_selected_sources(ids)
         {:profile, profile_id} -> Sources.assign_selected_sources_profile(ids, profile_id)
       end
 

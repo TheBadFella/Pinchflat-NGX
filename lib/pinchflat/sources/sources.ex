@@ -44,13 +44,25 @@ defmodule Pinchflat.Sources do
 
   Returns {:ok, [%Source{}]} | {:error, term()}
   """
-  def pause_selected_sources(ids) do
+  def pause_selected_sources(ids),
+    do: switch_off_selected_sources(ids, %{download_media: false}, run_post_commit_tasks: false)
+
+  @doc """
+  Stops up to #{@selection_limit} available sources, as Stop All does for one: monitoring and
+  downloads turn off and queued and running downloads are cancelled. Files are kept. Rejects the
+  entire selection if any source is unavailable.
+
+  Returns {:ok, [%Source{}]} | {:error, term()}
+  """
+  def stop_selected_sources(ids), do: switch_off_selected_sources(ids, %{enabled: false, download_media: false}, [])
+
+  defp switch_off_selected_sources(ids, attrs, opts) do
     result =
       Repo.transaction(fn ->
         case get_selected_sources(ids, lock: true) do
           {:ok, sources} ->
             Enum.map(sources, fn source ->
-              case update_source(source, %{download_media: false}, run_post_commit_tasks: false) do
+              case update_source(source, attrs, opts) do
                 {:ok, updated} -> updated
                 {:error, changeset} -> Repo.rollback(changeset)
               end

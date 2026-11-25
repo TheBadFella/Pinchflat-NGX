@@ -143,14 +143,10 @@ defmodule PinchflatWeb.BulkSourcePauseTest do
 
     {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
     assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
-    assert has_element?(view, "#source-select-all-mobile[phx-click='toggle_select_all']")
-    refute has_element?(view, "button[aria-label='Clear selection']")
+    assert has_element?(view, "#source-selection-toggle[phx-click='toggle_selection']", "Selected: 0")
     view |> element("#source-select-mobile-#{source.id}") |> render_click()
 
-    assert has_element?(
-             view,
-             "#selected-source-actions button[aria-label='Clear selection'][phx-click*='clear_selection']"
-           )
+    assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="true"]))
 
     refute has_element?(view, "#selected-source-actions button[disabled]")
     # The visible label is the accessible name, so the confirm step is announced too.
@@ -170,7 +166,7 @@ defmodule PinchflatWeb.BulkSourcePauseTest do
     assert has_element?(view, "#selected-source-cutoff input[name='source_ids[]'][value='#{source.id}']")
     render_click(view, "clear_selection")
     assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
-    refute has_element?(view, "button[aria-label='Clear selection']")
+    assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="false"]))
     view |> element("#source-select-mobile-#{source.id}") |> render_click()
     view |> element("#source-select-mobile-#{source.id}") |> render_click()
     assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))

@@ -974,27 +974,28 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "selecting sources" do
-    test "the select-all checkbox selects and clears every source", %{conn: conn} do
+    test "the selection button selects every source, then clears the selection", %{conn: conn} do
       first = source_fixture(custom_name: "First")
       second = source_fixture(custom_name: "Second")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      click_element(view, "#source-select-all-mobile")
-      assert has_element?(view, "#source-select-all-mobile[checked]")
-      assert has_element?(view, "#selected-source-actions", "2 selected")
+      assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="false"]), "Selected: 0")
+      click_element(view, "#source-selection-toggle")
+      assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="true"]), "Selected: All")
       assert has_element?(view, "#selected-source-cutoff input[value='#{first.id}']")
       assert has_element?(view, "#selected-source-cutoff input[value='#{second.id}']")
       refute has_element?(view, "#source-select-all")
 
-      click_element(view, "#source-select-all-mobile")
-      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]), "None selected")
+      click_element(view, "#source-selection-toggle")
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
+      assert has_element?(view, "#source-selection-toggle", "Selected: 0")
 
-      for action <- ["#pause-selected-sources button", "#resume-selected-sources button", "button[phx-click]"] do
+      for action <- ["#pause-selected-sources button", "#resume-selected-sources button"] do
         assert has_element?(view, "#selected-source-actions #{action}[disabled]")
       end
 
-      refute has_element?(view, "button[aria-label='Clear selection']")
+      assert has_element?(view, "#selected-source-actions > button[phx-click][disabled]", "Delete")
 
       assert has_element?(view, "#selected-source-profile button[x-ref=trigger][disabled]")
       assert has_element?(view, "#selected-source-cutoff-menu button[disabled]")
@@ -1025,9 +1026,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, "#selected-source-cutoff input[value='#{first.id}']")
 
       click_element(view, ~s([data-view-toggle="grid"]))
-      assert has_element?(view, ~s(#source-select-all-grid[aria-pressed="true"]), "Clear All")
+      assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="true"]), "Selected: All")
       refute has_element?(view, "#source-select-all-table")
-      refute has_element?(view, "#source-select-all-mobile")
     end
 
     test "poster cards open the source and their corner tick selects them", %{conn: conn} do
@@ -1039,7 +1039,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       refute has_element?(view, "#source-poster-grid input[name=source_selection]")
       refute render_element(view, "#source-poster-grid") =~ "Not monitored"
-      assert has_element?(view, "#source-select-all-grid", "Select All")
+      assert has_element?(view, "#source-selection-toggle", "Selected: 0")
 
       assert has_element?(
                view,
@@ -1060,13 +1060,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#source-card-#{first.id}[data-selected="true"].ring-2))
       assert has_element?(view, ~s(#source-select-grid-#{first.id}[aria-pressed="true"]))
       assert has_element?(view, ~s(#source-card-#{second.id}[data-selected="false"]))
-      assert has_element?(view, "#selected-source-actions", "1 selected")
+      assert has_element?(view, "#source-selection-toggle", "Selected: 1")
 
-      click_element(view, "#source-select-grid-#{first.id}")
+      click_element(view, "#source-selection-toggle")
       assert has_element?(view, ~s(#source-card-#{first.id}[data-selected="false"]))
+      assert has_element?(view, "#source-selection-toggle", "Selected: 0")
 
-      click_element(view, "#source-select-all-grid")
-      assert has_element?(view, "#selected-source-actions", "2 selected")
+      click_element(view, "#source-selection-toggle")
+      assert has_element?(view, "#source-selection-toggle", "Selected: All")
     end
 
     test "selects every source in the tab and keeps it across pages", %{conn: conn} do
@@ -1078,9 +1079,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
 
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
       assert has_element?(view, "#source-select-all", "All 3 channels & playlists are selected.")
-      assert has_element?(view, "#source-select-all-mobile[checked]")
+      assert has_element?(view, "#source-selection-toggle", "Selected: All")
 
       for source <- [first, second, third] do
         assert has_element?(view, "#selected-source-cutoff input[value='#{source.id}']")
@@ -1089,7 +1090,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "#selected-source-cutoff input[value='#{video.id}']")
 
       click_element(view, "button.pagination-next")
-      assert has_element?(view, "#selected-source-actions", "3 selected")
+      assert has_element?(view, "#source-selection-toggle", "Selected: All")
       assert has_element?(view, "#source-select-table-#{third.id}[checked]")
 
       click_element(view, "#source-select-table-#{third.id}")
@@ -1108,7 +1109,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
       search(view, "zebra")
 
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
 
       assert has_element?(view, "#selected-source-cutoff input[value='#{zebra_a.id}']")
       assert has_element?(view, "#selected-source-cutoff input[value='#{zebra_b.id}']")
@@ -1122,7 +1123,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       source_fixture()
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
 
       assert has_element?(view, "#source-toolbar #source-search-form.max-sm\\:basis-full")
       assert has_element?(view, "#source-toolbar #selected-source-actions")
@@ -1137,20 +1138,29 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       source_fixture()
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
 
-      for id <- ["pause-selected-sources", "resume-selected-sources"] do
-        assert has_element?(view, "##{id} button span.max-sm\\:sr-only")
+      assert has_element?(view, "#selected-source-downloads span.max-sm\\:sr-only", "Downloads")
+
+      for id <- ["resume-selected-sources", "pause-selected-sources", "stop-selected-sources"] do
+        assert has_element?(view, "##{id} button span.sr-only")
       end
 
       assert has_element?(view, "#selected-source-actions button span.max-sm\\:sr-only", "Delete")
       assert has_element?(view, "#selected-source-frequency button span.max-sm\\:sr-only", "Index Frequency")
       assert has_element?(view, "#selected-source-cutoff-menu button span.max-sm\\:sr-only", "Download Cutoff")
-      assert has_element?(view, "#selected-source-profile button span.lg\\:hidden", "Profile")
-      assert has_element?(view, "#selected-source-profile button span.max-lg\\:hidden", "Media Profile")
+      assert has_element?(view, "#selected-source-profile button span.\\@5xl\\:hidden", "Profile")
+      assert has_element?(view, "#selected-source-profile button span.\\@max-5xl\\:hidden", "Media Profile")
 
       view |> element("#pause-selected-sources button") |> render_click()
-      refute has_element?(view, "#pause-selected-sources button span.max-sm\\:sr-only")
+
+      assert has_element?(
+               view,
+               "#selected-source-downloads.theme-confirm-pending #pause-selected-sources button",
+               "Pause 1?"
+             )
+
+      refute has_element?(view, "#resume-selected-sources")
     end
 
     test "turns automatic downloads off and on from the bulk More actions menu", %{conn: conn} do
@@ -1176,6 +1186,23 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       ripen_armed(view)
       view |> element(on) |> render_click()
       assert Repo.reload!(source).download_media
+    end
+
+    test "stops the selected sources from the Downloads chip on a second click", %{conn: conn} do
+      source = source_fixture(custom_name: "Stoppable", enabled: true, download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      view |> element("#stop-selected-sources button") |> render_click()
+      assert has_element?(view, "#stop-selected-sources button", "Stop 1?")
+      assert Repo.reload!(source).enabled
+
+      ripen_armed(view)
+      view |> element("#stop-selected-sources button") |> render_click()
+
+      assert %{enabled: false, download_media: false} = Repo.reload!(source)
+      assert has_element?(view, "#selected-source-downloads.theme-success-button", "Stopped")
     end
 
     test "sets the index frequency of the selected sources on a second click", %{conn: conn} do
@@ -1208,18 +1235,35 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       render_click(view, "toggle_select_all")
 
       view |> element("#pause-selected-sources button") |> render_click()
-      assert has_element?(view, ~s(#pause-selected-sources button[data-armed="true"].theme-confirm-pending), "Pause 2?")
+
+      assert has_element?(
+               view,
+               ~s(#selected-source-downloads.theme-confirm-pending #pause-selected-sources button[data-armed="true"]),
+               "Pause 2?"
+             )
+
       assert Pinchflat.Repo.reload!(first).download_media
 
       ripen_armed(view)
       view |> element("#pause-selected-sources button") |> render_click()
       refute Pinchflat.Repo.reload!(first).download_media
       refute Pinchflat.Repo.reload!(second).download_media
-      assert has_element?(view, "#pause-selected-sources button.theme-success-button", "Paused")
+
+      assert has_element?(
+               view,
+               "#selected-source-downloads.theme-success-button #pause-selected-sources button",
+               "Paused"
+             )
+
       refute has_element?(view, "#source-notice-toasts [role=status]")
 
       send(view.pid, {:clear_done, :pause})
-      assert has_element?(view, "#pause-selected-sources button.theme-outline-button", "Pause")
+
+      assert has_element?(
+               view,
+               "#selected-source-downloads.theme-outline-button #pause-selected-sources button",
+               "Pause"
+             )
     end
 
     test "a double-click arms the action without running it", %{conn: conn} do

@@ -4,21 +4,9 @@
       <div
         :if={@tab_record_count > 0 or @search_term != nil}
         id="source-toolbar"
-        class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
+        class="@container mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
       >
-        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-          <div :if={@view_mode == :table} class="md:hidden">
-            <.input
-              type="checkbox"
-              id="source-select-all-mobile"
-              name="source_select_all_mobile"
-              label="Select every source"
-              label_class="sr-only"
-              checked={all_selected?(@selected_ids, @total_record_count)}
-              disabled={@sources == []}
-              phx-click="toggle_select_all"
-            />
-          </div>
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <form
             id="source-search-form"
             role="search"
@@ -68,25 +56,6 @@
               </:input_action>
             </.input>
           </form>
-          <.button
-            :if={@view_mode == :grid}
-            id="source-select-all-grid"
-            type="button"
-            variant="outline"
-            size="compact"
-            class="shrink-0 gap-1.5"
-            aria-pressed={to_string(all_selected?(@selected_ids, @total_record_count))}
-            aria-label={
-              if all_selected?(@selected_ids, @total_record_count),
-                do: "Clear selection",
-                else: "Select every source"
-            }
-            disabled={@sources == []}
-            phx-click="toggle_select_all"
-          >
-            <.icon name="hero-check-circle" class="h-4 w-4" />
-            {if all_selected?(@selected_ids, @total_record_count), do: "Clear All", else: "Select All"}
-          </.button>
         </div>
 
         <div
@@ -96,60 +65,33 @@
           data-selected-count={MapSet.size(@selected_ids)}
           class="ml-auto flex flex-wrap items-center justify-end gap-2"
         >
-          <div class="flex items-center gap-1">
-            <p
-              class={[
-                "text-sm font-medium",
-                if(MapSet.size(@selected_ids) == 0, do: "text-theme-on-surface-muted", else: "text-theme-primary")
-              ]}
-              role="status"
-            >
-              {if MapSet.size(@selected_ids) == 0, do: "None selected", else: "#{MapSet.size(@selected_ids)} selected"}
-            </p>
-            <button
-              :if={MapSet.size(@selected_ids) > 0}
-              type="button"
-              class="theme-field-action h-8 w-8 max-sm:h-11 max-sm:w-11"
-              aria-label="Clear selection"
-              title="Clear selection"
-              phx-click="clear_selection"
-            >
-              <.icon name="hero-x-mark" class="h-4 w-4" />
-            </button>
-          </div>
-
-          <div id="pause-selected-sources">
-            <.bulk_action_button
-              action="pause"
-              label="Pause"
-              tooltip="Turn off automatic downloads for the selected sources"
-              confirm_label={"Pause #{MapSet.size(@selected_ids)}?"}
-              done_label="Paused"
-              icon="hero-pause-solid"
-              armed={armed_for?(@armed, :pause, @selected_ids)}
-              done={@done_action == :pause}
-              disabled={MapSet.size(@selected_ids) == 0}
+          <.button
+            id="source-selection-toggle"
+            type="button"
+            variant="outline"
+            size="compact"
+            class={["shrink-0 gap-1.5", MapSet.size(@selected_ids) > 0 && "text-theme-primary"]}
+            aria-pressed={to_string(MapSet.size(@selected_ids) > 0)}
+            aria-label={selection_toggle_label(@selected_ids, @total_record_count)}
+            aria-live="polite"
+            disabled={@sources == []}
+            phx-click="toggle_selection"
+          >
+            <.icon
+              name={if MapSet.size(@selected_ids) > 0, do: "hero-x-mark", else: "hero-check-circle"}
+              class="h-4 w-4"
             />
-          </div>
+            {selection_toggle_text(@selected_ids, @total_record_count)}
+          </.button>
 
-          <div id="resume-selected-sources">
-            <.bulk_action_button
-              action="resume"
-              label="Resume"
-              tooltip="Turn on automatic downloads for the selected sources"
-              confirm_label={"Resume #{MapSet.size(@selected_ids)}?"}
-              done_label="Resumed"
-              icon="hero-play-solid"
-              armed={armed_for?(@armed, :resume, @selected_ids)}
-              done={@done_action == :resume}
-              disabled={MapSet.size(@selected_ids) == 0}
-            />
-          </div>
+          <.bulk_downloads armed={@armed} done_action={@done_action} selected_ids={@selected_ids} />
 
           <div id="selected-source-profile">
             <.button_dropdown
               text={if @done_action == :profile, do: "Profile Changed", else: "Media Profile"}
               short_text={if @done_action != :profile, do: "Profile"}
+              short_class="@5xl:hidden"
+              long_class="@max-5xl:hidden"
               variant={if @done_action == :profile, do: "success", else: "outline"}
               size="compact"
               disabled={MapSet.size(@selected_ids) == 0}
@@ -204,6 +146,9 @@
             <.button_dropdown
               text="Download Cutoff"
               text_class="max-sm:sr-only"
+              short_text="DL Cutoff"
+              short_class="@5xl:hidden max-sm:sr-only"
+              long_class="@max-5xl:hidden"
               leading_icon="hero-archive-box-x-mark"
               aria_label="Download cutoff for the selected sources"
               variant="outline"
