@@ -328,6 +328,16 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           ? { bottom: (window.innerHeight - rect.top + 8) + 'px', ...side, maxHeight: Math.min(480, above) + 'px' }
           : { top: (rect.bottom + 8) + 'px', ...side, maxHeight: Math.min(480, below) + 'px' };
         dropdownOpen = !dropdownOpen;
+        const opened = menuStyle;
+        requestAnimationFrame(() => {
+          if (!dropdownOpen || menuStyle !== opened) return;
+          const menu = $refs.menu.getBoundingClientRect();
+          if (menu.width === 0) return;
+          const width = document.documentElement.clientWidth;
+          const { left, right, ...rest } = menuStyle;
+          if (menu.left < 16) menuStyle = { ...rest, left: '16px' };
+          else if (menu.right > width - 16) menuStyle = { ...rest, right: '16px' };
+        });
       "
       class={
         cond do

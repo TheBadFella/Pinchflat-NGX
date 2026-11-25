@@ -1761,7 +1761,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
       <button
         type="submit"
-        x-bind:disabled="submitting"
+        x-bind:disabled={if @disabled, do: "true", else: "submitting"}
         disabled={@disabled}
         aria-label={@aria_label}
         class={@button_class}

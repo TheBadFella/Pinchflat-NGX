@@ -638,7 +638,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
     conn
     |> put_flash(kind, message)
-    |> redirect(to: redirect_target_for(params, source, ~p"/sources"))
+    |> redirect(to: redirect_target_for(params, source, ~p"/sources/#{source}"))
   end
 
   @doc """

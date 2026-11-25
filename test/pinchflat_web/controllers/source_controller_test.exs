@@ -1507,6 +1507,17 @@ defmodule PinchflatWeb.SourceControllerTest do
   end
 
   describe "show source" do
+    test "keeps an idle source's download switches disabled", %{conn: conn} do
+      source = source_fixture()
+      html = conn |> get(~p"/sources/#{source}") |> html_response(200)
+
+      for action <- ["start_all", "pause_all", "stop_all"] do
+        assert [form] = Regex.run(~r|<form[^>]*action="/sources/#{source.id}/#{action}".*?</form>|s, html)
+        assert form =~ ~s(x-bind:disabled="true")
+        assert form =~ ~r/<button[^>]*\sdisabled[\s>]/
+      end
+    end
+
     test "section tabs carry the scroll position to the next tab", %{conn: conn} do
       source = source_fixture()
       html = conn |> get(~p"/sources/#{source}?#{[tab: "pending"]}") |> html_response(200)
@@ -1875,6 +1886,15 @@ defmodule PinchflatWeb.SourceControllerTest do
         assert File.read!(item.media_filepath) == original
         assert Repo.reload!(item).media_filepath == item.media_filepath
       end
+    end
+
+    test "a switch from the source's page returns to that page", %{conn: conn} do
+      source = source_fixture()
+
+      conn = post(conn, ~p"/sources/#{source.id}/pause_all")
+
+      assert redirected_to(conn) == ~p"/sources/#{source}"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "No active downloads to pause for this source."
     end
 
     test "stop_all reports when there is nothing to stop", %{conn: conn} do
