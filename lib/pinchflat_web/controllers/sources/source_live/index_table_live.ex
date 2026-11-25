@@ -230,12 +230,12 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       assign(assigns,
         policy: SourceHTML.retention_policy_label(source),
         cutoff_mode: cutoff_mode(source),
-        cutoff_label: cutoff_label(source)
+        cutoff_note: cutoff_note(source)
       )
 
     ~H"""
     <.button_dropdown
-      tooltip={"Retention: #{@policy}. Download cutoff: #{@cutoff_label}. Click to change the download cutoff."}
+      tooltip={"Retention: #{@policy}.#{@cutoff_note}"}
       tooltip_position="top"
       tooltip_class="text-center"
       class={"w-fit #{@class}"}
@@ -243,7 +243,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       <:trigger>
         <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
           <.icon :if={@show_icon} name="hero-archive-box-x-mark" class="h-4 w-4" aria-hidden="true" />
-          {retention_short_label(@source)}<span class="sr-only">, {@policy}. Download cutoff: {@cutoff_label}. Change the download cutoff</span>
+          {retention_short_label(@source)}<span class="sr-only">, {@policy}.{@cutoff_note} Change the download cutoff</span>
         </span>
       </:trigger>
       <:option>
@@ -400,7 +400,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     </.tooltip>
     <.button_dropdown
       :if={!@locked}
-      tooltip={"#{@full}. Click to change."}
+      tooltip={"#{@full}."}
       tooltip_position="top"
       tooltip_class="text-center"
       class={"w-fit #{@class}"}
@@ -597,10 +597,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp cutoff_mode(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "days"
   defp cutoff_mode(_source), do: "none"
 
-  defp cutoff_label(%{download_cutoff_date: %Date{} = date}), do: Date.to_iso8601(date)
-  defp cutoff_label(%{download_cutoff_days: 1}), do: "last day"
-  defp cutoff_label(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "last #{days} days"
-  defp cutoff_label(_source), do: "none"
+  defp cutoff_note(%{download_cutoff_date: %Date{} = date}), do: " Download cutoff: #{Date.to_iso8601(date)}."
+  defp cutoff_note(%{download_cutoff_days: 1}), do: " Download cutoff: last day."
+
+  defp cutoff_note(%{download_cutoff_days: days}) when is_integer(days) and days > 0,
+    do: " Download cutoff: last #{days} days."
+
+  defp cutoff_note(_source), do: ""
 
   defp cutoff_warning(%{removable: count, cutoff: cutoff}) do
     items = if count == 1, do: "1 downloaded item was", else: "#{count} downloaded items were"

@@ -51,13 +51,12 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                   if(@compact, do: "whitespace-nowrap px-2", else: "px-4"),
                   header_padding(@compact, col[:sort_key] && !col[:header]),
                   col[:sort_key] && !col[:header] && "relative",
-                  col[:label_icon] && "text-center",
-                  sorted_column?(@sort_key, col[:sort_key]) && "bg-theme-primary/10"
+                  col[:label_icon] && "text-center"
                 ]}
                 aria-sort={column_sort(@sort_key, @sort_direction, col[:sort_key])}
               >
                 {col[:header]}
-                <.tooltip :if={col[:label_icon] && !col[:header]} tooltip={col[:label]} position="bottom">
+                <.tooltip :if={col[:label_icon] && !col[:header]} tooltip={col[:label]} position="top">
                   <.sort_button
                     :if={col[:sort_key]}
                     col={col}
@@ -114,7 +113,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
       class={[
         "theme-filter-button -mx-3 -my-1 flex-col gap-0 rounded-m3-xs py-0.5 align-middle",
         "after:absolute after:inset-0",
-        if(@sorted, do: "text-theme-primary", else: "hover:text-theme-primary")
+        "hover:text-theme-primary"
       ]}
       phx-click="sort_update"
       phx-value-sort_key={@col[:sort_key]}

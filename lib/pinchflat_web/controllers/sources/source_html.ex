@@ -263,7 +263,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     assigns = assign(assigns, status: status, action: action)
 
     ~H"""
-    <.tooltip tooltip={"#{@status.label}. Click to #{@action}."} position={@tooltip_position} tooltip_class="text-center">
+    <.tooltip tooltip={@status.label} position={@tooltip_position} tooltip_class="text-center">
       <button
         type="button"
         id={"source-status-#{@id_prefix}-#{@source.id}"}

@@ -475,7 +475,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       assert has_element?(view, ~s(#source-status-table-#{enabled.id}[aria-label$="Disable On source"]))
       assert has_element?(view, ~s(#source-status-table-#{disabled.id}[aria-label$="Enable Off source"]))
-      assert has_element?(view, "#source-table [role=tooltip]", "Disabled. Click to enable.")
+      assert has_element?(view, "#source-table [role=tooltip]", "Disabled")
+      refute render(view) =~ "Click to"
     end
   end
 
@@ -487,7 +488,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       switch = render_element(view, "#source-status-table-#{source.id}")
       refute switch =~ "title="
-      assert has_element?(view, "#source-table td", "Indexing Enabled, No Automatic Downloads. Click to disable.")
+      assert has_element?(view, "#source-table td [role=tooltip]", "Indexing Enabled, No Automatic Downloads")
       assert switch =~ "Indexing Enabled, No Automatic Downloads"
       assert has_element?(view, ~s(th button[data-label="Status"]))
       refute has_element?(view, "th button", "Enabled?")
@@ -585,8 +586,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       refute has_element?(view, ~s|#{form} input[name="retention_period_days"]|)
 
+      refute render_element(view, "#source-table") =~ "Download cutoff:"
+
       view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "14"}) |> render_submit()
       assert %{download_cutoff_days: 14, download_cutoff_date: nil} = Repo.reload!(source)
+      assert render_element(view, "#source-table") =~ "Download cutoff: last 14 days."
 
       view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-31"}) |> render_submit()
       assert %{download_cutoff_days: nil, download_cutoff_date: ~D[2020-01-31]} = Repo.reload!(source)
@@ -891,12 +895,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       arrow = if direction == "asc", do: "up", else: "down"
 
-      assert has_element?(
-               view,
-               ~s(th[class*="bg-theme-primary/10"] button[data-label="Pending"][data-sorted="#{direction}"])
-             )
-
-      assert has_element?(view, ~s(th button[data-label="Pending"].text-theme-primary [data-sort-arrow="#{arrow}"] svg))
+      assert has_element?(view, ~s(th button[data-label="Pending"][data-sorted="#{direction}"]))
+      refute has_element?(view, ~s(th[class*="bg-theme-primary"]))
+      refute has_element?(view, ~s(th button[data-label="Pending"].text-theme-primary))
+      assert has_element?(view, ~s(th button[data-label="Pending"] [data-sort-arrow="#{arrow}"] svg))
       arrows = view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(~s(th button[data-label="Pending"] svg))
       assert Enum.count(arrows) == 1
       refute has_element?(view, ~s(th button[data-label="Downloaded"][data-sorted]))

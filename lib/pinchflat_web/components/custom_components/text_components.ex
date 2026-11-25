@@ -343,7 +343,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
         data-tooltip
         data-position={if @position == "top", do: "top", else: "bottom"}
         class={[
-          "theme-surface-accent group/tip hidden fixed inset-auto z-50 m-0 max-w-80 overflow-visible rounded-m3-sm p-1.5 text-sm font-medium shadow-m3-2",
+          "theme-surface-accent group/tip pointer-events-none hidden fixed inset-auto z-50 m-0 max-w-80 overflow-visible rounded-m3-sm p-1.5 text-sm font-medium shadow-m3-2",
           @tooltip_class
         ]}
       >
