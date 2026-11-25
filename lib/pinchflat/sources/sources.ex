@@ -149,6 +149,33 @@ defmodule Pinchflat.Sources do
     end)
   end
 
+  @doc """
+  Sets how often up to #{@selection_limit} selected sources are indexed. Sources with fast
+  indexing, and single videos, keep their fixed schedule and are counted as skipped.
+
+  Returns {:ok, %{updated: integer(), skipped: integer()}} | {:error, term()}
+  """
+  def set_selected_sources_index_frequency(ids, minutes) when is_integer(minutes) do
+    Repo.transaction(fn ->
+      case get_selected_sources(ids, lock: true) do
+        {:ok, sources} ->
+          {fixed, changeable} = Enum.split_with(sources, &(&1.fast_index or &1.collection_type == :video))
+
+          Enum.each(changeable, fn source ->
+            case update_source(source, %{index_frequency_minutes: minutes}) do
+              {:ok, _updated} -> :ok
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end)
+
+          %{updated: length(changeable), skipped: length(fixed)}
+
+        {:error, reason} ->
+          Repo.rollback(reason)
+      end
+    end)
+  end
+
   defp update_selected_sources(ids, attrs, opts \\ []) do
     case get_selected_sources(ids, lock: true) do
       {:ok, sources} ->

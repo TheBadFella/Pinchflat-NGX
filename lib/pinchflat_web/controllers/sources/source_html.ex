@@ -293,6 +293,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
+  The cutoff being applied on the bulk cutoff confirmation page.
+  """
+  def bulk_cutoff_label(%{rolling_days: days}) when is_integer(days), do: "the last #{days} days"
+  def bulk_cutoff_label(%{cutoff: %Date{} = cutoff}), do: Date.to_iso8601(cutoff)
+  def bulk_cutoff_label(_preview), do: "No cutoff"
+
+  @doc """
+  A source's current download cutoff for the bulk cutoff confirmation page.
+  """
+  def source_cutoff_label(%{download_cutoff_date: %Date{} = date}), do: Date.to_iso8601(date)
+  def source_cutoff_label(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "last #{days} days"
+  def source_cutoff_label(_source), do: "No cutoff"
+
+  @doc """
   The source actions menu, shared by a source's page and the sources list. Actions that queue
   work or change downloads run on a second click. Download Pending and Redownload Existing
   only appear while Download Media is on and there are items for them to act on.

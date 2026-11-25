@@ -97,6 +97,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   """
   attr :text, :string, default: nil
   attr :text_class, :string, default: nil, doc: "classes for the trigger text, such as truncation for long values"
+  attr :leading_icon, :string, default: nil, doc: "an icon before the trigger text"
+  attr :short_text, :string, default: nil, doc: "a shorter label shown instead of the text below the lg breakpoint"
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :class, :string, default: ""
@@ -269,6 +271,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
     Map.take(assigns, [
       :text,
       :text_class,
+      :leading_icon,
+      :short_text,
       :icon_name,
       :aria_label,
       :size_class,
@@ -281,6 +285,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
 
   attr :text, :string, default: nil
   attr :text_class, :string, default: nil
+  attr :leading_icon, :string, default: nil
+  attr :short_text, :string, default: nil
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :title, :string, default: nil
@@ -335,8 +341,11 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
           <span class="sr-only">{@text || @aria_label}</span>
         <% true -> %>
-          <span :if={@text_class} class={@text_class}>{@text}</span>
-          {if is_nil(@text_class), do: @text}
+          <CoreComponents.icon :if={@leading_icon} name={@leading_icon} class="-mr-1 h-4 w-4" />
+          <span :if={@short_text} class="lg:hidden">{@short_text}</span>
+          <span :if={@text_class} class={[@text_class, @short_text && "max-lg:hidden"]}>{@text}</span>
+          <span :if={is_nil(@text_class) && @short_text} class="max-lg:hidden">{@text}</span>
+          {if is_nil(@text_class) && is_nil(@short_text), do: @text}
           <CoreComponents.icon
             name="hero-chevron-down"
             class="h-4 w-4 fill-current duration-200 ease-linear"

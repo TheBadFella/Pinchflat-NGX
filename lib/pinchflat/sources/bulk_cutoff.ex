@@ -11,16 +11,18 @@ defmodule Pinchflat.Sources.BulkCutoff do
   alias Pinchflat.Sources.Source
 
   @doc """
-  Validates selected sources and counts downloaded media before the proposed date.
-  An empty date removes the cutoff. Preview never writes or queues work.
+  Validates selected sources and counts downloaded media before the proposed cutoff.
+  The value is a date (`"2026-01-31"`), a rolling window (`"days:30"`, counted back from
+  today) or empty to remove the cutoff. Preview never writes or queues work.
 
   Returns {:ok, map()} | {:error, term()}
   """
   def preview(ids, value) do
-    with {:ok, cutoff} <- parse_cutoff(value),
+    with {:ok, setting} <- parse_cutoff(value),
          {:ok, sources} <- Sources.get_selected_sources(ids),
-         :ok <- validate_sources(sources, cutoff) do
+         :ok <- validate_sources(sources, setting) do
       source_ids = Enum.map(sources, & &1.id)
+      cutoff = cutoff_date(setting)
 
       before_cutoff =
         if cutoff do
@@ -44,6 +46,7 @@ defmodule Pinchflat.Sources.BulkCutoff do
        Map.merge(counts, %{
          sources: sources,
          cutoff: cutoff,
+         rolling_days: rolling_days(setting),
          fingerprint: fingerprint(sources)
        })}
     end
@@ -58,14 +61,12 @@ defmodule Pinchflat.Sources.BulkCutoff do
   """
   def apply_preview(ids, value, expected_fingerprint) do
     Repo.transaction(fn ->
-      with {:ok, cutoff} <- parse_cutoff(value),
+      with {:ok, setting} <- parse_cutoff(value),
            {:ok, sources} <- Sources.get_selected_sources(ids, lock: true),
            true <- fingerprint(sources) == expected_fingerprint,
-           :ok <- validate_sources(sources, cutoff) do
+           :ok <- validate_sources(sources, setting) do
         Enum.map(sources, fn source ->
-          case Sources.update_source(source, %{download_cutoff_date: cutoff, download_cutoff_days: nil},
-                 run_post_commit_tasks: false
-               ) do
+          case Sources.update_source(source, cutoff_attrs(setting), run_post_commit_tasks: false) do
             {:ok, updated} -> updated
             {:error, reason} -> Repo.rollback(reason)
           end
@@ -79,6 +80,13 @@ defmodule Pinchflat.Sources.BulkCutoff do
 
   defp parse_cutoff(""), do: {:ok, nil}
 
+  defp parse_cutoff("days:" <> days) do
+    case Integer.parse(days) do
+      {days, ""} when days >= 1 -> {:ok, {:days, days}}
+      _ -> {:error, :invalid_cutoff}
+    end
+  end
+
   defp parse_cutoff(value) when is_binary(value) do
     case Date.from_iso8601(value) do
       {:ok, date} -> {:ok, date}
@@ -88,9 +96,18 @@ defmodule Pinchflat.Sources.BulkCutoff do
 
   defp parse_cutoff(_), do: {:error, :invalid_cutoff}
 
-  defp validate_sources(sources, cutoff) do
-    invalid =
-      Enum.reject(sources, &Source.changeset(&1, %{download_cutoff_date: cutoff, download_cutoff_days: nil}).valid?)
+  defp cutoff_attrs({:days, days}), do: %{download_cutoff_date: nil, download_cutoff_days: days}
+  defp cutoff_attrs(date), do: %{download_cutoff_date: date, download_cutoff_days: nil}
+
+  defp cutoff_date({:days, _days} = setting), do: Source.effective_download_cutoff_date(cutoff_attrs(setting))
+  defp cutoff_date(date), do: date
+
+  defp rolling_days({:days, days}), do: days
+  defp rolling_days(_setting), do: nil
+
+  defp validate_sources(sources, setting) do
+    cutoff = cutoff_date(setting)
+    invalid = Enum.reject(sources, &Source.changeset(&1, cutoff_attrs(setting)).valid?)
 
     index_conflicts =
       for source <- invalid,
@@ -106,7 +123,7 @@ defmodule Pinchflat.Sources.BulkCutoff do
 
   defp fingerprint(sources) do
     sources
-    |> Enum.map(&{&1.id, &1.download_cutoff_date, &1.index_cutoff_date, &1.updated_at})
+    |> Enum.map(&{&1.id, &1.download_cutoff_date, &1.download_cutoff_days, &1.index_cutoff_date, &1.updated_at})
     |> :erlang.term_to_binary()
     |> then(&:crypto.hash(:sha256, &1))
     |> Base.encode16()

@@ -234,7 +234,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       html = conn |> get(~p"/sources") |> html_response(200)
 
       assert html =~ "pinchflat_sources_view="
-      assert html =~ ~s|x-on:click="remember('table')"|
+      # Sources opens in the grid, so either view button switches to and remembers the table.
+      assert html =~ ~s|x-on:click="remember(&#39;table&#39;)"|
     end
 
     test "starts the selected tab from the search term in the URL", %{conn: conn} do

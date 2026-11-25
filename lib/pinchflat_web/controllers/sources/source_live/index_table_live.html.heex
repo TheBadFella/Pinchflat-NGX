@@ -6,7 +6,7 @@
         id="source-toolbar"
         class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
       >
-        <div class="flex w-full items-center gap-2 sm:w-auto">
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
           <div :if={@view_mode == :table} class="md:hidden">
             <.input
               type="checkbox"
@@ -22,7 +22,7 @@
           <form
             id="source-search-form"
             role="search"
-            class="min-w-0 flex-1 sm:w-80 sm:flex-none lg:w-96"
+            class="min-w-0 flex-1 max-sm:order-first max-sm:basis-full sm:w-80 sm:flex-none lg:w-96"
             phx-change="search"
             phx-submit="search"
             x-data="{
@@ -112,7 +112,7 @@
               class="theme-field-action h-8 w-8 max-sm:h-11 max-sm:w-11"
               aria-label="Clear selection"
               title="Clear selection"
-              phx-click={JS.push("clear_selection") |> hide_cutoff_panel()}
+              phx-click="clear_selection"
             >
               <.icon name="hero-x-mark" class="h-4 w-4" />
             </button>
@@ -147,6 +147,7 @@
           <div id="selected-source-profile">
             <.button_dropdown
               text={if @done_action == :profile, do: "Profile Changed", else: "Media Profile"}
+              short_text={if @done_action != :profile, do: "Profile"}
               variant={if @done_action == :profile, do: "success", else: "outline"}
               size="compact"
               disabled={MapSet.size(@selected_ids) == 0}
@@ -170,20 +171,72 @@
             </.button_dropdown>
           </div>
 
-          <.button
-            type="button"
-            variant="outline"
-            size="compact"
-            class="gap-1.5"
-            id="selected-source-cutoff-toggle"
-            aria-controls="selected-source-cutoff"
-            aria-expanded="false"
-            disabled={MapSet.size(@selected_ids) == 0}
-            phx-click={toggle_cutoff_panel()}
-          >
-            Download Cutoff
-            <.icon name="hero-chevron-down" id="selected-source-cutoff-chevron" class="h-4 w-4 transition" />
-          </.button>
+          <div id="selected-source-frequency">
+            <.button_dropdown
+              text={if @done_action == :frequency, do: "Frequency Changed", else: "Index Frequency"}
+              text_class={if @done_action == :frequency, do: "", else: "max-sm:sr-only"}
+              leading_icon="hero-clock"
+              aria_label="Index frequency for the selected sources"
+              variant={if @done_action == :frequency, do: "success", else: "outline"}
+              size="compact"
+              disabled={MapSet.size(@selected_ids) == 0}
+            >
+              <:option :for={{label, minutes} <- SourceHTML.friendly_index_frequencies()}>
+                <button
+                  type="button"
+                  phx-click="bulk_frequency"
+                  phx-value-minutes={minutes}
+                  data-armed={to_string(armed_for?(@armed, {:frequency, to_string(minutes)}, @selected_ids))}
+                  x-on:click="if ($el.dataset.armed === 'true') dropdownOpen = false"
+                  class={armed_for?(@armed, {:frequency, to_string(minutes)}, @selected_ids) && "theme-status-warning"}
+                >
+                  {if armed_for?(@armed, {:frequency, to_string(minutes)}, @selected_ids),
+                    do: "Use #{label} for #{MapSet.size(@selected_ids)}?",
+                    else: label}
+                </button>
+              </:option>
+            </.button_dropdown>
+          </div>
+
+          <div id="selected-source-cutoff-menu">
+            <.button_dropdown
+              text="Download Cutoff"
+              text_class="max-sm:sr-only"
+              leading_icon="hero-archive-box-x-mark"
+              aria_label="Download cutoff for the selected sources"
+              variant="outline"
+              size="compact"
+              disabled={MapSet.size(@selected_ids) == 0}
+            >
+              <:option>
+                <.form
+                  for={%{}}
+                  id="selected-source-cutoff"
+                  action={~p"/sources/cutoff/apply_now"}
+                  method="post"
+                  class="w-72 px-4 pb-2 text-left"
+                >
+                  <input type="hidden" name="return_to" value={@return_to} />
+                  <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+                  <div class="space-y-3">
+                    <.cutoff_fields
+                      id_base="selected-source-cutoff"
+                      date_name="cutoff_date"
+                      days_name="cutoff_days"
+                      mode="date"
+                      timezone={@timezone}
+                    />
+                    <p class="text-xs text-theme-on-surface-muted">
+                      If downloaded media would become eligible for cleanup, you'll see the counts and confirm first.
+                    </p>
+                    <.button type="submit" size="compact" class="w-full" disabled={MapSet.size(@selected_ids) == 0}>
+                      Apply
+                    </.button>
+                  </div>
+                </.form>
+              </:option>
+            </.button_dropdown>
+          </div>
 
           <.button
             type="button"
@@ -193,7 +246,7 @@
             disabled={MapSet.size(@selected_ids) == 0}
             phx-click={JS.push("confirm_delete") |> show_modal("delete-selected-sources-modal")}
           >
-            <.icon name="hero-trash" class="h-4 w-4" /> Delete
+            <.icon name="hero-trash" class="h-4 w-4" /> <span class="max-sm:sr-only">Delete</span>
           </.button>
 
           <div id="selected-source-jobs">
@@ -252,37 +305,6 @@
         </span>
       </p>
 
-      <%!-- Always rendered so the date picker is ready when the panel opens. --%>
-      <.form
-        for={%{}}
-        id="selected-source-cutoff"
-        action={~p"/sources/cutoff/apply_now"}
-        method="post"
-        class="mb-4 hidden rounded-m3-sm border border-theme-outline/60 bg-theme-surface p-4"
-      >
-        <input type="hidden" name="return_to" value={@return_to} />
-        <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-        <div class="flex min-w-0 flex-wrap items-end gap-2">
-          <div class="min-w-0 flex-1">
-            <.date_picker
-              id="selected-source-cutoff-date"
-              name="cutoff_date"
-              label="Download Cutoff Date"
-              value=""
-              timezone={@timezone}
-              required={false}
-              presets={cutoff_date_presets()}
-              presets_inline
-            />
-          </div>
-          <.button type="submit" variant="outline" disabled={MapSet.size(@selected_ids) == 0}>Apply Cutoff</.button>
-          <p class="basis-full text-xs text-theme-on-surface-muted">
-            Downloads media published on or after this date. Leave blank to remove the cutoff. If downloaded media
-            published before the date would become eligible for cleanup, you'll see the counts and confirm first.
-          </p>
-        </div>
-      </.form>
-
       <SourceHTML.source_delete_dialog
         id="delete-selected-sources-modal"
         form_id="delete-selected-sources"
@@ -309,7 +331,7 @@
             <button
               type="button"
               class="theme-touch-target font-semibold text-theme-primary hover:underline"
-              phx-click={JS.push("clear_selection") |> hide_cutoff_panel()}
+              phx-click="clear_selection"
             >
               Clear Selection
             </button>
@@ -587,7 +609,14 @@
             sort_key="retention"
             class="text-center"
           >
-            <.source_retention source={source} id={"source-retention-#{source.id}"} class="mx-auto" />
+            <.source_retention
+              source={source}
+              id={"source-retention-#{source.id}"}
+              timezone={@timezone}
+              confirm={confirm_for(@cutoff_confirm, source)}
+              saved={saved_for(@settings_saved, source)}
+              class="mx-auto"
+            />
           </:col>
 
           <:col
@@ -743,6 +772,9 @@
                     <.source_retention
                       source={source}
                       id={"source-retention-grid-#{source.id}"}
+                      timezone={@timezone}
+                      confirm={confirm_for(@cutoff_confirm, source)}
+                      saved={saved_for(@settings_saved, source)}
                       show_icon
                       class="text-xs text-theme-on-surface-muted"
                     />
@@ -829,8 +861,8 @@
           )
         ]}
         phx-click="view_change"
-        phx-value-view="table"
-        x-on:click="remember('table')"
+        phx-value-view={if @view_mode == :table, do: "grid", else: "table"}
+        x-on:click={"remember('#{if @view_mode == :table, do: "grid", else: "table"}')"}
         aria-pressed={to_string(@view_mode == :table)}
         data-view-toggle="table"
       >
@@ -847,8 +879,8 @@
           )
         ]}
         phx-click="view_change"
-        phx-value-view="grid"
-        x-on:click="remember('grid')"
+        phx-value-view={if @view_mode == :table, do: "grid", else: "table"}
+        x-on:click={"remember('#{if @view_mode == :table, do: "grid", else: "table"}')"}
         aria-pressed={to_string(@view_mode == :grid)}
         data-view-toggle="grid"
       >

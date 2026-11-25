@@ -6,7 +6,7 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
 
   def preview(conn, params) do
     ids = params["source_ids"]
-    value = params["cutoff_date"]
+    value = cutoff_value(params)
 
     case BulkCutoff.preview(ids, value) do
       {:ok, preview} -> render_confirmation(conn, ids, value, preview, params)
@@ -38,7 +38,7 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
   """
   def apply_now(conn, params) do
     ids = params["source_ids"]
-    value = params["cutoff_date"]
+    value = cutoff_value(params)
 
     case BulkCutoff.preview(ids, value) do
       {:ok, %{removable: removable} = preview} when removable > 0 ->
@@ -51,6 +51,11 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
         reject_preview(conn, reason, params)
     end
   end
+
+  # The sources list sends a mode with a date or a number of days; older forms send only a date.
+  defp cutoff_value(%{"cutoff_mode" => "days"} = params), do: "days:" <> String.trim(params["cutoff_days"] || "")
+  defp cutoff_value(%{"cutoff_mode" => "none"}), do: ""
+  defp cutoff_value(params), do: params["cutoff_date"]
 
   defp apply_without_confirmation(conn, ids, value, preview, params) do
     case BulkCutoff.apply_preview(ids, value, preview.fingerprint) do
@@ -80,6 +85,10 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
     "Download cutoff removed for #{length(sources)} #{source_noun(sources)}."
   end
 
+  defp applied_message(sources, %{rolling_days: days}) when is_integer(days) do
+    "Download cutoff set to the last #{days} days for #{length(sources)} #{source_noun(sources)}."
+  end
+
   defp applied_message(sources, %{cutoff: cutoff}) do
     "Download cutoff set to #{Date.to_iso8601(cutoff)} for #{length(sources)} #{source_noun(sources)}."
   end
@@ -91,7 +100,8 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
     message =
       case reason do
         :invalid_cutoff ->
-          "Enter a valid cutoff date in YYYY-MM-DD format, or leave it blank to remove the cutoff."
+          "Enter a valid cutoff date in YYYY-MM-DD format or a rolling window of 1 day or more, " <>
+            "or choose No cutoff."
 
         {:index_cutoff_after, conflicts} ->
           index_cutoff_message(conflicts)

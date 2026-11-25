@@ -46,6 +46,64 @@ defmodule PinchflatWeb.BulkSourceCutoffTest do
     assert is_nil(Repo.reload!(source).download_cutoff_date)
   end
 
+  test "the sources list sets a rolling window or removes the cutoff by mode", %{conn: conn} do
+    source = source_fixture(download_cutoff_date: ~D[2026-01-02])
+
+    response =
+      post(conn, "/sources/cutoff/apply_now", %{
+        "source_ids" => ["#{source.id}"],
+        "cutoff_mode" => "days",
+        "cutoff_days" => "30",
+        "cutoff_date" => "2026-01-02"
+      })
+
+    assert Phoenix.Flash.get(response.assigns.flash, :info) == "Download cutoff set to the last 30 days for 1 source."
+    assert %{download_cutoff_date: nil, download_cutoff_days: 30} = Repo.reload!(source)
+
+    response =
+      post(conn, "/sources/cutoff/apply_now", %{
+        "source_ids" => ["#{source.id}"],
+        "cutoff_mode" => "none",
+        "cutoff_date" => "2026-01-02"
+      })
+
+    assert Phoenix.Flash.get(response.assigns.flash, :info) == "Download cutoff removed for 1 source."
+    assert %{download_cutoff_date: nil, download_cutoff_days: nil} = Repo.reload!(source)
+
+    response =
+      post(conn, "/sources/cutoff/apply_now", %{
+        "source_ids" => ["#{source.id}"],
+        "cutoff_mode" => "days",
+        "cutoff_days" => "0"
+      })
+
+    assert Phoenix.Flash.get(response.assigns.flash, :error) =~ "a rolling window of 1 day or more"
+    assert %{download_cutoff_days: nil} = Repo.reload!(source)
+  end
+
+  test "confirms a rolling window that makes downloaded items eligible for removal", %{conn: conn} do
+    source = source_fixture()
+    media_item_fixture(source_id: source.id, uploaded_at: ~U[2019-06-01 00:00:00Z])
+
+    html =
+      post(conn, "/sources/cutoff/apply_now", %{
+        "source_ids" => ["#{source.id}"],
+        "cutoff_mode" => "days",
+        "cutoff_days" => "30"
+      })
+      |> html_response(200)
+
+    assert html =~ "Confirm cutoff change"
+    assert html =~ "the last 30 days"
+    assert is_nil(Repo.reload!(source).download_cutoff_days)
+
+    [_, token] = Regex.run(~r/name="token" value="([^"]+)"/, html)
+    response = post(conn, "/sources/cutoff/apply", %{token: token})
+
+    assert redirected_to(response) == "/sources"
+    assert Repo.reload!(source).download_cutoff_days == 30
+  end
+
   test "asks for confirmation when downloaded items would become eligible for removal", %{conn: conn} do
     source = source_fixture()
     media_item_fixture(source_id: source.id, uploaded_at: ~U[2025-06-01 00:00:00Z])

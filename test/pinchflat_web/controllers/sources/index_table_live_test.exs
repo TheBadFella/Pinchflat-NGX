@@ -569,25 +569,71 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert row_retention(view, off) =~ "No age-based cleanup (source override)"
     end
 
-    test "changes a source's retention from the list", %{conn: conn} do
-      profile = media_profile_fixture(%{retention_period_days: 30})
-      source = source_fixture(custom_name: "Editable", media_profile_id: profile.id)
+    test "sets a fixed or rolling download cutoff, or removes it, from the list", %{conn: conn} do
+      source = source_fixture(custom_name: "Cutoff source")
+      form = retention_form(source)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert has_element?(view, ~s|#source-retention-#{source.id}-days[placeholder="Inherit (30 days)"]|)
+      for days <- [7, 14, 30, 60, 90, 180, 365] do
+        assert has_element?(
+                 view,
+                 ~s|#{form} select[aria-label="Rolling window presets"] option[value="#{days}"]|,
+                 "#{days} days"
+               )
+      end
 
-      view |> form("#source-retention-#{source.id}-form", %{retention_period_days: "7"}) |> render_submit()
-      assert Repo.reload!(source).retention_period_days == 7
-      assert row_retention(view, source) =~ "7 days (source override)"
+      refute has_element?(view, ~s|#{form} input[name="retention_period_days"]|)
 
-      view |> form("#source-retention-#{source.id}-form", %{retention_period_days: ""}) |> render_submit()
-      assert Repo.reload!(source).retention_period_days == nil
-      assert row_retention(view, source) =~ "30 days (profile default)"
+      view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "14"}) |> render_submit()
+      assert %{download_cutoff_days: 14, download_cutoff_date: nil} = Repo.reload!(source)
 
-      view |> form("#source-retention-#{source.id}-form", %{retention_period_days: "-2"}) |> render_submit()
-      assert Repo.reload!(source).retention_period_days == nil
-      assert render(view) =~ "Could not change the retention"
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-31"}) |> render_submit()
+      assert %{download_cutoff_days: nil, download_cutoff_date: ~D[2020-01-31]} = Repo.reload!(source)
+
+      view |> form(form, %{cutoff_mode: "none"}) |> render_submit()
+      assert %{download_cutoff_days: nil, download_cutoff_date: nil} = Repo.reload!(source)
+
+      view |> form(form, %{cutoff_mode: "days", download_cutoff_days: ""}) |> render_submit()
+      assert render(view) =~ "Enter how many days the rolling window covers."
+      assert %{download_cutoff_days: nil} = Repo.reload!(source)
+    end
+
+    test "keeps the cutoff fields from being reset by list refreshes", %{conn: conn} do
+      source = source_fixture(custom_name: "Refreshing source", download_cutoff_days: 14)
+      form = retention_form(source)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      fields = ~s(#{form} [phx-update="ignore"][id$="-fields-days--14"])
+      assert has_element?(view, fields)
+      html = render_element(view, fields)
+      assert length(Regex.scan(~r/<fieldset[^>]*x-bind:disabled=/, html)) == 2
+      assert has_element?(view, ~s(#{fields} fieldset input[name=download_cutoff_days]))
+
+      send(view.pid, :throttled_refresh)
+      assert has_element?(view, fields)
+
+      view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "30"}) |> render_submit()
+      refute has_element?(view, fields)
+      assert has_element?(view, ~s(#{form} [phx-update="ignore"][id$="-fields-days--30"]))
+    end
+
+    test "asks for a second Apply before a cutoff makes downloaded items deletable", %{conn: conn} do
+      source = source_fixture(custom_name: "Old downloads")
+      media_item_fixture(source_id: source.id, uploaded_at: ~U[2019-06-01 00:00:00Z])
+      form = retention_form(source)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-01"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == nil
+      assert render(view) =~ "1 downloaded item was published before 2020-01-01"
+      assert has_element?(view, "#{form} button[type=submit]", "Apply and Delete 1")
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-01"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == ~D[2020-01-01]
+      refute render(view) =~ "Apply and Delete"
     end
 
     test "uses a short label" do
@@ -927,7 +973,19 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "button[aria-label='Clear selection']")
 
       assert has_element?(view, "#selected-source-profile button[x-ref=trigger][disabled]")
-      assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"][disabled]))
+      assert has_element?(view, "#selected-source-cutoff-menu button[disabled]")
+      assert has_element?(view, "#selected-source-frequency button[disabled]")
+    end
+
+    test "either view button switches to the other view", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, ~s([data-view-toggle="table"]))
+      assert has_element?(view, "#source-poster-grid")
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+      assert has_element?(view, "#source-table")
     end
 
     test "the table header checkbox selects every source, and the status column sorts by enabled", %{conn: conn} do
@@ -1036,22 +1094,59 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
     end
 
-    test "keeps the actions on the search row and the cutoff form behind its button", %{conn: conn} do
+    test "keeps the actions on the search row and the cutoff form in its menu", %{conn: conn} do
       source_fixture()
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
       click_element(view, "#source-select-all-mobile")
 
-      assert has_element?(view, "#source-toolbar #source-search-form")
+      assert has_element?(view, "#source-toolbar #source-search-form.max-sm\\:basis-full")
       assert has_element?(view, "#source-toolbar #selected-source-actions")
 
-      assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"]))
-      # The panel is always rendered (hidden) and the button toggles it on the client.
-      assert has_element?(view, "form#selected-source-cutoff.hidden")
-      toggle = view |> element("#selected-source-cutoff-toggle") |> render()
-      assert toggle =~ "#selected-source-cutoff"
-      assert toggle =~ ~s(aria-expanded="false")
-      refute render(view) =~ "cutoffOpen"
+      assert has_element?(view, "#selected-source-cutoff-menu form#selected-source-cutoff")
+      assert has_element?(view, "#selected-source-cutoff select[name=cutoff_mode] option[value=days]")
+      assert has_element?(view, "#selected-source-cutoff input[name=cutoff_days]")
+      assert has_element?(view, ~s(#selected-source-cutoff select[aria-label="Rolling window presets"]))
+    end
+
+    test "shows only icons for the bulk buttons on phones until they ask for confirmation", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, "#source-select-all-mobile")
+
+      for id <- ["pause-selected-sources", "resume-selected-sources"] do
+        assert has_element?(view, "##{id} button span.max-sm\\:sr-only")
+      end
+
+      assert has_element?(view, "#selected-source-actions button span.max-sm\\:sr-only", "Delete")
+      assert has_element?(view, "#selected-source-frequency button span.max-sm\\:sr-only", "Index Frequency")
+      assert has_element?(view, "#selected-source-cutoff-menu button span.max-sm\\:sr-only", "Download Cutoff")
+      assert has_element?(view, "#selected-source-profile button span.lg\\:hidden", "Profile")
+      assert has_element?(view, "#selected-source-profile button span.max-lg\\:hidden", "Media Profile")
+
+      view |> element("#pause-selected-sources button") |> render_click()
+      refute has_element?(view, "#pause-selected-sources button span.max-sm\\:sr-only")
+    end
+
+    test "sets the index frequency of the selected sources on a second click", %{conn: conn} do
+      daily = source_fixture(custom_name: "Daily", index_frequency_minutes: 24 * 60)
+      fast = source_fixture(custom_name: "Fast", fast_index: true, index_frequency_minutes: 30 * 24 * 60)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      option = ~s(#selected-source-frequency button[phx-value-minutes="360"])
+      view |> element(option) |> render_click()
+      assert has_element?(view, ~s(#{option}[data-armed="true"]), "Use 6 Hours for 2?")
+      assert Repo.reload!(daily).index_frequency_minutes == 24 * 60
+
+      ripen_armed(view)
+      view |> element(option) |> render_click()
+
+      assert Repo.reload!(daily).index_frequency_minutes == 360
+      assert Repo.reload!(fast).index_frequency_minutes == 30 * 24 * 60
+      assert render(view) =~ "Index frequency changed for 1 source. 1 with fast indexing or a single video"
     end
   end
 
@@ -1494,6 +1589,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     |> String.replace("&amp;", "&")
     |> String.trim()
   end
+
+  defp retention_form(source), do: "#retention-form-#{source.id}-source-retention-#{source.id}"
 
   defp row_retention(view, source) do
     view
