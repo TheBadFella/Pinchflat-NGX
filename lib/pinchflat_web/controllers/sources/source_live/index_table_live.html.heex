@@ -475,7 +475,6 @@
                       id={"source-retention-mobile-#{source.id}"}
                       timezone={@timezone}
                       confirm={confirm_for(@cutoff_confirm, source)}
-                      saved={saved_for(@settings_saved, source)}
                       show_icon
                       class="text-xs text-theme-on-surface-muted"
                     />
@@ -670,7 +669,7 @@
             :let={source}
             label="Download Retention Cutoff"
             label_icon="hero-archive-box-x-mark"
-            sort_key="retention"
+            sort_key="download_cutoff"
             class="text-center"
           >
             <.source_retention
@@ -678,7 +677,6 @@
               id={"source-retention-#{source.id}"}
               timezone={@timezone}
               confirm={confirm_for(@cutoff_confirm, source)}
-              saved={saved_for(@settings_saved, source)}
               class="mx-auto"
               chevron_class="@max-3xl:hidden!"
             />
@@ -861,7 +859,6 @@
                       id={"source-retention-grid-#{source.id}"}
                       timezone={@timezone}
                       confirm={confirm_for(@cutoff_confirm, source)}
-                      saved={saved_for(@settings_saved, source)}
                       show_icon
                       class="text-xs text-theme-on-surface-muted"
                     />

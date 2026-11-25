@@ -31,24 +31,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defdelegate source_status(source, downloading?), to: SourceHTML
 
   @doc """
-  Returns the effective retention as a short value for the source table, such as
-  "30 Days" or "Off". The full wording, including where it comes from, is
-  `SourceHTML.retention_policy_label/1`.
+  Returns a source's download cutoff as a short value for its chip in the sources list:
+  the fixed date as YY-MM-DD, the rolling window as "30 Days", or "Off".
   """
-  def retention_short_label(source) do
-    days =
-      case source do
-        %{retention_period_days: days} when is_integer(days) -> days
-        %{media_profile: %{retention_period_days: days}} -> days
-        _ -> nil
-      end
-
-    case days do
-      days when days in [nil, 0] -> "Off"
-      1 -> "1 Day"
-      days -> "#{days} Days"
-    end
-  end
+  def cutoff_short_label(%{download_cutoff_date: %Date{} = date}), do: Calendar.strftime(date, "%y-%m-%d")
+  def cutoff_short_label(%{download_cutoff_days: 1}), do: "1 Day"
+  def cutoff_short_label(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "#{days} Days"
+  def cutoff_short_label(_source), do: "Off"
 
   @doc """
   Returns how often a source is indexed as a short value for the source list,
@@ -219,7 +208,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :id, :string, required: true
   attr :timezone, :string, required: true
   attr :confirm, :map, default: nil, doc: "a cutoff change waiting for a second Apply, when it is for this source"
-  attr :saved, :any, default: nil, doc: "changes after each save, which closes the popover"
   attr :show_icon, :boolean, default: false
   attr :class, :string, default: nil
   attr :chevron_class, :string, default: nil
@@ -229,14 +217,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
 
     assigns =
       assign(assigns,
-        policy: SourceHTML.retention_policy_label(source),
         cutoff_mode: cutoff_mode(source),
         cutoff_note: cutoff_note(source)
       )
 
     ~H"""
     <.button_dropdown
-      tooltip={"Retention: #{@policy}.#{@cutoff_note}"}
+      tooltip={@cutoff_note}
       tooltip_position="top"
       tooltip_class="text-center"
       class={"w-fit #{@class}"}
@@ -245,7 +232,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       <:trigger>
         <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
           <.icon :if={@show_icon} name="hero-archive-box-x-mark" class="h-4 w-4" aria-hidden="true" />
-          {retention_short_label(@source)}<span class="sr-only">, {@policy}.{@cutoff_note} Change the download cutoff</span>
+          {cutoff_short_label(@source)}<span class="sr-only">, {@cutoff_note}. Change the download cutoff</span>
         </span>
       </:trigger>
       <:option>
@@ -254,11 +241,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           phx-submit="set_source_cutoff"
           class="w-72 max-w-full px-4 pb-2 text-left"
         >
-          <span :if={@saved} id={"retention-saved-#{@id}-#{@saved}"} class="hidden" x-init="dropdownOpen = false"></span>
           <input type="hidden" name="source_id" value={@source.id} />
           <div class="space-y-3">
             <.cutoff_fields
               id_base={"cutoff-#{@source.id}-#{@id}"}
+              source_id={@source.id}
               date_name="download_cutoff_date"
               days_name="download_cutoff_days"
               mode={@cutoff_mode}
@@ -287,6 +274,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   attr :id_base, :string, required: true, doc: "the prefix for the field ids"
+  attr :source_id, :any, default: nil, doc: "the source a save closes the menu for; the bulk menu has none"
   attr :date_name, :string, required: true
   attr :days_name, :string, required: true
   attr :mode, :string, required: true, values: ["none", "date", "days"]
@@ -295,18 +283,31 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :timezone, :string, required: true
 
   # The cutoff choice and the one field it needs, shared by a source's popover and the bulk menu.
-  # The sources list re-renders its rows while downloads run, so LiveView leaves these fields
-  # alone until the saved cutoff changes (it is part of the id); otherwise a refresh would reset
-  # the choice being made. Closing the menu without applying puts the fields back as they opened.
-  # The other choices' fields are disabled, so the browser neither checks nor sends them.
+  # The sources list re-renders its rows while downloads run, so LiveView never patches these
+  # fields; a refresh would reset the choice being made, and Alpine doesn't set up fields that a
+  # patch adds inside an open menu. A save keeps the applied values and closes the menu; closing
+  # it without applying puts the fields back. The other choices' fields are disabled, so the
+  # browser neither checks nor sends them.
   defp cutoff_fields(assigns) do
     ~H"""
     <div
-      id={"#{@id_base}-fields-#{@mode}-#{@date}-#{@days}"}
+      id={"#{@id_base}-fields"}
       phx-update="ignore"
+      data-source-id={@source_id}
       x-data={"{
         cutoffMode: '#{@mode}',
-        init() { this.$watch('dropdownOpen', (open) => { if (!open) this.resetFields() }) },
+        init() {
+          this.$watch('dropdownOpen', (open) => { if (!open) this.resetFields() });
+          window.addEventListener('phx:source-cutoff-saved', (event) => {
+            if (String(event.detail.id) !== this.$el.dataset.sourceId) return;
+            this.keepValues();
+            this.dropdownOpen = false;
+          });
+        },
+        keepValues() {
+          this.$el.querySelectorAll('input').forEach((field) => { field.defaultValue = field.value });
+          this.$el.querySelectorAll('option').forEach((option) => { option.defaultSelected = option.selected });
+        },
         resetFields() {
           this.$el.closest('form').reset();
           this.$el.querySelectorAll('input, select').forEach((field) => {
@@ -523,7 +524,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     case Sources.update_source(source, attrs) do
       {:ok, _source} ->
         socket
-        |> assign(cutoff_confirm: nil, settings_saved: {source.id, System.unique_integer([:positive])})
+        |> assign(:cutoff_confirm, nil)
+        |> push_event("source-cutoff-saved", %{id: source.id})
         |> set_sources()
         |> then(&{:noreply, &1})
 
@@ -596,20 +598,17 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp confirm_for(%{id: id} = confirm, source), do: if(id == to_string(source.id), do: confirm)
   defp confirm_for(_confirm, _source), do: nil
 
-  defp saved_for({id, nonce}, %{id: id}), do: nonce
-  defp saved_for(_saved, _source), do: nil
-
   defp cutoff_mode(%{download_cutoff_date: %Date{}}), do: "date"
   defp cutoff_mode(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "days"
   defp cutoff_mode(_source), do: "none"
 
-  defp cutoff_note(%{download_cutoff_date: %Date{} = date}), do: " Download cutoff: #{Date.to_iso8601(date)}."
-  defp cutoff_note(%{download_cutoff_days: 1}), do: " Download cutoff: last day."
+  defp cutoff_note(%{download_cutoff_date: %Date{} = date}), do: "Download cutoff: #{Date.to_iso8601(date)}"
+  defp cutoff_note(%{download_cutoff_days: 1}), do: "Download cutoff: last day"
 
   defp cutoff_note(%{download_cutoff_days: days}) when is_integer(days) and days > 0,
-    do: " Download cutoff: last #{days} days."
+    do: "Download cutoff: last #{days} days"
 
-  defp cutoff_note(_source), do: ""
+  defp cutoff_note(_source), do: "No download cutoff"
 
   defp cutoff_warning(%{removable: count, cutoff: cutoff}) do
     items = if count == 1, do: "1 downloaded item was", else: "#{count} downloaded items were"
@@ -659,8 +658,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           downloading_ids: MapSet.new(),
           media_profiles: Enum.reject(Profiles.list_media_profiles(), & &1.marked_for_deletion_at),
           timezone: Application.fetch_env!(:pinchflat, :timezone),
-          cutoff_confirm: nil,
-          settings_saved: nil
+          cutoff_confirm: nil
         },
         search_pagination_attributes(source_type, search_term, 1, limit)
       )
@@ -957,18 +955,31 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     )
   end
 
-  # Shortest retention first when ascending, with retention off (no age-based cleanup) last.
-  defp sort_attr(:retention) do
-    dynamic(
-      [s, mp],
-      fragment(
-        "CASE WHEN COALESCE(?, ?, 0) = 0 THEN 2147483647 ELSE COALESCE(?, ?, 0) END",
-        s.retention_period_days,
-        mp.retention_period_days,
-        s.retention_period_days,
-        mp.retention_period_days
+  # Shortest window first when ascending, counting a fixed date as the days since it, with no cutoff last.
+  defp sort_attr(:download_cutoff) do
+    if Database.postgres?() do
+      dynamic(
+        [s],
+        fragment(
+          "CASE WHEN ? IS NOT NULL THEN CURRENT_DATE - ? WHEN ? > 0 THEN ? ELSE 2147483647 END",
+          s.download_cutoff_date,
+          s.download_cutoff_date,
+          s.download_cutoff_days,
+          s.download_cutoff_days
+        )
       )
-    )
+    else
+      dynamic(
+        [s],
+        fragment(
+          "CASE WHEN ? IS NOT NULL THEN CAST(julianday('now') - julianday(?) AS INTEGER) WHEN ? > 0 THEN ? ELSE 2147483647 END",
+          s.download_cutoff_date,
+          s.download_cutoff_date,
+          s.download_cutoff_days,
+          s.download_cutoff_days
+        )
+      )
+    end
   end
 
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)

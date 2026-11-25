@@ -65,22 +65,21 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "initial rendering" do
-    test "shows effective retention and its origin in table and grid views", %{conn: conn} do
-      profile = media_profile_fixture(%{retention_period_days: 30})
-      source_fixture(custom_name: "Inheriting source", media_profile_id: profile.id)
-      source_fixture(custom_name: "Disabled retention", media_profile_id: profile.id, retention_period_days: 0)
-      source_fixture(custom_name: "Explicit retention", media_profile_id: profile.id, retention_period_days: 1)
+    test "shows each source's download cutoff in table and grid views", %{conn: conn} do
+      source_fixture(custom_name: "No cutoff")
+      source_fixture(custom_name: "Fixed cutoff", download_cutoff_date: ~D[2026-01-31])
+      source_fixture(custom_name: "Rolling cutoff", download_cutoff_days: 30)
 
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert html =~ "30 days (profile default)"
-      assert html =~ "No age-based cleanup (source override)"
-      assert html =~ "1 day (source override)"
+      assert html =~ "No download cutoff"
+      assert html =~ "Download cutoff: 2026-01-31"
+      assert html =~ "Download cutoff: last 30 days"
 
       grid = render_click(view, "view_change", %{"view" => "grid"})
-      assert grid =~ "30 days (profile default)"
-      assert grid =~ "No age-based cleanup (source override)"
-      assert grid =~ "1 day (source override)"
+      assert grid =~ "No download cutoff"
+      assert grid =~ "Download cutoff: 2026-01-31"
+      assert grid =~ "Download cutoff: last 30 days"
     end
 
     test "lists all sources", %{conn: conn} do
@@ -550,11 +549,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "retention column" do
-    test "shows the effective retention with its origin for assistive tech and on hover", %{conn: conn} do
+    test "shows only the download cutoff on the chip and in its hover text", %{conn: conn} do
       profile = media_profile_fixture(%{retention_period_days: 30})
-      inherited = source_fixture(custom_name: "Inherited", media_profile_id: profile.id)
-      override = source_fixture(custom_name: "Override", media_profile_id: profile.id, retention_period_days: 1)
-      off = source_fixture(custom_name: "Off", media_profile_id: profile.id, retention_period_days: 0)
+      none = source_fixture(custom_name: "None", media_profile_id: profile.id)
+      fixed = source_fixture(custom_name: "Fixed", media_profile_id: profile.id, download_cutoff_date: ~D[2026-01-31])
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
@@ -563,11 +561,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
                ~s(th button[data-label="Download Retention Cutoff"] [data-icon="hero-archive-box-x-mark"])
              )
 
-      assert row_retention(view, inherited) =~ "30 Days"
-      assert row_retention(view, inherited) =~ "30 days (profile default)"
-      assert row_retention(view, override) =~ "1 day (source override)"
-      assert row_retention(view, off) =~ "Off"
-      assert row_retention(view, off) =~ "No age-based cleanup (source override)"
+      assert row_retention(view, none) =~ "Off"
+      assert row_retention(view, none) =~ "No download cutoff"
+      assert row_retention(view, fixed) =~ "26-01-31"
+      assert row_retention(view, fixed) =~ "Download cutoff: 2026-01-31"
+      refute render_element(view, "#source-table") =~ "profile default"
     end
 
     test "sets a fixed or rolling download cutoff, or removes it, from the list", %{conn: conn} do
@@ -586,11 +584,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       refute has_element?(view, ~s|#{form} input[name="retention_period_days"]|)
 
-      refute render_element(view, "#source-table") =~ "Download cutoff:"
+      assert render_element(view, "#source-table") =~ "No download cutoff"
 
       view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "14"}) |> render_submit()
       assert %{download_cutoff_days: 14, download_cutoff_date: nil} = Repo.reload!(source)
-      assert render_element(view, "#source-table") =~ "Download cutoff: last 14 days."
+      assert render_element(view, "#source-table") =~ "Download cutoff: last 14 days"
 
       view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-31"}) |> render_submit()
       assert %{download_cutoff_days: nil, download_cutoff_date: ~D[2020-01-31]} = Repo.reload!(source)
@@ -609,7 +607,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      fields = ~s(#{form} [phx-update="ignore"][id$="-fields-days--14"])
+      fields = ~s(#{form} [phx-update="ignore"][id$="-fields"][data-source-id="#{source.id}"])
       assert has_element?(view, fields)
       html = render_element(view, fields)
       assert length(Regex.scan(~r/<fieldset[^>]*x-bind:disabled=/, html)) == 2
@@ -619,8 +617,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, fields)
 
       view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "30"}) |> render_submit()
-      refute has_element?(view, fields)
-      assert has_element?(view, ~s(#{form} [phx-update="ignore"][id$="-fields-days--30"]))
+      assert_push_event(view, "source-cutoff-saved", %{id: pushed_id})
+      assert pushed_id == source.id
+      assert has_element?(view, fields)
+      assert Repo.reload!(source).download_cutoff_days == 30
     end
 
     test "asks for a second Apply before a cutoff makes downloaded items deletable", %{conn: conn} do
@@ -640,16 +640,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute render(view) =~ "Apply and Delete"
     end
 
-    test "uses a short label" do
-      assert IndexTableLive.retention_short_label(%{
-               retention_period_days: nil,
-               media_profile: %{retention_period_days: 7}
-             }) ==
-               "7 Days"
+    test "shows the download cutoff on the chip" do
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: ~D[2026-01-31], download_cutoff_days: nil}) ==
+               "26-01-31"
 
-      assert IndexTableLive.retention_short_label(%{retention_period_days: 1, media_profile: nil}) == "1 Day"
-      assert IndexTableLive.retention_short_label(%{retention_period_days: 0, media_profile: nil}) == "Off"
-      assert IndexTableLive.retention_short_label(%{retention_period_days: nil, media_profile: nil}) == "Off"
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: nil, download_cutoff_days: 30}) == "30 Days"
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: nil, download_cutoff_days: 1}) == "1 Day"
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: nil, download_cutoff_days: nil}) == "Off"
     end
   end
 
@@ -750,7 +747,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
-  describe "sorting by index frequency and retention" do
+  describe "sorting by index frequency and download cutoff" do
     test "orders sources by how often they are indexed, with fast indexing first and once-only last",
          %{conn: conn} do
       weekly = source_fixture(custom_name: "A weekly", index_frequency_minutes: 7 * 24 * 60)
@@ -767,16 +764,16 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert ordered_source_ids(render_element(view, "#source-table")) == [once.id, weekly.id, hourly.id, fast.id]
     end
 
-    test "orders sources by their effective retention, with retention off last", %{conn: conn} do
-      profile = media_profile_fixture(%{retention_period_days: 30})
-      inherited = source_fixture(custom_name: "A inherited", media_profile_id: profile.id)
-      off = source_fixture(custom_name: "B off", media_profile_id: profile.id, retention_period_days: 0)
-      short = source_fixture(custom_name: "C short", media_profile_id: profile.id, retention_period_days: 3)
+    test "orders sources by their download cutoff, shortest window first and no cutoff last", %{conn: conn} do
+      none = source_fixture(custom_name: "A none")
+      month = source_fixture(custom_name: "B month", download_cutoff_days: 30)
+      fixed = source_fixture(custom_name: "C fixed", download_cutoff_date: Date.add(Date.utc_today(), -7))
+      year = source_fixture(custom_name: "D year", download_cutoff_days: 365)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      render_click(view, "sort_update", %{"sort_key" => "retention"})
-      assert ordered_source_ids(render_element(view, "#source-table")) == [short.id, inherited.id, off.id]
+      render_click(view, "sort_update", %{"sort_key" => "download_cutoff"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [fixed.id, month.id, year.id, none.id]
     end
   end
 
