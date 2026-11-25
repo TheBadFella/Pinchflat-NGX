@@ -250,20 +250,20 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert %{state: :unknown, percent: nil} =
                IndexTableLive.source_progress(%{media_count: nil, downloaded_count: 0, pending_count: 0})
 
-      assert %{state: :known, percent: 50, label: "1 of 2 items downloaded"} =
+      assert %{state: :known, percent: 50, label: "1 of 2 downloaded"} =
                IndexTableLive.source_progress(%{media_count: 2, downloaded_count: 1, pending_count: 1})
     end
 
-    test "measures against the items to download, leaving skipped ones out" do
-      assert %{state: :known, percent: 100, label: "5 of 5 items downloaded"} =
+    test "measures against the items to download and names the skipped ones" do
+      assert %{state: :known, percent: 100, label: "5 of 5 downloaded · 5 skipped"} =
                IndexTableLive.source_progress(%{media_count: 10, downloaded_count: 5, pending_count: 0})
 
-      assert %{state: :known, percent: 80, label: "12 of 15 items downloaded"} =
+      assert %{state: :known, percent: 80, label: "12 of 15 downloaded · 40 skipped"} =
                IndexTableLive.source_progress(%{media_count: 55, downloaded_count: 12, pending_count: 3})
     end
 
     test "says when every indexed item is skipped instead of claiming nothing is indexed" do
-      assert %{state: :all_skipped, percent: nil, label: "Nothing to download"} =
+      assert %{state: :all_skipped, percent: nil, label: "Nothing to download · 3 skipped"} =
                IndexTableLive.source_progress(%{media_count: 3, downloaded_count: 0, pending_count: 0})
     end
 
@@ -278,12 +278,12 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
 
       card = render_element(view, "#source-card-#{source.id}")
-      assert card =~ "1 of 1 items downloaded"
+      assert card =~ "1 of 1 downloaded · 1 skipped"
       assert card =~ ~s(aria-valuenow="100")
 
       skipped_card = render_element(view, "#source-card-#{skipped_only.id}")
       assert skipped_card =~ ~s(data-progress-state="all_skipped")
-      assert skipped_card =~ "Nothing to download"
+      assert skipped_card =~ "Nothing to download · 1 skipped"
       refute skipped_card =~ ~s(role="progressbar")
     end
   end

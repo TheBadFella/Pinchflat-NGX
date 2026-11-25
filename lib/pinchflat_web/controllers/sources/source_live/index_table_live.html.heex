@@ -765,9 +765,9 @@
                 </dl>
                 <% progress = source_progress(source) %>
                 <div class="space-y-2" data-progress-state={progress.state}>
-                  <div class="flex items-start justify-between gap-3 text-xs">
-                    <span class="shrink-0 text-theme-on-surface-muted">Download progress</span>
-                    <span class="text-right text-theme-on-surface-muted">{progress.label}</span>
+                  <div class="flex items-center justify-between gap-2 text-xs text-theme-on-surface-muted">
+                    <span class="shrink-0">Progress</span>
+                    <span class="min-w-0 truncate text-right" title={progress.label}>{progress.label}</span>
                   </div>
 
                   <div

@@ -106,8 +106,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   The total is downloaded plus pending, so a caught-up source reaches 100%.
   Pending already leaves out items skipped by the cutoff, title filter,
   duration limits, format preference, availability rules, keep-newest limit
-  and Prevent Download. Items whose files retention removed are no longer
-  downloaded or pending, so they are left out too.
+  and Prevent Download, and the label names how many indexed items that is.
+  Items whose files retention removed are no longer downloaded or pending, so
+  they count as skipped too.
 
   Returns a map with `:state`, `:label`, and either a `:percent` or `nil`.
   """
@@ -119,14 +120,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   def source_progress(%{media_count: indexed, downloaded_count: downloaded, pending_count: pending})
       when indexed > 0 do
     to_download = downloaded + pending
+    skipped = skipped_suffix(max(indexed - to_download, 0))
 
     if to_download == 0 do
-      %{state: :all_skipped, label: "Nothing to download", percent: nil}
+      %{state: :all_skipped, label: "Nothing to download#{skipped}", percent: nil}
     else
       percent = min(div(downloaded * 100, to_download), 100)
-      %{state: :known, label: "#{downloaded} of #{to_download} items downloaded", percent: percent}
+      %{state: :known, label: "#{downloaded} of #{to_download} downloaded#{skipped}", percent: percent}
     end
   end
+
+  defp skipped_suffix(0), do: ""
+  defp skipped_suffix(skipped), do: " · #{skipped} skipped"
 
   attr :source, :map, required: true
   attr :tooltip_position, :string, default: "top"
