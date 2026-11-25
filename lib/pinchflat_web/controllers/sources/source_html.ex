@@ -192,52 +192,59 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
-  Describes a source for its status icon.
+  Describes a source's status.
 
   A disabled source always shows as disabled. An enabled source shows as
   downloading while it has download jobs running or queued, otherwise its
   bolt is green with Download Media on and purple with it off.
 
-  Returns a map with `:label`, `:icon`, `:class` (the round icon badge) and
-  `:pill_class` (the bordered pill on a source's page).
+  Returns a map with `:label`, `:icon`, `:pill_class` (the bordered pill on a
+  source's page) and `:switch_class` (the enable switch in the sources list).
   """
   def source_status(%{enabled: false}, _downloading?),
-    do: %{label: "Disabled", icon: "hero-pause", class: "theme-badge-neutral", pill_class: "theme-pill-warning"}
+    do: %{
+      label: "Disabled",
+      icon: "hero-pause",
+      pill_class: "theme-pill-warning",
+      switch_class: "theme-status-switch-neutral"
+    }
 
   def source_status(_source, true),
-    do: %{label: "Downloading", icon: "hero-clock", class: "theme-badge-warning", pill_class: "theme-pill-warning"}
+    do: %{
+      label: "Downloading",
+      icon: "hero-clock",
+      pill_class: "theme-pill-warning",
+      switch_class: "theme-status-switch-warning theme-status-switch-busy"
+    }
 
   def source_status(%{download_media: false}, _downloading?),
     do: %{
       label: "Indexing Enabled, No Automatic Downloads",
       icon: "hero-bolt",
-      class: "theme-badge-info",
-      pill_class: "theme-pill-info"
+      pill_class: "theme-pill-info",
+      switch_class: "theme-status-switch-info"
     }
 
   def source_status(_source, _downloading?),
     do: %{
       label: "Indexing Enabled, Automatically Downloads",
       icon: "hero-bolt",
-      class: "theme-badge-success",
-      pill_class: "theme-pill-success"
+      pill_class: "theme-pill-success",
+      switch_class: "theme-status-switch-success"
     }
 
   @doc """
-  The status icon shown in the source list, or a labelled pill on a source's page.
+  The status as a labelled pill, shown on a source's page.
   """
   attr :source, :map, required: true
   attr :downloading, :boolean, required: true
   attr :id_prefix, :string, required: true
-  attr :show_label, :boolean, default: false, doc: "write the status beside the icon"
-  attr :tooltip_position, :string, default: "top"
 
-  def source_status_icon(assigns) do
+  def source_status_pill(assigns) do
     assigns = assign(assigns, :status, source_status(assigns.source, assigns.downloading))
 
     ~H"""
     <span
-      :if={@show_label}
       id={"source-status-#{@id_prefix}-#{@source.id}"}
       class={["theme-pill", @status.pill_class]}
       data-source-status={@status.label}
@@ -245,26 +252,43 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       <.icon name={@status.icon} class="h-3.5 w-3.5" aria-hidden="true" />
       {@status.label}
     </span>
-    <.tooltip :if={!@show_label} tooltip={@status.label} position={@tooltip_position} tooltip_class="text-nowrap">
-      <.source_status_badge id_prefix={@id_prefix} source={@source} status={@status} />
-    </.tooltip>
     """
   end
 
-  attr :id_prefix, :string, required: true
+  @doc """
+  The status as a switch for the sources list. The status icon is the knob, which sits right
+  while the source is enabled, and clicking it enables or disables the source. While the source
+  downloads, a light runs around the border.
+  """
   attr :source, :map, required: true
-  attr :status, :map, required: true
+  attr :downloading, :boolean, required: true
+  attr :id_prefix, :string, required: true
+  attr :tooltip_position, :string, default: "top"
 
-  defp source_status_badge(assigns) do
+  def source_status_switch(assigns) do
+    status = source_status(assigns.source, assigns.downloading)
+    action = if assigns.source.enabled, do: "disable", else: "enable"
+    assigns = assign(assigns, status: status, action: action)
+
     ~H"""
-    <span
-      id={"source-status-#{@id_prefix}-#{@source.id}"}
-      class={["inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full", @status.class]}
-      data-source-status={@status.label}
-    >
-      <.icon name={@status.icon} class="h-4 w-4" aria-hidden="true" />
-      <span class="sr-only">{@status.label}</span>
-    </span>
+    <.tooltip tooltip={"#{@status.label}. Click to #{@action}."} position={@tooltip_position} tooltip_class="text-center">
+      <button
+        type="button"
+        id={"source-status-#{@id_prefix}-#{@source.id}"}
+        role="switch"
+        aria-checked={to_string(@source.enabled)}
+        aria-label={"#{@status.label}. #{String.capitalize(@action)} #{@source.custom_name}"}
+        data-source-status={@status.label}
+        class={["theme-status-switch", @status.switch_class]}
+        phx-click="toggle_source_enabled"
+        phx-value-id={@source.id}
+      >
+        <span class="theme-status-switch-knob">
+          <.icon :if={@status.icon == "hero-bolt"} name="hero-bolt-solid" class="h-4.5 w-4.5" aria-hidden="true" />
+          <.icon :if={@status.icon != "hero-bolt"} name={@status.icon} class="h-4 w-4" aria-hidden="true" />
+        </span>
+      </button>
+    </.tooltip>
     """
   end
 
@@ -478,7 +502,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <.collection_type_badge collection_type={@source.collection_type} />
-            <.source_status_icon source={@source} downloading={@downloading} id_prefix="header" show_label />
+            <.source_status_pill source={@source} downloading={@downloading} id_prefix="header" />
             <span :if={@status == :error} class="theme-pill theme-pill-error">
               <.icon name="hero-exclamation-triangle" class="h-3.5 w-3.5" /> Error
             </span>

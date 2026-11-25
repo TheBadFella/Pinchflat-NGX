@@ -517,6 +517,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
+  def handle_event("toggle_source_enabled", %{"id" => id}, socket) do
+    with %{} = listed <- Enum.find(socket.assigns.sources, &(to_string(&1.id) == id)),
+         {:ok, _source} <-
+           id |> Sources.get_source!() |> Sources.update_source(%{"enabled" => to_string(!listed.enabled)}) do
+      {:noreply, set_sources(socket)}
+    else
+      _error ->
+        notice = {:error, "Could not enable or disable the source. Reload the page and try again."}
+        {:noreply, socket |> put_notice(notice) |> set_sources()}
+    end
+  end
+
   def handle_event("set_source_retention", %{"source_id" => id, "retention_period_days" => days}, socket) do
     with %{} <- Enum.find(socket.assigns.sources, &(to_string(&1.id) == id)),
          {:ok, days} <- parse_retention_days(days),
@@ -637,10 +649,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     {:noreply, socket |> assign(:refresh_pending, false) |> set_sources()}
   end
 
-  def handle_info({:source_enabled_updated, _source_id}, socket) do
-    {:noreply, set_sources(socket)}
-  end
-
   def handle_async(:bulk_job, {:ok, {job, {:ok, summary}}}, socket) do
     kind = if summary.failed > 0, do: :error, else: :success
     {:noreply, socket |> assign(:job_running, nil) |> put_notice({kind, bulk_job_message(job, summary)})}
@@ -669,7 +677,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
-  defp sort_attr(:enabled), do: dynamic([s], s.enabled)
+  # Ascending: enabled with automatic downloads, enabled without them, then disabled. Downloading is left out.
+  defp sort_attr(:status) do
+    dynamic(
+      [s],
+      fragment("CASE WHEN ? THEN (CASE WHEN ? THEN 0 ELSE 1 END) ELSE 2 END", s.enabled, s.download_media)
+    )
+  end
 
   # Most frequent first when ascending: fast indexing counts as its 10-minute check, and sources
   # indexed only once sort after every schedule.

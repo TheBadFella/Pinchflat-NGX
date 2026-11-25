@@ -528,6 +528,74 @@
     @apply bg-theme-tertiary text-theme-on-tertiary;
   }
 
+  /* The source status switch: the status icon is the knob, which sits right while the source is enabled. */
+  .theme-status-switch {
+    @apply relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full ring-1 ring-inset transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-theme-primary disabled:cursor-wait;
+  }
+
+  .theme-status-switch-knob {
+    @apply absolute left-0.5 top-0.5 grid h-6 w-6 place-items-center rounded-full text-theme-bg transition-transform duration-200;
+  }
+
+  .theme-status-switch[aria-checked='true'] .theme-status-switch-knob {
+    @apply translate-x-6;
+  }
+
+  .theme-status-switch-success {
+    @apply bg-theme-success/25 ring-theme-success/50 hover:bg-theme-success/35;
+  }
+
+  .theme-status-switch-success .theme-status-switch-knob {
+    @apply bg-theme-success;
+  }
+
+  .theme-status-switch-info {
+    @apply bg-theme-primary/25 ring-theme-primary/50 hover:bg-theme-primary/35;
+  }
+
+  .theme-status-switch-info .theme-status-switch-knob {
+    @apply bg-theme-primary;
+  }
+
+  .theme-status-switch-warning {
+    @apply bg-theme-warning/25 ring-theme-warning/50 hover:bg-theme-warning/35;
+  }
+
+  .theme-status-switch-warning .theme-status-switch-knob {
+    @apply bg-theme-warning;
+  }
+
+  .theme-status-switch-neutral {
+    @apply bg-theme-surface-4 ring-theme-outline hover:bg-theme-surface-5;
+  }
+
+  .theme-status-switch-neutral .theme-status-switch-knob {
+    @apply bg-theme-on-surface-muted;
+  }
+
+  /* While a source downloads, a light runs around the switch's border. */
+  .theme-status-switch-busy::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(
+      from var(--theme-perimeter-angle, 0deg),
+      rgb(var(--theme-warning) / 0.1) 0deg,
+      rgb(var(--theme-warning) / 1) 70deg,
+      rgb(var(--theme-warning) / 0.1) 140deg,
+      rgb(var(--theme-warning) / 0.1) 360deg
+    );
+    animation: perimeter-spin 1.6s linear infinite;
+    pointer-events: none;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
   .theme-sidebar-active {
     @apply relative overflow-hidden border-theme-primary bg-theme-primary-container/25 text-theme-on-primary-container;
   }
@@ -557,7 +625,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theme-sidebar-active::before {
+  .theme-sidebar-active::before,
+  .theme-status-switch-busy::before {
     animation: none;
   }
 }

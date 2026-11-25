@@ -402,11 +402,13 @@
           <div class="flex flex-col gap-3">
             <div class="min-w-0">
               <div class="flex items-start gap-3">
-                <SourceHTML.source_status_icon
-                  source={source}
-                  downloading={MapSet.member?(@downloading_ids, source.id)}
-                  id_prefix="mobile"
-                />
+                <div class="flex min-h-11 items-center">
+                  <SourceHTML.source_status_switch
+                    source={source}
+                    downloading={MapSet.member?(@downloading_ids, source.id)}
+                    id_prefix="mobile"
+                  />
+                </div>
 
                 <div class="min-w-0 flex-1">
                   <.subtle_link href={~p"/sources/#{source.id}"} class="flex min-h-11 items-center">
@@ -469,18 +471,6 @@
                 <.readable_filesize byte_size={source.media_size_bytes} />
               </dd>
             </div>
-
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Enabled</dt>
-
-              <dd class="text-right">
-                <.live_component
-                  module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-                  source={source}
-                  id={"source_#{source.id}_enabled_mobile"}
-                />
-              </dd>
-            </div>
           </dl>
         </article>
       </div>
@@ -512,8 +502,14 @@
             />
           </:col>
 
-          <:col :let={source} label="Status" label_icon="hero-bolt" class="w-px align-middle">
-            <SourceHTML.source_status_icon
+          <:col
+            :let={source}
+            label="Status"
+            label_icon="hero-bolt"
+            sort_key="status"
+            class="w-px text-center align-middle"
+          >
+            <SourceHTML.source_status_switch
               source={source}
               downloading={MapSet.member?(@downloading_ids, source.id)}
               id_prefix="table"
@@ -592,14 +588,6 @@
             class="text-center"
           >
             <.source_retention source={source} id={"source-retention-#{source.id}"} class="mx-auto" />
-          </:col>
-
-          <:col :let={source} label="Enabled?" sort_key="enabled">
-            <.live_component
-              module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-              source={source}
-              id={"source_#{source.id}_enabled"}
-            />
           </:col>
 
           <:col
@@ -733,15 +721,10 @@
                 <div class="flex items-center justify-between gap-3 text-sm text-theme-on-surface">
                   <SourceHTML.collection_type_badge collection_type={source.collection_type} />
                   <div class="pointer-events-auto flex shrink-0 items-center gap-2">
-                    <SourceHTML.source_status_icon
+                    <SourceHTML.source_status_switch
                       source={source}
                       downloading={MapSet.member?(@downloading_ids, source.id)}
                       id_prefix="grid"
-                    />
-                    <.live_component
-                      module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-                      source={source}
-                      id={"source_#{source.id}_enabled_grid"}
                     />
                   </div>
                 </div>

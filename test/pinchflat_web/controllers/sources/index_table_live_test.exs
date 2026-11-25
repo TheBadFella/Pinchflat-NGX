@@ -165,7 +165,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert grid_html =~ ~s(data-artwork-fallback)
       assert grid_html =~ ~s(href="/sources/#{source.id}")
       assert grid_html =~ ~s(href="/sources/#{source.id}/edit")
-      assert grid_html =~ ~s(aria-label="Monitor Grid candidate")
+      assert grid_html =~ ~s(id="source-status-grid-#{source.id}" role="switch")
     end
 
     test "renders the same exact source ID set in table and poster-grid views", %{conn: conn} do
@@ -436,45 +436,46 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
-  describe "when testing the enable toggle" do
-    test "updates the source's enabled status", %{conn: conn} do
+  describe "the status switch" do
+    test "disables and enables a source from the table", %{conn: conn} do
       source = source_fixture(enabled: true)
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      view
-      |> element("#source_enable_toggle_source_#{source.id}_enabled_form")
-      |> render_change(%{source: %{"enabled" => false}})
+      assert has_element?(view, ~s(button#source-status-table-#{source.id}[role="switch"][aria-checked="true"]))
 
+      click_element(view, "#source-status-table-#{source.id}")
       assert %{enabled: false} = Repo.get!(Source, source.id)
+
+      assert has_element?(
+               view,
+               ~s(#source-status-table-#{source.id}[aria-checked="false"][data-source-status="Disabled"])
+             )
+
+      click_element(view, "#source-status-table-#{source.id}")
+      assert %{enabled: true} = Repo.get!(Source, source.id)
     end
 
-    test "updates only the source whose poster-grid toggle changed", %{conn: conn} do
+    test "changes only the source whose poster-grid switch was clicked", %{conn: conn} do
       target = source_fixture(custom_name: "Target source", enabled: true)
       other = source_fixture(custom_name: "Other source", enabled: true)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
       click_element(view, ~s([data-view-toggle="grid"]))
-
-      view
-      |> element("#source_enable_toggle_source_#{target.id}_enabled_grid_form")
-      |> render_change(%{source: %{"enabled" => false}})
+      click_element(view, "#source-status-grid-#{target.id}")
 
       assert %{enabled: false} = Repo.get!(Source, target.id)
       assert %{enabled: true} = Repo.get!(Source, other.id)
     end
 
-    test "shows an error and restores the checked state when monitoring update fails", %{conn: conn} do
-      source = source_fixture(custom_name: "Toggle failure", enabled: true)
+    test "says what a click will do", %{conn: conn} do
+      enabled = source_fixture(custom_name: "On source", enabled: true)
+      disabled = source_fixture(custom_name: "Off source", enabled: false)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      click_element(view, ~s([data-view-toggle="grid"]))
 
-      view
-      |> element("#source_enable_toggle_source_#{source.id}_enabled_grid_form")
-      |> render_change(%{source: %{"enabled" => "not-a-boolean"}})
-
-      assert render(view) =~ "Could not update monitoring state."
-      assert %{enabled: true} = Repo.get!(Source, source.id)
+      assert has_element?(view, ~s(#source-status-table-#{enabled.id}[aria-label$="Disable On source"]))
+      assert has_element?(view, ~s(#source-status-table-#{disabled.id}[aria-label$="Enable Off source"]))
+      assert has_element?(view, "#source-table [role=tooltip]", "Disabled. Click to enable.")
     end
   end
 
@@ -484,29 +485,41 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      icon = render_element(view, "#source-status-table-#{source.id}")
-      refute icon =~ "title="
-      assert has_element?(view, "#source-table td", "Indexing Enabled, No Automatic Downloads")
-      assert icon =~ "Indexing Enabled, No Automatic Downloads"
-      refute has_element?(view, "button#source-status-table-#{source.id}")
-      assert has_element?(view, "th button", "Enabled?")
+      switch = render_element(view, "#source-status-table-#{source.id}")
+      refute switch =~ "title="
+      assert has_element?(view, "#source-table td", "Indexing Enabled, No Automatic Downloads. Click to disable.")
+      assert switch =~ "Indexing Enabled, No Automatic Downloads"
+      assert has_element?(view, ~s(th button[data-label="Status"]))
+      refute has_element?(view, "th button", "Enabled?")
     end
 
     test "has four states: disabled, downloading, and a bolt for Download Media on or off" do
       for download_media <- [true, false], downloading <- [true, false] do
-        assert %{label: "Disabled", icon: "hero-pause", class: "theme-badge-neutral"} =
+        assert %{label: "Disabled", icon: "hero-pause", switch_class: "theme-status-switch-neutral"} =
                  IndexTableLive.source_status(%{enabled: false, download_media: download_media}, downloading)
       end
 
       for download_media <- [true, false] do
-        assert %{label: "Downloading", icon: "hero-clock", class: "theme-badge-warning"} =
+        assert %{
+                 label: "Downloading",
+                 icon: "hero-clock",
+                 switch_class: "theme-status-switch-warning theme-status-switch-busy"
+               } =
                  IndexTableLive.source_status(%{enabled: true, download_media: download_media}, true)
       end
 
-      assert %{label: "Indexing Enabled, No Automatic Downloads", icon: "hero-bolt", class: "theme-badge-info"} =
+      assert %{
+               label: "Indexing Enabled, No Automatic Downloads",
+               icon: "hero-bolt",
+               switch_class: "theme-status-switch-info"
+             } =
                IndexTableLive.source_status(%{enabled: true, download_media: false}, false)
 
-      assert %{label: "Indexing Enabled, Automatically Downloads", icon: "hero-bolt", class: "theme-badge-success"} =
+      assert %{
+               label: "Indexing Enabled, Automatically Downloads",
+               icon: "hero-bolt",
+               switch_class: "theme-status-switch-success"
+             } =
                IndexTableLive.source_status(%{enabled: true, download_media: true}, false)
     end
 
@@ -656,6 +669,31 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert {"10 Min", _} = IndexTableLive.index_frequency_labels(%{fast_index: true, index_frequency_minutes: 43_200})
       assert {"Once", _} = IndexTableLive.index_frequency_labels(%{fast_index: false, index_frequency_minutes: 0})
       assert {"Once", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: -1})
+    end
+  end
+
+  describe "sorting by status" do
+    test "orders automatic downloads, then no automatic downloads, then disabled, ignoring downloads", %{conn: conn} do
+      disabled = source_fixture(custom_name: "A disabled", enabled: false)
+      no_downloads = source_fixture(custom_name: "B no downloads", download_media: false)
+      downloading = source_fixture(custom_name: "C downloading")
+      automatic = source_fixture(custom_name: "D automatic")
+
+      media_item = media_item_fixture(source_id: downloading.id, media_filepath: nil)
+      {:ok, job} = %{id: media_item.id} |> Pinchflat.Downloading.MediaDownloadWorker.new() |> Oban.insert()
+      {:ok, _task} = Pinchflat.Tasks.create_task(job, media_item)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "sort_update", %{"sort_key" => "status"})
+
+      assert ordered_source_ids(render_element(view, "#source-table")) ==
+               [downloading.id, automatic.id, no_downloads.id, disabled.id]
+
+      render_click(view, "sort_update", %{"sort_key" => "status"})
+
+      assert ordered_source_ids(render_element(view, "#source-table")) ==
+               [disabled.id, no_downloads.id, downloading.id, automatic.id]
     end
   end
 
@@ -892,14 +930,13 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"][disabled]))
     end
 
-    test "the table header checkbox selects every source, and the status column is not sortable", %{conn: conn} do
+    test "the table header checkbox selects every source, and the status column sorts by enabled", %{conn: conn} do
       first = source_fixture(custom_name: "First")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       assert has_element?(view, "#source-table th #source-select-all-table")
-      assert has_element?(view, ~s(#source-table th span[data-label="Status"]))
-      refute has_element?(view, ~s(#source-table th button[data-label="Status"]))
+      assert has_element?(view, ~s(#source-table th button[data-label="Status"][phx-value-sort_key="status"]))
 
       click_element(view, "#source-select-all-table")
       assert has_element?(view, "#source-select-all-table[checked]")
