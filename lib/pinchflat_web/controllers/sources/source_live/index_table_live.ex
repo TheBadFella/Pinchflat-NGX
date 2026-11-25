@@ -650,6 +650,11 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
+  defp same_removal?(%{id: id, attrs: attrs, removable: count, cutoff: cutoff}, id, attrs, removal),
+    do: removal.removable == count and removal.cutoff == cutoff
+
+  defp same_removal?(_confirm, _id, _attrs, _removal), do: false
+
   defp confirm_for(%{id: id} = confirm, source), do: if(id == to_string(source.id), do: confirm)
   defp confirm_for(_confirm, _source), do: nil
 
@@ -789,7 +794,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       removal = cutoff_removal(source, attrs)
       confirm = socket.assigns.cutoff_confirm
 
-      if removal && !match?(%{id: ^id, attrs: ^attrs}, confirm) do
+      if removal && !same_removal?(confirm, id, attrs, removal) do
         {:noreply, assign(socket, :cutoff_confirm, Map.merge(removal, %{id: id, attrs: attrs}))}
       else
         save_cutoff(socket, source, attrs)

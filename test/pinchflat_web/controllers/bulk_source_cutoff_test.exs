@@ -122,6 +122,47 @@ defmodule PinchflatWeb.BulkSourceCutoffTest do
     assert Repo.reload!(source).download_cutoff_date == ~D[2026-01-02]
   end
 
+  test "shows the new count and asks again when more downloads became eligible", %{conn: conn} do
+    source = source_fixture()
+    media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-09-01 00:00:00Z])
+
+    html =
+      post(conn, "/sources/cutoff/apply_now", %{"source_ids" => ["#{source.id}"], "cutoff_date" => "2026-10-15"})
+      |> html_response(200)
+
+    [_, token] = Regex.run(~r/name="token" value="([^"]+)"/, html)
+    refute html =~ "cutoff-count-changed"
+
+    media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-09-02 00:00:00Z])
+
+    html = post(conn, "/sources/cutoff/apply", %{token: token}) |> html_response(200)
+    assert html =~ "cutoff-count-changed"
+    assert html =~ ~r/Eligible for removal by scheduled retention<\/dt>\s*<dd[^>]*>2<\/dd>/
+    assert is_nil(Repo.reload!(source).download_cutoff_date)
+
+    [_, token] = Regex.run(~r/name="token" value="([^"]+)"/, html)
+    response = post(conn, "/sources/cutoff/apply", %{token: token})
+    assert redirected_to(response) == "/sources"
+    assert Repo.reload!(source).download_cutoff_date == ~D[2026-10-15]
+  end
+
+  test "a blank fixed date is rejected and keeps every selected source's cutoff", %{conn: conn} do
+    fixed = source_fixture(download_cutoff_date: ~D[2026-01-02])
+    rolling = source_fixture(download_cutoff_days: 7)
+
+    response =
+      post(conn, "/sources/cutoff/apply_now", %{
+        "source_ids" => ["#{fixed.id}", "#{rolling.id}"],
+        "cutoff_mode" => "date",
+        "cutoff_date" => " "
+      })
+
+    assert redirected_to(response) == "/sources"
+    assert Phoenix.Flash.get(response.assigns.flash, :error) =~ "Pick a cutoff date"
+    assert Repo.reload!(fixed).download_cutoff_date == ~D[2026-01-02]
+    assert Repo.reload!(rolling).download_cutoff_days == 7
+  end
+
   test "a cutoff earlier than a source's index cutoff names the source and changes nothing", %{conn: conn} do
     fine = source_fixture(custom_name: "Fine source")
     conflict = source_fixture(custom_name: "Indexed later", index_cutoff_date: ~D[2026-02-01])

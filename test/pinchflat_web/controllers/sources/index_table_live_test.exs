@@ -640,6 +640,27 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute render(view) =~ "Apply and Delete"
     end
 
+    test "asks again with the new count when more downloads become deletable before the second Apply",
+         %{conn: conn} do
+      source = source_fixture(custom_name: "Growing downloads")
+      media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-09-01 00:00:00Z])
+      form = retention_form(source)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2026-10-15"}) |> render_submit()
+      assert has_element?(view, "#{form} button[type=submit]", "Apply and Delete 1")
+
+      media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-09-02 00:00:00Z])
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2026-10-15"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == nil
+      assert has_element?(view, "#{form} button[type=submit]", "Apply and Delete 2")
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2026-10-15"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == ~D[2026-10-15]
+    end
+
     test "shows the download cutoff on the chip" do
       assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: ~D[2026-01-31], download_cutoff_days: nil}) ==
                "26-01-31"
