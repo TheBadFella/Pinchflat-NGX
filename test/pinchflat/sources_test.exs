@@ -1746,10 +1746,27 @@ defmodule Pinchflat.SourcesTest do
       assert %{changes: %{title_language: "en"}} = Sources.change_source(source, %{title_language: "EN"})
     end
 
-    test "succeeds when the language is set back to nil" do
+    test "exposes a catalog with unique codes matching accepted title languages" do
+      options = Pinchflat.Sources.Source.title_language_options()
+      codes = Enum.map(options, fn {_label, code} -> code end)
+
+      assert length(codes) == 83
+      assert length(Enum.uniq(codes)) == 83
+      assert {"Portuguese - Portugal (pt-PT)", "pt-PT"} in options
+      assert {"Hebrew (iw)", "iw"} in options
+
+      source = source_fixture()
+
+      Enum.each(codes, fn code ->
+        assert %{errors: []} = Sources.change_source(source, %{title_language: code})
+      end)
+    end
+
+    test "succeeds when the language is blank or set back to nil" do
       source = source_fixture(%{title_language: "ja"})
 
       assert %{errors: []} = Sources.change_source(source, %{title_language: nil})
+      assert %{errors: []} = Sources.change_source(source, %{title_language: ""})
     end
 
     test "fails with invalid language codes" do
