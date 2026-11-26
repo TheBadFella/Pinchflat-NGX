@@ -65,7 +65,7 @@ defmodule PinchflatWeb.BulkSourceResumeTest do
           ["999999999999999999999999999999999999999"],
           ["#{source.id}", "999999"],
           ["#{source.id}", "#{removed.id}"],
-          List.duplicate("#{source.id}", 101)
+          List.duplicate("#{source.id}", Pinchflat.Sources.selection_limit() + 1)
         ] do
       response = post(conn, "/sources/resume_selected", %{"source_ids" => ids})
       assert redirected_to(response) == "/sources"
@@ -120,14 +120,14 @@ defmodule PinchflatWeb.BulkSourceResumeTest do
     }
 
     {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
-    refute has_element?(view, "#resume-selected-sources")
+    assert has_element?(view, "#resume-selected-sources button[disabled]")
 
-    render_click(view, "select_page")
-    assert has_element?(view, "#resume-selected-sources input[name='source_ids[]'][value='#{first.id}']")
-    refute has_element?(view, "#resume-selected-sources input[value='#{second.id}']")
+    render_click(view, "toggle_select_all")
+    assert has_element?(view, "#selected-source-cutoff input[name='source_ids[]'][value='#{first.id}']")
+    assert has_element?(view, "#selected-source-cutoff input[value='#{second.id}']")
 
     render_click(view, "clear_selection")
-    refute has_element?(view, "#resume-selected-sources")
+    assert has_element?(view, "#resume-selected-sources button[disabled]")
   end
 
   test "repeated resume does not duplicate downloads or change existing files", %{conn: conn} do

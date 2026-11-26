@@ -180,6 +180,39 @@ defmodule Pinchflat.YoutubeBrowser.IntakeTest do
 
       assert length(sources) == 1
     end
+
+    test "persists explicit cookie_behaviour modes and defaults to :disabled when omitted" do
+      profile = media_profile_fixture()
+
+      assert {:ok, :indexing} = Intake.download_video("vid_cookie_omitted", profile.id)
+
+      assert Repo.get_by!(Source, collection_id: "vid_cookie_omitted", media_profile_id: profile.id).cookie_behaviour ==
+               :disabled
+
+      for {mode, suffix} <- [{:disabled, "dis"}, {:when_needed, "wn"}, {:all_operations, "all"}] do
+        vid = "vid_cookie_#{suffix}"
+        assert {:ok, :indexing} = Intake.download_video(vid, profile.id, cookie_behaviour: mode)
+        assert Repo.get_by!(Source, collection_id: vid, media_profile_id: profile.id).cookie_behaviour == mode
+      end
+    end
+
+    test "retains existing source cookie_behaviour when a repeated request passes a different default" do
+      profile = media_profile_fixture()
+      video_id = "vid_cookie_retain"
+
+      assert {:ok, :indexing} =
+               Intake.download_video(video_id, profile.id, cookie_behaviour: :all_operations)
+
+      source = Repo.get_by!(Source, collection_id: video_id, media_profile_id: profile.id)
+      assert source.cookie_behaviour == :all_operations
+
+      Repo.delete_all(from t in Task, where: t.source_id == ^source.id)
+      Repo.delete_all(Oban.Job)
+
+      assert {:ok, :indexing} = Intake.download_video(video_id, profile.id, cookie_behaviour: :disabled)
+      assert Repo.reload!(source).cookie_behaviour == :all_operations
+      assert Repo.aggregate(from(s in Source, where: s.collection_id == ^video_id), :count, :id) == 1
+    end
   end
 
   describe "indexed intake titles" do

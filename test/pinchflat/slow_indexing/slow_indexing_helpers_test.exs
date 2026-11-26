@@ -15,6 +15,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.YtDlpConfigFile
 
   setup do
     original_level = Logger.level()
@@ -268,6 +270,29 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert log =~ "indexing_completed"
       assert log =~ "source_id=#{source.id}"
       assert log =~ "pending_downloads_enqueued="
+    end
+
+    test "logs pending_downloads_enqueued=0 when pending options produces only already_queued results" do
+      video_id = "already-queued-vid"
+      source = source_fixture(collection_type: :video, collection_id: video_id, download_media: true)
+      media_item = media_item_fixture(source_id: source.id, media_id: video_id, media_filepath: nil)
+
+      assert {:ok, _task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      assert :ok = YtDlpConfigFile.delete_scope(:media_item, media_item.id)
+      assert {:ok, _} = PendingMediaItemOptions.put(source, video_id, "--quality 1080p\n")
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, source_attributes_return_fixture(%{id: video_id})}
+      end)
+
+      log =
+        capture_log([level: :info], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      assert log =~ "indexing_completed"
+      assert log =~ "source_id=#{source.id}"
+      assert log =~ "pending_downloads_enqueued=0"
     end
 
     test "updates the source's last_indexed_at field", %{source: source} do
@@ -783,6 +808,44 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       end
     end
 
+    test "real yt-dlp stops at the download cutoff date without an indexing cutoff" do
+      today = Date.utc_today()
+      download_cutoff = Date.add(today, -30)
+      profile = media_profile_fixture(%{download_source_images: false})
+
+      for was_forced <- [false, true] do
+        source =
+          source_fixture(%{
+            original_url: "https://www.youtube.com/@fixture/videos",
+            index_cutoff_date: nil,
+            download_cutoff_date: download_cutoff,
+            media_profile_id: profile.id,
+            download_media: false
+          })
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, template, _runner_opts ->
+          filepath = Pinchflat.Utils.FilesystemUtils.generate_metadata_tmpfile(:json)
+          on_exit(fn -> File.rm(filepath) end)
+
+          args =
+            ["test/support/scripts/index_cutoff_fixture.py"] ++
+              Pinchflat.Utils.CliUtils.parse_options(opts) ++ ["--print-to-file", template, filepath]
+
+          {output, 0} = System.cmd("python3", args)
+          assert %{"visited" => ["undated", "recent", "old"], "status" => 101} = Jason.decode!(output)
+
+          File.read(filepath)
+        end)
+
+        items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, was_forced: was_forced)
+
+        assert Enum.sort(Enum.map(items, & &1.media_id)) == ["recent", "undated"]
+
+        assert Enum.sort(Enum.map(Pinchflat.Repo.preload(source, :media_items).media_items, & &1.media_id)) ==
+                 ["recent", "undated"]
+      end
+    end
+
     test "a channel with an indexing cutoff date passes break filters to every tab" do
       source =
         source_fixture(%{
@@ -1064,6 +1127,19 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
 
+    test "uses the effective rolling cutoff for dateafter" do
+      source = source_fixture(%{download_cutoff_days: 30})
+      expected_dateafter = Date.utc_today() |> Date.add(-30) |> Date.to_iso8601(:basic)
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Keyword.get(opts, :dateafter) == expected_dateafter
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
     test "inherited profile retention bounds indexing unless source sets zero or a positive override" do
       profile = Pinchflat.ProfilesFixtures.media_profile_fixture(%{retention_period_days: 5})
 
@@ -1159,21 +1235,315 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
 
-    test "uses retention-based date when cutoff is nil but retention is set" do
-      source = source_fixture(%{download_cutoff_date: nil, retention_period_days: 7})
+    test "a channel download cutoff stops every tab's crawl at that date" do
+      cutoff_date = Date.utc_today() |> Date.add(-10)
+
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          download_cutoff_date: cutoff_date,
+          index_cutoff_date: nil
+        })
 
       expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
-        {:dateafter, dateafter_value} = Enum.find(opts, fn opt -> match?({:dateafter, _}, opt) end)
+        expected_dateafter = Date.to_iso8601(cutoff_date, :basic)
 
-        # Should be retention + buffer days ago (7 + 3 = 10 days ago)
-        expected_date = Date.utc_today() |> Date.add(-10)
-        expected_dateafter = Date.to_iso8601(expected_date, :basic)
-        assert dateafter_value == expected_dateafter
+        assert Keyword.get(opts, :dateafter) == expected_dateafter
+        assert :break_on_reject in opts
+        refute Keyword.has_key?(opts, :break_match_filters)
 
         {:ok, source_attributes_return_fixture()}
       end)
 
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
     end
+
+    test "positive effective retention stops the crawl on channel tabs" do
+      profile = media_profile_fixture(%{retention_period_days: 5})
+
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          media_profile_id: profile.id,
+          download_cutoff_date: nil,
+          retention_period_days: nil,
+          index_cutoff_date: nil
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Keyword.has_key?(opts, :dateafter)
+        assert :break_on_reject in opts
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "adds break-on-reject once when both a download and indexing cutoff apply" do
+      source =
+        source_fixture(%{
+          collection_type: :channel,
+          download_cutoff_date: Date.utc_today() |> Date.add(-10),
+          index_cutoff_date: ~D[2026-07-01]
+        })
+
+      expect(YtDlpRunnerMock, :run, 3, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+        assert Enum.count(opts, &(&1 == :break_on_reject)) == 1
+
+        break_filters = for {:break_match_filters, filter} <- opts, do: filter
+        assert break_filters == ["upload_date >= 20260701", "!upload_date"]
+
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+    end
+
+    test "a download cutoff does not stop the crawl for playlists or non-YouTube channels" do
+      cutoff_date = Date.utc_today() |> Date.add(-10)
+
+      for attrs <- [
+            %{collection_type: :playlist},
+            %{collection_type: :channel, original_url: "https://example.com/some-channel"}
+          ] do
+        source = source_fixture(Map.merge(attrs, %{download_cutoff_date: cutoff_date}))
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, opts, _ot, _addl_opts ->
+          assert Keyword.has_key?(opts, :dateafter)
+          refute :break_on_reject in opts
+
+          {:ok, source_attributes_return_fixture()}
+        end)
+
+        SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      end
+    end
+  end
+
+  describe "index_and_enqueue_download_for_media_items/2 when translating titles" do
+    test "stores the translated title when the listing title differs from the canonical title" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video1" => "Titel Eins", "video2" => "Video 2"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == "Titel Eins"
+    end
+
+    test "does not store a translated title when it equals the canonical title" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video1" => "Video 1", "video2" => "Video 2"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == nil
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video2").translated_title == nil
+    end
+
+    test "does not store a blank translated title" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video1" => "   ", "video2" => ""}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == nil
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video2").translated_title == nil
+    end
+
+    test "does not store a translated title when the item is missing from the listing" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:ok, %{"video2" => "Titel Zwei"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == nil
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video2").translated_title == "Titel Zwei"
+    end
+
+    test "does not replace an existing translated title on reindex" do
+      source = translated_titles_source()
+
+      _item =
+        media_item_fixture(%{source_id: source.id, media_id: "video1", title: "Video 1", translated_title: "Bestehend"})
+
+      stub_translated_titles({:ok, %{"video1" => "Neuer Titel"}})
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == "Bestehend"
+    end
+
+    test "still indexes items without translated titles and logs at info when the listing fails" do
+      source = translated_titles_source()
+
+      stub_translated_titles({:error, "listing unavailable", 1})
+
+      log =
+        capture_log([level: :info], fn ->
+          SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+        end)
+
+      assert log =~ "source_id=#{source.id}"
+      assert log =~ "translated_titles_listing_failed"
+
+      items = Repo.all(MediaItem)
+      assert Enum.count(items) == 3
+      assert Enum.all?(items, &is_nil(&1.translated_title))
+    end
+
+    test "does not request a translated listing when title_language is nil" do
+      source = translated_titles_source(%{title_language: nil})
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, :get_media_attributes_for_collection, _opts, _template, _addl ->
+        {:ok, source_attributes_return_fixture()}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Enum.all?(Repo.all(MediaItem), &is_nil(&1.translated_title))
+    end
+
+    test "applies translated titles to media created by the file follower" do
+      watcher_poll_interval = Application.get_env(:pinchflat, :file_watcher_poll_interval)
+      source = translated_titles_source()
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, _opts, _template, _addl ->
+          {:ok, translated_titles_output(%{"video1" => "Titel Eins"})}
+
+        _url, :get_media_attributes_for_collection, _opts, _template, addl_opts ->
+          filepath = Keyword.get(addl_opts, :output_filepath)
+          File.write(filepath, source_attributes_return_fixture())
+
+          :timer.sleep(watcher_poll_interval * 2)
+          {:ok, ""}
+      end)
+
+      SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert Repo.get_by(MediaItem, source_id: source.id, media_id: "video1").translated_title == "Titel Eins"
+    end
+  end
+
+  describe "index_and_enqueue_download_for_media_items/2 when testing the playlist owner lock" do
+    test "indexes every upload but only enqueues the owner's when the lock is on" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          only_owner_uploads: true,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, owner_lock_attributes_fixture()}
+      end)
+
+      assert items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+
+    test "indexes every upload and enqueues both when the lock is off" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          only_owner_uploads: false,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+        {:ok, owner_lock_attributes_fixture()}
+      end)
+
+      assert items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+  end
+
+  # Two playlist entries with recent upload dates: one from the playlist owner
+  # and one from another channel.
+  defp owner_lock_attributes_fixture do
+    upload_date = Date.add(Date.utc_today(), -1) |> Calendar.strftime("%Y%m%d")
+
+    [
+      %{
+        id: "v_owner",
+        title: "Owner video",
+        original_url: "https://example.com/v_owner",
+        live_status: "not_live",
+        description: "owner desc",
+        aspect_ratio: 1.67,
+        duration: 60.0,
+        upload_date: upload_date,
+        channel_id: "UC_owner_123"
+      },
+      %{
+        id: "v_foreign",
+        title: "Foreign video",
+        original_url: "https://example.com/v_foreign",
+        live_status: "not_live",
+        description: "foreign desc",
+        aspect_ratio: 1.67,
+        duration: 90.0,
+        upload_date: upload_date,
+        channel_id: "UC_other_456"
+      }
+    ]
+    |> Enum.map_join("\n", fn attrs -> Phoenix.json_library().encode!(attrs) end)
+  end
+
+  defp translated_titles_source(attrs \\ %{}) do
+    source_fixture(
+      Map.merge(
+        %{
+          collection_type: :playlist,
+          original_url: "https://www.youtube.com/playlist?list=PLtranslated",
+          title_language: "de"
+        },
+        attrs
+      )
+    )
+  end
+
+  defp stub_translated_titles(listing_result) do
+    stub(YtDlpRunnerMock, :run, fn
+      _url, :get_translated_titles, _opts, _template, _addl ->
+        case listing_result do
+          {:ok, titles} -> {:ok, translated_titles_output(titles)}
+          error -> error
+        end
+
+      _url, :get_media_attributes_for_collection, _opts, _template, _addl ->
+        {:ok, source_attributes_return_fixture()}
+    end)
+  end
+
+  defp translated_titles_output(titles) do
+    titles
+    |> Enum.map_join("\n", fn {media_id, title} ->
+      Phoenix.json_library().encode!(%{id: media_id, title: title})
+    end)
   end
 end

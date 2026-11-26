@@ -107,12 +107,12 @@ defmodule Pinchflat.YtDlp.MediaTest do
       assert {:ok, :ignorable} = Media.get_downloadable_status(@media_url)
     end
 
-    test "returns :ignorable if the media was live but hasn't been processed" do
+    test "returns :post_live if the media was live and is still being processed" do
       expect(YtDlpRunnerMock, :run, fn _url, :get_downloadable_status, _opts, _ot, _addl ->
         {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
       end)
 
-      assert {:ok, :ignorable} = Media.get_downloadable_status(@media_url)
+      assert {:ok, :post_live} = Media.get_downloadable_status(@media_url)
     end
 
     test "returns an error if the downloadable status can't be determined" do
@@ -305,7 +305,7 @@ defmodule Pinchflat.YtDlp.MediaTest do
   describe "indexing_output_template/0" do
     test "contains all the greatest hits" do
       attrs =
-        ~w(id title live_status original_url description aspect_ratio duration upload_date timestamp playlist_index filename availability)a
+        ~w(id title live_status original_url description aspect_ratio duration upload_date timestamp playlist_index filename availability channel_id)a
 
       formatted_attrs = "%(.{#{Enum.join(attrs, ",")}})j"
 
@@ -364,6 +364,18 @@ defmodule Pinchflat.YtDlp.MediaTest do
                availability: nil,
                predicted_media_filepath: "TiZPUDkDYbk.mp4"
              } == Media.response_to_struct(response)
+    end
+
+    test "maps the uploader channel_id" do
+      response = %{
+        "original_url" => "https://www.youtube.com/watch?v=TiZPUDkDYbk",
+        "aspect_ratio" => 1.0,
+        "duration" => 60,
+        "upload_date" => "20210101",
+        "channel_id" => "UCuploader123"
+      }
+
+      assert %Media{channel_id: "UCuploader123"} = Media.response_to_struct(response)
     end
 
     test "sets short_form_content to true if the URL contains /shorts/" do
@@ -466,6 +478,20 @@ defmodule Pinchflat.YtDlp.MediaTest do
       }
 
       expected_date = ~U[2020-09-13 12:26:40Z]
+
+      assert %Media{uploaded_at: ^expected_date} = Media.response_to_struct(response)
+    end
+
+    test "parses a timestamp that yt-dlp reports as a float" do
+      response = %{
+        "original_url" => "https://www.youtube.com/watch?v=TiZPUDkDYbk",
+        "aspect_ratio" => 1.0,
+        "duration" => 61,
+        "upload_date" => "20250604",
+        "timestamp" => 1_749_033_569.0
+      }
+
+      expected_date = ~U[2025-06-04 10:39:29Z]
 
       assert %Media{uploaded_at: ^expected_date} = Media.response_to_struct(response)
     end

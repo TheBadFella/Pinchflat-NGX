@@ -7,6 +7,7 @@ defmodule Pinchflat.Profiles.MediaProfile do
   import Ecto.Changeset
 
   alias __MODULE__
+  alias Pinchflat.Downloading.OutputPathBuilder
   alias Pinchflat.Sources.Source
 
   @allowed_fields ~w(
@@ -96,6 +97,8 @@ defmodule Pinchflat.Profiles.MediaProfile do
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template, ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:output_path_template_shorts, ext_regex(), message: "must end with .{{ ext }}")
+    |> validate_output_path_template(:output_path_template)
+    |> validate_output_path_template(:output_path_template_shorts)
     |> validate_number(:redownload_delay_days, greater_than_or_equal_to: 0)
     |> validate_number(:retention_period_days, greater_than: 0)
     |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
@@ -135,6 +138,16 @@ defmodule Pinchflat.Profiles.MediaProfile do
           "can't mark and remove the same category: #{Enum.join(overlap, ", ")}"
         )
     end
+  end
+
+  @doc false
+  def validate_output_path_template(changeset, field) do
+    validate_change(changeset, field, fn ^field, template ->
+      case OutputPathBuilder.validate_template(template) do
+        :ok -> []
+        {:error, message} -> [{field, message}]
+      end
+    end)
   end
 
   @doc false

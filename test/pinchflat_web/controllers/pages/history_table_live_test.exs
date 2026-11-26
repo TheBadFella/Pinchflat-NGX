@@ -5,6 +5,7 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
   import Phoenix.LiveViewTest
   import Pinchflat.MediaFixtures
   import Pinchflat.SourcesFixtures
+  import Pinchflat.TasksFixtures
 
   alias Pinchflat.Pages.HistoryTableLive
   alias Pinchflat.Downloading.MediaDownloadWorker
@@ -220,6 +221,36 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       end
     end
 
+    test "moves items the source's rules skip from Latest to the Excluded tab", %{conn: conn} do
+      profile = Pinchflat.ProfilesFixtures.media_profile_fixture(%{shorts_behaviour: :exclude})
+      source = source_fixture(media_profile_id: profile.id)
+      item = &media_item_fixture(Map.merge(%{source_id: source.id, media_filepath: nil}, &1))
+
+      short = item.(%{title: "Excluded short", short_form_content: true})
+      video = item.(%{title: "Pending video", short_form_content: false})
+      prevented_short = item.(%{title: "Prevented short", short_form_content: true, prevent_download: true})
+
+      {:ok, latest, _} =
+        live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest", "latest_range" => @all_time_range})
+
+      refute has_element?(latest, "[data-media-status='#{short.id}']")
+      assert has_element?(latest, "tbody [data-media-status='#{video.id}']", "Pending")
+      assert has_element?(latest, "tbody [data-media-status='#{prevented_short.id}']", "Prevented")
+
+      render_click(latest, "grouping_change", %{"grouping" => "source"})
+      refute render(latest) =~ short.title
+
+      {:ok, excluded, _} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "excluded"})
+      html = render(excluded)
+      assert html =~ short.title
+      refute html =~ video.title
+      refute html =~ prevented_short.title
+      assert has_element?(excluded, "#excluded-explanation", "shorts or")
+
+      {:ok, pending, _} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "pending"})
+      refute render(pending) =~ short.title
+    end
+
     test "groups sources by their latest indexed item before paginating", %{conn: conn} do
       first_source = source_fixture(custom_name: "Recently active")
       second_source = source_fixture(custom_name: "Other source")
@@ -265,14 +296,20 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
         live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest", "latest_range" => @all_time_range})
 
       assert has_element?(view, "button[phx-value-view=list][aria-pressed=true]")
+      # The list sorts by its headers, so the menu is only for the phone cards there.
+      assert has_element?(view, "form#latest-sort[class*='md:hidden']")
       view |> element("#latest-desktop-controls button[phx-value-view=grid]") |> render_click()
       refute has_element?(view, "table")
       assert has_element?(view, "button[phx-value-view=grid][aria-pressed=true]")
+      refute has_element?(view, "form#latest-sort[class*='md:hidden']")
 
-      view |> element("#latest-sort") |> render_change(%{"sort_key" => "uploaded_at", "sort_direction" => "asc"})
+      assert has_element?(view, "input#latest-sort-choice[value='inserted_at:desc']")
+      assert render(view) =~ "Recently indexed"
+      view |> element("#latest-sort") |> render_change(%{"sort" => "uploaded_at:asc"})
       assert render_element(view, "article:first-child") =~ older.title
-      view |> element("#latest-sort") |> render_change(%{"sort_key" => "uploaded_at", "sort_direction" => "desc"})
+      view |> element("#latest-sort") |> render_change(%{"sort" => "uploaded_at:desc"})
       assert render_element(view, "article:first-child") =~ newer.title
+      assert has_element?(view, "input#latest-sort-choice[value='uploaded_at:desc']")
 
       view |> element("#latest-desktop-controls button[phx-value-grouping=source]") |> render_click()
       assert has_element?(view, "section[data-source-id='#{source.id}'] article")
@@ -290,11 +327,10 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       assert has_element?(view, "dialog#latest-filter-sheet[aria-labelledby=latest-filter-title]")
       view |> element("#latest-mobile-controls button[phx-value-view=grid]") |> render_click()
       view |> element("#latest-filter-sheet button[phx-value-grouping=source]") |> render_click()
-      view |> element("#latest-mobile-sort") |> render_change(%{"sort_key" => "uploaded_at", "sort_direction" => "asc"})
+      view |> element("#latest-mobile-sort") |> render_change(%{"sort" => "uploaded_at:asc"})
 
       assert has_element?(view, "#latest-mobile-summary", "By source")
-      assert has_element?(view, "#latest-mobile-summary", "Upload date")
-      assert has_element?(view, "#latest-mobile-summary", "Oldest first")
+      assert has_element?(view, "#latest-mobile-summary", "Oldest uploads")
       assert has_element?(view, "button[phx-value-view=grid][aria-pressed=true]")
       refute has_element?(view, "table")
       assert has_element?(view, "#latest-mobile-custom-range input[name=range][value=custom]")
@@ -309,6 +345,8 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       render_click(view, "view_change", %{"view" => "invalid"})
       render_click(view, "grouping_change", %{"grouping" => "invalid"})
       render_change(view, "latest_sort", %{"sort_key" => "bad", "sort_direction" => "bad"})
+      render_change(view, "latest_sort", %{"sort" => "bad"})
+      render_change(view, "latest_sort", %{"sort" => "title:desc"})
       assert has_element?(view, "button[phx-value-view=grid][aria-pressed=true]")
       assert has_element?(view, "button[phx-value-grouping=source][aria-pressed=true]")
       assert render(view) =~ "No media indexed in this time frame."
@@ -649,6 +687,80 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
 
       view |> element("th button", "Upload Date") |> render_click()
       assert pagination_text(view) == "Page 1 of 2"
+    end
+  end
+
+  describe "thumbnails" do
+    test "renders stored thumbnails in list and grid views", %{conn: conn} do
+      source = source_fixture()
+
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: "/downloads/thumb.jpg"
+        )
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
+
+      assert render_element(view, "tbody") =~ ~s(src="/media/#{item.uuid}/episode_image")
+      assert render_element(view, "tbody") =~ ~s(loading="lazy")
+
+      render_click(view, "view_change", %{"view" => "grid"})
+      assert render_element(view, "article") =~ ~s(src="/media/#{item.uuid}/episode_image")
+    end
+
+    test "renders a placeholder when an item has no thumbnail", %{conn: conn} do
+      source = source_fixture()
+
+      item =
+        media_item_fixture(
+          source_id: source.id,
+          media_filepath: "/downloads/file.mp4",
+          thumbnail_filepath: nil
+        )
+
+      {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
+
+      assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
+      refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
+    end
+  end
+
+  describe "empty states and Polish" do
+    test "P3: empty state on latest 1-day range offers past 7 days and view downloaded", %{conn: conn} do
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+      assert html =~ "Nothing was indexed in the past 24 hours."
+      assert has_element?(view, "a", "Show past 7 days")
+      assert has_element?(view, "a[href='/?tab=downloaded']", "View downloaded")
+
+      {:ok, _view, html_week} =
+        live_isolated(conn, HistoryTableLive,
+          session: %{"media_state" => "latest", "latest_range" => %{"range" => "week"}}
+        )
+
+      assert html_week =~ "No media indexed in this time frame."
+      refute html_week =~ "Show past 7 days"
+      refute html_week =~ "View downloaded"
+    end
+
+    test "P6a: action column header appears only when running tasks exist", %{conn: conn} do
+      source = source_fixture()
+      item = indexed_fixture(source, "Idle item", DateTime.utc_now())
+
+      {:ok, view, html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+      refute has_element?(view, "th", "Action")
+      refute html =~ ~s(data-icon="hero-stop-solid")
+
+      {:ok, job} = Oban.insert(MediaDownloadWorker.new(%{"id" => item.id}))
+
+      task_fixture(%{media_item_id: item.id, source_id: source.id, job_id: job.id})
+
+      {:ok, view_with_task, html_with_task} =
+        live_isolated(conn, HistoryTableLive, session: %{"media_state" => "latest"})
+
+      assert has_element?(view_with_task, "th", "Action")
+      assert html_with_task =~ ~s(data-icon="hero-stop-solid")
     end
   end
 

@@ -113,22 +113,24 @@ for (const width of [320, 390, 768, 1440]) {
   viewport(width)
   const geometry = await page.eval(() => {
     const visible = (el) => el.getBoundingClientRect().height > 0
-    const policies = [...document.querySelectorAll('p')].filter(
-      (el) => visible(el) && el.textContent.trim().startsWith('Retention:')
-    )
+    // Phone cards write the policy out; the table shows a short value in its Retention column.
+    const retentionValues = [...document.querySelectorAll('[id^="source-retention-"]')]
+    const policies = [...document.querySelectorAll('p')]
+      .filter((el) => el.textContent.trim().startsWith('Retention:'))
+      .concat(retentionValues)
+      .filter(visible)
     const clipped = policies
       .filter((el) => {
         const rect = el.getBoundingClientRect()
         return rect.left < 0 || rect.right > innerWidth || el.scrollWidth > el.clientWidth + 1
       })
       .map((el) => el.textContent.trim())
-    const overflowingDeletes = [...document.querySelectorAll('article a[aria-label^="Delete "]')]
-      .filter(visible)
-      .filter((el) => {
-        const icon = el.getBoundingClientRect()
-        const card = el.closest('article').getBoundingClientRect()
-        return icon.left < card.left || icon.right > card.right
-      }).length
+    const deleteButtons = document.querySelectorAll('article button[aria-label^="Delete "]')
+    const overflowingDeletes = [...deleteButtons].filter(visible).filter((el) => {
+      const icon = el.getBoundingClientRect()
+      const card = el.closest('article').getBoundingClientRect()
+      return icon.left < card.left || icon.right > card.right
+    }).length
     return { width: innerWidth, clipped, overflowingDeletes, policies: policies.length }
   })
   assert.equal(geometry.width, width)
@@ -137,18 +139,18 @@ for (const width of [320, 390, 768, 1440]) {
   assert.equal(geometry.overflowingDeletes, 0, `Delete action outside its card at ${width}px`)
   screenshot(`retention-sources-${width}.png`)
 }
-await clickButton('Poster grid')
+await clickButton('Poster Grid')
 await page.wait('#source-poster-grid')
 for (const width of [320, 390, 768, 1440]) {
   viewport(width)
   const policies = await page.eval(() => {
-    return [...document.querySelectorAll('#source-poster-grid p')]
-      .filter((el) => el.textContent.trim().startsWith('Retention:'))
-      .map((el) => ({
+    return [...document.querySelectorAll('#source-poster-grid [id^="source-retention-grid-"]')].map(
+      (el) => ({
         text: el.textContent.trim(),
         width: el.clientWidth,
         contentWidth: el.scrollWidth
-      }))
+      })
+    )
   })
   assert.equal(policies.length, 3)
   assert(policies.some((policy) => policy.text.includes('30 days (profile default)')))

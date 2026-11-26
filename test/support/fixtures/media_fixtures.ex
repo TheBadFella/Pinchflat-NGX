@@ -12,6 +12,17 @@ defmodule Pinchflat.MediaFixtures do
   """
   def media_item_fixture(attrs \\ %{}) do
     media_id = Faker.String.base64(12)
+    attrs = Map.new(attrs)
+
+    source_id =
+      Map.get(attrs, :source_id) ||
+        Map.get(attrs, "source_id") ||
+        SourcesFixtures.source_fixture().id
+
+    attrs =
+      attrs
+      |> Map.delete(:source_id)
+      |> Map.delete("source_id")
 
     {:ok, media_item} =
       attrs
@@ -22,7 +33,7 @@ defmodule Pinchflat.MediaFixtures do
         livestream: false,
         short_form_content: false,
         media_filepath: "/video/#{Faker.File.file_name(:video)}",
-        source_id: SourcesFixtures.source_fixture().id,
+        source_id: source_id,
         uploaded_at: DateTime.utc_now()
       })
       |> Pinchflat.Media.create_media_item()

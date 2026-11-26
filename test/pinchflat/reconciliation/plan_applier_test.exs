@@ -105,6 +105,35 @@ defmodule Pinchflat.Reconciliation.PlanApplierTest do
       assert Repo.reload(media_item).nfo_filepath == target
     end
 
+    test "backfills a source NFO titled with the source's name" do
+      source = source_fixture(%{custom_name: "My Source"})
+      metadata = %{"title" => "Gred Glintstone - Videos", "id" => "UC123"}
+      metadata_filepath = MetadataFileHelpers.compress_and_store_metadata_for(source, metadata)
+
+      {:ok, source} =
+        source
+        |> Repo.preload(:metadata)
+        |> Pinchflat.Sources.update_source(%{metadata: %{metadata_filepath: metadata_filepath}})
+
+      plan = ready_plan(source.id)
+      target = Path.join(Path.dirname(new_target_path()), "tvshow.nfo")
+
+      Reconciliation.create_plan_items([
+        %{
+          reconcile_plan_id: plan.id,
+          source_id: source.id,
+          action: :backfill,
+          attribute: "source_nfo",
+          to_path: target,
+          status: :planned
+        }
+      ])
+
+      assert {:ok, _} = PlanApplier.apply_plan(plan)
+
+      assert File.read!(target) =~ "<title>My Source</title>"
+    end
+
     test "backfills the info.json from stored metadata" do
       media_item = downloaded_media_item()
       plan = ready_plan(media_item.source_id)

@@ -18,6 +18,8 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
   attr :table_class, :string, default: ""
   attr :sort_key, :atom, default: nil
   attr :sort_direction, :atom, default: nil
+  attr :compact, :boolean, default: false, doc: "tighter padding; wrapping columns shrink before it scrolls"
+  attr :rounded, :boolean, default: true
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -25,42 +27,57 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
 
   slot :col, required: true do
     attr :label, :string
+    attr :label_icon, :string, doc: "an icon shown instead of the label, which stays the accessible name"
+    attr :header, :any, doc: "rendered content for the header cell instead of the label, such as a select-all checkbox"
     attr :class, :string
+    attr :column_class, :string, doc: "classes for the header and the cells, such as hiding the column when narrow"
     attr :sort_key, :string
   end
 
   def table(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
+    <div class={["overflow-hidden bg-theme-surface-1 shadow-m3-1", @rounded && "rounded-m3-lg"]}>
       <div class="overflow-x-auto overflow-y-hidden">
         <table class={[
-          "min-w-full w-max table-auto text-theme-on-surface",
+          "min-w-full table-auto text-theme-on-surface",
+          if(@compact, do: "w-full", else: "w-max"),
           @table_class
         ]}>
           <thead>
             <tr class="border-b border-theme-outline/70 bg-theme-surface-3 text-left">
               <th
                 :for={col <- @col}
-                class="px-4 py-4 font-medium text-theme-on-surface"
+                class={[
+                  "font-medium text-theme-on-surface",
+                  if(@compact, do: "whitespace-nowrap px-2", else: "px-4"),
+                  header_padding(@compact, col[:sort_key] && !col[:header]),
+                  col[:sort_key] && !col[:header] && "relative",
+                  col[:label_icon] && "text-center",
+                  col[:column_class]
+                ]}
                 aria-sort={column_sort(@sort_key, @sort_direction, col[:sort_key])}
               >
-                <button
-                  :if={col[:sort_key]}
-                  type="button"
-                  class="theme-filter-button -my-2 rounded-m3-xs text-left"
-                  phx-click="sort_update"
-                  phx-value-sort_key={col[:sort_key]}
-                  aria-label={sort_button_label(col[:label], @sort_key, @sort_direction, col[:sort_key])}
-                >
-                  {col[:label]}
-                  <.icon
-                    :if={to_string(@sort_key) == col[:sort_key]}
-                    name={if @sort_direction == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
-                    class="h-3 w-3"
-                    aria-hidden="true"
+                {col[:header]}
+                <.tooltip :if={col[:label_icon] && !col[:header]} tooltip={col[:label]} position="top">
+                  <.sort_button
+                    :if={col[:sort_key]}
+                    col={col}
+                    sort_key={@sort_key}
+                    sort_direction={@sort_direction}
                   />
-                </button>
-                <span :if={!col[:sort_key]}>{col[:label]}</span>
+                  <span :if={!col[:sort_key]} data-label={col[:label]}>
+                    <.column_label label={col[:label]} icon={col[:label_icon]} />
+                  </span>
+                </.tooltip>
+                <.sort_button
+                  :if={col[:sort_key] && !col[:header] && !col[:label_icon]}
+                  col={col}
+                  sort_key={@sort_key}
+                  sort_direction={@sort_direction}
+                />
+                <span :if={!col[:sort_key] && !col[:header] && !col[:label_icon]}>
+                  <.column_label label={col[:label]} icon={col[:label_icon]} />
+                </span>
               </th>
             </tr>
           </thead>
@@ -70,8 +87,10 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
               <td
                 :for={col <- @col}
                 class={[
-                  "px-4 py-5 text-theme-on-surface-muted",
-                  col[:class]
+                  "text-theme-on-surface-muted",
+                  if(@compact, do: "px-2 py-2.5", else: "px-4 py-5"),
+                  col[:class],
+                  col[:column_class]
                 ]}
               >
                 {render_slot(col, @row_item.(row))}
@@ -83,6 +102,70 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
     </div>
     """
   end
+
+  attr :col, :map, required: true
+  attr :sort_key, :atom, default: nil
+  attr :sort_direction, :atom, default: nil
+
+  defp sort_button(assigns) do
+    assigns = assign(assigns, :sorted, sorted_column?(assigns.sort_key, assigns.col[:sort_key]))
+
+    ~H"""
+    <button
+      type="button"
+      class={[
+        "theme-filter-button -mx-3 -my-1 flex-col gap-0 rounded-m3-xs py-0.5 align-middle",
+        "after:absolute after:inset-0",
+        "hover:text-theme-primary"
+      ]}
+      phx-click="sort_update"
+      phx-value-sort_key={@col[:sort_key]}
+      aria-label={sort_button_label(@col[:label], @sort_key, @sort_direction, @col[:sort_key])}
+      data-label={@col[:label]}
+      data-sorted={@sorted && to_string(@sort_direction)}
+    >
+      <%!-- The arrow sits above the label when ascending and below it when descending, so it adds no width. --%>
+      <.sort_arrow visible={@sorted and @sort_direction == :asc} direction="up" />
+      <.column_label label={@col[:label]} icon={@col[:label_icon]} />
+      <.sort_arrow visible={@sorted and @sort_direction != :asc} direction="down" />
+    </button>
+    """
+  end
+
+  attr :visible, :boolean, required: true
+  attr :direction, :string, required: true, values: ["up", "down"]
+
+  defp sort_arrow(assigns) do
+    ~H"""
+    <span
+      class={["flex h-2.5 justify-center", if(@direction == "up", do: "items-start", else: "items-end")]}
+      aria-hidden="true"
+      data-sort-arrow={@visible && @direction}
+    >
+      <svg :if={@visible} viewBox="0 0 10 6" class="h-1.5 w-2.5" fill="currentColor">
+        <path d={if @direction == "up", do: "M5 0 10 6H0z", else: "M5 6 10 0H0z"} />
+      </svg>
+    </span>
+    """
+  end
+
+  attr :label, :string, default: nil
+  attr :icon, :string, default: nil
+
+  defp column_label(%{icon: nil} = assigns), do: ~H"{@label}"
+
+  defp column_label(assigns) do
+    ~H"""
+    <.icon name={@icon} class="h-5 w-5" aria-hidden="true" /><span class="sr-only">{@label}</span>
+    """
+  end
+
+  # Sort buttons are taller than plain labels, so their cells take less padding to keep one row height.
+  defp header_padding(true, sortable), do: if(sortable, do: "py-1", else: "py-2")
+  defp header_padding(false, sortable), do: if(sortable, do: "py-3", else: "py-4")
+
+  defp sorted_column?(_sort_key, nil), do: false
+  defp sorted_column?(sort_key, column_key), do: to_string(sort_key) == column_key
 
   defp column_sort(sort_key, sort_direction, column_key) do
     if to_string(sort_key) == column_key do

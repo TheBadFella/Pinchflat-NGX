@@ -108,6 +108,20 @@ defmodule Pinchflat.Metadata.MetadataParserTest do
 
       assert result.subtitle_filepaths == []
     end
+
+    test "ignores requested subtitles without a usable filepath", %{metadata: metadata} do
+      metadata =
+        Map.put(metadata, "requested_subtitles", %{
+          "en" => %{"filepath" => "en.srt"},
+          "ko" => %{"filepath" => nil},
+          "de" => %{},
+          "fr" => %{"filepath" => ""}
+        })
+
+      result = Parser.parse_for_media_item(metadata)
+
+      assert result.subtitle_filepaths == [["en", "en.srt"]]
+    end
   end
 
   describe "parse_for_media_item/1 when testing thumbnail metadata" do

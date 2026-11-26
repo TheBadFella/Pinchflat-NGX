@@ -140,7 +140,16 @@ jobs:
             --tag "${IMAGE_NAME}:${DEV_TAG}" \
             --tag "${IMAGE_NAME}:${COMMIT_TAG}" \
             "${sources[@]}"
-          docker buildx imagetools inspect "${IMAGE_NAME}:${COMMIT_TAG}"
+          # GHCR can briefly return not found immediately after a successful push.
+          for attempt in 1 2 3 4 5; do
+            if docker buildx imagetools inspect "${IMAGE_NAME}:${COMMIT_TAG}"; then
+              break
+            fi
+            if [[ "$attempt" == 5 ]]; then
+              exit 1
+            fi
+            sleep "$((2 ** (attempt - 1)))"
+          done
           {
             echo "### Development image (${{ matrix.database }})"
             echo "- Commit: ${GITHUB_SHA}"

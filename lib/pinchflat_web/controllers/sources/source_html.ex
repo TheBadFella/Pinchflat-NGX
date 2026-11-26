@@ -1,17 +1,49 @@
 defmodule PinchflatWeb.Sources.SourceHTML do
   use PinchflatWeb, :html
 
+  import PinchflatWeb.CustomComponents.DatePicker, only: [date_picker: 1]
+
+  alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Sources.Source
+  alias PinchflatWeb.MediaProfiles.MediaProfileHTML
 
   embed_templates "source_html/*"
+
+  @source_switches [
+    {:start, "hero-play-solid", "Start All"},
+    {:pause, "hero-pause-solid", "Pause All"},
+    {:stop, "hero-stop-solid", "Stop All"}
+  ]
 
   @doc """
   Returns the Sources tab path, accepting only known local list destinations.
   """
   def source_list_path("/sources?type=videos"), do: ~p"/sources?type=videos"
   def source_list_path(_return_to), do: ~p"/sources"
+
+  @doc """
+  Hidden inputs that resubmit an edit from a confirmation page: the `source` params
+  (list values become `source[key][]` inputs) plus any top-level `extra_params`,
+  such as the yt-dlp options payload, exactly as they were submitted.
+  """
+  attr :source_params, :map, required: true
+  attr :extra_params, :map, default: %{}
+
+  def resubmitted_source_inputs(assigns) do
+    ~H"""
+    <%= for {key, value} <- @source_params do %>
+      <input
+        :for={item <- if(is_list(value), do: value, else: [value || ""])}
+        type="hidden"
+        name={if is_list(value), do: "source[#{key}][]", else: "source[#{key}]"}
+        value={item}
+      />
+    <% end %>
+    <input :for={{key, value} <- @extra_params} type="hidden" name={key} value={value} />
+    """
+  end
 
   @doc """
   Renders a source form.
@@ -26,10 +58,54 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   attr :cookie_file_configured, :boolean, required: true
   attr :cookie_file_contents, :string, default: nil
   attr :available_folders, :list, default: []
+  attr :cutoff_downloaded_items, :list, default: []
   attr :show_delay_automatic_download, :boolean, default: false
   attr :new_source, :boolean, default: false
+  attr :yt_dlp_options, :string, default: ""
+  attr :yt_dlp_options_version, :any, default: :missing
+  attr :yt_dlp_options_present, :boolean, default: false
+  attr :yt_dlp_options_readable, :boolean, default: true
+  attr :yt_dlp_options_clearable, :boolean, default: false
+  attr :yt_dlp_options_inherited, :map, default: %{}
+  attr :yt_dlp_options_profile_presence, :map, default: %{}
+  attr :yt_dlp_error, :string, default: nil
 
   def source_form(assigns)
+
+  @doc """
+  Wraps a metadata-backed field (name or description) and manages its lock.
+  Editing the field locks it so metadata refreshes keep the user's version;
+  "Follow the channel again" clears the lock. The lock is submitted as a
+  hidden boolean under the lock field's name.
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :lock, Phoenix.HTML.FormField, required: true
+  attr :noun, :string, required: true
+  slot :inner_block, required: true
+
+  def metadata_field_lock(assigns) do
+    assigns = assign(assigns, :locked, Phoenix.HTML.Form.normalize_value("checkbox", assigns.lock.value))
+
+    ~H"""
+    <div id={"#{@field.id}-lock"} x-data={"{ locked: #{@locked} }"}>
+      {render_slot(@inner_block)}
+      <input type="hidden" name={@lock.name} value={to_string(@locked)} x-bind:value="locked ? 'true' : 'false'" />
+      <p class="mt-1 flex flex-wrap items-center gap-x-3 text-sm text-theme-on-surface-muted">
+        <span x-cloak x-show="!locked">Follows the channel: metadata refreshes update this {@noun}.</span>
+        <span x-cloak x-show="locked">Kept as you set it: metadata refreshes leave this {@noun} alone.</span>
+        <button
+          type="button"
+          x-cloak
+          x-show="locked"
+          class="min-h-11 font-medium text-theme-primary underline underline-offset-2 hover:text-theme-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-primary/70"
+          x-on:click="locked = false; $nextTick(() => $root.querySelector('input:not([type=hidden]), textarea')?.focus())"
+        >
+          Follow the channel again
+        </button>
+      </p>
+    </div>
+    """
+  end
 
   @doc """
   A source's collection type as an icon plus label, for places that list sources
@@ -38,12 +114,16 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   """
   attr :collection_type, :atom, required: true
   attr :class, :string, default: nil
+  attr :label_class, :string, default: nil, doc: "classes for the label, such as hiding it visually when narrow"
 
   def collection_type_badge(assigns) do
     ~H"""
-    <span class={["inline-flex items-center gap-1.5 whitespace-nowrap", @class]}>
+    <span
+      class={["inline-flex items-center gap-1.5 whitespace-nowrap", @class]}
+      title={collection_type_label(@collection_type) || "Unknown"}
+    >
       <.icon name={collection_type_icon(@collection_type)} class="h-4 w-4 shrink-0 text-theme-on-surface-muted" />
-      {collection_type_label(@collection_type) || "Unknown"}
+      <span class={@label_class}>{collection_type_label(@collection_type) || "Unknown"}</span>
     </span>
     """
   end
@@ -108,19 +188,355 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
+  Describes a source's status.
+
+  A disabled source always shows as disabled. An enabled source shows as
+  downloading while it has download jobs running or queued, otherwise its
+  bolt is green with Download Media on and purple with it off.
+
+  Returns a map with `:label`, `:icon`, `:pill_class` (the bordered pill on a
+  source's page) and `:switch_class` (the enable switch in the sources list).
+  """
+  def source_status(%{enabled: false}, _downloading?),
+    do: %{
+      label: "Disabled",
+      icon: "hero-pause",
+      pill_class: "theme-pill-warning",
+      switch_class: "theme-status-switch-neutral"
+    }
+
+  def source_status(_source, true),
+    do: %{
+      label: "Downloading",
+      icon: "hero-clock",
+      pill_class: "theme-pill-warning",
+      switch_class: "theme-status-switch-warning theme-status-switch-busy"
+    }
+
+  def source_status(%{download_media: false}, _downloading?),
+    do: %{
+      label: "Indexing Enabled, No Automatic Downloads",
+      icon: "hero-bolt",
+      pill_class: "theme-pill-info",
+      switch_class: "theme-status-switch-info"
+    }
+
+  def source_status(_source, _downloading?),
+    do: %{
+      label: "Indexing Enabled, Automatically Downloads",
+      icon: "hero-bolt",
+      pill_class: "theme-pill-success",
+      switch_class: "theme-status-switch-success"
+    }
+
+  @doc """
+  The status as a labelled pill, shown on a source's page.
+  """
+  attr :source, :map, required: true
+  attr :downloading, :boolean, required: true
+  attr :id_prefix, :string, required: true
+
+  def source_status_pill(assigns) do
+    assigns = assign(assigns, :status, source_status(assigns.source, assigns.downloading))
+
+    ~H"""
+    <span
+      id={"source-status-#{@id_prefix}-#{@source.id}"}
+      class={["theme-pill", @status.pill_class]}
+      data-source-status={@status.label}
+    >
+      <.icon name={@status.icon} class="h-3.5 w-3.5" aria-hidden="true" />
+      {@status.label}
+    </span>
+    """
+  end
+
+  @doc """
+  The status as a switch for the sources list. The status icon is the knob, which sits right
+  while the source is enabled, and clicking it enables or disables the source. While the source
+  downloads, a light runs around the border.
+  """
+  attr :source, :map, required: true
+  attr :downloading, :boolean, required: true
+  attr :id_prefix, :string, required: true
+  attr :tooltip_position, :string, default: "top"
+
+  def source_status_switch(assigns) do
+    status = source_status(assigns.source, assigns.downloading)
+    action = if assigns.source.enabled, do: "disable", else: "enable"
+    assigns = assign(assigns, status: status, action: action)
+
+    ~H"""
+    <.tooltip tooltip={@status.label} position={@tooltip_position} tooltip_class="text-center">
+      <button
+        type="button"
+        id={"source-status-#{@id_prefix}-#{@source.id}"}
+        role="switch"
+        aria-checked={to_string(@source.enabled)}
+        aria-label={"#{@status.label}. #{String.capitalize(@action)} #{@source.custom_name}"}
+        data-source-status={@status.label}
+        class={["theme-status-switch", @status.switch_class]}
+        phx-click="toggle_source_enabled"
+        phx-value-id={@source.id}
+      >
+        <span class="theme-status-switch-knob">
+          <.icon :if={@status.icon == "hero-bolt"} name="hero-bolt-solid" class="h-4.5 w-4.5" aria-hidden="true" />
+          <.icon :if={@status.icon != "hero-bolt"} name={@status.icon} class="h-4 w-4" aria-hidden="true" />
+        </span>
+      </button>
+    </.tooltip>
+    """
+  end
+
+  @doc """
+  The cutoff being applied on the bulk cutoff confirmation page.
+  """
+  def bulk_cutoff_label(%{rolling_days: days}) when is_integer(days), do: "the last #{days} days"
+  def bulk_cutoff_label(%{cutoff: %Date{} = cutoff}), do: Date.to_iso8601(cutoff)
+  def bulk_cutoff_label(_preview), do: "No cutoff"
+
+  @doc """
+  A source's current download cutoff for the bulk cutoff confirmation page.
+  """
+  def source_cutoff_label(%{download_cutoff_date: %Date{} = date}), do: Date.to_iso8601(date)
+  def source_cutoff_label(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "last #{days} days"
+  def source_cutoff_label(_source), do: "No cutoff"
+
+  @doc """
+  The source actions menu, shared by a source's page and the sources list. Actions run on the
+  first click. Download Pending only appears when items are pending. Redownload Existing is always
+  listed, and both are disabled with the reason while automatic downloads are off or Redownload
+  Existing has nothing downloaded to act on. Start
+  All, Pause All and Stop All share one Downloads row of icon buttons, each greyed out when it
+  would do nothing: Start All without pending items, Pause All and Stop All without downloads
+  running or queued.
+  """
+  attr :source, :map, required: true
+  attr :pending_count, :integer, required: true
+  attr :downloaded_count, :integer, required: true
+  attr :json, :string, default: nil, doc: "the source as JSON, which adds Copy JSON"
+  attr :show_feed, :boolean, default: true, doc: "lists Copy RSS Feed"
+  attr :downloading, :boolean, default: false, doc: "whether the source has downloads running or queued"
+
+  attr :live, :boolean,
+    default: false,
+    doc: "run actions as LiveView events on the sources list, which reports them without reloading the page"
+
+  attr :return_to, :string, default: nil, doc: "a source list path to return to; actions otherwise stay on the source"
+  attr :text, :string, default: nil
+  attr :icon_name, :string, default: nil
+  attr :aria_label, :string, default: nil
+  attr :tooltip, :string, default: nil
+  attr :tooltip_position, :string, default: "bottom"
+  attr :edit_path, :string, default: nil, doc: "adds Edit to the menu"
+  attr :on_delete, :any, default: nil, doc: "a JS command for a Delete option"
+  attr :row_option_class, :string, default: nil, doc: "classes for Edit and Delete, to show them only when needed"
+
+  def source_actions_menu(assigns) do
+    assigns =
+      assigns
+      |> assign(:jobs, source_jobs(assigns))
+      |> assign(:switches, source_switches(assigns))
+      |> assign(:feed_path, ~p"/sources/#{assigns.source.uuid}/feed" <> ".xml")
+
+    ~H"""
+    <.button_dropdown
+      text={@text}
+      icon_name={@icon_name}
+      aria_label={@aria_label}
+      tooltip={@tooltip}
+      tooltip_position={@tooltip_position}
+      variant="outline"
+      size="compact"
+      class="shrink-0"
+    >
+      <:option :if={@edit_path}>
+        <.link href={@edit_path} class={@row_option_class}>Edit</.link>
+      </:option>
+      <:option :if={@on_delete}>
+        <button
+          type="button"
+          class={["text-theme-error!", @row_option_class]}
+          x-on:click="dropdownOpen = false"
+          phx-click={@on_delete}
+        >
+          Delete
+        </button>
+      </:option>
+      <:option :if={@edit_path || @on_delete}>
+        <div class={["h-px w-full bg-theme-outline/70", @row_option_class]}></div>
+      </:option>
+
+      <:option :if={@show_feed}>
+        <.link
+          href={@feed_path}
+          x-data="{ copied: false }"
+          x-on:click={"$event.preventDefault(); copyWithCallbacks(new URL('#{@feed_path}', location.origin).href, () => copied = true, () => copied = false)"}
+        >
+          Copy RSS Feed
+          <span x-show="copied" x-cloak x-transition.duration.150ms><.icon name="hero-check" class="h-4 w-4" /></span>
+        </.link>
+      </:option>
+
+      <:option :if={@json}>
+        <button
+          type="button"
+          x-data="{ copied: false }"
+          data-json={@json}
+          x-on:click="copyWithCallbacks($el.dataset.json, () => copied = true, () => copied = false)"
+        >
+          Copy JSON
+          <span x-show="copied" x-cloak x-transition.duration.150ms><.icon name="hero-check" class="h-4 w-4" /></span>
+        </button>
+      </:option>
+
+      <:option><.link href={~p"/sources/new?template_id=#{@source.id}"}>Use as Template</.link></:option>
+      <:option>
+        <div class="h-px w-full bg-theme-outline/70"></div>
+      </:option>
+
+      <:option :for={{job, label, unavailable} <- @jobs}>
+        <.action_form
+          :if={!unavailable}
+          action={source_action_path(@source, job)}
+          return_to={@return_to}
+          event={@live && "source_job"}
+          values={%{id: @source.id, action: job}}
+        >
+          {label}
+        </.action_form>
+        <button
+          :if={unavailable}
+          type="button"
+          disabled
+          class="flex-col items-start! gap-0! disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {label} <span class="text-xs font-normal">{unavailable}</span>
+        </button>
+      </:option>
+
+      <:option><.link href={~p"/reconciliation?source_id=#{@source.id}"}>Reconcile Files</.link></:option>
+      <:option>
+        <div class="h-px w-full bg-theme-outline/70"></div>
+      </:option>
+
+      <:option>
+        <.action_form
+          action={~p"/sources/#{@source.id}/automatic_downloads?#{[enabled: !@source.download_media]}"}
+          return_to={@return_to}
+          event={@live && "source_automatic_downloads"}
+          values={%{id: @source.id, enabled: to_string(!@source.download_media)}}
+        >
+          <.icon name={if @source.download_media, do: "hero-bolt-slash-solid", else: "hero-bolt-solid"} class="h-4 w-4" />
+          {if @source.download_media, do: "Disable Automatic Downloads", else: "Enable Automatic Downloads"}
+        </.action_form>
+      </:option>
+
+      <:option>
+        <div class="flex min-h-11 items-center justify-between gap-3 px-4 text-sm font-medium text-theme-on-surface-muted">
+          <span>Downloads</span>
+          <div class="flex items-center gap-1">
+            <.tooltip
+              :for={{switch, icon, label, idle} <- @switches}
+              tooltip={if idle, do: "#{label}: #{idle}", else: label}
+              position="top"
+              tooltip_class="text-nowrap"
+            >
+              <.action_form
+                action={source_action_path(@source, switch)}
+                return_to={@return_to}
+                event={@live && "source_switch"}
+                values={%{id: @source.id, action: switch}}
+                disabled={!!idle}
+                aria_label={"#{label}: #{@source.custom_name}"}
+                button_class="theme-field-action h-9 w-9 disabled:pointer-events-none disabled:opacity-40 max-sm:h-11 max-sm:w-11"
+              >
+                <.icon name={icon} class="h-4 w-4" />
+              </.action_form>
+            </.tooltip>
+          </div>
+        </div>
+      </:option>
+    </.button_dropdown>
+    """
+  end
+
+  @doc """
+  The delete confirmation shared by a source's page and the sources list. It names the sources
+  and offers keeping or deleting the downloaded files.
+  """
+  attr :id, :string, required: true
+  attr :form_id, :string, default: nil
+  attr :names, :list, required: true, doc: "the custom names of the sources being deleted"
+  attr :action, :string, required: true
+  attr :method, :string, default: "post"
+  attr :return_to, :string, default: nil
+  attr :source_ids, :list, default: []
+  attr :on_cancel, JS, default: %JS{}
+
+  def source_delete_dialog(assigns) do
+    assigns =
+      assigns
+      |> assign(:count, length(assigns.names))
+      |> assign(:listed, Enum.take(assigns.names, 5))
+
+    ~H"""
+    <.modal id={@id} compact on_cancel={@on_cancel}>
+      <h3 id={"#{@id}-title"} class="pr-8 text-lg font-semibold text-theme-on-surface">
+        {case @names do
+          [name] -> "Delete #{name}?"
+          _names -> "Delete #{@count} sources?"
+        end}
+      </h3>
+      <ul :if={@count > 1} id={"#{@id}-names"} class="mt-2 list-disc pl-5 text-sm text-theme-on-surface">
+        <li :for={name <- @listed} class="truncate">{name}</li>
+        <li :if={@count > length(@listed)}>and {@count - length(@listed)} more</li>
+      </ul>
+      <p id={"#{@id}-description"} class="mt-2 text-sm text-theme-on-surface-muted">
+        Indexing and downloads stop. Choose whether to keep the downloaded files. This can't be undone.
+      </p>
+      <.form
+        for={%{}}
+        id={@form_id}
+        action={@action}
+        method={@method}
+        class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"
+      >
+        <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
+        <input :for={id <- @source_ids} type="hidden" name="source_ids[]" value={id} />
+        <.button type="button" variant="outline" size="compact" phx-click={JS.exec("data-cancel", to: "##{@id}")}>
+          Cancel
+        </.button>
+        <.button type="submit" variant="danger" size="compact" disabled={@count == 0}>
+          {if @count == 1, do: "Delete Source", else: "Delete Sources"}
+        </.button>
+        <.button
+          type="submit"
+          variant="danger-solid"
+          size="compact"
+          name="delete_files"
+          value="true"
+          disabled={@count == 0}
+        >
+          {if @count == 1, do: "Delete Source + Files", else: "Delete Sources + Files"}
+        </.button>
+      </.form>
+    </.modal>
+    """
+  end
+
+  @doc """
   Library-style source header: artwork, collection type, status, compact URL,
   next index time, and description.
   """
   attr :source, :any, required: true
   attr :status, :atom, required: true
+  attr :downloading, :boolean, default: false
   attr :pending_tasks, :list, required: true
 
   def source_library_header(assigns) do
-    status_pill = status_pill(assigns.status)
-
     assigns =
       assigns
-      |> assign(:status_pill, status_pill)
       |> assign(:next_check, next_check_at(assigns.pending_tasks))
       |> assign(:has_poster, source_image?(assigns.source, :poster))
       |> assign(:url_label, source_url_label(assigns.source.original_url))
@@ -145,23 +561,26 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
-            <.collection_type_badge collection_type={@source.collection_type} />
-            <span class={["inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", @status_pill.class]}>
-              <.icon name={@status_pill.icon} class="h-3.5 w-3.5" />
-              {@status_pill.label}
+            <.source_status_pill source={@source} downloading={@downloading} id_prefix="header" />
+            <span :if={@status == :error} class="theme-pill theme-pill-error">
+              <.icon name="hero-exclamation-triangle" class="h-3.5 w-3.5" /> Error
             </span>
           </div>
 
           <div class="mt-2 flex flex-col items-start gap-1.5 text-sm text-theme-on-surface-muted">
-            <a
-              :if={@source.original_url}
-              href={@source.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-theme-primary hover:underline"
-            >
-              {@url_label}
-            </a>
+            <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+              <.collection_type_badge collection_type={@source.collection_type} />
+              <a
+                :if={@source.original_url}
+                href={@source.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={@source.original_url}
+                class="min-w-0 break-all text-theme-primary hover:underline"
+              >
+                {@url_label}
+              </a>
+            </div>
             <span :if={@next_check == :now}>Next check: checking now</span>
             <span :if={match?(%DateTime{}, @next_check)}>
               Next check: <.datetime_in_zone datetime={@next_check} format="%Y-%m-%d %H:%M" />
@@ -241,7 +660,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   defp source_info_value(assigns) do
     field = assigns.field
-    value = if field_set?(field), do: field.value, else: "—"
+    # Not field_set?/1: an inherited SponsorBlock label is shown even though the field is "unset".
+    value = if is_binary(field.value) and String.trim(field.value) != "", do: field.value, else: "—"
 
     assigns = assign(assigns, :value, value)
 
@@ -649,7 +1069,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     [
       {"Only once when first created", -1},
       {"30 minutes", 30},
-      {"1 Hour", 60},
+      {"Hourly", 60},
       {"3 Hours", 3 * 60},
       {"6 Hours", 6 * 60},
       {"12 Hours", 12 * 60},
@@ -682,6 +1102,18 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       {"365 days", compute_date_offset(now, 365)}
     ]
   end
+
+  defp cutoff_form_mode(changeset) do
+    cond do
+      Ecto.Changeset.get_field(changeset, :download_cutoff_days) not in [nil, ""] -> "days"
+      Ecto.Changeset.get_field(changeset, :download_cutoff_date) not in [nil, ""] -> "date"
+      true -> "none"
+    end
+  end
+
+  # UTC to match the queries and Source.effective_download_cutoff_date/2, so the preview
+  # names the same date cleanup will use.
+  defp cutoff_today_iso, do: Date.to_iso8601(Date.utc_today())
 
   @doc """
   The Settings tab's grouped view of a source, replacing the old raw attribute
@@ -747,7 +1179,28 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Members-only media",
         yes_no(source.download_members_only_media),
         "Whether subscriber-only, premium-only, and authentication-required media is eligible for download"
-      ),
+      )
+    ] ++
+      collection_indexing_fields(source) ++
+      [
+        field(
+          "Cookies",
+          cookie_behaviour_label(source.cookie_behaviour),
+          "When this source's requests use your cookies.txt file"
+        ),
+        field(
+          "Player client",
+          Pinchflat.Sources.Source.player_client_label(source.player_client),
+          "The YouTube player client passed to yt-dlp, or Default when yt-dlp chooses"
+        )
+      ]
+  end
+
+  # Index scheduling and cutoffs never apply to a single video source.
+  defp collection_indexing_fields(%{collection_type: :video}), do: []
+
+  defp collection_indexing_fields(source) do
+    [
       field(
         "Index frequency",
         index_frequency_label(source.index_frequency_minutes),
@@ -758,21 +1211,51 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Index cutoff date",
         format_date(source.index_cutoff_date),
         "Indexing stops once it reaches media published before this date"
-      ),
-      field(
-        "Cookies",
-        cookie_behaviour_label(source.cookie_behaviour),
-        "When this source's requests use your cookies.txt file"
-      ),
-      field(
-        "Player client",
-        Pinchflat.Sources.Source.player_client_label(source.player_client),
-        "The YouTube player client passed to yt-dlp, or Default when yt-dlp chooses"
       )
     ]
   end
 
   defp filter_fields(source) do
+    playlist_fields =
+      if source.collection_type == :playlist do
+        [
+          field(
+            "Owner channel",
+            source.owner_channel_id || "Unknown",
+            "The channel that owns this playlist. Only owner uploads compares each video's uploader with it"
+          ),
+          field(
+            "Only owner uploads",
+            yes_no(source.only_owner_uploads),
+            "Whether videos the owner added from other channels are listed but not downloaded"
+          )
+        ]
+      else
+        []
+      end
+
+    playlist_fields ++
+      collection_filter_fields(source) ++
+      [
+        field(
+          "SponsorBlock remove",
+          sponsorblock_status_label(source, :remove),
+          "Blank inherits the media profile, Off disables removal for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
+          set?: source.sponsorblock_remove_categories != nil
+        ),
+        field(
+          "SponsorBlock mark",
+          sponsorblock_status_label(source, :mark),
+          "Blank inherits the media profile, Off disables chapter marking for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
+          set?: source.sponsorblock_mark_categories != nil
+        )
+      ] ++ download_cutoff_fields(source)
+  end
+
+  # Title and duration filters choose media from a collection; a video source has nothing to choose.
+  defp collection_filter_fields(%{collection_type: :video}), do: []
+
+  defp collection_filter_fields(source) do
     [
       field("Title filter", source.title_filter_regex, "Only media whose title matches this regex is downloaded",
         type: :code
@@ -786,10 +1269,17 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Maximum duration",
         format_duration(source.max_duration_seconds),
         "Media longer than this is skipped"
-      ),
+      )
+    ]
+  end
+
+  defp download_cutoff_fields(%{collection_type: :video}), do: []
+
+  defp download_cutoff_fields(source) do
+    [
       field(
-        "Download cutoff date",
-        format_date(source.download_cutoff_date),
+        "Download cutoff",
+        download_cutoff_label(source),
         "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
       )
     ]
@@ -810,6 +1300,11 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Retention period",
         retention_policy_label(source),
         "Age is counted from download time. Blank inherits the profile; 0 disables age-based cleanup. Changing the profile can make older downloads eligible at next cleanup. Cutoff cleanup can delete files sooner based on publication date; protected media is excluded from both"
+      ),
+      field(
+        "Keep newest",
+        if(source.keep_newest_count, do: "Newest #{source.keep_newest_count}", else: nil),
+        "Pinchflat keeps only the newest N downloaded or pending-eligible videos for this source. Older unprotected downloads are deleted at the next scheduled cleanup"
       )
     ]
   end
@@ -840,6 +1335,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   Whether an `info_groups/1` field has a value worth showing. Unset fields are
   hidden until the user asks for them.
   """
+  def field_set?(%{set?: set}) when is_boolean(set), do: set
   def field_set?(%{value: value}), do: is_binary(value) and String.trim(value) != ""
 
   @doc """
@@ -879,7 +1375,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       help: help,
       type: Keyword.get(opts, :type, :text),
       href: Keyword.get(opts, :href),
-      tooltip: Keyword.get(opts, :tooltip)
+      tooltip: Keyword.get(opts, :tooltip),
+      set?: Keyword.get(opts, :set?)
     }
   end
 
@@ -888,6 +1385,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   defp format_date(nil), do: nil
   defp format_date(date), do: Calendar.strftime(date, "%b %-d, %Y")
+
+  defp download_cutoff_label(source) do
+    cond do
+      is_integer(source.download_cutoff_days) and source.download_cutoff_days > 0 ->
+        effective = source |> Source.effective_download_cutoff_date() |> format_date()
+        "Rolling #{source.download_cutoff_days} days (currently #{effective})"
+
+      not is_nil(source.download_cutoff_date) ->
+        format_date(source.download_cutoff_date)
+
+      true ->
+        nil
+    end
+  end
 
   defp format_duration(nil), do: nil
 
@@ -931,24 +1442,112 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     })
   end
 
-  attr :source, :any, required: true
-
-  def retention_summary(assigns) do
-    ~H"""
-    <p
-      class="mt-1 max-w-xs whitespace-normal text-xs text-theme-on-surface-muted"
-      title="Age is counted from download time. Publication-date cutoff cleanup still applies; protected media is excluded."
-    >
-      Retention: {retention_policy_label(@source)}
-    </p>
-    """
-  end
-
   defp retention_days_label(days, origin) when days in [nil, 0],
     do: "No age-based cleanup (#{origin})"
 
   defp retention_days_label(1, origin), do: "1 day (#{origin})"
   defp retention_days_label(days, origin), do: "#{days} days (#{origin})"
+
+  @doc """
+  Category labels for the SponsorBlock pickers, shared with the media profile form.
+  """
+  def friendly_sponsorblock_categories do
+    MediaProfileHTML.friendly_sponsorblock_categories()
+  end
+
+  @sponsorblock_actions [:mark, :remove]
+
+  @doc """
+  The form mode for a SponsorBlock category field: `nil` inherits, `[]` disables,
+  and anything else is a custom list.
+  """
+  def sponsorblock_mode(nil), do: "inherit"
+  def sponsorblock_mode([]), do: "disable"
+  def sponsorblock_mode(_categories), do: "custom"
+
+  def sponsorblock_mode_options do
+    [
+      {"Inherit from the media profile", "inherit"},
+      {"Off for this source", "disable"},
+      {"Choose categories for this source", "custom"}
+    ]
+  end
+
+  @doc """
+  Each profile's effective SponsorBlock lists, keyed by profile id, so the form can
+  preview what "Inherit" will use before saving.
+  """
+  def sponsorblock_profile_preview(media_profiles) do
+    Map.new(media_profiles, fn profile ->
+      {to_string(profile.id),
+       %{
+         "mark" => sponsorblock_categories_label(profile.sponsorblock_mark_categories),
+         "remove" => sponsorblock_categories_label(profile.sponsorblock_remove_categories)
+       }}
+    end)
+  end
+
+  @doc """
+  A short description of where a field's categories come from, for the form summary
+  line and the source details panel.
+  """
+  def sponsorblock_status_label(changeset, media_profiles, action) do
+    source = %Source{
+      sponsorblock_mark_categories: Ecto.Changeset.get_field(changeset, :sponsorblock_mark_categories),
+      sponsorblock_remove_categories: Ecto.Changeset.get_field(changeset, :sponsorblock_remove_categories)
+    }
+
+    sponsorblock_status_label_for(source, sponsorblock_profile_for(changeset, media_profiles), action)
+  end
+
+  @doc """
+  A short description of a saved source's SponsorBlock override for the given action.
+  """
+  def sponsorblock_status_label(%Source{} = source, action) when action in @sponsorblock_actions do
+    sponsorblock_status_label_for(source, source.media_profile, action)
+  end
+
+  defp sponsorblock_status_label_for(source, media_profile, action) do
+    field = :"sponsorblock_#{action}_categories"
+
+    case Map.fetch!(source, field) do
+      nil ->
+        inherited =
+          case media_profile do
+            %MediaProfile{} = profile -> Map.fetch!(profile, field)
+            _ -> nil
+          end
+
+        "Inherit (#{sponsorblock_categories_label(inherited)})"
+
+      [] ->
+        "Off"
+
+      categories ->
+        "Custom (#{sponsorblock_categories_label(categories)})"
+    end
+  end
+
+  defp sponsorblock_profile_for(changeset, media_profiles) do
+    profile_id = Ecto.Changeset.get_field(changeset, :media_profile_id)
+    Enum.find(media_profiles, &(to_string(&1.id) == to_string(profile_id)))
+  end
+
+  defp sponsorblock_categories_label(categories) when is_list(categories) do
+    case Enum.reject(categories, &(&1 in [nil, ""])) do
+      [] ->
+        "none"
+
+      categories ->
+        friendly =
+          MediaProfileHTML.friendly_sponsorblock_categories()
+          |> Map.new(fn {label, value} -> {value, label} end)
+
+        Enum.map_join(categories, ", ", &Map.get(friendly, &1, &1))
+    end
+  end
+
+  defp sponsorblock_categories_label(_categories), do: "none"
 
   defp index_frequency_label(nil), do: nil
 
@@ -963,6 +1562,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     case Enum.find(friendly_cookie_behaviours(), fn {_label, value} -> value == behaviour end) do
       {label, _value} -> label
       nil -> behaviour && to_string(behaviour)
+    end
+  end
+
+  defp title_language_options do
+    [{"Default (channel language)", ""} | Source.title_language_options()]
+  end
+
+  defp title_language_label(nil), do: "Default (channel language)"
+  defp title_language_label(""), do: "Default (channel language)"
+
+  defp title_language_label(code) do
+    case Enum.find(Source.title_language_options(), fn {_label, value} -> value == code end) do
+      {label, _value} -> label
+      nil -> to_string(code)
     end
   end
 
@@ -1040,43 +1653,18 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
-  Presentation attributes for the header status pill given `Sources.status/1`.
-  """
-  def status_pill(:paused),
-    do: %{
-      label: "Paused",
-      icon: "hero-pause",
-      class: "bg-theme-warning/10 text-theme-warning border border-theme-warning/40"
-    }
-
-  def status_pill(:error),
-    do: %{
-      label: "Error",
-      icon: "hero-exclamation-triangle",
-      class: "bg-theme-error/10 text-theme-error border border-theme-error/40"
-    }
-
-  def status_pill(_active),
-    do: %{
-      label: "Active",
-      icon: "hero-check-circle",
-      class: "bg-theme-success/10 text-theme-success border border-theme-success/40"
-    }
-
-  @doc """
   A compact, human-friendly label for a source's original URL. YouTube handle and
   channel URLs collapse to just the `@handle` (e.g.
-  `https://www.youtube.com/@some-fake-channel` → `@some-fake-channel`) and playlist
-  URLs to `#` plus the playlist ID (e.g.
-  `https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` →
-  `#PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`); anything else drops the scheme/`www.` and
-  trailing slash. The value stays the link text — the `href` is still the full URL.
+  `https://www.youtube.com/@some-fake-channel` → `@some-fake-channel`), playlist
+  URLs use `Open playlist on YouTube`, and anything else drops the scheme/`www.`
+  and trailing slash. The value stays the link text — the `href` is still the
+  full URL.
   """
   def source_url_label(url) when is_binary(url) do
     # The playlist ID is checked first: a playlist can live under a channel URL
     # (`/@someone/...?list=PL…`), where the list is what identifies the source.
     case {Regex.run(~r{[?&]list=([^&#]+)}, url), Regex.run(~r{/(@[^/?#]+)}, url)} do
-      {[_, playlist_id], _} -> "##{playlist_id}"
+      {[_, _playlist_id], _} -> "Open playlist on YouTube"
       {_, [_, handle]} -> handle
       _ -> url |> String.replace(~r{^https?://(www\.)?}, "") |> String.trim_trailing("/")
     end
@@ -1099,6 +1687,35 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     |> Enum.map(&{&1.id, &1.output_path_template})
     |> Map.new()
     |> Phoenix.json_library().encode!()
+  end
+
+  # The word lists of the title filter builder, in the order they are shown
+  def title_filter_groups do
+    [
+      %{
+        key: "any",
+        label: "Title contains ANY of",
+        help: "At least one of these has to appear in the title.",
+        placeholder: "tutorial, review, guide"
+      },
+      %{
+        key: "all",
+        label: "Title contains ALL of",
+        help: "Every one of these has to appear in the title.",
+        placeholder: "Season 2, 4K"
+      },
+      %{
+        key: "none",
+        label: "Title contains NONE of",
+        help: "If the title has any of these, the video is skipped.",
+        placeholder: "Trailer, Shorts, Livestream"
+      }
+    ]
+  end
+
+  # The saved regex as a JS string literal, to seed the title filter builder
+  def title_filter_regex_json(form) do
+    Phoenix.json_library().encode!(Phoenix.HTML.Form.normalize_value("text", form[:title_filter_regex].value) || "")
   end
 
   def title_filter_regex_help do
@@ -1141,4 +1758,89 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     |> Date.add(-days)
     |> Date.to_iso8601()
   end
+
+  attr :action, :string, required: true
+  attr :return_to, :string, default: nil
+  attr :event, :any, default: nil, doc: "a LiveView event to send instead of posting to the action"
+  attr :values, :map, default: %{}, doc: "the event's values"
+  attr :disabled, :boolean, default: false
+  attr :aria_label, :string, default: nil
+  attr :button_class, :string, default: nil
+  slot :inner_block, required: true
+
+  # A menu action that runs straight away. On a source's page it posts to the action, disabled
+  # while it submits so a double click runs it once. On the sources list it sends a LiveView
+  # event instead, so the list keeps its place and reports the result in a notice.
+  defp action_form(%{event: event} = assigns) when is_binary(event) do
+    assigns = assign(assigns, :phx_values, Enum.map(assigns.values, fn {key, value} -> {"phx-value-#{key}", value} end))
+
+    ~H"""
+    <button
+      type="button"
+      phx-click={@event}
+      x-on:click="dropdownOpen = false"
+      disabled={@disabled}
+      aria-label={@aria_label}
+      class={@button_class}
+      {@phx_values}
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  defp action_form(assigns) do
+    ~H"""
+    <.form
+      for={%{}}
+      action={@action}
+      method="post"
+      class="w-full"
+      x-data="{ submitting: false }"
+      x-on:submit="submitting = true"
+    >
+      <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
+      <button
+        type="submit"
+        x-bind:disabled={if @disabled, do: "true", else: "submitting"}
+        disabled={@disabled}
+        aria-label={@aria_label}
+        class={@button_class}
+      >
+        {render_slot(@inner_block)}
+      </button>
+    </.form>
+    """
+  end
+
+  defp source_switches(assigns) do
+    for {switch, icon, label} <- @source_switches,
+        do: {switch, icon, label, switch_idle_reason(switch, assigns.pending_count, assigns.downloading)}
+  end
+
+  defp switch_idle_reason(:start, 0, _downloading), do: "nothing pending"
+  defp switch_idle_reason(switch, _pending, false) when switch in [:pause, :stop], do: "nothing downloading"
+  defp switch_idle_reason(_switch, _pending, _downloading), do: nil
+
+  defp source_jobs(assigns) do
+    for {job, label} <- Pinchflat.Sources.SourceActions.jobs(),
+        job != :download_pending or assigns.pending_count > 0,
+        do: {job, label, source_job_unavailable(job, assigns)}
+  end
+
+  defp source_job_unavailable(job, %{source: %{download_media: false}})
+       when job in [:download_pending, :redownload_existing],
+       do: "Automatic downloads are off"
+
+  defp source_job_unavailable(:redownload_existing, %{downloaded_count: 0}), do: "Nothing downloaded"
+  defp source_job_unavailable(_job, _assigns), do: nil
+
+  defp source_action_path(source, :download_pending), do: ~p"/sources/#{source.id}/force_download_pending"
+  defp source_action_path(source, :redownload_existing), do: ~p"/sources/#{source.id}/force_redownload"
+  defp source_action_path(source, :force_index), do: ~p"/sources/#{source.id}/force_index"
+  defp source_action_path(source, :refresh_metadata), do: ~p"/sources/#{source.id}/force_metadata_refresh"
+  defp source_action_path(source, :sync_files), do: ~p"/sources/#{source.id}/sync_files_on_disk"
+  defp source_action_path(source, :start), do: ~p"/sources/#{source.id}/start_all"
+  defp source_action_path(source, :pause), do: ~p"/sources/#{source.id}/pause_all"
+  defp source_action_path(source, :stop), do: ~p"/sources/#{source.id}/stop_all"
 end

@@ -43,4 +43,19 @@ defmodule Pinchflat.Utils.StringUtilsTest do
       assert StringUtils.wrap_string(1) == "1"
     end
   end
+
+  describe "contains_like_pattern/1" do
+    test "lowercases, trims and wraps the term" do
+      assert StringUtils.contains_like_pattern("  Bread ") == "%bread%"
+    end
+
+    test "escapes LIKE wildcards and the escape character" do
+      assert StringUtils.contains_like_pattern("50%_off\\") == "%50\\%\\_off\\\\%"
+    end
+
+    test "returns nil for blank or non-string terms" do
+      assert StringUtils.contains_like_pattern("   ") == nil
+      assert StringUtils.contains_like_pattern(nil) == nil
+    end
+  end
 end

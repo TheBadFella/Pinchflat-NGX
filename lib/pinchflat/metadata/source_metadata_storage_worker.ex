@@ -226,11 +226,12 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     metadata_attrs =
       %{
         series_directory: series_directory,
-        nfo_filepath: store_source_nfo(source, series_directory, source_metadata),
+        nfo_filepath: store_source_nfo(source, series_directory, source_metadata, show_title(source, source_metadata)),
         metadata: merged_metadata
       }
       |> put_if_binary(:custom_name, source_name_from_metadata(source, source_metadata))
       |> put_if_binary(:description, source_metadata["description"])
+      |> put_if_binary(:owner_channel_id, source_metadata["channel_id"])
 
     Sources.update_source(
       source,
@@ -291,6 +292,14 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
 
   defp determine_series_directory(source) do
     # Source-only rendering always uses the primary template, including for Shorts-only channels.
+    #
+    # This is a live network extraction, so it deliberately does not receive the
+    # scoped extras config files that downloads and offline predictions use. The
+    # source-details response carries collection fields only, not a full video
+    # record, so re-rendering it offline with those files would not reproduce the
+    # same path. If a config file changes path-affecting options, this series
+    # directory can therefore differ from a later download until an item-level
+    # prediction replaces it. Offline prediction is the parity boundary.
     runner_opts =
       [output: DownloadOptionBuilder.build_output_path_for(source)] ++
         DownloadOptionBuilder.build_youtube_options_for(source)
@@ -317,13 +326,18 @@ defmodule Pinchflat.Metadata.SourceMetadataStorageWorker do
     end
   end
 
-  defp store_source_nfo(source, series_directory, metadata) do
+  defp store_source_nfo(source, series_directory, metadata, show_title) do
     if source.media_profile.download_nfo && series_directory do
       nfo_filepath = Path.join(series_directory, "tvshow.nfo")
 
-      NfoBuilder.build_and_store_for_source(nfo_filepath, metadata)
+      NfoBuilder.build_and_store_for_source(nfo_filepath, metadata, show_title)
     end
   end
+
+  # The name the source will have once this refresh is saved: a locked name stays,
+  # otherwise the channel or playlist name from the metadata replaces it
+  defp show_title(%{custom_name_locked: true} = source, _metadata), do: source.custom_name
+  defp show_title(source, metadata), do: source_name_from_metadata(source, metadata) || source.custom_name
 
   defp fetch_metadata_for_source(source) do
     tmp_output_path = "#{tmp_directory()}/#{StringUtils.random_string(16)}/source_image.%(ext)S"

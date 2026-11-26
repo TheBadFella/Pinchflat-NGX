@@ -7,6 +7,7 @@ defmodule Pinchflat.ProfilesTest do
 
   alias Pinchflat.Profiles
   alias Pinchflat.Profiles.MediaProfile
+  alias Pinchflat.Settings
 
   @invalid_attrs %{name: nil, output_path_template: nil}
 
@@ -256,6 +257,26 @@ defmodule Pinchflat.ProfilesTest do
       end
     end
 
+    test "it checks padding widths in output templates" do
+      cs =
+        Profiles.change_media_profile(%MediaProfile{}, %{
+          name: "a",
+          output_path_template: "{{ media_playlist_index:3 }} - {{ title }}.{{ ext }}"
+        })
+
+      assert cs.valid?
+
+      cs =
+        Profiles.change_media_profile(%MediaProfile{}, %{
+          name: "a",
+          output_path_template: "{{ title:3 }}.{{ ext }}",
+          output_path_template_shorts: "{{ media_playlist_index:9 }}.{{ ext }}"
+        })
+
+      assert "sets a padding width on title" <> _ = errors_on(cs).output_path_template |> hd()
+      assert "sets media_playlist_index padding to 9" <> _ = errors_on(cs).output_path_template_shorts |> hd()
+    end
+
     test "it does not allow invalid output templates" do
       invalid_templates = [
         "output_template.{{ ext }}.something",
@@ -273,6 +294,148 @@ defmodule Pinchflat.ProfilesTest do
 
         refute cs.valid?
       end
+    end
+  end
+
+  describe "default media profile" do
+    defmodule FailingOptionsFS do
+      def mkdir_p(_path), do: {:error, :eacces}
+      def write(path, contents, opts), do: File.write(path, contents, opts)
+      def rename(source, destination), do: File.rename(source, destination)
+      def rm(path), do: File.rm(path)
+      def read(path), do: File.read(path)
+      def lstat(path), do: File.lstat(path)
+      def exists?(path), do: File.exists?(path)
+    end
+
+    test "sets, switches, and resolves the default media profile" do
+      first = media_profile_fixture(%{name: "Alpha"})
+      second = media_profile_fixture(%{name: "Beta"})
+
+      assert is_nil(Profiles.default_media_profile_id())
+      assert {:ok, ^first} = Profiles.set_default_media_profile(first.id)
+      assert Profiles.default_media_profile_id() == first.id
+      assert Profiles.default_media_profile_id([first, second]) == first.id
+
+      assert {:ok, ^second} = Profiles.set_default_media_profile(second.id)
+      assert Profiles.default_media_profile_id() == second.id
+      assert Settings.record().default_media_profile_id == second.id
+    end
+
+    test "ignores and rejects missing or deletion-pending profiles" do
+      profile = media_profile_fixture(%{name: "Pending"})
+      assert {:ok, ^profile} = Profiles.set_default_media_profile(profile.id)
+
+      assert {:ok, updated} = Profiles.update_media_profile(profile, %{marked_for_deletion_at: DateTime.utc_now()})
+      assert is_nil(Profiles.default_media_profile_id())
+      assert is_nil(Profiles.default_media_profile_id([updated]))
+      assert {:error, :unavailable} = Profiles.set_default_media_profile(profile.id)
+      assert {:error, :unavailable} = Profiles.set_default_media_profile(999_999)
+    end
+
+    test "create_media_profile/2 supports make_default and preserves prior default on failure" do
+      existing = media_profile_fixture(%{name: "Existing"})
+      assert {:ok, ^existing} = Profiles.set_default_media_profile(existing.id)
+
+      assert {:ok, kept_default} =
+               Profiles.create_media_profile(
+                 %{name: "NonDefault", output_path_template: "{{ title }}.{{ ext }}"},
+                 make_default: false
+               )
+
+      assert Profiles.default_media_profile_id() == existing.id
+      refute kept_default.id == existing.id
+
+      assert {:ok, new_default} =
+               Profiles.create_media_profile(
+                 %{name: "NewDefault", output_path_template: "{{ title }}.{{ ext }}"},
+                 make_default: true
+               )
+
+      assert Profiles.default_media_profile_id() == new_default.id
+
+      # Validation failure preserves prior default
+      assert {:error, %Ecto.Changeset{}} =
+               Profiles.create_media_profile(%{name: "", output_path_template: ""}, make_default: true)
+
+      assert Profiles.default_media_profile_id() == new_default.id
+
+      # Scoped yt-dlp options failure rolls back both profile and default update
+      original_fs = Application.get_env(:pinchflat, :yt_dlp_config_file_fs)
+      original_extras = Application.get_env(:pinchflat, :extras_directory)
+      extras = Path.join(System.tmp_dir!(), "profile-default-fail-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(extras)
+      Application.put_env(:pinchflat, :extras_directory, extras)
+      Application.put_env(:pinchflat, :yt_dlp_config_file_fs, FailingOptionsFS)
+
+      try do
+        assert {:error, %Ecto.Changeset{}, :eacces} =
+                 Profiles.create_media_profile(
+                   %{name: "RolledBack", output_path_template: "{{ title }}.{{ ext }}"},
+                   make_default: true,
+                   yt_dlp_options: {:present, "--verbose\n"}
+                 )
+
+        assert Profiles.default_media_profile_id() == new_default.id
+        refute Repo.get_by(MediaProfile, name: "RolledBack")
+      after
+        if original_fs,
+          do: Application.put_env(:pinchflat, :yt_dlp_config_file_fs, original_fs),
+          else: Application.delete_env(:pinchflat, :yt_dlp_config_file_fs)
+
+        if original_extras,
+          do: Application.put_env(:pinchflat, :extras_directory, original_extras),
+          else: Application.delete_env(:pinchflat, :extras_directory)
+
+        File.rm_rf!(extras)
+      end
+    end
+
+    test "restores profile options file and returns a MediaProfile changeset when default setting write fails" do
+      existing = media_profile_fixture(%{name: "ExistingDefault"})
+      assert {:ok, ^existing} = Profiles.set_default_media_profile(existing.id)
+
+      original_extras = Application.get_env(:pinchflat, :extras_directory)
+      extras = Path.join(System.tmp_dir!(), "profile-setting-fail-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(extras)
+      Application.put_env(:pinchflat, :extras_directory, extras)
+
+      try do
+        # Force Setting.changeset/2 to fail after yt_dlp_options are saved
+        Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: true])
+
+        assert {:error, %Ecto.Changeset{data: %MediaProfile{}, action: :insert} = err_cs} =
+                 Profiles.create_media_profile(
+                   %{name: "FailedDefaultWrite", output_path_template: "{{ title }}.{{ ext }}"},
+                   make_default: true,
+                   yt_dlp_options: {:present, "--verbose\n"}
+                 )
+
+        assert errors_on(err_cs).base != []
+        assert Profiles.default_media_profile_id() == existing.id
+        refute Repo.get_by(MediaProfile, name: "FailedDefaultWrite")
+        assert Path.wildcard(Path.join(extras, "**/*")) |> Enum.reject(&File.dir?/1) == []
+      after
+        Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: false])
+
+        if original_extras,
+          do: Application.put_env(:pinchflat, :extras_directory, original_extras),
+          else: Application.delete_env(:pinchflat, :extras_directory)
+
+        File.rm_rf!(extras)
+      end
+    end
+  end
+
+  describe "search_media_profiles/2" do
+    test "matches names ignoring case and treats wildcards literally" do
+      archive = media_profile_fixture(%{name: "Archive 4K"})
+      _audio = media_profile_fixture(%{name: "Audio only"})
+
+      assert [%{id: id}] = Profiles.search_media_profiles("archive")
+      assert id == archive.id
+      assert Profiles.search_media_profiles("%") == []
+      assert Profiles.search_media_profiles("") == []
     end
   end
 end

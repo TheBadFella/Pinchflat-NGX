@@ -55,7 +55,9 @@ defmodule Pinchflat.Reconciliation.PathPredictor do
         YtDlpMedia.predict_filepath_from_metadata(
           media_item.original_url,
           info_json_filepath,
-          [output: output_path] ++ DownloadOptionBuilder.build_quality_options_for(media_item.source)
+          [output: output_path] ++
+            DownloadOptionBuilder.build_quality_options_for(media_item.source) ++
+            DownloadOptionBuilder.build_config_file_options_for(media_item)
         )
 
       File.rm(info_json_filepath)

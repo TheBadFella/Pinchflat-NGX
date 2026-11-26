@@ -84,6 +84,7 @@ defmodule PinchflatWeb.CoreComponents do
   attr :id, :string, required: true
   attr :show, :boolean, default: false
   attr :allow_close, :boolean, default: true
+  attr :compact, :boolean, default: false, doc: "a narrow dialog with less padding, for short confirmations"
   attr :on_cancel, JS, default: %JS{}
   slot :inner_block, required: true
 
@@ -106,16 +107,19 @@ defmodule PinchflatWeb.CoreComponents do
         tabindex="0"
       >
         <div class="flex min-h-full items-center justify-center">
-          <div class="w-full max-w-3xl p-2 sm:p-6 lg:py-8">
+          <div class={["w-full p-2", if(@compact, do: "max-w-md sm:p-4", else: "max-w-3xl sm:p-6 lg:py-8")]}>
             <div
               id={"#{@id}-container"}
               phx-window-keydown={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
               phx-key="escape"
               phx-click-away={@allow_close && JS.exec("data-cancel", to: "##{@id}")}
-              class="theme-surface-raised relative hidden rounded-m3-lg p-8 sm:p-14 transition"
+              class={[
+                "theme-surface-raised relative hidden rounded-m3-lg transition",
+                if(@compact, do: "p-6", else: "p-8 sm:p-14")
+              ]}
             >
               <.focus_wrap id={"#{@id}-focus-wrap"}>
-                <div :if={@allow_close} class="absolute top-6 right-5">
+                <div :if={@allow_close} class={["absolute", if(@compact, do: "top-4 right-4", else: "top-6 right-5")]}>
                   <button
                     phx-click={JS.exec("data-cancel", to: "##{@id}")}
                     type="button"
@@ -148,9 +152,57 @@ defmodule PinchflatWeb.CoreComponents do
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :toast, :boolean, default: false, doc: "float in a corner and fade out instead of pushing the page down"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
+
+  def flash(%{toast: true} = assigns) do
+    assigns =
+      assigns
+      |> assign_new(:id, fn -> "flash-#{assigns.kind}" end)
+      |> assign(:dismiss_after, if(assigns.kind == :error, do: 10_000, else: 5_000))
+
+    ~H"""
+    <div
+      :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
+      id={@id}
+      role={if @kind == :error, do: "alert", else: "status"}
+      class="pointer-events-auto w-full"
+      x-data="{ open: true }"
+      x-show="open"
+      x-init={"setTimeout(() => open = false, #{@dismiss_after})"}
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 translate-y-2"
+      x-transition:leave="transition ease-in duration-300"
+      x-transition:leave-end="opacity-0"
+      {@rest}
+    >
+      <div class={[
+        "flex items-start gap-3 rounded-m3-md border border-l-4 border-theme-outline/80 bg-theme-surface-2 p-4 text-theme-on-surface shadow-m3-3",
+        @kind == :info && "border-l-theme-success",
+        @kind == :error && "border-l-theme-error"
+      ]}>
+        <.icon
+          name={if @kind == :error, do: "hero-exclamation-circle", else: "hero-check-circle"}
+          class={"mt-0.5 h-5 w-5 shrink-0 #{if @kind == :error, do: "theme-status-error", else: "theme-status-success"}"}
+        />
+        <div class="min-w-0 flex-1">
+          <p :if={@title} class="text-sm font-semibold">{@title}</p>
+          <p class="text-sm text-theme-on-surface-muted">{msg}</p>
+        </div>
+        <button
+          type="button"
+          aria-label={gettext("close")}
+          class="theme-field-action -m-3"
+          x-on:click="open = false"
+        >
+          <.icon name="hero-x-mark" class="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+    """
+  end
 
   def flash(assigns) do
     assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
@@ -196,6 +248,19 @@ defmodule PinchflatWeb.CoreComponents do
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
+  attr :toast, :boolean, default: false, doc: "show messages as toasts that don't move the page"
+
+  def flash_group(%{toast: true} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="theme-toast-stack"
+    >
+      <.flash kind={:info} title="Done" flash={@flash} toast />
+      <.flash kind={:error} title="Something went wrong" flash={@flash} toast />
+    </div>
+    """
+  end
 
   def flash_group(assigns) do
     ~H"""
@@ -286,6 +351,7 @@ defmodule PinchflatWeb.CoreComponents do
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
+  attr :label_class, :string, default: nil
   attr :label_suffix, :string, default: nil
   attr :value, :any
   attr :help, :string, default: nil
@@ -312,6 +378,7 @@ defmodule PinchflatWeb.CoreComponents do
 
   slot :inner_block
   slot :input_append
+  slot :input_action, doc: "a field action button shown inside the right edge of a text input"
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     assigns
@@ -349,7 +416,8 @@ defmodule PinchflatWeb.CoreComponents do
           checked={@checked}
           class={["rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0", @inputclass]}
           {@rest}
-        /> {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+        /> <span class={@label_class}>{@label}</span>
+        <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </label>
 
       <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
@@ -397,13 +465,17 @@ defmodule PinchflatWeb.CoreComponents do
       end)
 
     ~H"""
-    <div id={"#{@id}-wrapper"}>
-      <.label :if={@label} for={@id}>
-        {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
-      </.label>
+    <div id={"#{@id}-wrapper"} class={@label && "mt-5"} data-setting-field>
+      <%!-- With a label: one row, label and help on the left, switch on the right. --%>
+      <div class={if @label, do: "flex items-start justify-between gap-4", else: "flex flex-col"}>
+        <div :if={@label} class="min-w-0 flex-1">
+          <label for={@id} class="block cursor-pointer text-sm font-medium text-theme-on-surface">
+            {@label} <span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
+          </label>
+          <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
+        </div>
 
-      <div class="flex flex-col">
-        <label for={@id} class="theme-switch-target cursor-pointer">
+        <label for={@id} class={["theme-switch-target cursor-pointer", @label && "-mt-3 shrink-0"]}>
           <input
             type="hidden"
             name={@name}
@@ -431,10 +503,10 @@ defmodule PinchflatWeb.CoreComponents do
           </div>
         </label>
 
-        <.help :if={@help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
-
-        <.error :for={msg <- @errors}>{msg}</.error>
+        <.help :if={!@label && @help}>{if @html_help, do: Phoenix.HTML.raw(@help), else: @help}</.help>
       </div>
+
+      <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
   end
@@ -494,7 +566,7 @@ defmodule PinchflatWeb.CoreComponents do
 
     ~H"""
     <div>
-      <.label for={@id}>
+      <.label :if={@label} for={@id}>
         {@label}<span :if={@label_suffix} class="text-xs text-theme-on-surface-muted">{@label_suffix}</span>
       </.label>
 
@@ -508,10 +580,14 @@ defmodule PinchflatWeb.CoreComponents do
             class={[
               "theme-input w-full rounded-m3-sm px-5 py-3 font-normal",
               "outline-none transition disabled:cursor-default disabled:opacity-50",
+              @input_action != [] && "pr-14",
               @inputclass
             ]}
             {@rest}
           />
+          <div :if={@input_action != []} class="absolute inset-y-0 right-1 z-10 flex items-center">
+            {render_slot(@input_action)}
+          </div>
         </div>
         {render_slot(@input_append)}
       </div>
@@ -907,7 +983,7 @@ defmodule PinchflatWeb.CoreComponents do
           true
       end)
       |> Enum.map(fn
-        {k, v} when is_list(v) -> {k, Enum.join(v, ", ")}
+        {k, v} when is_list(v) -> {k, format_list_value(v)}
         rest -> rest
       end)
 
@@ -915,7 +991,7 @@ defmodule PinchflatWeb.CoreComponents do
 
     ~H"""
     <ul>
-      <li :for={{k, v} <- @iterable_attributes} class="mb-2 w-2/3">
+      <li :for={{k, v} <- @iterable_attributes} class="mb-2 w-full lg:w-2/3 [overflow-wrap:anywhere]">
         <strong>{k}:</strong>
         <code class="mx-0.5 inline-block p-0.5 font-mono text-sm text-theme-on-surface-muted">
           <%= if is_binary(v) && URI.parse(v).scheme && URI.parse(v).scheme =~ "http" do %>
@@ -1066,6 +1142,16 @@ defmodule PinchflatWeb.CoreComponents do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
 
+  defp format_list_value(values) do
+    Enum.map_join(values, ", ", &format_list_value_element/1)
+  end
+
+  defp format_list_value_element(nil), do: "nil"
+  defp format_list_value_element(value) when is_binary(value), do: value
+  defp format_list_value_element(value) when is_atom(value) or is_number(value), do: to_string(value)
+  defp format_list_value_element(values) when is_list(values), do: "[" <> format_list_value(values) <> "]"
+  defp format_list_value_element(value), do: inspect(value)
+
   defp normalize_select_options(options) do
     Enum.map(options, fn
       {label, value} -> %{label: to_string(label), value: to_string(value)}
@@ -1120,5 +1206,212 @@ defmodule PinchflatWeb.CoreComponents do
       {:ok, data_uri} -> data_uri
       :error -> raise ArgumentError, "unknown icon #{inspect(name)}"
     end
+  end
+
+  @doc """
+  Renders an ordered codec preference list backed by a hidden form field.
+
+  Every supported codec is listed once with a checkbox, so a codec cannot be
+  added twice. Ticked codecs, in the order shown, are serialized as a
+  comma-separated string into the hidden input named after the form field.
+  Unticked codecs follow in yt-dlp's own order. Rows reorder by dragging or with
+  the Move up / Move down buttons, which keep the list keyboard accessible.
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :legend, :string, required: true
+  attr :kind, :atom, required: true, values: [:video, :audio]
+  attr :help, :string, default: nil
+
+  def ordered_codec_list(assigns) do
+    tokens =
+      assigns.field.value
+      |> Pinchflat.Settings.CodecPreferences.parse()
+      |> Pinchflat.Settings.CodecPreferences.canonical_tokens(assigns.kind)
+
+    assigns =
+      assign(assigns,
+        errors: codec_field_errors(assigns.field),
+        rows: codec_rows(assigns.kind, tokens)
+      )
+
+    ~H"""
+    <fieldset id={"#{@field.id}-list"} class="mt-5" x-data={ordered_codec_list_state(@rows, @kind)}>
+      <legend class="mb-2 text-sm font-medium text-theme-on-surface">{@legend}</legend>
+      <input type="hidden" id={@field.id} name={@field.name} x-bind:value="serialized()" />
+
+      <ol class="relative flex flex-col gap-1.5">
+        <template x-for="(row, index) in rows" x-bind:key="row.codec">
+          <li x-on:dragover.prevent="dropTarget = index" x-on:drop.prevent="drop(index)">
+            <div
+              class="flex min-h-11 items-center gap-2 rounded-m3-sm border px-2"
+              x-bind:class="[
+                row.on ? 'border-theme-outline bg-theme-surface-2' : 'border-theme-outline/40',
+                dragging !== null && 'pointer-events-none motion-safe:transition-transform',
+                dragging === index && (dropTarget === index || dropTarget === null ? 'opacity-50' : 'opacity-0')
+              ]"
+              x-bind:style="previewOffset(index, $el.parentElement)"
+            >
+              <span
+                draggable="true"
+                class="hidden cursor-grab items-center self-stretch px-1 text-theme-on-surface-muted sm:flex"
+                title="Drag to reorder"
+                x-on:dragstart="dragging = index; $event.dataTransfer.effectAllowed = 'move'"
+                x-on:dragend="dragging = null; dropTarget = null"
+              >
+                <.icon name="hero-bars-3" class="h-5 w-5" />
+              </span>
+              <label class="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 shrink-0 accent-theme-primary"
+                  x-bind:id={"'#{@field.id}-' + row.codec"}
+                  x-model="row.on"
+                />
+                <span
+                  class="w-5 shrink-0 text-right font-mono text-xs text-theme-on-surface-muted"
+                  x-text="row.on ? rank(index) + '.' : ''"
+                ></span>
+                <span class="min-w-0" x-bind:class="row.on ? 'text-theme-on-surface' : 'text-theme-on-surface-muted'">
+                  <span x-text="row.name"></span>
+                  <span class="hidden text-xs text-theme-on-surface-muted sm:inline" x-text="row.aliases"></span>
+                </span>
+              </label>
+              <button
+                type="button"
+                class="theme-field-action"
+                x-bind:disabled="index === 0"
+                x-bind:aria-label="'Move ' + row.label + ' up'"
+                x-bind:data-move="row.codec + '-up'"
+                x-on:click="move(index, index - 1, 'up')"
+              >
+                <.icon name="hero-chevron-up" class="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                class="theme-field-action"
+                x-bind:disabled="index === rows.length - 1"
+                x-bind:aria-label="'Move ' + row.label + ' down'"
+                x-bind:data-move="row.codec + '-down'"
+                x-on:click="move(index, index + 1, 'down')"
+              >
+                <.icon name="hero-chevron-down" class="h-5 w-5" />
+              </button>
+            </div>
+          </li>
+        </template>
+      </ol>
+
+      <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p class="text-sm text-theme-on-surface-muted" x-show="!rows.some((row) => row.on)">
+          Nothing ticked: yt-dlp's default sorting, or your custom options, choose the codec.
+        </p>
+        <button
+          type="button"
+          class="theme-outline-button inline-flex min-h-11 items-center rounded-m3-sm px-4 text-sm font-medium"
+          x-on:click="reset()"
+        >
+          Reset to yt-dlp order
+        </button>
+      </div>
+
+      <.help :if={@help}>{@help}</.help>
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </fieldset>
+    """
+  end
+
+  defp codec_field_errors(field) do
+    if Phoenix.Component.used_input?(field) do
+      Enum.map(field.errors, &translate_error/1)
+    else
+      []
+    end
+  end
+
+  # Ticked codecs in their saved order, then the rest in yt-dlp's order.
+  defp codec_rows(kind, tokens) do
+    labels = Map.new(codec_select_options(kind), &{&1.value, &1.label})
+    native = kind |> Pinchflat.Settings.CodecPreferences.families() |> Enum.map(&to_string/1)
+    ticked = Enum.filter(tokens, &Map.has_key?(labels, &1))
+
+    Enum.map(ticked ++ Enum.reject(native, &(&1 in ticked)), fn codec ->
+      [name, aliases] = String.split(labels[codec], " (", parts: 2)
+      %{codec: codec, label: labels[codec], name: name, aliases: "(" <> aliases, on: codec in ticked}
+    end)
+  end
+
+  defp codec_select_options(:video) do
+    [
+      %{value: "avc", label: "AVC / H.264 (avc, avc1)"},
+      %{value: "vp9", label: "VP9 (vp9, vp09)"},
+      %{value: "av1", label: "AV1 (av1, av01)"},
+      %{value: "hevc", label: "HEVC / H.265 (hevc, h265)"},
+      %{value: "vp8", label: "VP8 (vp8)"},
+      %{value: "mp4v", label: "MPEG-4 Visual (mp4v, h263)"}
+    ]
+  end
+
+  defp codec_select_options(:audio) do
+    [
+      %{value: "m4a", label: "M4A / AAC in MP4 (m4a, aac, mp4a)"},
+      %{value: "opus", label: "Opus (opus)"},
+      %{value: "vorbis", label: "Vorbis (vorbis, ogg)"},
+      %{value: "mp3", label: "MP3 (mp3)"},
+      %{value: "flac", label: "FLAC (flac)"},
+      %{value: "wav", label: "WAV / AIFF (wav, aiff)"},
+      %{value: "ac3", label: "AC-3 / DTS (ac3, dts)"},
+      %{value: "eac3", label: "E-AC-3 (eac3)"},
+      %{value: "ac4", label: "AC-4 (ac4)"}
+    ]
+  end
+
+  defp ordered_codec_list_state(rows, kind) do
+    native = kind |> Pinchflat.Settings.CodecPreferences.families() |> Enum.map(&to_string/1)
+
+    state = """
+    {
+      rows: #{Jason.encode!(rows)},
+      dragging: null,
+      dropTarget: null,
+      serialized() {
+        return this.rows.filter((row) => row.on).map((row) => row.codec).join(',');
+      },
+      rank(index) {
+        return this.rows.slice(0, index + 1).filter((row) => row.on).length;
+      },
+      move(from, to, direction) {
+        if (to < 0 || to >= this.rows.length) { return; }
+        const [row] = this.rows.splice(from, 1);
+        this.rows.splice(to, 0, row);
+        if (!direction) { return; }
+        // Moving the row re-inserts its buttons, which drops focus: put it back.
+        setTimeout(() => {
+          const button = this.$root.querySelector(`[data-move="${row.codec}-${direction}"]`);
+          const other = this.$root.querySelector(`[data-move="${row.codec}-${direction === 'up' ? 'down' : 'up'}"]`);
+          (button && !button.disabled ? button : other)?.focus();
+        });
+      },
+      previewOffset(index, row) {
+        if (this.dragging === null || this.dropTarget === null) return {};
+        let neighbor;
+        if (index > this.dragging && index <= this.dropTarget) neighbor = row.previousElementSibling;
+        if (index < this.dragging && index >= this.dropTarget) neighbor = row.nextElementSibling;
+        if (!neighbor) return {};
+        return { transform: 'translateY(' + (neighbor.offsetTop - row.offsetTop) + 'px)' };
+      },
+      drop(index) {
+        if (this.dragging !== null && this.dragging !== index) { this.move(this.dragging, index); }
+        this.dragging = null;
+        this.dropTarget = null;
+      },
+      reset() {
+        const order = #{Jason.encode!(native)};
+        this.rows.forEach((row) => { row.on = false; });
+        this.rows.sort((a, b) => order.indexOf(a.codec) - order.indexOf(b.codec));
+      }
+    }
+    """
+
+    String.trim(state)
   end
 end

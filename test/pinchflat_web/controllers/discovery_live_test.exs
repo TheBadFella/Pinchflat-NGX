@@ -16,7 +16,7 @@ defmodule PinchflatWeb.DiscoveryLiveTest do
 
     assert html =~ "Channel Discovery"
     assert html =~ "No channel suggestions yet"
-    assert html =~ "Search all media"
+    assert html =~ ~s(id="sidebar-search-button")
     assert html =~ ~s(href="/sources")
     assert html =~ "mx-auto max-w-screen-2xl"
     assert html =~ "data-phx-session"

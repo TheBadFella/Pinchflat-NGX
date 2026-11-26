@@ -27,7 +27,10 @@ adapter_exclude = if Pinchflat.Database.postgres?(), do: [sqlite_only: true], el
 # suite. The tag stays for documentation and selective reruns.
 exclude = [migration_schema: true] ++ adapter_exclude
 
-ExUnit.start(exclude: exclude)
+# CI runs the suite as parallel partitions (tooling/test_partitions.sh) on shared CPUs, so
+# allow waits such as assert_receive and render_async longer than the 100ms default.
+# This only delays a failing assertion; refute_receive keeps its own short timeout.
+ExUnit.start(exclude: exclude, assert_receive_timeout: 1_000)
 Ecto.Adapters.SQL.Sandbox.mode(Pinchflat.Repo, :manual)
 Faker.start()
 

@@ -18,7 +18,18 @@ defmodule Pinchflat.MediaServers.RefreshWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"server_type" => server_type}}) do
-    case MediaServers.refresh(String.to_existing_atom(server_type), nil) do
+    case MediaServers.parse_server_type(server_type) do
+      {:ok, parsed} ->
+        refresh(parsed, server_type)
+
+      :error ->
+        Logger.error("Media server refresh discarded: unrecognized server_type in args")
+        :ok
+    end
+  end
+
+  defp refresh(parsed, server_type) do
+    case MediaServers.refresh(parsed, nil) do
       :ok ->
         Logger.info("Media server refresh succeeded for server_type=#{server_type}")
         :ok
@@ -43,9 +54,5 @@ defmodule Pinchflat.MediaServers.RefreshWorker do
         Logger.error("Media server refresh failed for server_type=#{server_type}: #{inspect(reason)}")
         {:error, reason}
     end
-  rescue
-    ArgumentError ->
-      Logger.error("Media server refresh discarded: unrecognized server_type in args")
-      :ok
   end
 end

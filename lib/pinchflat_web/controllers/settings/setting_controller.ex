@@ -35,7 +35,7 @@ defmodule PinchflatWeb.Settings.SettingController do
         Reconciliation.mark_ready_plans_stale()
 
         conn
-        |> put_flash(:info, "Settings updated successfully.")
+        |> put_flash(:settings_saved, "Settings saved")
         |> redirect(to: ~p"/settings")
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -128,11 +128,6 @@ defmodule PinchflatWeb.Settings.SettingController do
           :error,
           "Storage check failed: unable to determine available disk space for #{location} storage."
         )
-        |> redirect(to: redirect_target)
-
-      {:error, reason, location} ->
-        conn
-        |> put_flash(:error, "Storage check failed for #{location}: #{inspect(reason)}.")
         |> redirect(to: redirect_target)
     end
   end

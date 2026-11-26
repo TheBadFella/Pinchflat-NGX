@@ -16,12 +16,12 @@ defmodule Pinchflat.Settings.ShareTokensLiveTest do
       {:ok, view, _html} = live_isolated(conn, Pinchflat.Settings.ShareTokensLive)
 
       view
-      |> form("#create-share-token-form", %{
+      |> element("#create-share-token-form")
+      |> render_submit(%{
         "name" => "Owned expiring shortcut",
         "media_profile_id" => to_string(profile.id),
         "expiry_days" => "30"
       })
-      |> render_submit()
 
       [token] = ShareTokens.list_tokens()
       assert DateTime.diff(token.expires_at, token.inserted_at, :second) == 2_592_000
@@ -33,6 +33,16 @@ defmodule Pinchflat.Settings.ShareTokensLiveTest do
         live_isolated(conn, Pinchflat.Settings.ShareTokensLive, session: %{"base_url" => "https://owned.example/pf/"})
 
       assert has_element?(view, "#intake-bookmarklet-link[href*='https://owned.example/pf/browse?url=']")
+
+      assert has_element?(
+               view,
+               "#new-source-bookmarklet-link[href*='https://owned.example/pf/sources/new?original_url=']"
+             )
+
+      assert has_element?(
+               view,
+               "#youtube-quick-add-userscript-link[href='https://owned.example/pf/browser/userscripts/youtube-quick-add-source.user.js']"
+             )
     end
 
     test "renders empty token state and bookmarklet link", %{conn: conn} do
@@ -49,11 +59,11 @@ defmodule Pinchflat.Settings.ShareTokensLiveTest do
 
       html =
         view
-        |> form("form[phx-submit='create_token']", %{
+        |> element("#create-share-token-form")
+        |> render_submit(%{
           "name" => "Mobile Safari Shortcut",
           "media_profile_id" => to_string(profile.id)
         })
-        |> render_submit()
 
       assert html =~ "New Share Token Created: Mobile Safari Shortcut"
       assert html =~ "Copy this token now. For security, it will not be displayed again."

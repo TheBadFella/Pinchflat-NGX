@@ -16,6 +16,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   alias PinchflatWeb.Helpers.MediaCleanupHelpers
 
   @limit System.get_env("PAGINATION_LIMIT", "20") |> String.to_integer()
+  @refresh_throttle_ms 1_000
   @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
   @watch_filters %{
     "all" => :all,
@@ -31,21 +32,23 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def watch_filter(assigns) do
     ~H"""
     <form id="source-watch-filter" phx-change="filter_watch_state" class="w-full min-w-0 sm:w-auto">
-      <label class="sr-only" for="source-watch-filter-select">Watch state</label>
-      <select
+      <.input
+        type="select"
         id="source-watch-filter-select"
         name="watch_filter"
-        class="theme-input w-full min-w-0 rounded-m3-sm text-sm sm:w-auto"
-      >
-        <option value="all" selected={@watch_filter == "all"}>All downloaded</option>
-        <option value="changed_or_unavailable" selected={@watch_filter == "changed_or_unavailable"}>
-          Changed or unavailable
-        </option>
-        <option value="changed" selected={@watch_filter == "changed"}>Changed or suspected</option>
-        <option value="unlisted" selected={@watch_filter == "unlisted"}>Unlisted now</option>
-        <option value="unavailable" selected={@watch_filter == "unavailable"}>Private or unavailable</option>
-        <option value="check_failed" selected={@watch_filter == "check_failed"}>Inconclusive remote check</option>
-      </select>
+        aria_label="Watch state"
+        align="right"
+        value={@watch_filter}
+        options={[
+          {"All downloaded", "all"},
+          {"Changed or unavailable", "changed_or_unavailable"},
+          {"Changed or suspected", "changed"},
+          {"Unlisted now", "unlisted"},
+          {"Private or unavailable", "unavailable"},
+          {"Inconclusive remote check", "check_failed"}
+        ]}
+        inputclass="min-h-10 w-full min-w-0 text-sm sm:w-auto"
+      />
     </form>
     """
   end
@@ -223,6 +226,8 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 else: "space-y-4 md:hidden"
             }>
               <article :for={media_item <- group.records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+                <.media_thumbnail media_item={media_item} size="card" />
+
                 <div class="flex flex-col gap-3">
                   <div class="min-w-0 flex-1 space-y-2">
                     <div
@@ -233,11 +238,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                     </div>
 
                     <div class="flex flex-wrap items-start gap-2">
-                      <.icon
-                        :if={media_item.last_error}
-                        name="hero-exclamation-circle-solid"
-                        class="theme-status-error mt-0.5 shrink-0"
-                      /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                      <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
                       <div class="w-full min-w-0">
                         <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
                           <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
@@ -360,62 +361,62 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                 </:col>
 
                 <:col :let={media_item} label="Title" class="max-w-sm">
-                  <section class="space-y-2">
-                    <div class="flex items-start space-x-1 gap-2">
-                      <.icon
-                        :if={media_item.last_error}
-                        name="hero-exclamation-circle-solid"
-                        class="theme-status-error shrink-0"
-                      /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                      <.icon_button
-                        :if={@media_state not in ["downloaded", "failed"]}
-                        icon_name="hero-arrow-down-tray"
-                        class="h-10 w-10"
-                        phx-click="force_download"
-                        phx-value-media-id={media_item.id}
-                        data-confirm={MediaCleanupHelpers.download_confirmation(media_item, @source)}
-                        tooltip="Force Download"
-                        tooltip_position="bottom-left"
-                      />
-                      <.icon_button
-                        :if={@media_state == "failed" and media_item.error_type != :permanent}
-                        icon_name="hero-arrow-path"
-                        class="h-10 w-10"
-                        phx-click="retry_download"
-                        phx-value-media-id={media_item.id}
-                        data-confirm={
-                          MediaCleanupHelpers.download_confirmation(media_item, @source, "Retry this download now?")
-                        }
-                        tooltip="Retry Now"
-                        tooltip_position="bottom-left"
-                      />
-                      <.icon_button
-                        :if={@media_state == "failed" and media_item.error_type == :permanent}
-                        icon_name="hero-arrow-path"
-                        class="h-10 w-10"
-                        phx-click="force_download"
-                        phx-value-media-id={media_item.id}
-                        data-confirm={
-                          MediaCleanupHelpers.download_confirmation(
-                            media_item,
-                            @source,
-                            "Force a retry of this permanent failure?"
-                          )
-                        }
-                        tooltip="Force Retry"
-                        tooltip_position="bottom-left"
-                      />
-                      <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
-                        <span class="block whitespace-normal break-words">{media_item.title}</span>
-                      </.subtle_link>
-                    </div>
+                  <div class="flex items-start gap-3">
+                    <.media_thumbnail media_item={media_item} size="row" />
 
-                    <.download_failure
-                      :if={media_item.last_error}
-                      media_item={media_item}
-                      task={Map.get(@tasks_by_media_item_id, media_item.id)}
-                    />
-                  </section>
+                    <section class="flex min-h-16 min-w-0 flex-1 flex-col justify-center gap-2">
+                      <div class="flex items-center gap-2">
+                        <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                        <.icon_button
+                          :if={@media_state not in ["downloaded", "failed"]}
+                          icon_name="hero-arrow-down-tray"
+                          class="h-10 w-10"
+                          phx-click="force_download"
+                          phx-value-media-id={media_item.id}
+                          data-confirm={MediaCleanupHelpers.download_confirmation(media_item, @source)}
+                          tooltip="Force Download"
+                          tooltip_position="bottom-left"
+                        />
+                        <.icon_button
+                          :if={@media_state == "failed" and media_item.error_type != :permanent}
+                          icon_name="hero-arrow-path"
+                          class="h-10 w-10"
+                          phx-click="retry_download"
+                          phx-value-media-id={media_item.id}
+                          data-confirm={
+                            MediaCleanupHelpers.download_confirmation(media_item, @source, "Retry this download now?")
+                          }
+                          tooltip="Retry Now"
+                          tooltip_position="bottom-left"
+                        />
+                        <.icon_button
+                          :if={@media_state == "failed" and media_item.error_type == :permanent}
+                          icon_name="hero-arrow-path"
+                          class="h-10 w-10"
+                          phx-click="force_download"
+                          phx-value-media-id={media_item.id}
+                          data-confirm={
+                            MediaCleanupHelpers.download_confirmation(
+                              media_item,
+                              @source,
+                              "Force a retry of this permanent failure?"
+                            )
+                          }
+                          tooltip="Force Retry"
+                          tooltip_position="bottom-left"
+                        />
+                        <.subtle_link href={~p"/sources/#{@source.id}/media/#{media_item.id}"}>
+                          <span class="block whitespace-normal break-words">{media_item.title}</span>
+                        </.subtle_link>
+                      </div>
+
+                      <.download_failure
+                        :if={media_item.last_error}
+                        media_item={media_item}
+                        task={Map.get(@tasks_by_media_item_id, media_item.id)}
+                      />
+                    </section>
+                  </div>
                 </:col>
 
                 <:col :let={media_item} :if={@media_state == "other"} label="Status">
@@ -437,7 +438,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
                   <.progress_details media_item={media_item} task={Map.get(@tasks_by_media_item_id, media_item.id)} />
                 </:col>
 
-                <:col :let={media_item} label="Action">
+                <:col :let={media_item} :if={@any_actions?} label="Action">
                   <.icon_button
                     :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                     icon_name="hero-stop-solid"
@@ -477,9 +478,11 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   end
 
   def mount(_params, session, socket) do
-    PinchflatWeb.Endpoint.subscribe("media_table")
-    PinchflatWeb.Endpoint.subscribe("job:state")
-    PinchflatWeb.Endpoint.subscribe("job:progress")
+    if connected?(socket) do
+      PinchflatWeb.Endpoint.subscribe(reload_topic(session["source_id"]))
+      PinchflatWeb.Endpoint.subscribe("job:state")
+      PinchflatWeb.Endpoint.subscribe("job:progress")
+    end
 
     page = 1
     media_state = session["media_state"]
@@ -605,7 +608,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("force_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
     result = MediaDownloadWorker.kickoff_with_task(media_item, %{force: true, reset_last_error: true})
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(result))}
   end
@@ -613,21 +616,21 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   def handle_event("retry_download", %{"media-id" => media_id}, socket) do
     media_item = Media.get_media_item!(media_id)
     result = MediaDownloadWorker.kickoff_with_task(media_item, %{reset_last_error: true})
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(result))}
   end
 
   def handle_event("retry_all_failed", _params, socket) do
     results = DownloadingHelpers.retry_failed_download_tasks(socket.assigns.source)
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
   end
 
   def handle_event("force_retry_permanent", _params, socket) do
     results = DownloadingHelpers.force_retry_permanent_download_tasks(socket.assigns.source)
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, assign(socket, :action_feedback, JobActionHelpers.feedback(results))}
   end
@@ -637,62 +640,41 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
     if task do
       {:ok, _task} = Tasks.delete_task(task)
-      PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+      broadcast_reload(socket)
     end
 
     {:noreply, socket}
   end
 
   # This, along with the handle_info below, is a pattern to reload _all_
-  # tables on page rather than just the one that triggered the reload.
+  # tables for this source rather than just the one that triggered the reload.
   def handle_event("reload_page", _params, socket) do
-    PinchflatWeb.Endpoint.broadcast("media_table", "reload", nil)
+    broadcast_reload(socket)
 
     {:noreply, socket}
   end
 
-  def handle_info(%{topic: "media_table", event: "reload"}, %{assigns: assigns} = socket) do
-    new_assigns =
-      fetch_pagination_attributes(
-        assigns.base_query,
-        assigns.page,
-        assigns.search_term,
-        assigns.media_state,
-        assigns.source
-      )
-
-    {:noreply, assign(socket, new_assigns)}
+  def handle_info(%{topic: "media_table:" <> _source_id, event: "reload"}, socket) do
+    {:noreply, refresh_records(socket)}
   end
 
   def handle_info(%{topic: "job:state", event: "change", payload: payload}, %{assigns: assigns} = socket)
       when is_map(payload) do
-    if refresh_required?(assigns, payload) do
-      new_assigns =
-        fetch_pagination_attributes(
-          assigns.base_query,
-          assigns.page,
-          assigns.search_term,
-          assigns.media_state,
-          assigns.source
-        )
+    if refresh_required?(assigns, payload), do: {:noreply, throttled_refresh(socket)}, else: {:noreply, socket}
+  end
 
-      {:noreply, assign(socket, new_assigns)}
+  def handle_info(%{topic: "job:state", event: "change"}, socket) do
+    {:noreply, throttled_refresh(socket)}
+  end
+
+  def handle_info(:throttled_refresh, socket) do
+    socket = assign(socket, :refresh_pending, false)
+
+    if socket.assigns[:refresh_stale] do
+      {:noreply, socket |> assign(:refresh_stale, false) |> refresh_records()}
     else
       {:noreply, socket}
     end
-  end
-
-  def handle_info(%{topic: "job:state", event: "change"}, %{assigns: assigns} = socket) do
-    new_assigns =
-      fetch_pagination_attributes(
-        assigns.base_query,
-        assigns.page,
-        assigns.search_term,
-        assigns.media_state,
-        assigns.source
-      )
-
-    {:noreply, assign(socket, new_assigns)}
   end
 
   def handle_info(%{topic: "job:progress", event: "update", payload: payload}, socket) when is_map(payload) do
@@ -704,6 +686,38 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
 
   def handle_info(%{topic: "job:progress", event: "update"}, socket) do
     {:noreply, socket}
+  end
+
+  defp reload_topic(source_id), do: "media_table:#{source_id}"
+
+  defp broadcast_reload(socket) do
+    PinchflatWeb.Endpoint.broadcast(reload_topic(socket.assigns.source.id), "reload", nil)
+  end
+
+  defp refresh_records(%{assigns: assigns} = socket) do
+    assign(
+      socket,
+      fetch_pagination_attributes(
+        assigns.base_query,
+        assigns.page,
+        assigns.search_term,
+        assigns.media_state,
+        assigns.source
+      )
+    )
+  end
+
+  # Refreshes at once, then at most once more when the window ends, so a burst of job events costs two refetches.
+  defp throttled_refresh(socket) do
+    if socket.assigns[:refresh_pending] do
+      assign(socket, :refresh_stale, true)
+    else
+      Process.send_after(self(), :throttled_refresh, @refresh_throttle_ms)
+
+      socket
+      |> assign(refresh_pending: true, refresh_stale: false)
+      |> refresh_records()
+    end
   end
 
   defp fetch_pagination_attributes(base_query, page, "", media_state, source),
@@ -902,6 +916,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
   defp select_fields do
     [
       :id,
+      :uuid,
       :title,
       :uploaded_at,
       :prevent_download,
@@ -914,6 +929,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :short_form_content,
       :availability,
       :media_size_bytes,
+      :thumbnail_filepath,
       :unavailable_at,
       :unavailable_reason,
       :culled_at
@@ -928,6 +944,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
     |> Map.put(:records, ordered_records)
     |> Map.put(:grouped_records, group_records_by_year(ordered_records))
     |> Map.put(:tasks_by_media_item_id, tasks_by_media_item_id)
+    |> Map.put(:any_actions?, Enum.any?(ordered_records, &Map.has_key?(tasks_by_media_item_id, &1.id)))
     |> Map.put(:queue_positions, build_queue_positions(queue_base_query, ordered_records, media_state))
   end
 

@@ -62,6 +62,7 @@ defmodule PinchflatWeb.AuthControllerTest do
       conn = get(conn, ~p"/auth/login")
 
       assert html_response(conn, 200) =~ "Sign in with TestProvider"
+      assert html_response(conn, 200) =~ ~r{<a href="/"[^>]*>\s*<img src="/images/logo-[^"]*" alt="Pinchflat-ngx home"}
     end
   end
 

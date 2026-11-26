@@ -31,11 +31,11 @@ defmodule Pinchflat.SourcesTest do
   end
 
   describe "schema" do
-    test "defaults availability policies to enabled" do
-      source = source_fixture()
+    test "defaults public media on and members-only media off" do
+      source = %Source{}
 
       assert source.download_public_media
-      assert source.download_members_only_media
+      refute source.download_members_only_media
     end
 
     test "source_metadata is deleted when the source is deleted" do
@@ -54,6 +54,78 @@ defmodule Pinchflat.SourcesTest do
       source = source_fixture()
 
       assert {:ok, _} = Phoenix.json_library().encode(source)
+    end
+  end
+
+  describe "SponsorBlock category overrides" do
+    test "nil inherits the profile lists" do
+      profile =
+        media_profile_fixture(%{
+          sponsorblock_remove_categories: ["sponsor"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      source = source_fixture(%{media_profile_id: profile.id}) |> Repo.preload(:media_profile)
+
+      assert Source.effective_sponsorblock_remove_categories(source) == ["sponsor"]
+      assert Source.effective_sponsorblock_mark_categories(source) == ["intro"]
+    end
+
+    test "an empty list disables the action even when the profile enables it" do
+      profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor"]})
+
+      source =
+        source_fixture(%{media_profile_id: profile.id, sponsorblock_remove_categories: []})
+        |> Repo.preload(:media_profile)
+
+      assert Source.effective_sponsorblock_remove_categories(source) == []
+    end
+
+    test "a non-empty list replaces the profile list" do
+      profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor"]})
+
+      source =
+        source_fixture(%{media_profile_id: profile.id, sponsorblock_remove_categories: ["intro"]})
+        |> Repo.preload(:media_profile)
+
+      assert Source.effective_sponsorblock_remove_categories(source) == ["intro"]
+    end
+
+    test "an empty list is persisted as an empty list, not nil" do
+      source = source_fixture(%{sponsorblock_mark_categories: []})
+      reloaded = Repo.reload!(source)
+
+      assert reloaded.sponsorblock_mark_categories == []
+    end
+
+    test "unknown categories are rejected" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{sponsorblock_remove_categories: ["sponsor", "not_a_category"]})
+
+      assert errors_on(changeset).sponsorblock_remove_categories != []
+    end
+
+    test "a category can't be both marked and removed" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{
+          sponsorblock_remove_categories: ["sponsor", "intro"],
+          sponsorblock_mark_categories: ["intro"]
+        })
+
+      assert "can't mark and remove the same category: intro" in errors_on(changeset).sponsorblock_mark_categories
+    end
+
+    test "rejects a mark that overlaps the profile's remove list when remove is not overridden" do
+      profile = media_profile_fixture(%{sponsorblock_remove_categories: ["sponsor"]})
+      source = source_fixture(%{media_profile_id: profile.id}) |> Repo.preload(:media_profile)
+
+      changeset = Sources.change_source(source, %{sponsorblock_mark_categories: ["sponsor"]})
+
+      assert "can't mark and remove the same category: sponsor" in errors_on(changeset).sponsorblock_mark_categories
     end
   end
 
@@ -226,6 +298,52 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "enrich_new_source_attrs_from_url/2" do
+    test "adds a suggested name and detected source type for a channel" do
+      url = "https://www.youtube.com/@enriched"
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Enriched Channel",
+           channel_id: "UCenriched",
+           playlist_id: "UCenriched",
+           playlist_title: "Enriched Channel"
+         })}
+      end)
+
+      assert %{"custom_name" => "Enriched Channel", "source_type" => :channel, "original_url" => ^url} =
+               Sources.enrich_new_source_attrs_from_url(%{"original_url" => url})
+    end
+
+    test "formats playlist names with channel and title" do
+      url = "https://www.youtube.com/playlist?list=PLxyz"
+
+      expect(YtDlpRunnerMock, :run, fn ^url, :get_source_details, _opts, _ot, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           channel: "Owner",
+           channel_id: "UCowner",
+           playlist_id: "PLxyz",
+           playlist_title: "My Playlist"
+         })}
+      end)
+
+      assert %{"custom_name" => "Owner | My Playlist", "source_type" => :playlist} =
+               Sources.enrich_new_source_attrs_from_url(%{"original_url" => url})
+    end
+
+    test "leaves attrs unchanged when custom_name and source type are explicit" do
+      attrs = %{
+        "original_url" => "https://www.youtube.com/playlist?list=PLxyz",
+        "custom_name" => "My Label",
+        "source_type" => :playlist
+      }
+
+      assert attrs == Sources.enrich_new_source_attrs_from_url(attrs)
+    end
+  end
+
   describe "create_source/2" do
     test "automatically sets the UUID" do
       expect(YtDlpRunnerMock, :run, &channel_mock/5)
@@ -296,6 +414,54 @@ defmodule Pinchflat.SourcesTest do
       assert {:ok, %Source{} = source} = Sources.create_source(valid_attrs)
       assert source.collection_name == "some playlist name"
       assert String.starts_with?(source.collection_id, "some_playlist_id_")
+    end
+
+    test "stores the playlist owner as the source owner_channel_id" do
+      owner_channel_id = "UC" <> String.duplicate("a", 22)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        Phoenix.json_library().encode(%{
+          channel: "Uploader of the first item",
+          channel_id: "UC" <> String.duplicate("b", 22),
+          playlist_id: "PLabc123",
+          playlist_title: "Some playlist",
+          playlist_channel: "Playlist owner",
+          playlist_channel_id: owner_channel_id
+        })
+      end)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/playlist?list=PLabc123"
+      }
+
+      assert {:ok, %Source{collection_type: :playlist} = source} =
+               Sources.create_source(valid_attrs, run_post_commit_tasks: false)
+
+      assert source.owner_channel_id == owner_channel_id
+    end
+
+    test "stores the channel ID as the source owner_channel_id for channels" do
+      channel_id = "UC" <> String.duplicate("c", 22)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _ot, _addl ->
+        Phoenix.json_library().encode(%{
+          channel: "Channel owner",
+          channel_id: channel_id,
+          playlist_id: channel_id,
+          playlist_title: "Channel owner - Videos"
+        })
+      end)
+
+      valid_attrs = %{
+        media_profile_id: media_profile_fixture().id,
+        original_url: "https://www.youtube.com/channel/#{channel_id}"
+      }
+
+      assert {:ok, %Source{collection_type: :channel} = source} =
+               Sources.create_source(valid_attrs, run_post_commit_tasks: false)
+
+      assert source.owner_channel_id == channel_id
     end
 
     test "creates a source and adds name + ID for single videos" do
@@ -1493,6 +1659,127 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "effective_download_cutoff_date/2" do
+    test "prefers a fixed download cutoff date" do
+      source = source_fixture(%{download_cutoff_date: ~D[2026-07-01]})
+
+      assert Source.effective_download_cutoff_date(source, ~D[2026-11-24]) == ~D[2026-07-01]
+    end
+
+    test "resolves rolling days relative to the given today" do
+      source = source_fixture(%{download_cutoff_days: 30})
+
+      assert Source.effective_download_cutoff_date(source, ~D[2026-11-24]) == ~D[2026-10-25]
+      assert Source.effective_download_cutoff_date(source, ~D[2026-12-01]) == ~D[2026-11-01]
+    end
+
+    test "returns nil when neither cutoff is set" do
+      source = source_fixture(%{download_cutoff_date: nil, download_cutoff_days: nil})
+
+      assert is_nil(Source.effective_download_cutoff_date(source, ~D[2026-11-24]))
+    end
+
+    test "reads the effective cutoff from a changeset" do
+      source = source_fixture()
+      changeset = Sources.change_source(source, %{download_cutoff_days: 30})
+
+      assert Source.effective_download_cutoff_date(changeset, ~D[2026-11-24]) == ~D[2026-10-25]
+    end
+  end
+
+  describe "change_source/3 when testing download cutoff validations" do
+    test "rejects a fixed date and rolling days together" do
+      source = source_fixture()
+
+      changeset =
+        Sources.change_source(source, %{download_cutoff_date: ~D[2026-07-01], download_cutoff_days: 30})
+
+      assert "must be blank when a download cutoff date is set" in errors_on(changeset).download_cutoff_days
+    end
+
+    test "rejects zero or negative rolling days" do
+      source = source_fixture()
+
+      assert %{errors: [_]} = Sources.change_source(source, %{download_cutoff_days: 0})
+      assert %{errors: [_]} = Sources.change_source(source, %{download_cutoff_days: -1})
+    end
+
+    test "accepts positive rolling days" do
+      source = source_fixture()
+
+      assert %{errors: []} = Sources.change_source(source, %{download_cutoff_days: 30})
+    end
+
+    test "rejects an index cutoff after the rolling download cutoff" do
+      source = source_fixture()
+      today = Date.utc_today()
+
+      changeset = Sources.change_source(source, %{index_cutoff_date: today, download_cutoff_days: 30})
+
+      assert "must be on or before the download cutoff date" in errors_on(changeset).index_cutoff_date
+    end
+
+    test "accepts an index cutoff on the rolling download cutoff" do
+      source = source_fixture()
+      effective_cutoff = Date.utc_today() |> Date.add(-30)
+
+      changeset = Sources.change_source(source, %{index_cutoff_date: effective_cutoff, download_cutoff_days: 30})
+
+      assert %{errors: []} = changeset
+    end
+  end
+
+  describe "change_source/3 when testing title language validation" do
+    test "succeeds with language codes yt-dlp supports" do
+      source = source_fixture()
+
+      Enum.each(~w(en ja pt-PT zh-CN es-419 sr-Latn), fn code ->
+        assert %{errors: []} = Sources.change_source(source, %{title_language: code})
+      end)
+    end
+
+    test "maps any letter case to the spelling yt-dlp requires" do
+      source = source_fixture()
+
+      assert %{changes: %{title_language: "zh-CN"}} = Sources.change_source(source, %{title_language: "zh-cn"})
+      assert %{changes: %{title_language: "pt-PT"}} = Sources.change_source(source, %{title_language: "PT-pt"})
+      assert %{changes: %{title_language: "en"}} = Sources.change_source(source, %{title_language: "EN"})
+    end
+
+    test "exposes a catalog with unique codes matching accepted title languages" do
+      options = Pinchflat.Sources.Source.title_language_options()
+      codes = Enum.map(options, fn {_label, code} -> code end)
+
+      assert length(codes) == 83
+      assert length(Enum.uniq(codes)) == 83
+      assert {"Portuguese - Portugal (pt-PT)", "pt-PT"} in options
+      assert {"Hebrew (iw)", "iw"} in options
+
+      source = source_fixture()
+
+      Enum.each(codes, fn code ->
+        assert %{errors: []} = Sources.change_source(source, %{title_language: code})
+      end)
+    end
+
+    test "succeeds when the language is blank or set back to nil" do
+      source = source_fixture(%{title_language: "ja"})
+
+      assert %{errors: []} = Sources.change_source(source, %{title_language: nil})
+      assert %{errors: []} = Sources.change_source(source, %{title_language: ""})
+    end
+
+    test "fails with invalid language codes" do
+      source = source_fixture()
+
+      Enum.each(["english", "e", "en_US", "pt-br", "zh-hans", "; rm"], fn code ->
+        changeset = Sources.change_source(source, %{title_language: code})
+
+        assert "must be a YouTube language code such as en, ja, pt-PT or zh-CN" in errors_on(changeset).title_language
+      end)
+    end
+  end
+
   describe "change_source/3 when testing original_url validation" do
     test "succeeds when an original URL is valid" do
       source = source_fixture()
@@ -1551,6 +1838,31 @@ defmodule Pinchflat.SourcesTest do
     end
   end
 
+  describe "change_source/3 when testing keep newest count validation" do
+    test "accepts nil and positive counts" do
+      source = source_fixture()
+
+      assert %{errors: []} = Sources.change_source(source, %{keep_newest_count: nil})
+      assert %{errors: []} = Sources.change_source(source, %{keep_newest_count: 1})
+      assert %{errors: []} = Sources.change_source(source, %{keep_newest_count: 50})
+    end
+
+    test "rejects zero and negative counts" do
+      source = source_fixture()
+
+      assert "must be greater than 0" in errors_on(Sources.change_source(source, %{keep_newest_count: 0})).keep_newest_count
+
+      assert "must be greater than 0" in errors_on(Sources.change_source(source, %{keep_newest_count: -1})).keep_newest_count
+    end
+
+    test "persists an accepted count" do
+      source = source_fixture()
+
+      assert {:ok, %Source{keep_newest_count: 3}} =
+               Sources.update_source(source, %{keep_newest_count: 3}, run_post_commit_tasks: false)
+    end
+  end
+
   defp playlist_mock(_url, :get_source_details, _opts, _ot, _addl) do
     {:ok, playlist_return()}
   end
@@ -1593,5 +1905,121 @@ defmodule Pinchflat.SourcesTest do
       playlist_title: nil,
       filename: "/tmp/test/media/some-one-off-video.mp4"
     })
+  end
+
+  describe "test_title_filter/2 with title filter builder regexes" do
+    # Regexes as the source form's title filter builder writes them, checked with the
+    # database matcher that decides downloads (SQLite or PostgreSQL, whichever this run uses)
+    test "keeps whole words and ignores case for non-Latin words" do
+      regex = "(?i)^(?=.*(?<!\\w)[оО][бБ][зЗ][оО][рР](?!\\w)).*$"
+
+      assert {:ok, results} = Sources.test_title_filter(regex, ["Новый обзор", "НОВЫЙ ОБЗОР", "Обзоры новинок"])
+      assert Enum.map(results, & &1.match) == [true, true, false]
+    end
+
+    test "applies each word list's own case and whole-word settings" do
+      regex =
+        "^(?=.*(?<!\\w)[Оо][бБ][зЗ][оО][рР](?!\\w))(?=.*(?:(?<!\\w)Review(?!\\w)))" <>
+          "(?!.*(?:(?<!\\w)[cC][aA][fF][éÉ](?!\\w))).*$"
+
+      titles = ["ОБЗОР and Review", "обзор and review", "Обзор Review at CAFÉ", "Обзор Review at cafés"]
+
+      assert {:ok, results} = Sources.test_title_filter(regex, titles)
+      assert Enum.map(results, & &1.match) == [true, false, false, true]
+    end
+  end
+
+  describe "saved title filters" do
+    test "create_saved_title_filter/1 stores a trimmed name and regex" do
+      assert {:ok, filter} =
+               Sources.create_saved_title_filter(%{"name" => "  No shorts ", "regex" => " (?i)^(?!.*shorts).*$ "})
+
+      assert filter.name == "No shorts"
+      assert filter.regex == "(?i)^(?!.*shorts).*$"
+    end
+
+    test "create_saved_title_filter/1 refuses a name another stored filter uses" do
+      {:ok, first} = Sources.create_saved_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
+
+      assert {:error, changeset} = Sources.create_saved_title_filter(%{"name" => " Music ", "regex" => "(?i)live"})
+      assert "is already used by another stored filter" in errors_on(changeset).name
+      assert [%{id: id, regex: "(?i)music"}] = Sources.list_saved_title_filters()
+      assert id == first.id
+    end
+
+    test "create_saved_title_filter/1 requires a name and a regex" do
+      assert {:error, changeset} = Sources.create_saved_title_filter(%{"name" => " ", "regex" => ""})
+
+      assert "can't be blank" in errors_on(changeset).name
+      assert "can't be blank" in errors_on(changeset).regex
+    end
+
+    test "create_saved_title_filter/1 rejects a regex the database cannot use" do
+      assert {:error, changeset} = Sources.create_saved_title_filter(%{"name" => "Broken", "regex" => "(unclosed"})
+
+      assert "is not a regex the database can use" in errors_on(changeset).regex
+      assert Sources.list_saved_title_filters() == []
+    end
+
+    test "update_saved_title_filter/2 replaces the regex and keeps the name" do
+      {:ok, filter} = Sources.create_saved_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
+
+      assert {:ok, updated} =
+               Sources.update_saved_title_filter(filter.id, %{"name" => "Renamed", "regex" => "(?i)live"})
+
+      assert updated.id == filter.id
+      assert [%{name: "Music", regex: "(?i)live"}] = Sources.list_saved_title_filters()
+    end
+
+    test "update_saved_title_filter/2 checks the regex and reports a missing filter" do
+      {:ok, filter} = Sources.create_saved_title_filter(%{"name" => "Music", "regex" => "(?i)music"})
+
+      assert {:error, changeset} = Sources.update_saved_title_filter(filter.id, %{"regex" => "(unclosed"})
+      assert "is not a regex the database can use" in errors_on(changeset).regex
+      assert {:error, :not_found} = Sources.update_saved_title_filter(filter.id + 1, %{"regex" => "x"})
+    end
+
+    test "list_saved_title_filters/0 orders filters by name" do
+      {:ok, _} = Sources.create_saved_title_filter(%{"name" => "Zebra", "regex" => "zebra"})
+      {:ok, _} = Sources.create_saved_title_filter(%{"name" => "Apple", "regex" => "apple"})
+
+      assert ["Apple", "Zebra"] = Enum.map(Sources.list_saved_title_filters(), & &1.name)
+    end
+
+    test "delete_saved_title_filter/1 deletes a filter" do
+      {:ok, filter} = Sources.create_saved_title_filter(%{"name" => "Gone", "regex" => "gone"})
+
+      assert {:ok, _} = Sources.delete_saved_title_filter(filter.id)
+      assert Sources.list_saved_title_filters() == []
+      assert {:error, :not_found} = Sources.delete_saved_title_filter(filter.id)
+    end
+  end
+
+  describe "search_sources/2" do
+    test "matches custom or collection names, ignoring case" do
+      by_custom = source_fixture(%{custom_name: "Slow Kitchen"})
+      by_collection = source_fixture(%{custom_name: "Other", collection_name: "The KITCHEN table"})
+      _unrelated = source_fixture(%{custom_name: "Trail Notes", collection_name: "Trail Notes"})
+
+      ids = "kitchen" |> Sources.search_sources() |> Enum.map(& &1.id) |> Enum.sort()
+
+      assert ids == Enum.sort([by_custom.id, by_collection.id])
+    end
+
+    test "treats LIKE wildcards literally" do
+      literal = source_fixture(%{custom_name: "100% Rock", collection_name: "100% Rock"})
+      _other = source_fixture(%{custom_name: "1000 Rock", collection_name: "1000 Rock"})
+
+      assert [%{id: id}] = Sources.search_sources("100%")
+      assert id == literal.id
+      assert Sources.search_sources("_") == []
+    end
+
+    test "respects the limit and returns nothing for a blank term" do
+      for i <- 1..3, do: source_fixture(%{custom_name: "Limit source #{i}"})
+
+      assert length(Sources.search_sources("limit source", limit: 2)) == 2
+      assert Sources.search_sources(" ") == []
+    end
   end
 end

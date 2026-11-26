@@ -1,22 +1,32 @@
-ARG ELIXIR_VERSION=1.18.4
-ARG OTP_VERSION=27.2.4
-ARG DEBIAN_VERSION=bookworm-20260316-slim
+# renovate: datasource=github-releases depName=elixir-lang/elixir extractVersion=^v(?<version>.+)$
+ARG ELIXIR_VERSION=1.20.5
+# renovate: datasource=github-tags depName=erlang/otp versioning=loose extractVersion=^OTP-(?<version>.+)$
+ARG OTP_VERSION=28.5.0.9
+# renovate: datasource=docker depName=debian versioning=regex:^(?<compatibility>[a-z]+)-(?<major>\d{8})-slim$
+ARG DEBIAN_VERSION=trixie-20261123-slim
 ARG INSTALL_SHELL_TOOLS=0
 
 ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 
-FROM node:26-bookworm-slim AS node
+FROM node:26-trixie-slim AS node
 
 FROM ${DEV_IMAGE}
 
 ARG TARGETPLATFORM
 ARG YT_DLP_CACHE_BUST=""
-ARG BGUTIL_PLUGIN_VERSION=2.0.0
+# renovate: datasource=github-releases depName=Brainicism/bgutil-ytdlp-pot-provider
+ARG BGUTIL_PLUGIN_VERSION=2.0.2
 ARG DATABASE_ADAPTER=sqlite
 ENV DATABASE_ADAPTER=${DATABASE_ADAPTER}
 RUN echo "Building for ${TARGETPLATFORM:?}"
 
 COPY --from=node /usr/local/ /usr/local/
+COPY docker/install-quickjs-ng.sh /tmp/install-quickjs-ng.sh
+
+# Application-owned ordered-codec plugin. Baked into the image and kept separate from
+# the user-removable plugin directory so it cannot be deleted or replaced from the UI.
+COPY docker/yt-dlp-app-plugins /opt/pinchflat-ngx/yt-dlp-app-plugins
+RUN chmod -R a+rX /opt/pinchflat-ngx/yt-dlp-app-plugins
 
 # Install debian packages
 RUN set -eux; \
@@ -52,38 +62,29 @@ RUN set -eux; \
     if [ "$attempt" -eq 5 ]; then exit 1; fi; \
     sleep 5; \
   done && \
+  # setpriv (util-linux) implements the optional PUID/PGID privilege drop.
+  if [ ! -x /usr/bin/setpriv ]; then apt-get install -y --no-install-recommends util-linux; fi && \
+  [ -x /usr/bin/setpriv ] || { echo "setpriv is required for PUID/PGID startup" >&2; exit 1; } && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-# Install ffmpeg
-RUN export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
-    "linux/amd64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"   ;; \
-    "linux/arm64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
-    *)               echo ""        ;; esac) && \
-    curl -L ${FFMPEG_DOWNLOAD} --output /tmp/ffmpeg.tar.xz && \
-    tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffmpeg" && \
-    tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/bin/ "ffprobe"
+# Install the pinned ffmpeg and ffprobe
+COPY docker/install-ffmpeg.sh /tmp/install-ffmpeg.sh
+RUN sh /tmp/install-ffmpeg.sh /usr/bin && rm -f /tmp/install-ffmpeg.sh
 
 # Install Yarn and project tooling
 RUN set -eux; \
   node --version; \
   npm --version; \
   rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg && \
-  npm install -g yarn prettier@3.9.10 sqleton@^4.0.0 && \
+  npm install -g yarn && \
   yarn --version && \
   # Install baseline Elixir packages
   mix local.hex --force && \
   mix local.rebar --force && \
-  # Install Deno - required for YouTube downloads (See yt-dlp#14404)
-  case "${TARGETPLATFORM:-linux/amd64}" in \
-    "linux/amd64") DENO_ARCH="x86_64" ;; \
-    "linux/arm64") DENO_ARCH="aarch64" ;; \
-    *) echo "Unsupported platform: ${TARGETPLATFORM}" >&2; exit 1 ;; \
-  esac && \
-  curl -4 -fsSL --retry 5 --retry-all-errors "https://github.com/denoland/deno/releases/latest/download/deno-${DENO_ARCH}-unknown-linux-gnu.zip" -o /tmp/deno.zip && \
-  unzip -q /tmp/deno.zip deno -d /usr/local/bin && \
-  chmod a+rx /usr/local/bin/deno && \
-  rm -f /tmp/deno.zip && \
+  # Install QuickJS-NG for yt-dlp's JavaScript challenge solver
+  sh /tmp/install-quickjs-ng.sh && \
+  rm -f /tmp/install-quickjs-ng.sh && \
   # Download yt-dlp nightly
   echo "Refreshing yt-dlp nightly cache bust token: ${YT_DLP_CACHE_BUST}" && \
   export YT_DLP_DOWNLOAD="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp" && \
@@ -99,7 +100,7 @@ RUN set -eux; \
   # Install Apprise
   export PIPX_HOME=/opt/pipx && \
   export PIPX_BIN_DIR=/usr/local/bin && \
-  pipx install apprise==2.0.1 && \
+  pipx install apprise==2.3.0 && \
   # Set up optional shell tools
   if [ "${INSTALL_SHELL_TOOLS:-0}" = "1" ]; then \
     chsh -s $(which zsh) && \
@@ -131,7 +132,9 @@ WORKDIR /app
 COPY mix.exs mix.lock ./
 # Install Elixir deps
 # NOTE: this has to be before the bulk copy to ensure that deps are cached
-RUN MIX_ENV=dev mix deps.get && MIX_ENV=dev mix deps.compile
+# CI only runs MIX_ENV=test, so it passes COMPILE_DEV_DEPS=0 to skip the dev build.
+ARG COMPILE_DEV_DEPS=1
+RUN if [ "${COMPILE_DEV_DEPS}" = "1" ]; then MIX_ENV=dev mix deps.get && MIX_ENV=dev mix deps.compile; fi
 RUN MIX_ENV=test mix deps.get && MIX_ENV=test mix deps.compile
 
 COPY . ./

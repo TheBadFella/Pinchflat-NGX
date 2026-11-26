@@ -70,6 +70,23 @@ defmodule Pinchflat.ShortsOutputTemplateTest do
     assert DownloadOptionBuilder.build_output_path_for(source) == "/tmp/test/media/main/%(title)S.%(ext)S"
   end
 
+  test "restricted filenames apply to the Shorts template's own text" do
+    Pinchflat.Settings.set(restrict_filenames: true)
+
+    profile =
+      media_profile_fixture(%{
+        output_path_template: "main/{{ title }}.{{ ext }}",
+        output_path_template_shorts: "My Shorts/{{ upload_yyyy_mm_dd }} - {{ title }}.{{ ext }}"
+      })
+
+    source = source_fixture(%{media_profile_id: profile.id})
+    item = media_item_fixture(%{source_id: source.id, short_form_content: true})
+    item = Pinchflat.Repo.preload(item, source: :media_profile)
+
+    assert DownloadOptionBuilder.build_output_path_for(item) ==
+             "/tmp/test/media/My Shorts/%(upload_date>%Y-%m-%d)S_-_%(title)S.%(ext)S"
+  end
+
   test "fast indexing persists the corrected Shorts prediction", %{source: source} do
     expect(HTTPClientMock, :get, fn _ -> {:ok, "<yt:videoId>short-id</yt:videoId>"} end)
 
@@ -238,6 +255,40 @@ defmodule Pinchflat.ShortsOutputTemplateTest do
     assert %{predicted_media_filepath: nil} = YtDlpMedia.response_to_struct(response, source)
     assert_received {:prediction_tmpfile, filepath}
     refute File.exists?(filepath)
+  end
+
+  test "Shorts prediction passes the source's scoped config files", %{source: source} do
+    base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
+    on_exit(fn -> File.rm_rf(base_dir) end)
+
+    source_filepath = Path.join(base_dir, "source-#{source.id}-config.txt")
+    Pinchflat.Utils.FilesystemUtils.write_p!(source_filepath, "--restrict-filenames")
+
+    expect(YtDlpRunnerMock, :run, fn _, :predict_filepath_from_metadata, opts, _, _ ->
+      assert {:config_locations, source_filepath} in opts
+      {:ok, ~s({"filename":"/tmp/test/media/shorts/A_short.mp4"})}
+    end)
+
+    response = %{"original_url" => "https://www.youtube.com/shorts/short-id", "filename" => "main/A short.mp4"}
+
+    assert %{predicted_media_filepath: "/tmp/test/media/shorts/A_short.mp4"} =
+             YtDlpMedia.response_to_struct(response, source)
+  end
+
+  test "Shorts prediction omits config options when no config files exist", %{source: source} do
+    base_dir = Path.join(Application.get_env(:pinchflat, :extras_directory), "yt-dlp-configs")
+    File.rm_rf(base_dir)
+    on_exit(fn -> File.rm_rf(base_dir) end)
+
+    expect(YtDlpRunnerMock, :run, fn _, :predict_filepath_from_metadata, opts, _, _ ->
+      refute Enum.any?(opts, &match?({:config_locations, _}, &1))
+      {:ok, ~s({"filename":"/tmp/test/media/shorts/A short.mp4"})}
+    end)
+
+    response = %{"original_url" => "https://www.youtube.com/shorts/short-id", "filename" => "main/A short.mp4"}
+
+    assert %{predicted_media_filepath: "/tmp/test/media/shorts/A short.mp4"} =
+             YtDlpMedia.response_to_struct(response, source)
   end
 
   test "regular media keeps its backend prediction without another render", %{source: source} do

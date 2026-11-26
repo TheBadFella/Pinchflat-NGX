@@ -21,6 +21,19 @@ defmodule Pinchflat.MediaServers do
   """
   def supported_servers, do: @supported_servers
 
+  @doc """
+  Returns the supported server type named by `value`, such as "plex". It matches against the
+  known types instead of converting the string, so it works before any server module is loaded.
+
+  Returns {:ok, atom()} | :error
+  """
+  def parse_server_type(value) do
+    case Enum.find(@supported_servers, &(Atom.to_string(&1) == value)) do
+      nil -> :error
+      server_type -> {:ok, server_type}
+    end
+  end
+
   @doc "Returns a normalized HTTP server URL without embedded credentials, query or fragment."
   def validate_server_url(url) when is_binary(url) do
     case URI.new(String.trim(url)) do

@@ -553,7 +553,7 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       case Repo.preload(source, :metadata).metadata do
         %{metadata_filepath: filepath} when is_binary(filepath) ->
           with {:ok, metadata} <- MetadataFileHelpers.read_compressed_metadata(filepath) do
-            NfoBuilder.build_and_store_for_source(row.to_path, metadata)
+            NfoBuilder.build_and_store_for_source(row.to_path, metadata, source.custom_name)
             {:ok, %{nfo_filepath: row.to_path}}
           end
 
@@ -648,8 +648,6 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       path_shared_by_other_source?(from_path, source_id)
   end
 
-  defp path_shared_by_other_media_item?(nil, _media_item_id), do: false
-
   defp path_shared_by_other_media_item?(from_path, media_item_id) do
     scalar_query =
       from(m in MediaItem,
@@ -691,8 +689,6 @@ defmodule Pinchflat.Reconciliation.PlanApplier do
       Repo.exists?(subtitles_query)
     end
   end
-
-  defp path_shared_by_other_source?(nil, _source_id), do: false
 
   defp path_shared_by_other_source?(from_path, source_id) do
     query =

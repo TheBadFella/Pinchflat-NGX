@@ -8,9 +8,19 @@
       <.icon name="hero-arrow-left" class="h-5 w-5" />
     </.link>
 
-    <h2 class="min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
-      {@media_item.title}
-    </h2>
+    <div class="min-w-0">
+      <h2 class="min-w-0 [overflow-wrap:anywhere] text-title-md2 font-bold text-theme-on-surface">
+        {@media_item.title}
+      </h2>
+
+      <p
+        :if={@media_item.translated_title}
+        class="mt-1 min-w-0 [overflow-wrap:anywhere] text-sm text-theme-on-surface-muted"
+      >
+        <span class="font-medium text-theme-on-surface">Translated title:</span>
+        {@media_item.translated_title}
+      </p>
+    </div>
   </div>
 
   <nav class="shrink-0 self-end sm:self-auto">

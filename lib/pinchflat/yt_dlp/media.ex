@@ -29,6 +29,7 @@ defmodule Pinchflat.YtDlp.Media do
     :duration_seconds,
     :playlist_index,
     :availability,
+    :channel_id,
     :predicted_media_filepath
   ]
 
@@ -63,7 +64,7 @@ defmodule Pinchflat.YtDlp.Media do
   Determines if the media at the given URL is ready to be downloaded.
   Common examples of non-downloadable media are upcoming or in-progress live streams.
 
-  Returns {:ok, :downloadable | :ignorable} | {:error, any}
+  Returns {:ok, :downloadable | :ignorable | :post_live} | {:error, any}
   """
   def get_downloadable_status(url, addl_opts \\ []) do
     get_downloadable_status(url, [], addl_opts)
@@ -163,7 +164,7 @@ defmodule Pinchflat.YtDlp.Media do
   def indexing_output_template(source \\ nil, opts \\ [])
 
   def indexing_output_template(nil, _opts) do
-    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename,availability})j"
+    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index,filename,availability,channel_id})j"
   end
 
   def indexing_output_template(source, opts) do
@@ -218,6 +219,7 @@ defmodule Pinchflat.YtDlp.Media do
       uploaded_at: response["upload_date"] && parse_uploaded_at(response),
       playlist_index: response["playlist_index"] || 0,
       availability: normalize_availability(response["availability"]),
+      channel_id: response["channel_id"],
       predicted_media_filepath: response["filename"]
     }
 
@@ -247,9 +249,12 @@ defmodule Pinchflat.YtDlp.Media do
     source = Repo.preload(source, :media_profile)
     item = %MediaItem{source: source, short_form_content: true, playlist_index: media.playlist_index}
 
+    # The source's scoped config files apply to this offline render exactly as
+    # they would to a download, so the predicted Shorts path matches the real one.
     command_opts =
       [output: DownloadOptionBuilder.build_output_path_for(item)] ++
-        DownloadOptionBuilder.build_quality_options_for(source)
+        DownloadOptionBuilder.build_quality_options_for(source) ++
+        DownloadOptionBuilder.build_config_file_options_for(source)
 
     filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
 
@@ -292,8 +297,9 @@ defmodule Pinchflat.YtDlp.Media do
     end
   end
 
+  # yt-dlp can report the timestamp as a float (1749033569.0); from_unix needs an integer
   defp parse_uploaded_at(%{"timestamp" => ts} = response) when is_number(ts) do
-    case DateTime.from_unix(ts) do
+    case DateTime.from_unix(trunc(ts)) do
       {:ok, datetime} -> datetime
       _ -> MetadataFileHelpers.parse_upload_date(response["upload_date"])
     end
@@ -304,9 +310,13 @@ defmodule Pinchflat.YtDlp.Media do
   defp parse_uploaded_at(%{"upload_date" => nil}), do: nil
   defp parse_uploaded_at(response), do: MetadataFileHelpers.parse_upload_date(response["upload_date"])
 
+  # `post_live` means the broadcast has ended but YouTube is still processing the
+  # recording. It is distinct from `is_live`/`is_upcoming` because the download
+  # will become possible on its own, so callers may wait instead of giving up.
   defp parse_downloadable_status(response) do
     case response["live_status"] do
-      status when status in ["is_live", "is_upcoming", "post_live"] -> {:ok, :ignorable}
+      status when status in ["is_live", "is_upcoming"] -> {:ok, :ignorable}
+      "post_live" -> {:ok, :post_live}
       status when status in ["was_live", "not_live"] -> {:ok, :downloadable}
       # This preserves my tenuous support for non-youtube sources.
       nil -> {:ok, :downloadable}

@@ -1,9 +1,12 @@
 <div class="flex h-screen overflow-hidden">
   <.sidebar conn={@conn} />
   <div class="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
-    <.header params={@conn.params} />
+    <.phone_bar />
     <main>
-      <div class="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10"><.flash_group flash={@flash} /> {@inner_content}</div>
+      <div class="mx-auto max-w-screen-2xl p-4 md:p-6 2xl:p-10">
+        <.flash_group flash={@flash} toast={toast_flash?(@conn)} /> {@inner_content}
+      </div>
     </main>
   </div>
 </div>
+{live_render(@conn, PinchflatWeb.CommandPaletteLive, id: "command-palette")}

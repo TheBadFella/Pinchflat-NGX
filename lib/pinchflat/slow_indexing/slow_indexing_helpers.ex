@@ -22,6 +22,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.PendingMediaItemOptions
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
@@ -95,7 +96,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   Available options:
     - `was_forced`: Whether the indexing was forced by the user
 
-  Returns [%MediaItem{} | %Ecto.Changeset{}]
+  Returns [%MediaItem{} | %Ecto.Changeset{}] | {:error, reason}
   """
   def index_and_enqueue_download_for_media_items(source, opts \\ [])
 
@@ -119,8 +120,10 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
 
   def index_and_enqueue_download_for_media_items(%Source{} = source, opts) do
     source = Repo.preload(source, :media_profile)
-    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts)
-    persist_indexed_media(Repo.reload!(source), media_attributes)
+    urls = Enum.map(indexing_urls_for(source), fn {url, _content_type} -> url end)
+    translated_titles = MediaCollection.get_source_translated_titles(source, urls)
+    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles)
+    persist_indexed_media(Repo.reload!(source), media_attributes, translated_titles)
   end
 
   defp persist_single_video_index(source, metadata, command_opts) do
@@ -154,26 +157,61 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  defp persist_indexed_media(source, media_attributes) do
+  defp persist_indexed_media(source, media_attributes, translated_titles \\ %{}) do
     result =
       Enum.map(media_attributes, fn media_attrs ->
-        case Media.create_media_item_from_backend_attrs(source, media_attrs) do
+        translated_title = MediaCollection.translated_title_for(media_attrs, translated_titles)
+
+        case Media.create_media_item_from_backend_attrs(source, media_attrs, translated_title) do
           {:ok, media_item} -> media_item
           {:error, changeset} -> changeset
         end
       end)
 
-    update_source_after_indexing(source)
-    enqueued_download_count = DownloadingHelpers.enqueue_pending_download_tasks(source)
+    materialized_items = Enum.filter(result, &match?(%MediaItem{}, &1))
 
-    Logger.info(
-      "indexing_completed source_id=#{source.id} indexed_media_count=#{length(media_attributes)} " <>
-        "created_media_count=#{Enum.count(result, &match?(%MediaItem{}, &1))} " <>
-        "pending_downloads_enqueued=#{enqueued_download_count} download_media=#{source.download_media}"
-    )
+    case apply_pending_item_options(source, materialized_items) do
+      {:error, reason} ->
+        {:error, {:pending_item_options, reason}}
 
-    result
+      options_result ->
+        enqueued_download_count =
+          case options_result do
+            :ok -> DownloadingHelpers.enqueue_pending_download_tasks(source)
+            {:applied, count} -> count
+          end
+
+        update_source_after_indexing(source)
+
+        Logger.info(
+          "indexing_completed source_id=#{source.id} indexed_media_count=#{length(media_attributes)} " <>
+            "created_media_count=#{Enum.count(result, &match?(%MediaItem{}, &1))} " <>
+            "pending_downloads_enqueued=#{enqueued_download_count} download_media=#{source.download_media}"
+        )
+
+        result
+    end
   end
+
+  defp apply_pending_item_options(%Source{collection_type: :video} = source, media_items) do
+    results = Enum.map(media_items, &PendingMediaItemOptions.apply_for_item/1)
+
+    case Enum.find(results, &match?({:error, _reason}, &1)) do
+      nil ->
+        if Enum.any?(results, &match?({:ok, outcome} when outcome in [:queued, :already_queued], &1)) do
+          {:applied, Enum.count(results, &match?({:ok, :queued}, &1))}
+        else
+          :ok
+        end
+
+      {:error, reason} ->
+        Logger.warning("pending_item_options_apply_failed source_id=#{source.id} reason=#{inspect(reason)}")
+
+        {:error, reason}
+    end
+  end
+
+  defp apply_pending_item_options(_source, _media_items), do: :ok
 
   # The file follower is a GenServer that watches a file for new lines and
   # processes them. This works well, but we have to be resilliant to partially-written
@@ -188,7 +226,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # It attempts a graceful shutdown of the file follower after the indexing is done,
   # but the FileFollowerServer will also stop itself if it doesn't see any activity
   # for a sufficiently long time.
-  defp setup_file_watcher_and_kickoff_indexing(source, opts) do
+  defp setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles) do
     was_forced = Keyword.get(opts, :was_forced, false)
     should_use_cookies = Sources.use_cookies?(source, :indexing)
 
@@ -208,7 +246,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
             build_download_archive_options(source, was_forced, content_type) ++
             build_index_cutoff_options(source, content_type)
 
-        run_indexing_command(source, url, content_type, command_opts, should_use_cookies)
+        run_indexing_command(source, url, content_type, command_opts, should_use_cookies, translated_titles)
       end)
 
     {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
@@ -239,10 +277,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       build_dateafter_options(source)
   end
 
-  defp run_indexing_command(source, url, content_type, command_opts, should_use_cookies) do
+  defp run_indexing_command(source, url, content_type, command_opts, should_use_cookies, translated_titles) do
     {:ok, pid} = FileFollowerServer.start_link()
 
-    handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source, content_type) end
+    handler = fn filepath ->
+      setup_file_follower_watcher(pid, filepath, source, content_type, translated_titles)
+    end
 
     # Exit code 1 is declared as expected so the runner logs it at debug instead
     # of error — failures are logged here instead, where we can tell a channel
@@ -293,9 +333,11 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       File.write!(filepath, Phoenix.json_library().encode!(attrs))
 
       try do
-        case YtDlpMedia.predict_filepath_from_metadata(source.original_url, filepath, [
-               {:output, output} | Enum.reject(command_opts, &match?({:output, _}, &1))
-             ]) do
+        prediction_opts =
+          [{:output, output} | Enum.reject(command_opts, &match?({:output, _}, &1))] ++
+            DownloadOptionBuilder.build_config_file_options_for(item)
+
+        case YtDlpMedia.predict_filepath_from_metadata(source.original_url, filepath, prediction_opts) do
           {:ok, filename} when is_binary(filename) and filename != "" ->
             {:ok, Map.put(attrs, "filename", filename)}
 
@@ -364,7 +406,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end
   end
 
-  defp setup_file_follower_watcher(pid, filepath, source, content_type) do
+  defp setup_file_follower_watcher(pid, filepath, source, content_type, translated_titles) do
     FileFollowerServer.watch_file(pid, filepath, fn line ->
       case Phoenix.json_library().decode(line) do
         {:ok, media_attrs} ->
@@ -373,7 +415,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
           media_struct =
             YtDlpMedia.response_to_struct(media_attrs, source, content_type: content_type, render_shorts: false)
 
-          create_media_item_and_enqueue_download(source, media_struct)
+          translated_title = MediaCollection.translated_title_for(media_struct, translated_titles)
+          create_media_item_and_enqueue_download(source, media_struct, translated_title)
 
         err ->
           Logger.debug("FileFollowerServer Handler: Error decoding JSON: #{inspect(err)}")
@@ -383,12 +426,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     end)
   end
 
-  defp create_media_item_and_enqueue_download(source, media_attrs) do
+  defp create_media_item_and_enqueue_download(source, media_attrs, translated_title) do
     # Reload because the source may have been updated during the (long-running) indexing process
     # and important settings like `download_media` may have changed.
     source = Repo.reload!(source)
 
-    case Media.create_media_item_from_backend_attrs(source, media_attrs) do
+    case Media.create_media_item_from_backend_attrs(source, media_attrs, translated_title) do
       {:ok, %MediaItem{} = media_item} ->
         maybe_kickoff_download_if_pending(source, media_item)
 
@@ -456,10 +499,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   defp content_type_filter(:streams), do: dynamic([mi], mi.livestream == true)
   defp content_type_filter(:all), do: dynamic(true)
 
-  # `--break-match-filters` aborts the crawl the moment it reaches a video older
-  # than the source's indexing cutoff date. Unlike the download archive (which is
-  # skipped on first/forced indexes), this applies to every index — the first crawl
-  # of a large channel is exactly where it saves the most time.
+  # `--dateafter` only rejects older videos; without `--break-on-reject` yt-dlp keeps
+  # extracting every entry until the end of the listing, so a channel tab still walks
+  # its whole catalogue. `--break-on-reject` ends the tab at the first rejected video,
+  # and `--break-match-filters` does the same for an indexing cutoff date. Either way
+  # the crawl must stop at the scan date, because everything past it was already being
+  # skipped - the same videos stay indexed, only the wasted extractions stop.
   #
   # Early abort is only safe when the listing is newest-first, which is only
   # guaranteed for YouTube channel tabs — playlists are ordered arbitrarily and
@@ -480,6 +525,16 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       break_match_filters: "upload_date >= #{formatted_date}",
       break_match_filters: "!upload_date"
     ]
+  end
+
+  # `--break-on-reject` is added here so it lands after the archive options and
+  # appears once even when an indexing cutoff also applies.
+  defp build_index_cutoff_options(%Source{} = source, content_type)
+       when content_type in [:videos, :shorts, :streams] do
+    case calculate_effective_scan_date(source) do
+      nil -> []
+      %Date{} -> [:break_on_reject]
+    end
   end
 
   defp build_index_cutoff_options(_source, _content_type), do: []
@@ -519,6 +574,11 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # This optimization dramatically reduces indexing time for sources with short
   # retention periods - instead of scanning thousands of old videos, we only
   # scan videos that could potentially be downloaded and retained.
+  #
+  # --dateafter only rejects; it does not stop the listing. On newest-first YouTube
+  # channel tabs the crawl must also break at that same date (see
+  # `build_index_cutoff_options/2`), otherwise yt-dlp still extracts the whole
+  # catalogue just to reject every older video.
   @dateafter_buffer_days 3
   defp build_dateafter_options(%Source{} = source) do
     effective_date = calculate_effective_scan_date(source)
@@ -533,7 +593,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   # with a retention-based date (if applicable). Returns the more recent of the two,
   # since there's no point scanning videos older than either threshold.
   defp calculate_effective_scan_date(%Source{} = source) do
-    cutoff_date = source.download_cutoff_date
+    cutoff_date = Source.effective_download_cutoff_date(source)
     retention_date = calculate_retention_based_date(source)
 
     case {cutoff_date, retention_date} do

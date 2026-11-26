@@ -14,6 +14,9 @@
       Copy OPML <span class="hidden sm:inline">Feed</span>
       <span x-show="copied" x-transition.duration.150ms><.icon name="hero-check" class="ml-2 h-4 w-4" /></span>
     </.link>
+    <.button href={~p"/browse?paste=1"} variant="outline" class="gap-1.5" id="sources-quick-download">
+      <.icon name="hero-arrow-down-tray" class="h-4 w-4" /> Quick Download
+    </.button>
     <.button href={~p"/sources/new"} variant="primary">
       <span class="font-bold mr-1.5 sm:mx-2">+</span> New <span class="hidden sm:inline pl-1">Source</span>
     </.button>
@@ -21,21 +24,14 @@
 </div>
 
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
-  <.tabbed_layout active_tab={@source_type} tab_href={fn type -> ~p"/sources?type=#{type}" end}>
-    <:tab
-      :for={{type, title} <- [{"channels", "Channels & playlists"}, {"videos", "Individual videos"}]}
-      id={type}
-      title={title}
-    >
-      {live_render(@conn, PinchflatWeb.Sources.SourceLive.IndexTableLive,
-        session: %{
-          "initial_sort_key" => :custom_name,
-          "initial_sort_direction" => :asc,
-          "initial_view_mode" => :table,
-          "results_per_page" => 10,
-          "source_type" => type
-        }
-      )}
-    </:tab>
-  </.tabbed_layout>
+  {live_render(@conn, PinchflatWeb.Sources.SourceLive.IndexTableLive,
+    session: %{
+      "initial_sort_key" => :custom_name,
+      "initial_sort_direction" => :asc,
+      "initial_view_mode" => @initial_view_mode,
+      "initial_search_term" => @search_term,
+      "results_per_page" => 24,
+      "source_type" => @source_type
+    }
+  )}
 </div>

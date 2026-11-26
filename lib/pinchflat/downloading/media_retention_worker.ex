@@ -28,7 +28,10 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       Logger.info("Legacy migration review is pending; skipping media retention culling")
       :ok
     else
-      failures = cull_cullable_media_items() + delete_media_items_from_before_cutoff()
+      failures =
+        cull_cullable_media_items() + delete_media_items_from_before_cutoff() +
+          delete_media_items_beyond_keep_newest()
+
       if failures == 0, do: :ok, else: {:error, {:file_deletions_failed, failures}}
     end
   end
@@ -72,6 +75,26 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       # Download is ultimately prevented because `MediaQuery.pending()` only returns media items
       # from after the cutoff date (among other things), so it's not like the media will just immediately
       # be re-downloaded.
+      failed_deletion?(media_item, %{
+        culled_at: DateTime.utc_now()
+      })
+    end)
+  end
+
+  # Removes files of downloaded, unprotected items outside the newest N for
+  # sources that set `keep_newest_count`. Unlike age retention, this does not set
+  # `prevent_download`: raising N later brings the item back into range and it can
+  # download again, matching how changing a cutoff date behaves.
+  defp delete_media_items_beyond_keep_newest do
+    deletable_media =
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:source)
+      |> where(^MediaQuery.deletable_beyond_keep_newest_count())
+      |> Repo.all()
+
+    Logger.info("Deleting #{length(deletable_media)} media items beyond their source's keep-newest count")
+
+    Enum.count(deletable_media, fn media_item ->
       failed_deletion?(media_item, %{
         culled_at: DateTime.utc_now()
       })

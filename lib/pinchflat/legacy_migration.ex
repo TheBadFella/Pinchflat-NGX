@@ -44,26 +44,18 @@ defmodule Pinchflat.LegacyMigration do
       :before_migration ->
         state_file = state_file_path()
 
-        cached =
-          case File.stat(state_file) do
-            {:ok, _} ->
-              state = read_state(state_file)
-              if state.status == "blocked", do: raise("Cannot read migration provenance; restore the config backup")
-              state
+        case File.stat(state_file) do
+          {:error, :enoent} ->
+            state = detect_and_persist_provenance(repo, state_file, nil)
+            raise_blocked_provenance!(state, state_file)
+            state
 
-            {:error, :enoent} ->
-              nil
+          {:ok, _} ->
+            run_cached_provenance_check(repo, state_file)
 
-            {:error, _} ->
-              raise "Cannot read migration provenance; check config permissions"
-          end
-
-        state = detect_and_persist_provenance(repo, state_file, cached)
-
-        if state.status == "blocked",
-          do: raise("Cannot establish migration provenance; check the database and config backup")
-
-        state
+          {:error, _} ->
+            raise_unreadable_provenance!(state_file)
+        end
 
       {:error, _} ->
         raise "Cannot read durable migration provenance"
@@ -76,7 +68,6 @@ defmodule Pinchflat.LegacyMigration do
   def legacy_provenance_detected? do
     case get_state() do
       %{provenance: "legacy_pinchflat"} -> true
-      %{provenance: :legacy_pinchflat} -> true
       _ -> false
     end
   end
@@ -862,7 +853,9 @@ defmodule Pinchflat.LegacyMigration do
           %{
             provenance: "unknown",
             status: "blocked",
-            error: inspect(e)
+            block_reason: "detection_failed",
+            error: inspect(e),
+            detected_at: DateTime.utc_now() |> DateTime.to_iso8601()
           }
       end
 
@@ -961,9 +954,9 @@ defmodule Pinchflat.LegacyMigration do
     # A migration may have stopped before the NGX marker/audit table was added.
     # Bind its earlier positive observation to this DB instead of trusting the path.
     Ecto.Adapters.SQL.query!(repo, "SELECT count(*) FROM sources")
-    if cached[:original_database_identity] == database_identity(repo), do: cached, else: blocked_state()
+    if cached[:original_database_identity] == database_identity(repo), do: cached, else: pending_mismatch_state()
   rescue
-    _ -> blocked_state()
+    _ -> pending_mismatch_state()
   end
 
   defp bind_pending_provenance(
@@ -971,7 +964,7 @@ defmodule Pinchflat.LegacyMigration do
          %{provenance: "legacy_pinchflat", status: "pending_review"},
          _repo
        ),
-       do: blocked_state()
+       do: pending_mismatch_state()
 
   defp bind_pending_provenance(detected, _cached, _repo), do: detected
 
@@ -1002,6 +995,99 @@ defmodule Pinchflat.LegacyMigration do
   end
 
   defp blocked_state, do: %{provenance: "unknown", status: "blocked"}
+
+  defp pending_mismatch_state,
+    do: %{provenance: "unknown", status: "blocked", block_reason: "pending_database_mismatch"}
+
+  defp run_cached_provenance_check(repo, state_file) do
+    case classify_state_file(state_file) do
+      {:ok, cached} ->
+        state = detect_and_persist_provenance(repo, state_file, cached)
+        raise_blocked_provenance!(state, state_file)
+        state
+
+      {:recoverable_block, raw} ->
+        Logger.info(
+          "[LegacyMigration] Earlier migration detection failed with #{inspect(raw["error"])}; retrying detection"
+        )
+
+        # A detection_failed block is rewritten on every start, so only the older
+        # unmarked file is kept. This bounds backups during a restart loop.
+        if discussion_265_shape?(raw), do: backup_blocked_state!(state_file)
+        state = detect_and_persist_provenance(repo, state_file, nil)
+        raise_blocked_provenance!(state, state_file)
+        state
+
+      :locked_block ->
+        raise "Migration provenance is locked: a pending migration review no longer matches the database at this path. Restore the database that belongs to the review or restore the config backup. The state is in #{state_file}."
+
+      :unreadable ->
+        raise_unreadable_provenance!(state_file)
+    end
+  end
+
+  defp classify_state_file(file) do
+    with {:ok, content} <- read_state_content(file),
+         {:ok, raw} <- decode_state(content) do
+      cond do
+        known_state?(raw) -> {:ok, read_state(file)}
+        recoverable_block?(raw) -> {:recoverable_block, raw}
+        is_map(raw) and raw["status"] == "blocked" -> :locked_block
+        true -> :unreadable
+      end
+    else
+      _ -> :unreadable
+    end
+  end
+
+  defp read_state_content(file) do
+    case File.stat(file) do
+      {:ok, %File.Stat{size: size}} when size <= 1_048_576 -> File.read(file)
+      _ -> {:error, :unreadable_cache}
+    end
+  end
+
+  defp decode_state(content), do: Jason.decode(content)
+
+  defp known_state?(raw) do
+    is_map(raw) and raw["provenance"] in ["legacy_pinchflat", "existing_ngx", "fresh_install", "existing_or_fresh"] and
+      raw["status"] in ["pending_review", "pending_release", "completed"]
+  end
+
+  defp recoverable_block?(raw) do
+    is_map(raw) and raw["status"] == "blocked" and raw["provenance"] == "unknown" and
+      (raw["block_reason"] == "detection_failed" or discussion_265_shape?(raw))
+  end
+
+  defp discussion_265_shape?(raw) do
+    Map.keys(raw) |> Enum.sort() == ["error", "provenance", "status"] and is_binary(raw["error"])
+  end
+
+  defp backup_blocked_state!(state_file) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    backup_file = state_file <> ".blocked-" <> timestamp
+    temporary = backup_file <> ".tmp-#{System.unique_integer([:positive])}"
+
+    :ok = File.cp!(state_file, temporary)
+    :ok = File.rename(temporary, backup_file)
+  end
+
+  defp raise_blocked_provenance!(%{status: "blocked"} = state, state_file) do
+    raise "Migration provenance could not be established: #{extract_detection_error(state)}. Back up the config directory, fix the database, then restart. The state is in #{state_file}."
+  end
+
+  defp raise_blocked_provenance!(_state, _state_file), do: :ok
+
+  defp raise_unreadable_provenance!(state_file) do
+    raise "Cannot read migration provenance from #{state_file}; check file permissions or move the file aside after backing up the config directory."
+  end
+
+  defp extract_detection_error(%{error: error}) when is_binary(error), do: error
+
+  defp extract_detection_error(%{block_reason: "pending_database_mismatch"}),
+    do: "a pending migration review no longer matches the database"
+
+  defp extract_detection_error(_state), do: "migration detection failed"
 
   defp restore_configured_pauses(config, queues) do
     case Repo.one(Record) do

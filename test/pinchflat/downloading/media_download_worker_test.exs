@@ -147,6 +147,38 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert Repo.reload(media_item).metadata != nil
     end
 
+    test "preserves an existing translated title after metadata is refreshed", %{media_item: media_item} do
+      {:ok, media_item} = Media.update_media_item(media_item, %{translated_title: "Übersetzter Titel"})
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+      assert media_item.translated_title == "Übersetzter Titel"
+      assert media_item.media_filepath != nil
+    end
+
+    test "omits requested subtitles without a filepath from persisted media item", %{media_item: media_item} do
+      subtitle_path = "/downloads/subtitles/video.en.srt"
+
+      custom_metadata =
+        render_parsed_metadata(:media_metadata)
+        |> Map.put("requested_subtitles", %{
+          "en" => %{"filepath" => subtitle_path},
+          "ko" => %{}
+        })
+        |> Phoenix.json_library().encode!()
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, _addl -> {:ok, custom_metadata}
+        _url, :download_thumbnail, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+      reloaded = Repo.reload!(media_item)
+
+      assert reloaded.subtitle_filepaths == [["en", subtitle_path]]
+    end
+
     test "won't double-schedule downloading jobs", %{media_item: media_item} do
       Oban.insert(MediaDownloadWorker.new(%{id: media_item.id}))
       Oban.insert(MediaDownloadWorker.new(%{id: media_item.id}))
@@ -560,6 +592,136 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
   end
 
+  describe "perform/1 when the stream ended but YouTube is still processing it" do
+    defp hours_ago(hours), do: DateTime.add(now(), -hours * 60, :minute)
+
+    test "snoozes for 30 minutes and reports the next check without failing the item" do
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert {:snooze, 1800} = MediaDownloadWorker.perform(job)
+
+      task = Repo.reload!(task)
+      media_item = Repo.reload!(media_item)
+
+      assert is_nil(media_item.media_filepath)
+      assert is_nil(media_item.error_type)
+      refute media_item.prevent_download
+      assert is_nil(media_item.last_error)
+
+      assert task.progress_status =~ "Stream ended"
+      assert task.progress_status =~ "still processing"
+      assert task.progress_status =~ "Next check at"
+      assert task.progress_status =~ "UTC"
+    end
+
+    test "a later recheck downloads the recording once it is processed" do
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      {:ok, task} = MediaDownloadWorker.kickoff_with_task(media_item)
+      job = Repo.get!(Oban.Job, task.job_id)
+
+      assert {:snooze, 1800} = MediaDownloadWorker.perform(job)
+
+      expect(YtDlpRunnerMock, :run, 3, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "was_live"})}
+
+        _url, :download, opts, _ot, _addl ->
+          assert :no_simulate in opts
+          {:ok, render_metadata(:media_metadata)}
+
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+      end)
+
+      assert :ok = MediaDownloadWorker.perform(job)
+
+      downloaded = Repo.reload!(media_item)
+      assert is_binary(downloaded.media_filepath)
+      assert %DateTime{} = downloaded.media_downloaded_at
+      assert is_nil(downloaded.last_error)
+    end
+
+    test "gives up after 72 hours from the upload time" do
+      media_item =
+        media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: hours_ago(73)})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+
+      assert media_item.last_error =~ "still processing the recording after 72 hours"
+      assert media_item.error_type == :transient
+      refute media_item.prevent_download
+      assert is_nil(media_item.media_filepath)
+    end
+
+    test "the upload time is the limit even when the job is older" do
+      # `uploaded_at` is required and NOT NULL at the database level, so the job's
+      # insert time is only a fallback for records that predate that constraint.
+      # This proves the upload time takes precedence.
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "post_live"})}
+      end)
+
+      job =
+        %Oban.Job{
+          id: media_item.id,
+          args: %{"id" => media_item.id},
+          inserted_at: hours_ago(73) |> DateTime.truncate(:second),
+          max_attempts: 20,
+          attempt: 1,
+          queue: "media_fetching",
+          worker: "Pinchflat.Downloading.MediaDownloadWorker",
+          state: "executing"
+        }
+
+      assert {:snooze, 1800} = MediaDownloadWorker.perform(job)
+
+      media_item = Repo.reload!(media_item)
+      assert is_nil(media_item.last_error)
+    end
+
+    test "is_live keeps today's behavior and does not snooze or wait" do
+      media_item = media_item_fixture(%{media_filepath: nil, livestream: true, uploaded_at: now()})
+
+      expect(YtDlpRunnerMock, :run, fn
+        _url, :get_downloadable_status, _opts, _ot, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"live_status" => "is_live"})}
+      end)
+
+      assert {:ok, :non_retry} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      media_item = Repo.reload!(media_item)
+      assert media_item.error_type == :transient
+      refute media_item.prevent_download
+      # Unchanged precheck behavior: the item is recorded as unsuitable, not waited on.
+      assert media_item.last_error =~ "isn't suitable for download yet"
+      assert is_nil(media_item.media_filepath)
+    end
+  end
+
   describe "perform/1 when testing forced downloads" do
     test "ignores 'prevent_download' if forced", %{media_item: media_item} do
       expect(YtDlpRunnerMock, :run, 2, fn
@@ -689,6 +851,60 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
   end
 
+  describe "perform/1 when testing the rolling download cutoff" do
+    test "skips an item outside the rolling window but still downloads when forced" do
+      source = source_fixture(%{download_cutoff_days: 2})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          uploaded_at: now_minus(10, :days)
+        })
+
+      log =
+        capture_log([level: :info], fn ->
+          assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+        end)
+
+      assert log =~ "media_download_skipped"
+      assert log =~ "reason=format_or_profile_mismatch"
+      refute Repo.reload!(media_item).media_filepath
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download, _opts, _ot, _addl -> {:ok, render_metadata(:media_metadata)}
+        _url, :download_thumbnail, _opts, _ot, _addl -> {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id, force: true})
+      assert Repo.reload!(media_item).media_filepath
+    end
+  end
+
+  describe "perform/1 when testing the playlist owner lock" do
+    test "skips an item uploaded by another channel without calling yt-dlp" do
+      source = source_fixture(%{only_owner_uploads: true, owner_channel_id: "UC_owner"})
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          media_filepath: nil,
+          channel_id: "UC_other"
+        })
+
+      expect(YtDlpRunnerMock, :run, 0, fn _url, _action, _opts, _ot, _addl -> :ok end)
+
+      log =
+        capture_log([level: :info], fn ->
+          assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+        end)
+
+      assert log =~ "media_download_skipped"
+      assert log =~ "reason=format_or_profile_mismatch"
+      refute Repo.reload!(media_item).media_filepath
+    end
+  end
+
   describe "perform/1 when testing re-downloads" do
     test "skips an automatic upgrade that expires while queued" do
       profile = media_profile_fixture(%{redownload_delay_days: 2})
@@ -773,6 +989,40 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       media_item = Repo.reload(media_item)
 
       assert media_item.media_redownloaded_at != nil
+    end
+
+    test "a quality upgrade passes the source's SponsorBlock categories to yt-dlp" do
+      profile =
+        media_profile_fixture(%{
+          redownload_delay_days: 4,
+          sponsorblock_remove_categories: ["sponsor"]
+        })
+
+      source =
+        source_fixture(%{
+          media_profile_id: profile.id,
+          sponsorblock_remove_categories: ["intro"]
+        })
+
+      media_item =
+        media_item_fixture(%{
+          source_id: source.id,
+          uploaded_at: now_minus(6, :days),
+          media_downloaded_at: now_minus(5, :days)
+        })
+
+      expect(YtDlpRunnerMock, :run, 2, fn
+        _url, :download_thumbnail, _opts, _ot, _addl ->
+          {:ok, ""}
+
+        _url, :download, opts, _ot, _addl ->
+          assert {:sponsorblock_remove, "intro"} in opts
+          refute {:sponsorblock_remove, "sponsor"} in opts
+
+          {:ok, render_metadata(:media_metadata)}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id, quality_upgrade?: true})
     end
 
     test "ignores whether the media item is pending when re-downloaded", %{media_item: media_item} do
@@ -919,6 +1169,53 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       end)
 
       perform_job(MediaDownloadWorker, %{id: media_item.id})
+    end
+  end
+
+  describe "perform/1 when ordered codec plugin is unavailable" do
+    test "snoozes the job without marking the media item permanently prevented", %{media_item: media_item} do
+      Settings.set(video_codec_preference: "vp9,avc,av1")
+
+      missing_dir = Path.join(System.tmp_dir!(), "nonexistent-app-plugins-#{System.unique_integer([:positive])}")
+      Application.put_env(:pinchflat, :yt_dlp_app_plugin_dir, missing_dir)
+      on_exit(fn -> Application.delete_env(:pinchflat, :yt_dlp_app_plugin_dir) end)
+
+      assert {:snooze, 60} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      reloaded = Repo.reload!(media_item)
+      assert reloaded.prevent_download == false
+      assert is_nil(reloaded.download_prevented_reason)
+      assert is_nil(reloaded.error_type)
+    end
+
+    test "snoozes the job when yt-dlp fails at runtime with KeyError CodecOrderPP", %{
+      media_item: media_item
+    } do
+      dir = Path.join(System.tmp_dir!(), "mock-plugins-#{System.unique_integer([:positive])}")
+      nested = Path.join([dir, "pinchflat_ngx_codec_order", "yt_dlp_plugins", "postprocessor"])
+      File.mkdir_p!(nested)
+      File.write!(Path.join(nested, "codec_order.py"), "class CodecOrderPP:\n    pass\n")
+      Application.put_env(:pinchflat, :yt_dlp_app_plugin_dir, dir)
+
+      on_exit(fn ->
+        Application.delete_env(:pinchflat, :yt_dlp_app_plugin_dir)
+        File.rm_rf(dir)
+      end)
+
+      Settings.set(video_codec_preference: "vp9,avc,av1")
+
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :download, _opts, _template, _extra ->
+        {:error, "Traceback (most recent call last):\nKeyError: 'CodecOrderPP'", 1}
+      end)
+
+      assert {:snooze, 60} = perform_job(MediaDownloadWorker, %{id: media_item.id})
+
+      reloaded = Repo.reload!(media_item)
+      assert reloaded.prevent_download == false
+      assert is_nil(reloaded.download_prevented_reason)
+      assert is_nil(reloaded.error_type)
     end
   end
 end

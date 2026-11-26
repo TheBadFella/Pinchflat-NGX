@@ -3,67 +3,81 @@
   for={@changeset}
   action={@action}
   method={@method}
-  x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
-  x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
+  x-data="settingsNav()"
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
   <section x-data="{ selectedPreset: null }">
-    <h3 class="my-4 text-2xl text-theme-on-surface">Use a Preset</h3>
+    <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+      <.settings_nav
+        label="Media profile settings sections"
+        placeholder="subtitles, resolution, retention"
+        desktop_nav_surface={:surface_2}
+        bleed="-mx-4 bg-theme-surface-2 px-4 md:-mx-6 md:px-6"
+        sections={[
+          {"profile-preset", "Preset"},
+          {"profile-general", "General"},
+          {"profile-subtitles", "Subtitles"},
+          {"profile-thumbnails", "Thumbnails"},
+          {"profile-metadata", "Metadata"},
+          {"profile-release-format", "Shorts and livestreams"},
+          {"profile-quality", "Quality"},
+          {"profile-retention", "Retention and redownload"},
+          {"profile-media-center", "Media center"},
+          {"profile-sponsorblock", "SponsorBlock"},
+          {"profile-yt-dlp", "Advanced"},
+          {"profile-template-help", "Template help"}
+        ]}
+      />
 
-    <section x-data="{ selection: null }">
-      <.input
-        prompt="Select preset"
-        name="media_profile_preset"
-        value=""
-        options={preset_options()}
-        type="select"
-        x-model="selection"
-        inputclass="w-full"
-        help="You can further customize the settings after selecting a preset. This is just a starting point."
-      >
-        <.button
-          class="w-2/5 lg:w-1/5 ml-2 md:ml-4"
-          variant="secondary"
-          type="button"
-          x-on:click="selectedPreset = selection; selection = null"
-          x-bind:disabled="!selection"
+      <div data-settings class="mt-6 flex min-w-0 flex-col gap-6 lg:mt-0">
+        <.settings_no_match class="theme-surface-raised px-5 py-8 text-center sm:px-7.5" />
+
+        <section
+          id="profile-preset"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
-          <span x-text="selection ? 'Load' : 'Select'">Select</span><span class="hidden lg:inline ml-1">Preset</span>
-        </.button>
-      </.input>
-    </section>
+          <h3 class="text-2xl text-theme-on-surface">Use a Preset</h3>
 
-    <section class="mt-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <h3 class="text-2xl text-theme-on-surface">General Options</h3>
-
-      <div class="flex flex-wrap items-center gap-3">
-        <span class="text-sm font-medium text-theme-on-surface-muted">Editing Mode</span>
-        <div class="theme-surface-accent inline-flex rounded-full p-1 shadow-m3-1">
-          <button
-            type="button"
-            class="theme-filter-button rounded-full"
-            x-bind:class="advancedMode ? 'text-theme-on-surface-muted hover:text-theme-on-surface' : 'bg-theme-primary text-theme-on-primary shadow-m3-1'"
-            x-on:click="advancedMode = false"
-            x-bind:aria-pressed="!advancedMode"
+          <section
+            id="profile-preset-picker"
+            class="mt-4"
+            data-setting
+            data-setting-label="Preset"
+            x-data="{ selection: null }"
           >
-            Standard
-          </button>
+            <.input
+              prompt="Select preset"
+              name="media_profile_preset"
+              value=""
+              options={preset_options()}
+              type="select"
+              x-model="selection"
+              inputclass="w-full"
+              help="You can further customize the settings after selecting a preset. This is just a starting point."
+            >
+              <.button
+                class="w-2/5 lg:w-1/5 ml-2 md:ml-4"
+                variant="secondary"
+                type="button"
+                x-on:click="selectedPreset = selection; selection = null"
+                x-bind:disabled="!selection"
+              >
+                <span x-text="selection ? 'Load' : 'Select'">Select</span><span class="hidden lg:inline ml-1">Preset</span>
+              </.button>
+            </.input>
+          </section>
+        </section>
 
-          <button
-            type="button"
-            class="theme-filter-button rounded-full"
-            x-bind:class="advancedMode ? 'bg-theme-primary text-theme-on-primary shadow-m3-1' : 'text-theme-on-surface-muted hover:text-theme-on-surface'"
-            x-on:click="advancedMode = true"
-            x-bind:aria-pressed="advancedMode"
-          >
-            Advanced
-          </button>
-        </div>
-      </div>
-    </section>
+        <section
+          id="profile-general"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">General Options</h3>
 
-    <section x-data="{
+          <section x-data="{
         presets: {
           default: 'Default',
           media_center: 'TV Shows',
@@ -71,17 +85,17 @@
           archiving: 'Archiving'
         }
     }">
-      <.input
-        field={f[:name]}
-        type="text"
-        label="Name"
-        placeholder="New Profile"
-        help="Something descriptive. Does not impact indexing or downloading (required)"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+            <.input
+              field={f[:name]}
+              type="text"
+              label="Name"
+              placeholder="New Profile"
+              help="Something descriptive. Does not impact indexing or downloading (required)"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <section x-data={"{
+          <section x-data={"{
         presets: {
           default: '#{default_output_template()}',
           media_center: '#{media_center_output_template()}',
@@ -89,271 +103,382 @@
           archiving: '#{default_output_template()}'
         }
     }"}>
-      <.input
-        field={f[:output_path_template]}
-        type="text"
-        inputclass="font-mono"
-        label="Output path template"
-        help="Must end with .{{ ext }}. See below for more details. The default is good for most cases (required)"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+            <.input
+              field={f[:output_path_template]}
+              type="text"
+              inputclass="font-mono"
+              label="Output path template"
+              help="Must end with .{{ ext }}. See below for more details. The default is good for most cases (required)"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <.input
-      field={f[:output_path_template_shorts]}
-      type="text"
-      inputclass="font-mono"
-      label="Shorts output path template (optional)"
-      help="Used for YouTube Shorts. Leave blank to use the primary output path template. Must end with .{{ ext }}. Channel posters and NFO files stay at the primary series root. Saving leaves existing files in place; later re-downloads and quality upgrades use the new path."
-    />
-    <details class="mt-2 text-sm text-theme-on-surface-muted">
-      <summary class="cursor-pointer py-3 font-medium text-theme-on-surface">How Shorts are identified</summary>
-      <p class="mt-2">
-        Channel tabs identify Shorts directly. Mixed playlists and fast indexing use the URL and existing
-        duration/aspect-ratio detection, which can misclassify short vertical videos.
-      </p>
-    </details>
-    <h3 class="mt-10 text-2xl text-theme-on-surface">Subtitle Options</h3>
+          <.input
+            field={f[:output_path_template_shorts]}
+            type="text"
+            inputclass="font-mono"
+            label="Shorts output path template (optional)"
+            help="Used for YouTube Shorts. Leave blank to use the primary output path template. Must end with .{{ ext }}. Channel posters and NFO files stay at the primary series root. Saving leaves existing files in place; later re-downloads and quality upgrades use the new path."
+          />
+          <details class="mt-2 text-sm text-theme-on-surface-muted">
+            <summary class="cursor-pointer py-3 font-medium text-theme-on-surface">How Shorts are identified</summary>
+            <p class="mt-2">
+              Channel tabs identify Shorts directly. Mixed playlists and fast indexing use the URL and existing
+              duration/aspect-ratio detection, which can misclassify short vertical videos.
+            </p>
+          </details>
+        </section>
 
-    <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
-      <.input
-        field={f[:download_subs]}
-        type="toggle"
-        label="Download Subtitles"
-        help="Downloads subtitle files alongside media file"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+        <section
+          id="profile-subtitles"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Subtitle Options</h3>
 
-    <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
-      <.input
-        field={f[:embed_subs]}
-        type="toggle"
-        label="Embed Subtitles"
-        help="Downloads and embeds subtitles in the media file itself, if supported. Unaffected by 'Download Subtitles'"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
+            <.input
+              field={f[:download_subs]}
+              type="toggle"
+              label="Download Subtitles"
+              help="Downloads subtitle files alongside media file"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: false } }">
-      <.input
-        field={f[:download_auto_subs]}
-        type="toggle"
-        label="Use Autogenerated Subtitles"
-        help="Prefers normal subs with 'Download Subtitles' or 'Embed Subtitles' but will use autogenerated subs if needed."
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
+            <.input
+              field={f[:embed_subs]}
+              type="toggle"
+              label="Embed Subtitles"
+              help="Downloads and embeds subtitles in the media file itself, if supported. Unaffected by 'Download Subtitles'"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <section x-data="{ presets: { default: 'en', media_center: 'en', audio: '', archiving: 'all' } }">
-      <.input
-        field={f[:sub_langs]}
-        type="text"
-        label="Subtitle Languages"
-        help="Use commas for multiple languages (eg: en,de)"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: false } }">
+            <.input
+              field={f[:download_auto_subs]}
+              type="toggle"
+              label="Use Autogenerated Subtitles"
+              help="Prefers normal subs with 'Download Subtitles' or 'Embed Subtitles' but will use autogenerated subs if needed."
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <section x-show="advancedMode">
-      <.input
-        field={f[:audio_track]}
-        placeholder="de"
-        type="text"
-        label="Audio Track Language"
-        help="Only works if there are multiple audio tracks. Use either a language code, 'original' for the original audio track, or 'default' for YouTube's preference. Or just leave it blank"
-      />
-    </section>
+          <section x-data="{ presets: { default: 'en', media_center: 'en', audio: '', archiving: 'all' } }">
+            <.input
+              field={f[:sub_langs]}
+              type="text"
+              label="Subtitle Languages"
+              help="Use commas for multiple languages (eg: en,de)"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <h3 class="mt-10 text-2xl text-theme-on-surface">Thumbnail Options</h3>
+          <section>
+            <.input
+              field={f[:audio_track]}
+              placeholder="de"
+              type="text"
+              label="Audio Track Language"
+              help="Only works if there are multiple audio tracks. Use either a language code, 'original' for the original audio track, or 'default' for YouTube's preference. Or just leave it blank"
+            />
+          </section>
+        </section>
 
-    <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
-      <.input
-        field={f[:download_thumbnail]}
-        type="toggle"
-        label="Download Thumbnail"
-        help="Downloads thumbnail alongside media file"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+        <section
+          id="profile-thumbnails"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Thumbnail Options</h3>
 
-    <section x-data="{ presets: { default: true, media_center: true, audio: true, archiving: true } }">
-      <.input
-        field={f[:embed_thumbnail]}
-        type="toggle"
-        label="Embed Thumbnail"
-        help="Downloads and embeds thumbnail in the media file itself, if supported. Unaffected by 'Download Thumbnail' (recommended)"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: true, media_center: true, audio: false, archiving: true } }">
+            <.input
+              field={f[:download_thumbnail]}
+              type="toggle"
+              label="Download Thumbnail"
+              help="Downloads thumbnail alongside media file"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <h3 class="mt-10 text-2xl text-theme-on-surface">Metadata Options</h3>
+          <section x-data="{ presets: { default: true, media_center: true, audio: true, archiving: true } }">
+            <.input
+              field={f[:embed_thumbnail]}
+              type="toggle"
+              label="Embed Thumbnail"
+              help="Downloads and embeds thumbnail in the media file itself, if supported. Unaffected by 'Download Thumbnail' (recommended)"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
+        </section>
 
-    <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: true } }">
-      <.input
-        field={f[:download_metadata]}
-        type="toggle"
-        label="Download Metadata"
-        help="Downloads a .info.json metadata file alongside media file"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+        <section
+          id="profile-metadata"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Metadata Options</h3>
 
-    <section x-data="{ presets: { default: true, media_center: true, audio: true, archiving: true } }">
-      <.input
-        field={f[:embed_metadata]}
-        type="toggle"
-        label="Embed Metadata"
-        help="Downloads and embeds metadata in the media file itself, if supported. Unaffected by 'Download Metadata' (recommended)"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: true } }">
+            <.input
+              field={f[:download_metadata]}
+              type="toggle"
+              label="Download Metadata"
+              help="Downloads a .info.json metadata file alongside media file"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <h3 class="mt-10 text-2xl text-theme-on-surface">Release Format Options</h3>
+          <section x-data="{ presets: { default: true, media_center: true, audio: true, archiving: true } }">
+            <.input
+              field={f[:embed_metadata]}
+              type="toggle"
+              label="Embed Metadata"
+              help="Downloads and embeds metadata in the media file itself, if supported. Unaffected by 'Download Metadata' (recommended)"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
+        </section>
 
-    <section x-data="{ presets: { default: 'include', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
-      <.input
-        field={f[:shorts_behaviour]}
-        options={friendly_format_type_options()}
-        type="select"
-        label="Include Shorts"
-        help="Experimental. Please report any issues on GitHub"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+        <section
+          id="profile-release-format"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Release Format Options</h3>
 
-    <section x-data="{ presets: { default: 'exclude', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
-      <.input
-        field={f[:livestream_behaviour]}
-        options={friendly_format_type_options()}
-        type="select"
-        label="Include Livestreams"
-        help="How to handle past livestreams"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: 'include', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
+            <.input
+              field={f[:shorts_behaviour]}
+              options={friendly_format_type_options()}
+              type="select"
+              label="Include Shorts"
+              help="Experimental. Please report any issues on GitHub"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <h3 class="mt-10 text-2xl text-theme-on-surface">Quality Options</h3>
+          <section x-data="{ presets: { default: 'exclude', media_center: 'exclude', audio: 'exclude', archiving: 'include' } }">
+            <.input
+              field={f[:livestream_behaviour]}
+              options={friendly_format_type_options()}
+              type="select"
+              label="Include Livestreams"
+              help="How to handle past livestreams"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
+        </section>
 
-    <section x-data="{ presets: { default: '1080p', media_center: '1080p', audio: 'audio', archiving: '2160p' } }">
-      <.input
-        field={f[:preferred_resolution]}
-        options={friendly_resolution_options()}
-        type="select"
-        label="Preferred Resolution"
-        help="Will grab the closest available resolution if your preferred is not available. 'Audio Only' grabs the highest quality m4a"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+        <section
+          id="profile-quality"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Quality Options</h3>
 
-    <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: false } }">
-      <.input
-        field={f[:ignore_youtube_super_resolution]}
-        type="toggle"
-        label="Ignore YouTube Super Resolution"
-        help="Excludes YouTube's AI-upscaled video formats and downloads the best available non-AI-upscaled format instead"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <section x-data="{ presets: { default: '1080p', media_center: '1080p', audio: 'audio', archiving: '2160p' } }">
+            <.input
+              field={f[:preferred_resolution]}
+              options={friendly_resolution_options()}
+              type="select"
+              label="Preferred Resolution"
+              help="Will grab the closest available resolution if your preferred is not available. 'Audio Only' grabs the highest quality m4a"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <section x-show="advancedMode">
-      <.input
-        field={f[:media_container]}
-        type="text"
-        label="Media Container"
-        placeholder="mp4"
-        help="Don't change this if you're going to consume media via Plex. Leave blank for default"
-      />
-    </section>
+          <section x-data="{ presets: { default: false, media_center: false, audio: false, archiving: false } }">
+            <.input
+              field={f[:ignore_youtube_super_resolution]}
+              type="toggle"
+              label="Ignore YouTube Super Resolution"
+              help="Excludes YouTube's AI-upscaled video formats and downloads the best available non-AI-upscaled format instead"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <.input
-      field={f[:retention_period_days]}
-      type="number"
-      label="Default retention period (days)"
-      min="1"
-      help="Optional age-based cleanup for sources with blank retention. Age is counted from download time. Changing this profile or assigning it to a source can make previously downloaded files eligible at the next cleanup. Source 0 disables age-based cleanup; protection still prevents deletion. A publication-date cutoff is separate and can delete files sooner."
-    />
+          <section>
+            <.input
+              field={f[:media_container]}
+              type="text"
+              label="Media Container"
+              placeholder="mp4"
+              help="Don't change this if you're going to consume media via Plex. Leave blank for default"
+            />
+          </section>
+        </section>
 
-    <.input
-      field={f[:watch_window_days]}
-      type="number"
-      label="Watch window (days)"
-      min="0"
-      max="365"
-      help="Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain. Sources use this value unless overridden."
-      html_help={true}
-    />
+        <section
+          id="profile-retention"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Retention and Redownload</h3>
 
-    <section x-data="{ presets: { default: null, media_center: 1, audio: null, archiving: 1 } }">
-      <.input
-        field={f[:redownload_delay_days]}
-        type="number"
-        label="Redownload Delay (days)"
-        min="0"
-        help="Delay in days until new media is redownloaded. Redownloading new media can improve its quality or SponsorBlock tags. Leave blank to not redownload"
-        x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <.input
+            field={f[:retention_period_days]}
+            type="number"
+            label="Default retention period (days)"
+            min="1"
+            help="Optional age-based cleanup for sources with blank retention. Age is counted from download time. Changing this profile or assigning it to a source can make previously downloaded files eligible at the next cleanup. Source 0 disables age-based cleanup; protection still prevents deletion. A publication-date cutoff is separate and can delete files sooner."
+          />
 
-    <h3 class="mt-8 text-2xl text-theme-on-surface">Media Center Options</h3>
+          <.input
+            field={f[:watch_window_days]}
+            type="number"
+            label="Watch window (days)"
+            min="0"
+            max="365"
+            help="Set 0 to disable monitoring, or 1–365 days from the first completed download. Publication date and later downloads do not change the start or end date. Pinchflat checks duration and visibility, saves the original before replacement, and blocks replacement when a change is suspected. Checks stop at the end date; saved originals and protection for detected changes remain. Sources use this value unless overridden."
+            html_help={true}
+          />
 
-    <p class="mt-2 max-w-prose text-sm text-theme-on-surface-muted">
-      Everything in this section is experimental - please open a GitHub issue if you see something odd.
-      <strong>
-        These options only work if this Media Profile's output template is set to split media into seasons.
-      </strong>
-      Try the "Media Center" preset if you're not sure.
-    </p>
+          <section x-data="{ presets: { default: null, media_center: 1, audio: null, archiving: 1 } }">
+            <.input
+              field={f[:redownload_delay_days]}
+              type="number"
+              label="Redownload Delay (days)"
+              min="0"
+              help="Delay in days until new media is redownloaded. Redownloading new media can improve its quality or SponsorBlock tags. Leave blank to not redownload"
+              x-init="$watch('selectedPreset', p => p && ($el.value = presets[p], $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
+        </section>
 
-    <section
-      phx-click={show_modal("upgrade-modal")}
-      x-data="{ presets: { default: false, media_center: true, audio: false, archiving: false } }"
-    >
-      <.input
-        field={f[:download_nfo]}
-        type="toggle"
-        label="Create NFO data"
-        label_suffix="(pro)"
-        help="Creates a .nfo file alongside media file for use with Jellyfin, Kodi, etc."
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+        <section
+          id="profile-media-center"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Media Center Options</h3>
 
-    <section x-data="{ presets: { default: false, media_center: true, audio: false, archiving: true } }">
-      <.input
-        field={f[:download_source_images]}
-        type="toggle"
-        label="Download Series Images"
-        help="Downloads poster and banner images for use with Plex, Jellyfin, Kodi, etc. Only works for full channels (not playlists)"
-        x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-      />
-    </section>
+          <p class="mt-2 text-sm text-theme-on-surface-muted">
+            Everything in this section is experimental - please open a GitHub issue if you see something odd.
+            <strong>
+              These options only work if this Media Profile's output template is set to split media into seasons.
+            </strong>
+            Try the "Media Center" preset if you're not sure.
+          </p>
 
-    <h3 class="mt-10 text-2xl text-theme-on-surface">SponsorBlock Options</h3>
+          <section
+            phx-click={show_modal("upgrade-modal")}
+            x-data="{ presets: { default: false, media_center: true, audio: false, archiving: false } }"
+          >
+            <.input
+              field={f[:download_nfo]}
+              type="toggle"
+              label="Create NFO data"
+              label_suffix="(pro)"
+              help="Creates a .nfo file alongside media file for use with Jellyfin, Kodi, etc."
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
 
-    <p class="mb-4 text-sm text-theme-on-surface-muted">
-      Not sure what a category covers? See the
-      <.subtle_link href="https://wiki.sponsor.ajay.app/w/Guidelines#Category_breakdown" target="_blank">
-        SponsorBlock category breakdown
-      </.subtle_link>
-      for a description of each one.
-    </p>
+          <section x-data="{ presets: { default: false, media_center: true, audio: false, archiving: true } }">
+            <.input
+              field={f[:download_source_images]}
+              type="toggle"
+              label="Download Series Images"
+              help="Downloads poster and banner images for use with Plex, Jellyfin, Kodi, etc. Only works for full channels (not playlists)"
+              x-init="$watch('selectedPreset', p => p && ($el.checked = presets[p], $el.dispatchEvent(new Event('input', { bubbles: true })), $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+            />
+          </section>
+        </section>
 
-    <.input
-      field={f[:sponsorblock_remove_categories]}
-      options={friendly_sponsorblock_categories()}
-      type="checkbox_group"
-      label="Remove These Segments"
-      help="Segments in these categories are cut out of the downloaded file entirely"
-    />
-    <.input
-      field={f[:sponsorblock_mark_categories]}
-      options={friendly_sponsorblock_categories()}
-      type="checkbox_group"
-      label="Mark These Segments as Chapters"
-      help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal above. Leave everything unchecked to disable SponsorBlock"
-    /> <.button class="my-10 w-full sm:mb-7.5 sm:w-auto" variant="primary">Save Media profile</.button>
+        <section
+          id="profile-sponsorblock"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">SponsorBlock Options</h3>
+
+          <p class="mb-4 text-sm text-theme-on-surface-muted">
+            Not sure what a category covers? See the
+            <.subtle_link href="https://wiki.sponsor.ajay.app/w/Guidelines#Category_breakdown" target="_blank">
+              SponsorBlock category breakdown
+            </.subtle_link>
+            for a description of each one.
+          </p>
+
+          <%!-- A checkbox group has no single field for its label to point at, so the wrapper is the jump target. --%>
+          <div id="profile-sponsorblock-remove" data-setting data-setting-label="Remove These Segments">
+            <.input
+              field={f[:sponsorblock_remove_categories]}
+              options={friendly_sponsorblock_categories()}
+              type="checkbox_group"
+              label="Remove These Segments"
+              help="Segments in these categories are cut out of the downloaded file entirely"
+            />
+          </div>
+          <div id="profile-sponsorblock-mark" data-setting data-setting-label="Mark These Segments as Chapters">
+            <.input
+              field={f[:sponsorblock_mark_categories]}
+              options={friendly_sponsorblock_categories()}
+              type="checkbox_group"
+              label="Mark These Segments as Chapters"
+              help="Segments in these categories are kept but marked as chapters so your player can skip them. A category can't also be selected for removal above. Leave everything unchecked to disable SponsorBlock"
+            />
+          </div>
+        </section>
+
+        <section
+          id="profile-yt-dlp"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <h3 class="text-2xl text-theme-on-surface">Advanced Options</h3>
+
+          <.yt_dlp_options_editor
+            collapsed
+            id_prefix="media-profile"
+            scope_help="These options apply to every download that uses this media profile. The base config still applies first, and a source or media item config can add its own options."
+            contents={@yt_dlp_options}
+            version={@yt_dlp_options_version}
+            present={@yt_dlp_options_present}
+            readable={@yt_dlp_options_readable}
+            clearable={@yt_dlp_options_clearable}
+            inherited={@yt_dlp_options_inherited}
+            profile_presence={@yt_dlp_options_profile_presence}
+            error={@yt_dlp_error}
+          />
+        </section>
+
+        <section
+          id="profile-template-help"
+          data-setting-group
+          class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
+        >
+          <.output_template_help />
+        </section>
+
+        <section
+          :if={assigns[:show_make_default]}
+          class="theme-surface-raised px-5 py-4 sm:px-7.5"
+        >
+          <div class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="make_default"
+              name="make_default"
+              value="true"
+              checked={assigns[:make_default] == true}
+              class="h-4 w-4 rounded border-theme-outline text-theme-primary focus:ring-theme-primary"
+            />
+            <label for="make_default" class="text-sm font-medium text-theme-on-surface cursor-pointer">
+              Make this my default media profile
+            </label>
+          </div>
+          <.error :for={error <- Keyword.get_values(@changeset.errors, :base)}>{translate_error(error)}</.error>
+        </section>
+
+        <div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">
+          <.button class="w-full sm:w-auto" rounding="rounded-m3-sm">Save Media profile</.button>
+        </div>
+      </div>
+    </div>
   </section>
-
-  <div class="theme-surface-accent mb-5 p-4 md:p-6"><.output_template_help /></div>
 </.simple_form>

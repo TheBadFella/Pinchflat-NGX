@@ -83,5 +83,9 @@ defmodule Pinchflat.MediaServers.RefreshWorkerTest do
 
       assert {:error, "HTTP request failed with status code 500"} = RefreshWorker.perform(job)
     end
+
+    test "discards a job naming an unknown server type" do
+      assert :ok = RefreshWorker.perform(%Oban.Job{args: %{"server_type" => "not-a-server"}})
+    end
   end
 end
