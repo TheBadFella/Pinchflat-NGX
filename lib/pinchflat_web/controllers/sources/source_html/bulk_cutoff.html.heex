@@ -18,7 +18,12 @@
         {source.custom_name}: {source_cutoff_label(source)}
       </li>
     </ul>
-    <p :if={@count_changed} id="cutoff-count-changed" class="theme-status-warning rounded-m3-sm p-3 text-sm" role="alert">
+    <p
+      :if={@count_changed}
+      id="cutoff-count-changed"
+      class="theme-status-warning rounded-m3-sm p-3 text-sm"
+      role="alert"
+    >
       The number of downloads affected changed since you opened this page. Review the new counts and confirm again.
     </p>
     <dl id="cutoff-impact" class="space-y-3 text-theme-on-surface">
