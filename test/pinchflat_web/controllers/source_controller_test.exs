@@ -798,6 +798,160 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "individual video indexing controls" do
+    test "hides and disables indexing controls when editing an existing video source", %{conn: conn} do
+      source =
+        source_fixture(
+          collection_type: :video,
+          source_type: :automatic,
+          index_frequency_minutes: 0,
+          fast_index: false,
+          title_filter_regex: "trailer",
+          min_duration_seconds: 60,
+          download_cutoff_date: ~D[2026-10-01]
+        )
+
+      html = conn |> get(~p"/sources/#{source}/edit") |> html_response(200)
+
+      assert html =~ "isNewSource: false"
+      assert html =~ ~r/collectionType: (?:'|&#39;)video(?:'|&#39;)/
+      assert html =~ ~r/<a[^>]*href="#source-indexing"[^>]*x-show="!isVideoSource"/
+      assert html =~ ~r/<section[^>]*id="source-indexing"[^>]*x-show="!isVideoSource"/
+      assert html =~ ~r/<section[^>]*id="source-indexing".*?<fieldset[^>]*disabled/s
+
+      # Retained rules remain visible and editable on video sources
+      assert html =~ ~s(id="source_title_filter_regex")
+      assert html =~ "trailer"
+      assert html =~ ~s(id="source_min_duration_seconds")
+      assert html =~ ~s(id="source_download_cutoff_date")
+    end
+
+    test "keeps indexing controls enabled on channel and playlist forms", %{conn: conn} do
+      channel = source_fixture(collection_type: :channel)
+      playlist = source_fixture(collection_type: :playlist)
+
+      for path <- [~p"/sources/new", ~p"/sources/#{channel}/edit", ~p"/sources/#{playlist}/edit"] do
+        html = conn |> get(path) |> html_response(200)
+        assert html =~ ~s(id="source-indexing")
+        [indexing_section] = Regex.run(~r/<section[^>]*id="source-indexing".*?<\/section>/s, html)
+        assert indexing_section =~ "<fieldset"
+        refute indexing_section =~ ~r/<fieldset[^>]*\sdisabled(?:=|\s|>)/
+      end
+    end
+
+    test "keeps indexing controls disabled after a failed video create", %{conn: conn} do
+      profile = media_profile_fixture()
+
+      response =
+        conn
+        |> post(~p"/sources",
+          source: %{
+            source_type: :video,
+            original_url: "https://www.youtube.com/watch?v=vid_fail_ctrl",
+            media_profile_id: profile.id,
+            download_media: true,
+            retention_period_days: -1
+          }
+        )
+        |> html_response(200)
+
+      assert response =~ ~r/sourceType: (?:'|&#39;)video(?:'|&#39;)/
+      [indexing_section] = Regex.run(~r/<section[^>]*id="source-indexing".*?<\/section>/s, response)
+      assert indexing_section =~ ~r/<fieldset[^>]*disabled/
+    end
+
+    test "saves a new video source with indexing controls omitted and schedules only initial indexing", %{conn: conn} do
+      profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _template, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           id: "vid_omit_ctrl",
+           title: "Single Video Title",
+           channel: "Some Channel",
+           channel_id: "UC_omit_ctrl"
+         })}
+      end)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: %{
+            source_type: :video,
+            original_url: "https://www.youtube.com/watch?v=vid_omit_ctrl",
+            media_profile_id: profile.id,
+            download_media: true
+          }
+        )
+
+      assert %{id: id} = redirected_params(conn)
+      source = Repo.get!(Pinchflat.Sources.Source, id)
+      assert source.collection_type == :video
+      assert source.index_frequency_minutes == 0
+      assert source.fast_index == false
+
+      assert [_] =
+               all_enqueued(
+                 worker: Pinchflat.SlowIndexing.MediaCollectionIndexingWorker,
+                 args: %{"id" => source.id}
+               )
+
+      assert [] = all_enqueued(worker: Pinchflat.FastIndexing.FastIndexingWorker)
+    end
+
+    test "updates a video source with indexing controls omitted and bypasses legacy index_cutoff_date conflict", %{
+      conn: conn
+    } do
+      source =
+        source_fixture(
+          collection_type: :video,
+          source_type: :automatic,
+          index_frequency_minutes: 0,
+          fast_index: false,
+          index_cutoff_date: ~D[2026-10-20],
+          title_filter_regex: "clip",
+          min_duration_seconds: 30
+        )
+
+      conn =
+        put(conn, ~p"/sources/#{source}",
+          source: %{
+            download_cutoff_date: "2026-10-10",
+            title_filter_regex: "",
+            min_duration_seconds: ""
+          }
+        )
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      updated = Repo.reload!(source)
+      assert updated.download_cutoff_date == ~D[2026-10-10]
+      assert updated.index_cutoff_date == ~D[2026-10-20]
+      assert updated.index_frequency_minutes == 0
+      assert updated.fast_index == false
+      assert is_nil(updated.title_filter_regex)
+      assert is_nil(updated.min_duration_seconds)
+    end
+
+    test "still rejects conflicting cutoff dates when an existing channel update sends source_type: :video", %{
+      conn: conn
+    } do
+      channel = source_fixture(collection_type: :channel)
+
+      response =
+        conn
+        |> put(~p"/sources/#{channel}",
+          source: %{
+            source_type: :video,
+            download_cutoff_date: "2026-10-10",
+            index_cutoff_date: "2026-10-20"
+          }
+        )
+        |> html_response(200)
+
+      assert response =~ "must be on or before the download cutoff date"
+      assert is_nil(Repo.reload!(channel).index_cutoff_date)
+    end
+  end
+
   describe "download cutoff modes" do
     setup [:create_source]
 
