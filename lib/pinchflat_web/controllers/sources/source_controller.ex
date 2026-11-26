@@ -64,7 +64,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def import_new(conn, _params) do
-    render(conn, :import_new, media_profiles: media_profiles(), preview: nil, error: nil)
+    render_import(conn, nil, nil, nil)
   end
 
   def import_create(conn, %{"import" => %{"file" => %Plug.Upload{} = upload, "media_profile_id" => profile_id}}) do
@@ -82,7 +82,7 @@ defmodule PinchflatWeb.Sources.SourceController do
         "download_media" => preview.download_media
       }
 
-      render(conn, :import_new, media_profiles: media_profiles(), preview: session, error: nil)
+      render_import(conn, session, nil, profile.id)
     else
       {:error, message} when is_binary(message) -> import_error(conn, message)
       _ -> import_error(conn, "Choose an available profile and a source file (100 KB maximum).")
@@ -92,7 +92,19 @@ defmodule PinchflatWeb.Sources.SourceController do
   def import_create(conn, _params), do: import_error(conn, "Choose a media profile and a .txt or .csv source file.")
 
   defp import_error(conn, message) do
-    render(conn, :import_new, media_profiles: media_profiles(), preview: nil, error: message)
+    render_import(conn, nil, message, nil)
+  end
+
+  # Preselects the profile used for the preview, or else the default media profile.
+  defp render_import(conn, preview, error, selected_profile_id) do
+    profiles = media_profiles()
+
+    render(conn, :import_new,
+      media_profiles: profiles,
+      preview: preview,
+      error: error,
+      selected_profile_id: selected_profile_id || Profiles.default_media_profile_id(profiles)
+    )
   end
 
   defp available_import_profile(id) when is_binary(id) do

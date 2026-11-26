@@ -43,7 +43,7 @@
       id="import_media_profile_id"
       name="import[media_profile_id]"
       label="Media Profile"
-      value=""
+      value={@selected_profile_id}
       prompt="Choose a profile"
       options={Enum.map(@media_profiles, &{&1.name, &1.id})}
       required

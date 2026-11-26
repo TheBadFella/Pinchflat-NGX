@@ -250,6 +250,8 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       html = conn |> recycle() |> get(~p"/media_profiles") |> html_response(200)
       assert html =~ "Default"
       assert html =~ ~s(/media_profiles/#{first.id}/set_default)
+      refute html =~ ~s(/media_profiles/#{second.id}/set_default)
+      assert html =~ ~r/<button[^>]*disabled[^>]*>\s*<span[^>]*hero-check[^>]*><\/span>\s*Current default/
     end
 
     test "rejects setting an unavailable or deletion-pending profile as default", %{conn: conn} do
