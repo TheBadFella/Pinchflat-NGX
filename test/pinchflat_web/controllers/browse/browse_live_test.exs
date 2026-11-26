@@ -8,6 +8,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Repo
+  alias Pinchflat.Settings
   alias Pinchflat.Sources.Source
   alias Pinchflat.Tasks.Task
   alias PinchflatWeb.Browse.BrowseLive
@@ -386,6 +387,29 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       assert :ok = perform_job(Pinchflat.SlowIndexing.MediaCollectionIndexingWorker, %{id: source.id})
       assert Repo.reload!(source).custom_name == "Indexed Browse title"
     end
+
+    test "applies current default_cookie_behaviour when downloading from search results", %{conn: conn} do
+      profile = media_profile_fixture()
+
+      Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "cookie_search", _opts ->
+        {:ok, @mock_videos}
+      end)
+
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+
+      view
+      |> form("#browse_search_form", %{"query" => "cookie_search"})
+      |> render_submit()
+
+      render_async(view)
+      assert {:ok, "when_needed"} = Settings.set(default_cookie_behaviour: "when_needed")
+
+      download_btn = element(view, "button[phx-click='download_video'][phx-value-id='vid_test_123']")
+      render_click(download_btn)
+
+      source = Repo.get_by!(Source, collection_id: "vid_test_123", media_profile_id: profile.id)
+      assert source.cookie_behaviour == :when_needed
+    end
   end
 
   describe "explicit channel subscription" do
@@ -752,6 +776,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
       view |> element("#open-paste-url-button") |> render_click()
+      assert {:ok, "all_operations"} = Settings.set(default_cookie_behaviour: "all_operations")
       render_change(view, "select_paste_profile", %{"profile_id" => to_string(profile.id)})
 
       view
@@ -772,6 +797,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       # Single-video source must now exist in DB
       source = Repo.get_by(Source, collection_id: test_video_id, media_profile_id: profile.id)
       assert source != nil
+      assert source.cookie_behaviour == :all_operations
       assert has_element?(view, "#paste-download-destination[href='/sources?type=videos']", "View in Individual videos")
     end
 
