@@ -171,7 +171,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
     case Profiles.set_default_media_profile(id) do
       {:ok, profile} ->
         conn
-        |> put_flash(:info, "\"#{profile.name}\" is now the default media profile.")
+        |> put_flash(:default_profile_saved, "\"#{profile.name}\" is now the default media profile.")
         |> redirect(to: ~p"/media_profiles")
 
       {:error, _reason} ->

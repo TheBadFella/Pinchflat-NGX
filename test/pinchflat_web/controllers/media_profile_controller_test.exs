@@ -247,7 +247,15 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       assert redirected_to(conn) == ~p"/media_profiles"
       assert Profiles.default_media_profile_id() == second.id
 
+      assert Phoenix.Flash.get(conn.assigns.flash, :default_profile_saved)
+      refute Phoenix.Flash.get(conn.assigns.flash, :info)
+
       html = conn |> recycle() |> get(~p"/media_profiles") |> html_response(200)
+      assert html =~ ~s(id="default-profile-saved-toast")
+      assert html =~ "is now the default media profile."
+      {first_position, _} = :binary.match(html, ~s(href="/media_profiles/#{first.id}"))
+      {second_position, _} = :binary.match(html, ~s(href="/media_profiles/#{second.id}"))
+      assert first_position < second_position
       assert html =~ "Default"
       assert html =~ ~s(/media_profiles/#{first.id}/set_default)
       refute html =~ ~s(/media_profiles/#{second.id}/set_default)
