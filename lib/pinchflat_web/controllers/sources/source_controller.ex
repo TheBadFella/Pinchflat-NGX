@@ -111,7 +111,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   defp available_import_profile(_id), do: {:error, "Choose an available media profile."}
 
   def new(conn, params) do
-    profiles = media_profiles()
+    profiles = media_profiles() |> Enum.reject(& &1.marked_for_deletion_at)
 
     default_profile_id =
       Profiles.default_media_profile_id(profiles) || if(profile = List.first(profiles), do: profile.id, else: nil)

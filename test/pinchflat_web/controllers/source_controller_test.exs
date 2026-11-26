@@ -2224,6 +2224,18 @@ defmodule PinchflatWeb.SourceControllerTest do
       html = conn |> recycle() |> get(~p"/sources/new?template_id=#{template_source.id}") |> html_response(200)
       assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{alpha.id}"/
     end
+
+    test "excludes deletion-pending profiles from both default resolution and alphabetical fallback", %{conn: conn} do
+      alpha = media_profile_fixture(%{name: "Alpha"})
+      beta = media_profile_fixture(%{name: "Beta"})
+
+      assert {:ok, ^alpha} = Pinchflat.Profiles.set_default_media_profile(alpha.id)
+      {:ok, _} = Pinchflat.Profiles.update_media_profile(alpha, %{marked_for_deletion_at: DateTime.utc_now()})
+
+      html = conn |> get(~p"/sources/new") |> html_response(200)
+      assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{beta.id}"/
+      refute html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{alpha.id}"/
+    end
   end
 
   defp position(response, text) do

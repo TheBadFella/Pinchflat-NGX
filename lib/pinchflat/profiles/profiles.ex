@@ -132,6 +132,16 @@ defmodule Pinchflat.Profiles do
           ScopedYtDlpOptions.restore(:profile, profile.id, :missing, payload)
           {:error, %{changeset | action: :insert}, reason}
 
+        {:error, :default_setting, _reason, %{media_profile: profile}} ->
+          if payload != :absent, do: ScopedYtDlpOptions.restore(:profile, profile.id, :missing, payload)
+
+          error_changeset =
+            changeset
+            |> Ecto.Changeset.add_error(:base, "could not set as default media profile")
+            |> Map.put(:action, :insert)
+
+          {:error, error_changeset}
+
         {:error, :commit, reason, %{media_profile: profile}} ->
           if payload != :absent, do: ScopedYtDlpOptions.restore(:profile, profile.id, :missing, payload)
           {:error, %{changeset | action: :insert}, reason}

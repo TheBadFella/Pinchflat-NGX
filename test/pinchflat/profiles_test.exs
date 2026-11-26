@@ -390,5 +390,40 @@ defmodule Pinchflat.ProfilesTest do
         File.rm_rf!(extras)
       end
     end
+
+    test "restores profile options file and returns a MediaProfile changeset when default setting write fails" do
+      existing = media_profile_fixture(%{name: "ExistingDefault"})
+      assert {:ok, ^existing} = Profiles.set_default_media_profile(existing.id)
+
+      original_extras = Application.get_env(:pinchflat, :extras_directory)
+      extras = Path.join(System.tmp_dir!(), "profile-setting-fail-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(extras)
+      Application.put_env(:pinchflat, :extras_directory, extras)
+
+      try do
+        # Force Setting.changeset/2 to fail after yt_dlp_options are saved
+        Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: true])
+
+        assert {:error, %Ecto.Changeset{data: %MediaProfile{}, action: :insert} = err_cs} =
+                 Profiles.create_media_profile(
+                   %{name: "FailedDefaultWrite", output_path_template: "{{ title }}.{{ ext }}"},
+                   make_default: true,
+                   yt_dlp_options: {:present, "--verbose\n"}
+                 )
+
+        assert errors_on(err_cs).base != []
+        assert Profiles.default_media_profile_id() == existing.id
+        refute Repo.get_by(MediaProfile, name: "FailedDefaultWrite")
+        assert Path.wildcard(Path.join(extras, "**/*")) |> Enum.reject(&File.dir?/1) == []
+      after
+        Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: false])
+
+        if original_extras,
+          do: Application.put_env(:pinchflat, :extras_directory, original_extras),
+          else: Application.delete_env(:pinchflat, :extras_directory)
+
+        File.rm_rf!(extras)
+      end
+    end
   end
 end
