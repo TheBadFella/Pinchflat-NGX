@@ -74,16 +74,12 @@ defmodule PinchflatWeb.DiscoveryLive do
     end
   end
 
+  # Accepting only opens New Source. The suggestion leaves the list once the
+  # source is saved, so closing the form keeps it available.
   def handle_event("accept", params, socket) do
     case suggestion_from_params(params) do
       %Suggestion{} = suggestion ->
-        case Discovery.accept_suggestion(suggestion) do
-          {:ok, accepted_suggestion} ->
-            {:noreply, push_navigate(socket, to: source_new_path(accepted_suggestion))}
-
-          {:error, _changeset} ->
-            {:noreply, assign(socket, notice: "This suggestion could not be accepted.")}
-        end
+        {:noreply, push_navigate(socket, to: source_new_path(suggestion))}
 
       nil ->
         {:noreply, assign(socket, notice: "This suggestion is no longer available.")}
