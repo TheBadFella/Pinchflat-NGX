@@ -52,7 +52,7 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
       <nav
         aria-label={@label}
         class={[
-          "sticky top-20 z-10 mt-3 flex gap-1 overflow-x-auto border-b border-theme-outline/60 py-2",
+          "sticky top-13 lg:top-0 z-10 mt-3 flex gap-1 overflow-x-auto border-b border-theme-outline/60 py-2",
           "lg:static lg:mx-0 lg:flex-col lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0",
           @bleed
         ]}

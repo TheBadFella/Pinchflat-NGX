@@ -1,0 +1,24 @@
+<div class="theme-phone-bar lg:hidden">
+  <a href={~p"/"} class="flex min-h-11 min-w-0 flex-1 items-center">
+    <img src={~p"/images/logo-2024-03-20.png"} alt="Pinchflat-ngx home" class="theme-phone-bar-logo" />
+  </a>
+  <button
+    type="button"
+    id="phone-bar-search-button"
+    class="theme-field-action"
+    data-open-command-palette
+    aria-label="Search"
+  >
+    <.icon name="hero-magnifying-glass" class="h-6 w-6" />
+  </button>
+  <button
+    type="button"
+    id="phone-bar-menu"
+    class="theme-field-action"
+    aria-label="Open navigation menu"
+    x-bind:aria-expanded="sidebarVisible ? 'true' : 'false'"
+    @click.stop="sidebarVisible = !sidebarVisible"
+  >
+    <.icon name="hero-bars-3" class="h-6 w-6" />
+  </button>
+</div>

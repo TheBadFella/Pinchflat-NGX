@@ -26,6 +26,7 @@ import './alpine_helpers'
 import { datePicker } from './date_picker.mjs'
 import { responsiveDialog } from './responsive_dialog.mjs'
 import { browseSearch } from './browse_search.mjs'
+import { commandPalette } from './command_palette.mjs'
 import { savedTitleFilters, titleFilterBuilder } from './title_filter.mjs'
 import { installTooltips, keepOpenTooltip } from './tooltips.mjs'
 
@@ -51,6 +52,7 @@ let liveSocket = new LiveSocket(document.body.dataset.socketPath, Socket, {
   hooks: {
     ResponsiveDialog: responsiveDialog,
     BrowseSearch: browseSearch,
+    CommandPalette: commandPalette,
     'supress-enter-submission': {
       mounted() {
         this.el.addEventListener('keypress', (event) => {
