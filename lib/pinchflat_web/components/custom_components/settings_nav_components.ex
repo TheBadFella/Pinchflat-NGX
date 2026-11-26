@@ -58,8 +58,10 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
         ]}
       >
         <a
-          :for={{id, title} <- @sections}
+          :for={{id, title, x_show} <- Enum.map(@sections, &normalize_section/1)}
           href={"##{id}"}
+          x-cloak={x_show != nil}
+          x-show={x_show}
           x-on:click={"showSection('#{id}')"}
           x-bind:aria-current={"activeSection === '#{id}' ? 'true' : false"}
           x-bind:class={"activeSection === '#{id}' ? 'theme-nav-current' : 'text-theme-on-surface-muted'"}
@@ -71,6 +73,9 @@ defmodule PinchflatWeb.CustomComponents.SettingsNavComponents do
     </div>
     """
   end
+
+  defp normalize_section({id, title}), do: {id, title, nil}
+  defp normalize_section({id, title, x_show}), do: {id, title, x_show}
 
   @doc """
   Shown in place of the settings when the "Find a setting" query matches nothing.

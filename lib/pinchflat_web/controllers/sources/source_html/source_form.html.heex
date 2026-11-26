@@ -29,6 +29,12 @@
       },
       sourceUrl: '',
       sourceType: '#{Ecto.Changeset.get_field(@changeset, :source_type, :automatic)}',
+      isNewSource: #{@new_source == true},
+      collectionType: '#{Ecto.Changeset.get_field(@changeset, :collection_type)}',
+      get isVideoSource() {
+        if (!this.isNewSource) return this.collectionType === 'video';
+        return this.sourceType === 'video' || (this.sourceType === 'automatic' && this.collectionType === 'video');
+      },
       cutoffMode: '#{cutoff_form_mode(@changeset)}',
       cutoffDate: '#{f[:download_cutoff_date].value}',
       cutoffDays: '#{to_string(f[:download_cutoff_days].value || "")}',
@@ -99,7 +105,7 @@
         sections={[
           {"source-general", "General"},
           {"source-metadata", "Name and description"},
-          {"source-indexing", "Indexing"},
+          {"source-indexing", "Indexing", "!isVideoSource"},
           {"source-downloading", "Downloading"},
           {"source-cleanup", "Cutoff and retention"},
           {"source-sponsorblock", "SponsorBlock"},
@@ -125,6 +131,7 @@
               label="Source Type"
               help="Choose Automatic to keep Pinchflat-ngx's existing URL detection, or select the type you expect before inspection."
               x-model="sourceType"
+              x-on:change="sourceType = $event.target.value"
             />
             <div data-setting>
               <label for={f[:original_url].id} class="mt-5 mb-2 inline-block text-sm font-medium text-theme-on-surface">
@@ -302,66 +309,84 @@
         <section
           id="source-indexing"
           data-setting-group
+          x-cloak
+          x-show="!isVideoSource"
+          x-bind:data-setting-inapplicable="isVideoSource ? 'true' : false"
+          x-effect="isVideoSource; $nextTick(() => filterSettings && filterSettings())"
           class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
           <h3 class="text-2xl text-theme-on-surface">Indexing Options</h3>
 
-          <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
-            <.input
-              field={f[:index_frequency_minutes]}
-              options={friendly_index_frequencies()}
-              type="select"
-              label="Index Frequency"
-              x-bind:disabled="fastIndexingEnabled == true"
-              x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60, $el.dispatchEvent(new Event('change', { bubbles: true }))))"
-              help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
-            />
-            <div phx-click={show_modal("upgrade-modal")}>
+          <fieldset
+            disabled={
+              if(@new_source,
+                do:
+                  Ecto.Changeset.get_field(@changeset, :source_type) == :video or
+                    (Ecto.Changeset.get_field(@changeset, :source_type, :automatic) == :automatic and
+                       Ecto.Changeset.get_field(@changeset, :collection_type) == :video),
+                else: Ecto.Changeset.get_field(@changeset, :collection_type) == :video
+              )
+            }
+            x-bind:disabled="isVideoSource"
+            class="min-w-0 border-0 p-0 m-0"
+          >
+            <section x-data={"{ fastIndexingEnabled: #{Ecto.Changeset.get_field(@changeset, :fast_index, false)} }"}>
               <.input
-                field={f[:fast_index]}
-                type="toggle"
-                label="Use Fast Indexing"
-                label_suffix="(pro)"
-                help="Not recommended for playlists. Single video sources always disable this option. Overrides 'Index Frequency'. Read 'What is fast indexing?' below before turning this on."
-                x-model="fastIndexingEnabled"
+                field={f[:index_frequency_minutes]}
+                options={friendly_index_frequencies()}
+                type="select"
+                label="Index Frequency"
+                x-bind:disabled="isVideoSource || fastIndexingEnabled == true"
+                x-init="$watch('fastIndexingEnabled', v => v && ($el.value = 30 * 24 * 60, $el.dispatchEvent(new Event('change', { bubbles: true }))))"
+                help="Indexing is the process of checking for media to download. For best results, set this to the longest delay you can tolerate for this source"
               />
+              <div phx-click={show_modal("upgrade-modal")}>
+                <.input
+                  field={f[:fast_index]}
+                  type="toggle"
+                  label="Use Fast Indexing"
+                  label_suffix="(pro)"
+                  help="Not recommended for playlists. Single video sources always disable this option. Overrides 'Index Frequency'. Read 'What is fast indexing?' below before turning this on."
+                  x-model="fastIndexingEnabled"
+                />
+              </div>
+              <.form_disclosure title="What is fast indexing?" data-setting>
+                <.fast_indexing_help />
+              </.form_disclosure>
+            </section>
+
+            <div data-setting class="mt-5">
+              <.date_picker
+                id={f[:index_cutoff_date].id}
+                name={f[:index_cutoff_date].name}
+                label="Indexing Cutoff Date"
+                value={to_string(f[:index_cutoff_date].value || "")}
+                timezone={Application.fetch_env!(:pinchflat, :timezone)}
+                required={false}
+                x-modelable="value"
+                x-model="indexCutoffDate"
+              />
+              <.error :for={error <- f[:index_cutoff_date].errors}>{translate_error(error)}</.error>
+              <.help>
+                Stop indexing a channel once it reaches videos uploaded before this date. This saves a lot of time on
+                channels with a large back catalog. Set it a few days <em>before</em>
+                the Download Cutoff Date for safety. It only applies to YouTube channels and is ignored for playlists. A few
+                videos from before this date may still be indexed (but not downloaded), especially on channels with few
+                videos or when Fast Indexing is enabled, since those checks look at the most recent videos regardless of
+                date. Leave blank to index everything.
+              </.help>
             </div>
-            <.form_disclosure title="What is fast indexing?" data-setting>
-              <.fast_indexing_help />
-            </.form_disclosure>
-          </section>
+            <p x-cloak x-show="looksLikePlaylist" class="mt-1 text-sm text-theme-warning">
+              The Indexing Cutoff Date doesn't apply to playlists — they aren't ordered by upload date, so
+              indexing can't safely stop early.
+            </p>
 
-          <div data-setting class="mt-5">
-            <.date_picker
-              id={f[:index_cutoff_date].id}
-              name={f[:index_cutoff_date].name}
-              label="Indexing Cutoff Date"
-              value={to_string(f[:index_cutoff_date].value || "")}
-              timezone={Application.fetch_env!(:pinchflat, :timezone)}
-              required={false}
-              x-modelable="value"
-              x-model="indexCutoffDate"
-            />
-            <.error :for={error <- f[:index_cutoff_date].errors}>{translate_error(error)}</.error>
-            <.help>
-              Stop indexing a channel once it reaches videos uploaded before this date. This saves a lot of time on
-              channels with a large back catalog. Set it a few days <em>before</em>
-              the Download Cutoff Date for safety. It only applies to YouTube channels and is ignored for playlists. A few
-              videos from before this date may still be indexed (but not downloaded), especially on channels with few
-              videos or when Fast Indexing is enabled, since those checks look at the most recent videos regardless of
-              date. Leave blank to index everything.
-            </.help>
-          </div>
-          <p x-cloak x-show="looksLikePlaylist" class="mt-1 text-sm text-theme-warning">
-            The Indexing Cutoff Date doesn't apply to playlists — they aren't ordered by upload date, so
-            indexing can't safely stop early.
-          </p>
-
-          <p x-cloak x-show="indexCutoffAfterDownloadCutoff" class="mt-1 text-sm text-theme-warning">
-            The Indexing Cutoff Date is after the Download Cutoff Date — media between the two dates would
-            never be indexed, so it could never be downloaded. Set it on or before the Download Cutoff
-            Date.
-          </p>
+            <p x-cloak x-show="indexCutoffAfterDownloadCutoff" class="mt-1 text-sm text-theme-warning">
+              The Indexing Cutoff Date is after the Download Cutoff Date — media between the two dates would
+              never be indexed, so it could never be downloaded. Set it on or before the Download Cutoff
+              Date.
+            </p>
+          </fieldset>
         </section>
         <section
           id="source-downloading"

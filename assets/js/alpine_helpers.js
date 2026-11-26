@@ -106,10 +106,11 @@ window.settingsNav = () => {
     },
     goToSetting(target) {
       const element = document.getElementById(target)
-      if (!element || !root.contains(element)) return
+      if (!element || !root.contains(element) || element.closest('[data-setting-inapplicable]'))
+        return
       if (element.matches('section[data-setting-group]')) return this.showSection(target)
       const setting = element.closest('[data-setting]')
-      if (!setting) return
+      if (!setting || setting.closest('[data-setting-inapplicable]')) return
 
       this.settingQuery = ''
       for (
@@ -136,6 +137,10 @@ window.settingsNav = () => {
       const words = this.settingQuery.trim().toLowerCase().split(/\s+/).filter(Boolean)
       const settings = [...root.querySelectorAll('[data-setting]')]
       settings.forEach((setting) => {
+        if (setting.closest('[data-setting-inapplicable]')) {
+          setting.hidden = true
+          return
+        }
         // the section heading counts too, so a section's name finds all of its settings
         const heading = setting.closest('section[data-setting-group][id]')?.querySelector('h3')
         const text = [setting.textContent, setting.dataset.settingKeywords, heading?.textContent]
@@ -143,7 +148,9 @@ window.settingsNav = () => {
           .toLowerCase()
         setting.hidden = !words.every((word) => text.includes(word))
       })
-      this.settingMatches = settings.filter((setting) => !setting.hidden).length
+      this.settingMatches = settings.filter(
+        (setting) => !setting.hidden && !setting.closest('[data-setting-inapplicable]')
+      ).length
       root.querySelectorAll('[data-setting-group]').forEach((group) => {
         group.hidden = words.length > 0 && !group.querySelector('[data-setting]:not([hidden])')
         if (words.length > 0 && !group.hidden && group.tagName === 'DETAILS') group.open = true
