@@ -13,17 +13,35 @@
     <article :for={media_profile <- @media_profiles} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
-          <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>
-            <span class="block break-words font-medium text-theme-on-surface">{media_profile.name}</span>
-          </.subtle_link>
+          <div class="flex flex-wrap items-center gap-2">
+            <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>
+              <span class="block break-words font-medium text-theme-on-surface">{media_profile.name}</span>
+            </.subtle_link>
+            <span
+              :if={@default_profile_id == media_profile.id}
+              class="theme-badge theme-badge-primary"
+            >
+              Default
+            </span>
+          </div>
         </div>
 
-        <.icon_link
-          href={~p"/media_profiles/#{media_profile.id}/edit"}
-          icon="hero-pencil-square"
-          aria-label="Edit"
-          class="mx-1 shrink-0"
-        />
+        <div class="flex shrink-0 items-center gap-2">
+          <.link
+            :if={@default_profile_id != media_profile.id}
+            href={~p"/media_profiles/#{media_profile.id}/set_default"}
+            method="post"
+            class="theme-outline-button theme-button-compact"
+          >
+            Set as Default
+          </.link>
+          <.icon_link
+            href={~p"/media_profiles/#{media_profile.id}/edit"}
+            icon="hero-pencil-square"
+            aria-label="Edit"
+            class="mx-1 shrink-0"
+          />
+        </div>
       </div>
 
       <dl class="grid grid-cols-1 gap-3 text-sm">
@@ -49,7 +67,15 @@
         <div class="flex min-w-max flex-col gap-10">
           <.table rows={@media_profiles}>
             <:col :let={media_profile} label="Name" class="truncate max-w-xs">
-              <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
+              <div class="flex items-center gap-2">
+                <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
+                <span
+                  :if={@default_profile_id == media_profile.id}
+                  class="theme-badge theme-badge-primary"
+                >
+                  Default
+                </span>
+              </div>
             </:col>
 
             <:col :let={media_profile} label="Preferred Resolution">{media_profile.preferred_resolution}</:col>
@@ -60,7 +86,15 @@
               </.subtle_link>
             </:col>
 
-            <:col :let={media_profile} label="" class="flex justify-end">
+            <:col :let={media_profile} label="" class="flex items-center justify-end gap-2">
+              <.link
+                :if={@default_profile_id != media_profile.id}
+                href={~p"/media_profiles/#{media_profile.id}/set_default"}
+                method="post"
+                class="theme-outline-button theme-button-compact"
+              >
+                Set as Default
+              </.link>
               <.icon_link
                 href={~p"/media_profiles/#{media_profile.id}/edit"}
                 icon="hero-pencil-square"

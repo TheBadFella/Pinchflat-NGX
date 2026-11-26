@@ -66,7 +66,8 @@ defmodule Pinchflat.Settings.Setting do
     :emby_enabled,
     :emby_url,
     :emby_api_key,
-    :emby_confirm_full_scan
+    :emby_confirm_full_scan,
+    :default_media_profile_id
   ]
 
   @time_formats ~w(24h 12h)
@@ -154,6 +155,8 @@ defmodule Pinchflat.Settings.Setting do
     field :emby_url, :string
     field :emby_api_key, :string, redact: true
     field :emby_confirm_full_scan, :boolean, default: false
+
+    belongs_to :default_media_profile, Pinchflat.Profiles.MediaProfile
   end
 
   @doc false
@@ -179,6 +182,7 @@ defmodule Pinchflat.Settings.Setting do
     |> validate_canary_url()
     |> validate_media_server_settings()
     |> validate_codec_preferences(attrs)
+    |> foreign_key_constraint(:default_media_profile_id)
   end
 
   @doc """

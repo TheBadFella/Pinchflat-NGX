@@ -92,6 +92,7 @@ defmodule PinchflatWeb.Router do
     post "/sources/:id/import_downloads/apply", Sources.LocalImportController, :apply
 
     resources "/media_profiles", MediaProfiles.MediaProfileController
+    post "/media_profiles/:id/set_default", MediaProfiles.MediaProfileController, :set_default
     resources "/search", Searches.SearchController, only: [:show], singleton: true
     get "/browse", BrowseController, :index
 

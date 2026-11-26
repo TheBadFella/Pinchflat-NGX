@@ -28,7 +28,12 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
             )
         }
 
-    render(conn, :index, media_profiles: Repo.all(media_profiles_query))
+    media_profiles = Repo.all(media_profiles_query)
+
+    render(conn, :index,
+      media_profiles: media_profiles,
+      default_profile_id: Profiles.default_media_profile_id(media_profiles)
+    )
   end
 
   def new(conn, params) do
@@ -48,11 +53,19 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
           marked_for_deletion_at: nil
       })
 
-    render_profile(conn, :new, changeset, profile_options(), layout: get_onboarding_layout())
+    render_profile(conn, :new, changeset, profile_options(),
+      layout: get_onboarding_layout(),
+      make_default: false
+    )
   end
 
   def create(conn, %{"media_profile" => media_profile_params} = params) do
-    opts = YtDlpOptionsHelpers.options_opts(params, :missing)
+    make_default = Map.get(params, "make_default") in ["true", "1", true]
+
+    opts =
+      params
+      |> YtDlpOptionsHelpers.options_opts(:missing)
+      |> Keyword.put(:make_default, make_default)
 
     case Profiles.create_media_profile(media_profile_params, opts) do
       {:ok, media_profile} ->
@@ -65,7 +78,8 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render_profile(conn, :new, changeset, submitted_profile_options(params, nil, nil, :missing),
-          layout: get_onboarding_layout()
+          layout: get_onboarding_layout(),
+          make_default: make_default
         )
 
       {:error, %Ecto.Changeset{} = changeset, reason} ->
@@ -74,7 +88,8 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
           :new,
           changeset,
           submitted_profile_options(params, reason, nil, :missing),
-          layout: get_onboarding_layout()
+          layout: get_onboarding_layout(),
+          make_default: make_default
         )
     end
   end
@@ -93,6 +108,7 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       media_profile: media_profile,
       sources: sources,
       active_tab: active_tab,
+      default_profile?: Profiles.default_media_profile_id([media_profile]) == media_profile.id,
       tab_href: fn tab -> ~p"/media_profiles/#{media_profile}?#{[tab: tab]}" end
     )
   end
@@ -142,11 +158,26 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileController do
       |> redirect(to: ~p"/media_profiles/#{media_profile}")
     else
       {:ok, _} = Profiles.update_media_profile(media_profile, %{marked_for_deletion_at: DateTime.utc_now()})
+      Settings.invalidate_cache()
       MediaProfileDeletionWorker.kickoff(media_profile, %{delete_files: delete_files})
 
       conn
       |> put_flash(:info, "Media Profile deletion started. This may take a while to complete.")
       |> redirect(to: ~p"/media_profiles")
+    end
+  end
+
+  def set_default(conn, %{"id" => id}) do
+    case Profiles.set_default_media_profile(id) do
+      {:ok, profile} ->
+        conn
+        |> put_flash(:info, "\"#{profile.name}\" is now the default media profile.")
+        |> redirect(to: ~p"/media_profiles")
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "That media profile is no longer available to set as default.")
+        |> redirect(to: ~p"/media_profiles")
     end
   end
 

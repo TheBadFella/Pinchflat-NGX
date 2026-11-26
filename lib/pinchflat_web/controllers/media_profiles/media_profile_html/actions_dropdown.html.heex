@@ -16,6 +16,10 @@
     <.link href={~p"/media_profiles/new?template_id=#{@media_profile}"} method="get">Use as Template</.link>
   </:option>
 
+  <:option :if={!assigns[:default_profile?]}>
+    <.link href={~p"/media_profiles/#{@media_profile}/set_default"} method="post">Set as Default</.link>
+  </:option>
+
   <:option>
     <div class="h-px w-full bg-theme-outline/70"></div>
   </:option>

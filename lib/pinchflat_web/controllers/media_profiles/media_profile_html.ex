@@ -19,6 +19,8 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
   attr :yt_dlp_options_inherited, :map, default: %{}
   attr :yt_dlp_options_profile_presence, :map, default: %{}
   attr :yt_dlp_error, :string, default: nil
+  attr :show_make_default, :boolean, default: false
+  attr :make_default, :boolean, default: false
 
   def media_profile_form(assigns)
 

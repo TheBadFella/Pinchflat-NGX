@@ -18,8 +18,8 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       PinchflatWeb.Endpoint.subscribe("job:progress")
     end
 
-    profiles = Profiles.list_media_profiles()
-    selected_profile_id = default_profile_id(profiles)
+    profiles = Profiles.list_media_profiles() |> Enum.reject(& &1.marked_for_deletion_at)
+    selected_profile_id = Profiles.default_media_profile_id(profiles) || default_profile_id(profiles)
 
     socket =
       socket
@@ -1094,8 +1094,11 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
     profile_id =
       case parse_search_profile(params["profile"]) do
-        {id, ""} -> if Enum.any?(socket.assigns.profiles, &(&1.id == id)), do: id
-        _ -> socket.assigns.selected_profile_id
+        {id, ""} ->
+          if Enum.any?(socket.assigns.profiles, &(&1.id == id)), do: id, else: socket.assigns.selected_profile_id
+
+        _ ->
+          socket.assigns.selected_profile_id
       end
 
     desired = {String.trim(query), tab, profile_id}
