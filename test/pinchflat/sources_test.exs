@@ -1994,4 +1994,32 @@ defmodule Pinchflat.SourcesTest do
       assert {:error, :not_found} = Sources.delete_saved_title_filter(filter.id)
     end
   end
+
+  describe "search_sources/2" do
+    test "matches custom or collection names, ignoring case" do
+      by_custom = source_fixture(%{custom_name: "Slow Kitchen"})
+      by_collection = source_fixture(%{custom_name: "Other", collection_name: "The KITCHEN table"})
+      _unrelated = source_fixture(%{custom_name: "Trail Notes", collection_name: "Trail Notes"})
+
+      ids = "kitchen" |> Sources.search_sources() |> Enum.map(& &1.id) |> Enum.sort()
+
+      assert ids == Enum.sort([by_custom.id, by_collection.id])
+    end
+
+    test "treats LIKE wildcards literally" do
+      literal = source_fixture(%{custom_name: "100% Rock", collection_name: "100% Rock"})
+      _other = source_fixture(%{custom_name: "1000 Rock", collection_name: "1000 Rock"})
+
+      assert [%{id: id}] = Sources.search_sources("100%")
+      assert id == literal.id
+      assert Sources.search_sources("_") == []
+    end
+
+    test "respects the limit and returns nothing for a blank term" do
+      for i <- 1..3, do: source_fixture(%{custom_name: "Limit source #{i}"})
+
+      assert length(Sources.search_sources("limit source", limit: 2)) == 2
+      assert Sources.search_sources(" ") == []
+    end
+  end
 end

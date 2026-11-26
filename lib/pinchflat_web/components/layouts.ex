@@ -30,6 +30,7 @@ defmodule PinchflatWeb.Layouts do
   attr :target, :any, default: "_self"
   attr :icon_class, :string, default: ""
   attr :current_path, :string, default: nil
+  attr :method, :string, default: "get"
 
   def sidebar_item(assigns) do
     ~H"""
@@ -41,6 +42,7 @@ defmodule PinchflatWeb.Layouts do
         target={@target}
         icon_class={@icon_class}
         current_path={@current_path}
+        method={@method}
       />
     </li>
     """
@@ -155,6 +157,7 @@ defmodule PinchflatWeb.Layouts do
   attr :class, :string, default: ""
   attr :icon_class, :string, default: ""
   attr :current_path, :string, default: nil
+  attr :method, :string, default: "get"
 
   def sidebar_link(assigns) do
     href = to_string(assigns.href)
@@ -168,6 +171,7 @@ defmodule PinchflatWeb.Layouts do
     <.link
       href={@href}
       target={@target}
+      method={@method}
       aria-current={if @active?, do: "page", else: nil}
       class={[
         "font-medium",

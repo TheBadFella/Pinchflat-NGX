@@ -458,6 +458,33 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Returns sources whose custom name or collection name contains `term`, ignoring case.
+  Blank terms return no sources. Only the fields needed to list and link a source are loaded.
+
+  Options:
+    - `:limit` - maximum number of sources (default 5)
+
+  Returns [%Source{}, ...]
+  """
+  def search_sources(term, opts \\ []) do
+    case Pinchflat.Utils.StringUtils.contains_like_pattern(term) do
+      nil ->
+        []
+
+      pattern ->
+        from(s in Source,
+          where:
+            fragment("lower(?) LIKE ? ESCAPE '\\'", s.custom_name, ^pattern) or
+              fragment("lower(?) LIKE ? ESCAPE '\\'", s.collection_name, ^pattern),
+          order_by: [asc: s.custom_name, asc: s.id],
+          limit: ^Keyword.get(opts, :limit, 5),
+          select: struct(s, [:id, :uuid, :custom_name, :collection_name, :collection_type, :last_indexed_at])
+        )
+        |> Repo.all()
+    end
+  end
+
+  @doc """
   Preloads associations used by API serialization.
 
   Returns [%Source{}, ...] | %Source{}.

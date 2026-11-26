@@ -22,6 +22,30 @@ defmodule Pinchflat.Profiles do
   end
 
   @doc """
+  Returns media profiles whose name contains `term`, ignoring case. Blank terms return none.
+
+  Options:
+    - `:limit` - maximum number of profiles (default 5)
+
+  Returns [%MediaProfile{}, ...]
+  """
+  def search_media_profiles(term, opts \\ []) do
+    case Pinchflat.Utils.StringUtils.contains_like_pattern(term) do
+      nil ->
+        []
+
+      pattern ->
+        from(mp in MediaProfile,
+          where: fragment("lower(?) LIKE ? ESCAPE '\\'", mp.name, ^pattern),
+          order_by: [asc: mp.name, asc: mp.id],
+          limit: ^Keyword.get(opts, :limit, 5),
+          select: struct(mp, [:id, :name])
+        )
+        |> Repo.all()
+    end
+  end
+
+  @doc """
   Gets a single media_profile.
 
   Returns %MediaProfile{}. Raises `Ecto.NoResultsError` if the Media profile does not exist.

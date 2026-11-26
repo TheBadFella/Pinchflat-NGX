@@ -25,8 +25,13 @@
         />
       </a>
 
-      <button class="block lg:hidden" @click.stop="sidebarVisible = !sidebarVisible">
-        <.icon name="hero-arrow-left" class="fill-current" />
+      <button
+        type="button"
+        class="theme-field-action lg:hidden"
+        aria-label="Close navigation menu"
+        @click.stop="sidebarVisible = false; $nextTick(() => document.getElementById('phone-bar-menu')?.focus())"
+      >
+        <.icon name="hero-x-mark" class="h-6 w-6" />
       </button>
 
       <button
@@ -39,6 +44,23 @@
           name="hero-chevron-double-left"
           class="theme-sidebar-collapse-icon h-4 w-4 fill-current transition-transform"
         />
+      </button>
+    </div>
+
+    <div class="theme-sidebar-search-row">
+      <button
+        type="button"
+        id="sidebar-search-button"
+        class="theme-sidebar-search"
+        data-open-command-palette
+        aria-keyshortcuts="Control+K Meta+K /"
+        title="Search (Ctrl K)"
+      >
+        <.icon name="hero-magnifying-glass" class="h-5 w-5 shrink-0" />
+        <span class="theme-sidebar-desktop-label flex-1 text-left">Search</span>
+        <kbd class="theme-sidebar-desktop-label theme-kbd theme-sidebar-search-hint" data-command-palette-shortcut>
+          Ctrl K
+        </kbd>
       </button>
     </div>
   </section>
@@ -108,6 +130,13 @@
           target="_blank"
           href="https://ko-fi.com/badfella"
           icon_class="scale-110"
+        />
+        <.sidebar_item
+          :if={PinchflatWeb.OIDC.enabled?()}
+          icon="hero-arrow-right-on-rectangle"
+          text="Sign out"
+          href={~p"/auth/logout"}
+          method="delete"
         />
         <li class="theme-sidebar-desktop-label pt-2">
           {live_render(@conn, Pinchflat.AppVersionLive, id: "app-version-live")}

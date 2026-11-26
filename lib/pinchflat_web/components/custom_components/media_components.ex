@@ -24,7 +24,9 @@ defmodule PinchflatWeb.CustomComponents.MediaComponents do
       id={"media-thumbnail-#{@size}-#{@media_item.uuid}"}
       data-media-uuid={@media_item.uuid}
       class={[
-        "aspect-video overflow-hidden rounded-m3-md bg-theme-surface-4",
+        "aspect-video overflow-hidden bg-theme-surface-4",
+        if(@size == "mini", do: "rounded-m3-xs", else: "rounded-m3-md"),
+        @size == "mini" && "w-16 shrink-0",
         @size == "row" && "w-28 shrink-0",
         @size == "card" && "w-full",
         @class
@@ -49,11 +51,19 @@ defmodule PinchflatWeb.CustomComponents.MediaComponents do
           x-show="failed"
           x-cloak
         >
-          <CoreComponents.icon name="hero-film" class="h-8 w-8" aria-hidden="true" />
+          <CoreComponents.icon
+            name="hero-film"
+            class={if @size == "mini", do: "h-5 w-5", else: "h-8 w-8"}
+            aria-hidden="true"
+          />
         </div>
       <% else %>
         <div class="flex h-full w-full items-center justify-center text-theme-on-surface-muted">
-          <CoreComponents.icon name="hero-film" class="h-8 w-8" aria-hidden="true" />
+          <CoreComponents.icon
+            name="hero-film"
+            class={if @size == "mini", do: "h-5 w-5", else: "h-8 w-8"}
+            aria-hidden="true"
+          />
         </div>
       <% end %>
     </div>

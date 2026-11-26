@@ -426,4 +426,16 @@ defmodule Pinchflat.ProfilesTest do
       end
     end
   end
+
+  describe "search_media_profiles/2" do
+    test "matches names ignoring case and treats wildcards literally" do
+      archive = media_profile_fixture(%{name: "Archive 4K"})
+      _audio = media_profile_fixture(%{name: "Audio only"})
+
+      assert [%{id: id}] = Profiles.search_media_profiles("archive")
+      assert id == archive.id
+      assert Profiles.search_media_profiles("%") == []
+      assert Profiles.search_media_profiles("") == []
+    end
+  end
 end

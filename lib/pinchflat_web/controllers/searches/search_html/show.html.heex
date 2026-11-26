@@ -3,33 +3,44 @@
 </div>
 
 <div class="theme-surface-raised px-5 py-5 sm:px-7.5">
-  <div class="max-w-full">
-    <div class="flex flex-col gap-10 text-theme-on-surface">
-      <%= if match?([_|_], @search_results) do %>
-        <div class="space-y-4 md:hidden">
-          <article :for={result <- @search_results} class="theme-surface-accent space-y-3 rounded-m3-lg p-4">
+  <div class="max-w-full text-theme-on-surface">
+    <%= if match?([_|_], @search_results) do %>
+      <ul class="divide-y divide-theme-outline/60">
+        <li :for={result <- @search_results} class="flex gap-4 py-4 first:pt-0 last:pb-0">
+          <.media_thumbnail media_item={result} size="row" />
+          <div class="min-w-0 flex-1 space-y-1">
             <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>
               <span class="block break-words font-medium text-theme-on-surface">{result.title}</span>
             </.subtle_link>
-
-            <div class="text-sm text-theme-on-surface-muted">
+            <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-theme-on-surface-muted">
+              <span>
+                <span :if={result.source}>{String.trim(result.source.custom_name || "")}</span><span :if={
+                  result.uploaded_at
+                }>, published
+                <.datetime_in_zone
+                  datetime={result.uploaded_at}
+                  format="%Y-%m-%d"
+                /></span><span :if={result.media_filepath && result.media_downloaded_at}>, downloaded
+                <.datetime_in_zone
+                  datetime={result.media_downloaded_at}
+                  format="%Y-%m-%d"
+                /></span>
+              </span>
+              <span class={[
+                "theme-download-status",
+                if(result.media_filepath, do: "theme-download-status-ok", else: "theme-download-status-waiting")
+              ]}>
+                {if result.media_filepath, do: "Downloaded", else: "Not downloaded"}
+              </span>
+            </p>
+            <p class="break-words text-sm text-theme-on-surface-muted">
               <.highlight_search_terms text={result.matching_search_term} />
-            </div>
-          </article>
-        </div>
-
-        <div class="hidden md:block">
-          <.table rows={@search_results}>
-            <:col :let={result} label="Title" class="truncate max-w-xs">
-              <.subtle_link href={~p"/sources/#{result.source_id}/media/#{result.id}"}>{result.title}</.subtle_link>
-            </:col>
-
-            <:col :let={result} label="Excerpt"><.highlight_search_terms text={result.matching_search_term} /></:col>
-          </.table>
-        </div>
-      <% else %>
-        <p class="text-center text-lg font-bold text-theme-on-surface">No results found</p>
-      <% end %>
-    </div>
+            </p>
+          </div>
+        </li>
+      </ul>
+    <% else %>
+      <p class="text-center text-lg font-bold text-theme-on-surface">No results found</p>
+    <% end %>
   </div>
 </div>

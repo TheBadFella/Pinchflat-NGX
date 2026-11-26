@@ -44,4 +44,20 @@ defmodule Pinchflat.Utils.StringUtils do
   """
   def wrap_string(message) when is_binary(message), do: message
   def wrap_string(message), do: "#{inspect(message)}"
+
+  @doc ~S"""
+  Builds a lowercase SQL `LIKE` pattern that matches `term` anywhere in a value.
+  `%`, `_` and `\` in the term are escaped with a backslash, so use the pattern
+  with `ESCAPE '\'`. Returns nil for a blank term.
+
+  Returns binary() | nil
+  """
+  def contains_like_pattern(term) when is_binary(term) do
+    case term |> String.trim() |> String.downcase() do
+      "" -> nil
+      trimmed -> "%" <> String.replace(trimmed, ~r/[\\%_]/, ~S"\\\0") <> "%"
+    end
+  end
+
+  def contains_like_pattern(_term), do: nil
 end
