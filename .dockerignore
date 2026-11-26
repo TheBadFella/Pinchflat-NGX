@@ -40,6 +40,10 @@
 # Generated on crash by the VM
 erl_crash.dump
 
+# Python artifacts
+**/__pycache__/
+*.py[cod]
+
 # Static artifacts - These should be fetched and built inside the Docker image
 /node_modules/
 /assets/node_modules/

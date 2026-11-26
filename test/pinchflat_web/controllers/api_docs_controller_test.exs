@@ -7,8 +7,8 @@ defmodule PinchflatWeb.ApiDocsControllerTest do
 
       assert html = html_response(conn, 200)
       assert html =~ "Pinchflat-ngx API Documentation"
-      assert html =~ "@scalar/api-reference@1.73.0"
-      assert html =~ "integrity=\"sha384-OKyMdsDX84ypSZEhVun8YElXk5c2GQaH3EXPOc6ItmVcLDUAvKHYwvDLvAgsqVtB\""
+      assert html =~ "@scalar/api-reference@1.84.0"
+      assert html =~ "integrity=\"sha384-oruqEryU2Y5luzd58OzTqLrk0iEMpecWInwhLhWldN4wDVPCcMasIYv15/2GiN16\""
       assert html =~ "data-configuration='{\"proxyUrl\":\"\"}'"
       assert html =~ "/api/spec"
     end

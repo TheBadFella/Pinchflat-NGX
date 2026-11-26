@@ -19,7 +19,9 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.FastIndexing.FastIndexingWorker
   alias Pinchflat.YtDlp.TransientMedia
+  alias Pinchflat.YtDlp.MediaCollection
   alias Pinchflat.Downloading.DownloadOptionBuilder
+  alias Pinchflat.Downloading.DownloadError
 
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
@@ -51,9 +53,14 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
     existing_media_items = list_media_items_by_media_id_for(source, media_ids)
     new_media_ids = media_ids -- Enum.map(existing_media_items, & &1.media_id)
 
+    translated_titles =
+      if new_media_ids == [],
+        do: %{},
+        else: MediaCollection.get_source_translated_titles(source, [source.original_url], playlist_end: 30)
+
     maybe_new_media_items =
       Enum.map(new_media_ids, fn media_id ->
-        case create_media_item_from_media_id(source, media_id) do
+        case create_media_item_from_media_id(source, media_id, translated_titles) do
           {:ok, media_item} ->
             DownloadingHelpers.kickoff_download_if_pending(media_item, priority: 0)
             media_item
@@ -97,24 +104,41 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpers do
     |> Repo.all()
   end
 
-  defp create_media_item_from_media_id(source, media_id) do
+  defp create_media_item_from_media_id(source, media_id, translated_titles) do
     url = "https://www.youtube.com/watch?v=#{media_id}"
-    # This is set to :metadata instead of :indexing since this happens _after_ the
-    # actual indexing process. In reality, slow indexing is the only thing that
-    # should be using :indexing.
-    should_use_cookies = Sources.use_cookies?(source, :metadata)
 
     command_opts =
       [output: DownloadOptionBuilder.build_output_path_for(source)] ++
         DownloadOptionBuilder.build_quality_options_for(source) ++
         DownloadOptionBuilder.build_youtube_options_for(source)
 
-    case YtDlpMedia.get_media_attributes(url, command_opts, use_cookies: should_use_cookies, source: source) do
+    case fetch_media_attributes(source, url, command_opts) do
       {:ok, media_attrs} ->
-        Media.create_media_item_from_backend_attrs(source, media_attrs)
+        translated_title = MediaCollection.translated_title_for(media_attrs, translated_titles)
+        Media.create_media_item_from_backend_attrs(source, media_attrs, translated_title)
 
       err ->
         err
+    end
+  end
+
+  defp fetch_media_attributes(source, url, command_opts) do
+    # Fast indexing discovers IDs first; fetching each video's details is a metadata operation.
+    use_cookies = Sources.use_cookies?(source, :metadata)
+    result = YtDlpMedia.get_media_attributes(url, command_opts, use_cookies: use_cookies, source: source)
+
+    case result do
+      {:error, message, _status} when not use_cookies ->
+        if Sources.use_cookies?(source, :error_recovery) and
+             source.player_client not in Source.cookie_incompatible_player_clients() and
+             DownloadError.cookie_recoverable?(message) do
+          YtDlpMedia.get_media_attributes(url, command_opts, use_cookies: true, source: source)
+        else
+          result
+        end
+
+      _ ->
+        result
     end
   end
 end

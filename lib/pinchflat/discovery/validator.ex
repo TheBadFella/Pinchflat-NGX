@@ -12,7 +12,7 @@ defmodule Pinchflat.Discovery.Validator do
 
   @default_max_results 50
   @default_max_concurrency 4
-  @default_timeout 5_000
+  @default_timeout 15_000
   @default_max_output_bytes 256 * 1024
   @absolute_max_results 100
   @absolute_max_concurrency 16
@@ -192,7 +192,7 @@ defmodule Pinchflat.Discovery.Validator do
     case runner.run(candidate.canonical_url, :channel_discovery_validate, command_opts, output_template, addl_opts) do
       {:ok, output} when is_binary(output) and byte_size(output) <= max_output_bytes ->
         case Phoenix.json_library().decode(String.trim(output)) do
-          {:ok, response} when is_map(response) -> response
+          {:ok, response} when is_map(response) -> {:ok, response}
           _ -> {:error, :malformed}
         end
 

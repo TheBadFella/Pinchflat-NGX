@@ -38,6 +38,8 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
   end
 
   describe "new media_profile" do
+    setup :isolate_extras_directory
+
     test "renders form", %{conn: conn} do
       conn = get(conn, ~p"/media_profiles/new")
       html = html_response(conn, 200)
@@ -47,6 +49,50 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       assert html =~ ~s(name="media_profile[ignore_youtube_super_resolution]")
       assert html =~ ~s(name="media_profile[watch_window_days]")
       assert html =~ "Watch window (days)"
+    end
+
+    test "renders section navigation, the settings search and a save bar", %{conn: conn} do
+      html = conn |> get(~p"/media_profiles/new") |> html_response(200)
+
+      for id <-
+            ~w(profile-preset profile-general profile-subtitles profile-thumbnails profile-metadata
+               profile-release-format profile-quality profile-retention profile-media-center profile-sponsorblock
+               profile-yt-dlp profile-template-help) do
+        assert html =~ ~s(id="#{id}")
+        assert html =~ ~s(href="##{id}")
+      end
+
+      assert html =~ ~s|x-data="settingsNav()"|
+      assert html =~ ~s(id="setting-search")
+      refute html =~ ~s(aria-label="Settings in )
+      assert html =~ ~r/class="theme-surface-raised sticky bottom-0[^"]*">\s*<button[^>]*>\s*Save Media profile/
+      assert html =~ "lg:bg-theme-surface-2"
+
+      separated =
+        Regex.scan(~r/<section\s+id="(profile-[a-z-]+)"[^>]*theme-surface-raised/, html, capture: :all_but_first)
+
+      assert length(separated) == 12
+      refute html =~ ~r/<section\s+id="profile-[a-z-]+"[^>]*border-t/
+    end
+
+    test "gives settings without a single field a jump target", %{conn: conn} do
+      html = conn |> get(~p"/media_profiles/new") |> html_response(200)
+
+      for id <-
+            ~w(profile-preset-picker profile-sponsorblock-remove profile-sponsorblock-mark media-profile-yt-dlp-options) do
+        assert html =~ ~r/id="#{id}"[^>]*data-setting[\s>]/
+      end
+    end
+
+    test "shows every setting without an editing mode", %{conn: conn} do
+      html = conn |> get(~p"/media_profiles/new") |> html_response(200)
+
+      refute html =~ "advancedMode"
+      refute html =~ "Editing Mode"
+      assert html =~ ~s(name="media_profile[audio_track]")
+      assert html =~ ~s(name="media_profile[media_container]")
+      assert html =~ ~r/<summary[^>]*>.*?Custom yt-dlp options.*?No local options.*?<\/summary>/s
+      refute html =~ ~r/<details[^>]*\sopen/
     end
 
     test "renders correct layout when onboarding", %{conn: conn} do
@@ -189,6 +235,70 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       delete(conn, ~p"/media_profiles/#{media_profile}?delete_files=true")
 
       assert [%{args: %{"delete_files" => true}}] = all_enqueued(worker: MediaProfileDeletionWorker)
+    end
+  end
+
+  describe "default media profile actions" do
+    test "sets an existing profile as default and renders the indicator", %{conn: conn} do
+      first = media_profile_fixture(%{name: "First Profile"})
+      second = media_profile_fixture(%{name: "Second Profile"})
+
+      conn = post(conn, ~p"/media_profiles/#{second}/set_default")
+      assert redirected_to(conn) == ~p"/media_profiles"
+      assert Profiles.default_media_profile_id() == second.id
+
+      html = conn |> recycle() |> get(~p"/media_profiles") |> html_response(200)
+      assert html =~ "Default"
+      assert html =~ ~s(/media_profiles/#{first.id}/set_default)
+      refute html =~ ~s(/media_profiles/#{second.id}/set_default)
+      assert html =~ ~r/<button[^>]*disabled[^>]*>\s*<span[^>]*hero-check[^>]*><\/span>\s*Current default/
+    end
+
+    test "rejects setting an unavailable or deletion-pending profile as default", %{conn: conn} do
+      profile = media_profile_fixture(%{name: "Deleting Profile"})
+      {:ok, _} = Profiles.update_media_profile(profile, %{marked_for_deletion_at: DateTime.utc_now()})
+
+      conn = post(conn, ~p"/media_profiles/#{profile}/set_default")
+      assert redirected_to(conn) == ~p"/media_profiles"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "no longer available"
+      assert is_nil(Profiles.default_media_profile_id())
+
+      conn = post(conn, ~p"/media_profiles/999999/set_default")
+      assert redirected_to(conn) == ~p"/media_profiles"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "no longer available"
+    end
+
+    test "creates a profile with make_default checked and preserves checkbox on error", %{conn: conn} do
+      error_html =
+        conn
+        |> post(~p"/media_profiles", media_profile: @invalid_attrs, make_default: "true")
+        |> html_response(200)
+
+      assert error_html =~ ~r/id="make_default"[^>]*checked/
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/media_profiles", media_profile: @create_attrs, make_default: "true")
+
+      assert %{id: id} = redirected_params(conn)
+      assert Profiles.default_media_profile_id() == String.to_integer(id)
+    end
+
+    test "renders the specific error near the checkbox when setting default fails on create", %{conn: conn} do
+      Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: true])
+
+      try do
+        html =
+          conn
+          |> post(~p"/media_profiles", media_profile: @create_attrs, make_default: "true")
+          |> html_response(200)
+
+        assert html =~ ~r/id="make_default"[^>]*checked/
+        assert html =~ "could not set as default media profile"
+      after
+        Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: false])
+      end
     end
   end
 

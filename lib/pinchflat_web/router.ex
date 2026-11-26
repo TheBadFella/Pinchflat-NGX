@@ -73,12 +73,18 @@ defmodule PinchflatWeb.Router do
     pipe_through :browser
 
     get "/", Pages.PageController, :home
+    get "/activity", Pages.PageController, :activity
     post "/migration/confirm_review", Pages.PageController, :confirm_migration_review
     post "/migration/rescan", Pages.PageController, :rescan_migration_review
     get "/discovery", DiscoveryController, :index
 
     post "/sources/cookies/upload", Sources.SourceController, :upload_cookies
     post "/sources/cookies/save", Sources.SourceController, :save_cookies
+    post "/sources/title_filter/test", Sources.SourceController, :test_title_filter
+    get "/sources/title_filters", Sources.SourceController, :list_title_filters
+    post "/sources/title_filters", Sources.SourceController, :create_title_filter
+    put "/sources/title_filters/:id", Sources.SourceController, :update_title_filter
+    delete "/sources/title_filters/:id", Sources.SourceController, :delete_title_filter
     get "/sources/import", Sources.SourceController, :import_new
     post "/sources/import", Sources.SourceController, :import_create
     get "/sources/:id/import_downloads", Sources.LocalImportController, :new
@@ -86,6 +92,7 @@ defmodule PinchflatWeb.Router do
     post "/sources/:id/import_downloads/apply", Sources.LocalImportController, :apply
 
     resources "/media_profiles", MediaProfiles.MediaProfileController
+    post "/media_profiles/:id/set_default", MediaProfiles.MediaProfileController, :set_default
     resources "/search", Searches.SearchController, only: [:show], singleton: true
     get "/browse", BrowseController, :index
 
@@ -121,11 +128,14 @@ defmodule PinchflatWeb.Router do
     post "/sources/pause_selected", Sources.SourceController, :pause_selected
     post "/sources/resume_selected", Sources.SourceController, :resume_selected
     post "/sources/assign_profile_selected", Sources.SourceController, :assign_profile_selected
+    post "/sources/delete_selected", Sources.SourceController, :delete_selected
     post "/sources/cutoff/preview", Sources.BulkCutoffController, :preview
     post "/sources/cutoff/apply", Sources.BulkCutoffController, :apply
+    post "/sources/cutoff/apply_now", Sources.BulkCutoffController, :apply_now
 
     resources "/sources", Sources.SourceController do
       post "/restore_automatic_downloads", Sources.SourceController, :restore_automatic_downloads
+      post "/automatic_downloads", Sources.SourceController, :set_automatic_downloads
       post "/start_all", Sources.SourceController, :start_all
       post "/pause_all", Sources.SourceController, :pause_all
       post "/stop_all", Sources.SourceController, :stop_all
@@ -153,6 +163,7 @@ defmodule PinchflatWeb.Router do
     pipe_through :api
 
     get "/healthcheck", HealthController, :check, log: false
+    get "/browser/userscripts/youtube-quick-add-source.user", BrowserUserscriptController, :youtube_quick_add
   end
 
   # Sharing has its own scoped token authorization; the specification is public.

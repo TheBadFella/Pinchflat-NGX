@@ -75,6 +75,39 @@ defmodule PinchflatWeb.MediaItemControllerTest do
 
       assert html_response(conn, 200) =~ "#{media_item.title}"
     end
+
+    test "renders the translated title when one is present", %{conn: conn} do
+      media_item = media_item_fixture(%{translated_title: "My Translated Title"})
+
+      html = conn |> get(~p"/sources/#{media_item.source_id}/media/#{media_item}") |> html_response(200)
+
+      document = LazyHTML.from_document(html)
+      paragraph = LazyHTML.query(document, "h2 + p")
+
+      assert LazyHTML.text(paragraph) =~ "Translated title:"
+      assert LazyHTML.text(paragraph) =~ "My Translated Title"
+      assert html =~ media_item.title
+    end
+
+    test "omits the translated title when it is nil", %{conn: conn} do
+      media_item = media_item_fixture(%{translated_title: nil})
+
+      html = conn |> get(~p"/sources/#{media_item.source_id}/media/#{media_item}") |> html_response(200)
+
+      refute html =~ "Translated title:"
+    end
+
+    test "renders the page with a non-ASCII title and an incomplete subtitle pair", %{conn: conn} do
+      media_item =
+        media_item_fixture(%{
+          title: "한국어 / Korean Title",
+          subtitle_filepaths: [["en", nil]]
+        })
+
+      conn = get(conn, ~p"/sources/#{media_item.source_id}/media/#{media_item}")
+
+      assert html_response(conn, 200) =~ "한국어 / Korean Title"
+    end
   end
 
   describe "watch window" do
@@ -284,12 +317,22 @@ defmodule PinchflatWeb.MediaItemControllerTest do
   end
 
   describe "edit media" do
-    setup [:create_media_item]
+    setup [:isolate_extras_directory, :create_media_item]
 
     test "renders form for editing chosen media_item", %{conn: conn, media_item: media_item} do
       conn = get(conn, ~p"/sources/#{media_item.source_id}/media/#{media_item}/edit")
 
       assert html_response(conn, 200) =~ "Editing"
+    end
+
+    test "shows custom yt-dlp options as a closed group, not behind an editing mode", %{
+      conn: conn,
+      media_item: media_item
+    } do
+      html = conn |> get(~p"/sources/#{media_item.source_id}/media/#{media_item}/edit") |> html_response(200)
+
+      refute html =~ "advancedMode"
+      assert html =~ ~r/<summary[^>]*>.*?Custom yt-dlp options.*?No local options.*?<\/summary>/s
     end
   end
 

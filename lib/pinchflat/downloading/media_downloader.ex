@@ -44,7 +44,13 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         Media.update_media_item(media_item, DownloadState.transition(media_item, :success))
 
       {:error, guard_reason, message}
-      when guard_reason in [:cancelled, :migration_hold, :insufficient_storage] ->
+      when guard_reason in [
+             :cancelled,
+             :migration_hold,
+             :insufficient_storage,
+             :codec_plugin_unavailable,
+             :post_live_processing
+           ] ->
         {:error, guard_reason, message}
 
       {:error, error_atom, message} ->
@@ -72,6 +78,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   # - If the media item fails the precheck, it returns {:error, :unsuitable_for_download, message}
   #   - However, if the precheck fails in a way that we think can be fixed by using cookies, we retry with cookies
   #     and return the result of that
+  #   - A `post_live` precheck result returns {:error, :post_live_processing, message} instead: the
+  #     stream ended but the recording is not ready yet, so the caller waits rather than failing the item
   # - If the precheck passes but the download fails, it normally returns {:error, :download_failed, message}
   #   - However, there are some errors we can recover from (eg: failure to communicate with SponsorBlock).
   #     In this case, we attempt the download anyway and update the media item with what details we do have.
@@ -85,6 +93,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   # - On initial failure but successfully recovered: {:recovered, updated_media_item, message}
   # - On error: {:error, error_atom, message} where error_atom is one of:
   #   - `:unsuitable_for_download` if the media item fails the precheck
+  #   - `:post_live_processing` if the stream ended but the recording is not ready yet
   #   - `:unrecoverable` if there was an initial failure and the recovery attempt failed
   #   - `:download_failed` for all other yt-dlp-related downloading errors
   #   - `:filtered` when yt-dlp intentionally skipped the media via a configured filter
@@ -92,83 +101,94 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   # - If we retry using cookies, all of the above return values apply. The cookie retry
   #   logic is handled transparently as far as the caller is concerned
   defp attempt_download_and_update_for_media_item(media_item, override_opts) do
-    output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
-    media_with_preloads = Repo.preload(media_item, [:metadata, source: :media_profile])
-    staging_opts = replacement_staging_options(media_with_preloads, override_opts)
+    with :ok <- codec_plugin_preflight() do
+      output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
+      media_with_preloads = Repo.preload(media_item, [:metadata, source: :media_profile])
+      staging_opts = replacement_staging_options(media_with_preloads, override_opts)
 
-    case DownloadStaging.prepare(media_with_preloads.id, staging_opts) do
-      {:ok, staging_directory} ->
-        try do
-          download_override_opts = maybe_add_staging_directory(override_opts, staging_directory)
+      case DownloadStaging.prepare(media_with_preloads.id, staging_opts) do
+        {:ok, staging_directory} ->
+          try do
+            download_override_opts = maybe_add_staging_directory(override_opts, staging_directory)
 
-          case download_with_client_fallback_chain(
-                 media_item.original_url,
-                 media_with_preloads,
-                 output_filepath,
-                 download_override_opts
-               ) do
-            {:ok, parsed_json} ->
-              case MediaWatch.prepare_replacement(media_with_preloads) do
-                {:ok, replacement_lease} ->
-                  result =
-                    transfer_and_update(
-                      parsed_json,
-                      staging_directory,
-                      staging_opts,
-                      media_with_preloads,
-                      replacement_lease
-                    )
+            case download_with_client_fallback_chain(
+                   media_item.original_url,
+                   media_with_preloads,
+                   output_filepath,
+                   download_override_opts
+                 ) do
+              {:ok, parsed_json} ->
+                case MediaWatch.prepare_replacement(media_with_preloads) do
+                  {:ok, replacement_lease} ->
+                    result =
+                      transfer_and_update(
+                        parsed_json,
+                        staging_directory,
+                        staging_opts,
+                        media_with_preloads,
+                        replacement_lease,
+                        override_opts
+                      )
 
-                  finish_replacement_lease(replacement_lease)
-                  result
+                    finish_replacement_lease(replacement_lease)
+                    result
 
-                {:error, reason} ->
-                  {:error, :watch_hold, watch_hold_message(reason)}
-              end
+                  {:error, reason} ->
+                    {:error, :watch_hold, watch_hold_message(reason)}
+                end
 
-            {:error, :unsuitable_for_download} ->
-              message =
-                "Media item ##{media_with_preloads.id} isn't suitable for download yet. May be an active or processing live stream"
+              {:error, :unsuitable_for_download} ->
+                message =
+                  "Media item ##{media_with_preloads.id} isn't suitable for download yet. May be an active or processing live stream"
 
-              Logger.warning(message)
+                Logger.warning(message)
 
-              {:error, :unsuitable_for_download, message}
+                {:error, :unsuitable_for_download, message}
 
-            {:error, :staging_unavailable, message} ->
-              {:error, :staging_unavailable, message}
+              {:error, :post_live_processing} ->
+                message =
+                  "Media item ##{media_with_preloads.id} ended its live stream but YouTube is still processing the recording"
 
-            {:skipped, message} ->
-              Logger.info("yt-dlp filtered out media item ##{media_with_preloads.id}: #{inspect(message)}")
+                Logger.info(message)
 
-              {:error, :filtered, message}
+                {:error, :post_live_processing, message}
 
-            {:error, guard_reason, guard_message}
-            when guard_reason in [:cancelled, :migration_hold, :insufficient_storage] ->
+              {:error, :staging_unavailable, message} ->
+                {:error, :staging_unavailable, message}
+
+              {:skipped, message} ->
+                Logger.info("yt-dlp filtered out media item ##{media_with_preloads.id}: #{inspect(message)}")
+
+                {:error, :filtered, message}
+
               {:error, guard_reason, guard_message}
+              when guard_reason in [:cancelled, :migration_hold, :insufficient_storage, :codec_plugin_unavailable] ->
+                {:error, guard_reason, guard_message}
 
-            {:error, message, _exit_code} ->
-              Logger.error("yt-dlp download error for media item ##{media_with_preloads.id}: #{inspect(message)}")
+              {:error, message, _exit_code} ->
+                Logger.error("yt-dlp download error for media item ##{media_with_preloads.id}: #{inspect(message)}")
 
-              if String.contains?(to_string(message), recoverable_errors()) && is_nil(staging_directory) do
-                attempt_recovery_from_error(media_with_preloads, output_filepath, message)
-              else
-                {:error, :download_failed, message}
-              end
+                if String.contains?(to_string(message), recoverable_errors()) && is_nil(staging_directory) do
+                  attempt_recovery_from_error(media_with_preloads, output_filepath, message)
+                else
+                  {:error, :download_failed, message}
+                end
 
-            err ->
-              Logger.error("Unknown error downloading media item ##{media_with_preloads.id}: #{inspect(err)}")
+              err ->
+                Logger.error("Unknown error downloading media item ##{media_with_preloads.id}: #{inspect(err)}")
 
-              {:error, :unknown, "Unknown error: #{inspect(err)}"}
+                {:error, :unknown, "Unknown error: #{inspect(err)}"}
+            end
+          after
+            if not FirstArtifact.pending?(media_with_preloads) or
+                 match?({:ok, _}, FirstArtifact.recover(media_with_preloads)) do
+              DownloadStaging.cleanup(staging_directory, staging_opts)
+            end
           end
-        after
-          if not FirstArtifact.pending?(media_with_preloads) or
-               match?({:ok, _}, FirstArtifact.recover(media_with_preloads)) do
-            DownloadStaging.cleanup(staging_directory, staging_opts)
-          end
-        end
 
-      {:error, reason} ->
-        {:error, :staging_unavailable, staging_error_message(reason)}
+        {:error, reason} ->
+          {:error, :staging_unavailable, staging_error_message(reason)}
+      end
     end
   end
 
@@ -191,7 +211,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     end
   end
 
-  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, :unwatched) do
+  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, :unwatched, _opts) do
     first? =
       not is_nil(media_with_preloads.watch_download_started_at) and
         is_nil(media_with_preloads.media_downloaded_at) and
@@ -219,7 +239,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
   # A watched replacement moves active files only inside MediaWatch's write
   # reservation and durable intent, so a failure restores the verified original.
-  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, lease) do
+  defp transfer_and_update(parsed_json, staging_directory, staging_opts, media_with_preloads, lease, override_opts) do
+    progress = fn attrs -> maybe_report_progress(override_opts, attrs) end
+
     with {:ok, plan} <- DownloadStaging.transfer_plan(parsed_json, staging_directory, staging_opts),
          {:ok, updated} <-
            MediaWatch.commit_replacement(
@@ -230,10 +252,22 @@ defmodule Pinchflat.Downloading.MediaDownloader do
                DownloadStaging.transfer(
                  parsed_json,
                  staging_directory,
-                 Keyword.put(staging_opts, :pre_images, pre_images)
+                 staging_opts
+                 |> Keyword.put(:pre_images, pre_images)
+                 |> Keyword.put(:lease_valid?, fn -> MediaWatch.lease_current?(lease) end)
                )
              end,
-             fn transferred_json -> update_media_item_from_parsed_json(media_with_preloads, transferred_json) end
+             fn prepared_attrs -> persist_prepared_attrs(media_with_preloads, prepared_attrs) end,
+             progress: progress,
+             prepare: fn transferred_json ->
+               suffix = Map.get(transferred_json, "incoming_suffix")
+
+               prepare_media_item_attrs(
+                 media_with_preloads,
+                 transferred_json,
+                 if(is_binary(suffix), do: [suffix: suffix], else: [])
+               )
+             end
            ) do
       {:ok, updated}
     else
@@ -265,7 +299,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
   defp watch_hold_message(reason), do: "watched original is protected: #{inspect(reason)}"
 
   defp watch_replacement_message(reason) do
-    "watched replacement stopped and the original was restored: #{inspect(reason)}"
+    "watched replacement stopped: #{inspect(reason)}"
   end
 
   defp attempt_recovery_from_error(media_with_preloads, output_filepath, error_message) do
@@ -294,7 +328,10 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     )
   end
 
-  defp update_media_item_from_parsed_json(media_with_preloads, parsed_json, opts \\ []) do
+  # Filesystem work (NFO, compressed metadata, and the thumbnail download that
+  # spawns yt-dlp) runs before the replacement write transaction so a slow or
+  # failing thumbnail fetch never holds the SQLite/PostgreSQL write lock.
+  defp prepare_media_item_attrs(media_with_preloads, parsed_json, opts \\ []) do
     parsed_attrs =
       parsed_json
       |> MetadataParser.parse_for_media_item()
@@ -303,26 +340,39 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       |> Map.merge(%{
         # The worker owns the successful completion marker, not metadata or partial recovery.
         culled_at: nil,
-        nfo_filepath: determine_nfo_filepath(media_with_preloads, parsed_json),
+        nfo_filepath: determine_nfo_filepath(media_with_preloads, parsed_json, opts),
         metadata: %{
           # IDEA: might be worth kicking off a job for this since thumbnail fetching
           # could fail and I want to handle that in isolation
-          metadata_filepath: MetadataFileHelpers.compress_and_store_metadata_for(media_with_preloads, parsed_json),
-          thumbnail_filepath: MetadataFileHelpers.download_and_store_thumbnail_for(media_with_preloads)
+          metadata_filepath:
+            MetadataFileHelpers.compress_and_store_metadata_for(media_with_preloads, parsed_json, opts),
+          thumbnail_filepath: MetadataFileHelpers.download_and_store_thumbnail_for(media_with_preloads, opts)
         }
       })
 
-    first_watched_artifact? =
-      opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
-        is_nil(media_with_preloads.media_downloaded_at) and
-        (FirstArtifact.pending?(media_with_preloads) or
-           MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0)
+    {:ok, parsed_attrs}
+  end
 
-    if first_watched_artifact? do
-      persist_first_artifact(media_with_preloads, Map.put(parsed_attrs, :watch_postprocessing_pending, true))
-    else
-      Media.update_media_item(media_with_preloads, parsed_attrs)
+  defp update_media_item_from_parsed_json(media_with_preloads, parsed_json, opts \\ []) do
+    with {:ok, parsed_attrs} <- prepare_media_item_attrs(media_with_preloads, parsed_json) do
+      first_watched_artifact? =
+        opts[:first_artifact] == true and not is_nil(media_with_preloads.watch_download_started_at) and
+          is_nil(media_with_preloads.media_downloaded_at) and
+          (FirstArtifact.pending?(media_with_preloads) or
+             MediaWatch.effective_watch_window_days(media_with_preloads.source) > 0)
+
+      if first_watched_artifact? do
+        persist_first_artifact(media_with_preloads, Map.put(parsed_attrs, :watch_postprocessing_pending, true))
+      else
+        Media.update_media_item(media_with_preloads, parsed_attrs)
+      end
     end
+  end
+
+  # The replacement commit runs this inside its short write transaction; all
+  # filesystem and thumbnail work already happened in prepare_media_item_attrs/2.
+  defp persist_prepared_attrs(media_with_preloads, parsed_attrs) do
+    Media.update_media_item(media_with_preloads, parsed_attrs)
   end
 
   defp persist_first_artifact(item, attrs) do
@@ -341,11 +391,11 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       {:error, :artifact_persistence_failed, "First artifact write failed; retry from protected copy"}
   end
 
-  defp determine_nfo_filepath(media_item, parsed_json) do
+  defp determine_nfo_filepath(media_item, parsed_json, opts) do
     if media_item.source.media_profile.download_nfo do
       filepath = Path.rootname(parsed_json["filepath"]) <> ".nfo"
 
-      NfoBuilder.build_and_store_for_media_item(filepath, parsed_json)
+      NfoBuilder.build_and_store_for_media_item(filepath, parsed_json, opts)
     else
       nil
     end
@@ -355,12 +405,25 @@ defmodule Pinchflat.Downloading.MediaDownloader do
     emit_progress = Keyword.has_key?(override_opts, :progress_handler)
     build_opts = Keyword.put(override_opts, :emit_progress, emit_progress)
 
-    case DownloadOptionBuilder.build(item_with_preloads, build_opts) do
-      {:ok, options} ->
-        do_download_with_options(url, item_with_preloads, output_filepath, override_opts, options, emit_progress)
+    with :ok <- codec_plugin_preflight(),
+         {:ok, options} <- DownloadOptionBuilder.build(item_with_preloads, build_opts) do
+      do_download_with_options(url, item_with_preloads, output_filepath, override_opts, options, emit_progress)
+    else
+      {:error, :codec_plugin_unavailable, message} ->
+        {:error, :codec_plugin_unavailable, message}
 
       {:error, reason} ->
         {:error, :staging_unavailable, staging_error_message(reason)}
+    end
+  end
+
+  # Ordered codec preferences depend on the bundled yt-dlp plugin. Check it before
+  # any work starts so an operator gets one actionable message instead of yt-dlp's
+  # raw KeyError traceback, and so nothing is staged or downloaded first.
+  defp codec_plugin_preflight do
+    case Pinchflat.Downloading.QualityOptionBuilder.preflight() do
+      :ok -> :ok
+      {:error, message} -> {:error, :codec_plugin_unavailable, message}
     end
   end
 
@@ -419,11 +482,25 @@ defmodule Pinchflat.Downloading.MediaDownloader do
         {{:ok, :ignorable}, _} ->
           {:error, :unsuitable_for_download}
 
-        {{:error, _message, _exit_code} = err, false} ->
-          maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
+        {{:ok, :post_live}, _} ->
+          # The broadcast ended but the recording is still being processed. This is
+          # transient by nature, so the worker can wait and recheck rather than
+          # treating the item as permanently unsuitable.
+          {:error, :post_live_processing}
+
+        {{:error, message, _exit_code} = err, false} ->
+          if codec_plugin_error?(message) do
+            {:error, :codec_plugin_unavailable, message}
+          else
+            maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
+          end
 
         {{:error, message, exit_code}, true} ->
-          {:error, message, exit_code}
+          if codec_plugin_error?(message) do
+            {:error, :codec_plugin_unavailable, message}
+          else
+            {:error, message, exit_code}
+          end
 
         {err, _} ->
           err
@@ -444,13 +521,33 @@ defmodule Pinchflat.Downloading.MediaDownloader do
          should_use_cookies
        ) do
     case {YtDlpMedia.download(url, options, runner_opts), should_use_cookies} do
-      {{:error, _message, _exit_code} = err, false} ->
-        maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
+      {{:error, message, _exit_code} = err, false} ->
+        if codec_plugin_error?(message) do
+          {:error, :codec_plugin_unavailable, message}
+        else
+          maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err)
+        end
+
+      {{:error, message, _exit_code} = err, true} ->
+        if codec_plugin_error?(message) do
+          {:error, :codec_plugin_unavailable, message}
+        else
+          err
+        end
 
       {result, _} ->
         result
     end
   end
+
+  defp codec_plugin_error?(message) when is_binary(message) do
+    String.contains?(message, "CodecOrderPP") or
+      String.contains?(message, "CodecOrder") or
+      String.contains?(message, "codec-order plugin is missing") or
+      String.contains?(message, "the installed yt-dlp format sorter")
+  end
+
+  defp codec_plugin_error?(_), do: false
 
   defp maybe_retry_with_cookies(url, item_with_preloads, output_filepath, override_opts, err) do
     {:error, message, _} = err
@@ -494,7 +591,13 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       {:error, :unsuitable_for_download} = err ->
         err
 
+      {:error, :post_live_processing} = err ->
+        err
+
       {:error, :staging_unavailable, _msg} = err ->
+        err
+
+      {:error, :codec_plugin_unavailable, _msg} = err ->
         err
 
       {:error, message, _exit_code} = err ->
@@ -667,6 +770,8 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       nil -> :ok
       progress_handler -> progress_handler.(attrs)
     end
+
+    :ok
   end
 
   defp maybe_add_staging_directory(override_opts, nil), do: override_opts

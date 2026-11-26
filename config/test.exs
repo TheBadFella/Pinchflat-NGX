@@ -53,3 +53,7 @@ config :pinchflat, :app_release_check, false
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# Test partitions share tzdata's data directory under _build. Disable auto-updates so
+# one partition cannot replace release files while another partition is using them.
+config :tzdata, :autoupdate, :disabled

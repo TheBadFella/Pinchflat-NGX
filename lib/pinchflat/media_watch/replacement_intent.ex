@@ -17,12 +17,11 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
   existing staging behaviour.
   """
 
-  require Logger
-
   alias Pinchflat.MediaWatch.OriginalArchive
 
   @version 1
   @file_name "replacement_intent.json"
+  @restore_file_name "restore_intent.json"
   @quarantine_prefix "quarantine-"
 
   @type t :: map()
@@ -203,6 +202,119 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
 
   def restore(_intent), do: {:error, :invalid_intent}
 
+  @restore_file_name "restore_intent.json"
+
+  @doc "Returns the absolute restore-journal path for a watch."
+  def restore_path(watch_id, opts \\ []) when is_integer(watch_id) do
+    Path.join(OriginalArchive.archive_directory(watch_id, opts), @restore_file_name)
+  end
+
+  @doc """
+  Publishes the durable journal for a missing-file restoration.
+
+  Written before any archive byte is copied, so a restart can reconcile a
+  half-completed restoration instead of guessing from stray temporary files.
+
+  Returns {:ok, t()} | {:error, term()}.
+  """
+  def publish_restore(watch_id, attrs) when is_integer(watch_id) and is_map(attrs) do
+    directory = OriginalArchive.archive_directory(watch_id)
+    destination = restore_path(watch_id)
+    temporary = Path.join(directory, ".#{@restore_file_name}.#{Ecto.UUID.generate()}")
+
+    content =
+      attrs
+      |> Map.put("version", @version)
+      |> Map.put("watch_id", watch_id)
+      |> Map.put("kind", "restore")
+
+    with :ok <- secure_archive_directory(directory),
+         :ok <- write_durable(temporary, content),
+         :ok <- link_exclusive(temporary, destination),
+         :ok <- sync_directory(directory) do
+      {:ok, content}
+    else
+      error ->
+        _ = File.rm(temporary)
+        normalize_error(error)
+    end
+  end
+
+  @doc "Reads the restore journal. Returns {:ok, t()} | {:error, :not_pending | term()}."
+  def read_restore(watch_id) when is_integer(watch_id) do
+    path = restore_path(watch_id)
+
+    with :ok <- reject_symlink(path),
+         {:ok, %{type: :regular}} <- File.lstat(path),
+         {:ok, contents} <- File.read(path),
+         {:ok, %{"kind" => "restore"} = intent} <- decode_restore(contents) do
+      {:ok, intent}
+    else
+      {:error, :enoent} -> {:error, :not_pending}
+      {:error, reason} -> normalize_error(reason)
+      other -> normalize_error(other)
+    end
+  end
+
+  @doc "Returns true when a restore journal exists for the watch."
+  def restore_pending?(watch_id) when is_integer(watch_id) do
+    File.lstat(restore_path(watch_id)) != {:error, :enoent}
+  end
+
+  @doc "Removes a restore journal owned by the given operation."
+  def clear_restore(watch_id, operation_id) when is_integer(watch_id) and is_binary(operation_id) do
+    case read_restore(watch_id) do
+      {:ok, %{"operation_id" => ^operation_id}} ->
+        with :ok <- File.rm(restore_path(watch_id)), do: sync_directory(OriginalArchive.archive_directory(watch_id))
+
+      {:ok, _other} ->
+        {:error, :operation_mismatch}
+
+      {:error, :not_pending} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "Returns watch IDs holding a pending restore journal, bounded by limit."
+  def pending_restore_watch_ids(limit \\ 25) when is_integer(limit) and limit > 0 do
+    case File.ls(OriginalArchive.root()) do
+      {:ok, entries} ->
+        entries
+        |> Enum.sort()
+        |> Enum.reduce_while([], fn entry, acc ->
+          if length(acc) >= limit do
+            {:halt, acc}
+          else
+            case read_path(Path.join([OriginalArchive.root(), entry, @restore_file_name])) do
+              {:ok, %{"watch_id" => watch_id}} -> {:cont, [watch_id | acc]}
+              _ -> {:cont, acc}
+            end
+          end
+        end)
+        |> Enum.reverse()
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  defp decode_restore(contents) do
+    case Jason.decode(contents) do
+      {:ok, %{"version" => @version, "watch_id" => watch_id, "operation_id" => operation_id} = intent}
+      when is_integer(watch_id) and is_binary(operation_id) ->
+        {:ok, intent}
+
+      {:ok, _other} ->
+        {:error, :invalid_restore_intent}
+
+      {:error, _reason} ->
+        {:error, :invalid_restore_intent}
+    end
+  end
+
   @doc "Returns the backup path used to keep an active file's pre-image."
   def backup_path(active_path, operation_id) when is_binary(active_path) and is_binary(operation_id) do
     active_path <> ".pinchflat-previous-" <> operation_id
@@ -250,6 +362,56 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
         {:error, reason} -> {:error, reason}
         paths when is_list(paths) -> {:ok, Enum.reverse(paths)}
       end
+    end
+  end
+
+  @doc """
+  Returns the SHA-256, byte size and a cheap stat stamp of a regular file.
+
+  Check the stamp on both sides of the hash to detect writes during the read.
+  """
+  def fingerprint_with_stat(path) when is_binary(path) do
+    with {:ok, %{"size" => size} = stat} <- file_stamp(path),
+         {:ok, checksum} <- hash_file(path),
+         {:ok, ^stat} <- file_stamp(path) do
+      {:ok, %{sha256: checksum, size: size, stat: stat}}
+    else
+      {:error, :enoent} -> {:error, :missing_file}
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :invalid_file}
+    end
+  end
+
+  def fingerprint_with_stat(_path), do: {:error, :invalid_file}
+
+  @doc "Reads file identity and timestamps at the precision reported by the filesystem."
+  def file_stamp(path) do
+    # OTP exposes only whole seconds. GNU stat is available in the Debian images.
+    case System.cmd("stat", ["--printf=%d|%i|%s|%y|%z|%f", "--", path],
+           env: [{"LC_ALL", "C"}, {"TZ", "UTC"}],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} ->
+        [device, inode, size, mtime, ctime, mode] = String.split(output, "|")
+
+        if :erlang.band(String.to_integer(mode, 16), 0o170000) == 0o100000 do
+          {:ok,
+           %{
+             "device" => device,
+             "inode" => inode,
+             "size" => String.to_integer(size),
+             "mtime" => mtime,
+             "ctime" => ctime
+           }}
+        else
+          {:error, :invalid_file}
+        end
+
+      {_output, _status} ->
+        case File.lstat(path) do
+          {:error, reason} -> {:error, reason}
+          _ -> {:error, :invalid_file}
+        end
     end
   end
 
@@ -311,12 +473,15 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
     backup = entry["backup"]
 
     cond do
-      is_binary(backup) and existing_hash(backup) == {:ok, expected} ->
-        restore_from_backup(path, backup, expected, intent)
-
       existing_hash(path) == {:ok, expected} ->
         :ok
 
+      is_binary(backup) and existing_hash(backup) == {:ok, expected} ->
+        restore_from_backup(path, backup, expected, intent)
+
+      # A backup that was never written, was removed by an interrupted cleanup,
+      # or no longer matches its recorded checksum is not proof the original is
+      # gone: the verified published archive still holds it.
       is_map(manifest_entry) and manifest_entry["sha256"] == expected ->
         restore_from_archive(path, manifest_entry, intent)
 
@@ -425,7 +590,13 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
           destination = Path.join(directory, name)
 
           if File.lstat(destination) == {:error, :enoent} do
-            case File.rename(expanded, destination) do
+            result =
+              case File.rename(expanded, destination) do
+                {:error, :exdev} -> copy_to_quarantine(expanded, destination)
+                result -> result
+              end
+
+            case result do
               :ok ->
                 _ = sync_directory(directory)
                 {:ok, destination}
@@ -453,6 +624,42 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
   end
 
   defp quarantine_one(nil, _directory), do: {:ok, nil}
+
+  defp copy_to_quarantine(source, destination) do
+    temporary = destination <> ".copy-#{Ecto.UUID.generate()}"
+
+    with :ok <- safe_active_path(source),
+         :ok <- no_symlink_ancestors(destination),
+         {:ok, stat} <- File.lstat(source),
+         {:ok, expected} <- fingerprint(source) do
+      copy_exclusive(source, temporary, fn ->
+        # Publish and sync the verified copy before removing bytes from the other device.
+        with {:ok, ^expected} <- fingerprint(temporary),
+             :ok <- quarantine_source_unchanged(source, stat, expected),
+             :ok <- File.ln(temporary, destination),
+             :ok <- sync_directory(Path.dirname(destination)),
+             :ok <- quarantine_source_unchanged(source, stat, expected),
+             {:ok, ^expected} <- fingerprint(destination),
+             :ok <- File.rm(source),
+             :ok <- sync_directory(Path.dirname(source)) do
+          :ok
+        else
+          {:ok, _} -> {:error, :quarantine_copy_mismatch}
+          {:error, :eexist} -> {:error, :quarantine_destination_exists}
+          error -> error
+        end
+      end)
+    end
+  end
+
+  defp quarantine_source_unchanged(source, %{inode: inode, major_device: major, minor_device: minor}, expected) do
+    with {:ok, %{type: :regular, inode: ^inode, major_device: ^major, minor_device: ^minor}} <- File.lstat(source),
+         {:ok, ^expected} <- fingerprint(source) do
+      :ok
+    else
+      _ -> {:error, :quarantine_source_changed}
+    end
+  end
 
   defp quarantine_root do
     Path.join(Application.fetch_env!(:pinchflat, :media_directory), ".pinchflat-replacements")
@@ -530,8 +737,17 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
             try do
               copied =
                 try do
-                  source |> File.stream!([], 1024 * 1024) |> Enum.each(&IO.binwrite(output, &1))
-                  :file.sync(output)
+                  result =
+                    source
+                    |> File.stream!([], 1024 * 1024)
+                    |> Enum.reduce_while(:ok, fn bytes, :ok ->
+                      case :file.write(output, bytes) do
+                        :ok -> {:cont, :ok}
+                        error -> {:halt, error}
+                      end
+                    end)
+
+                  with :ok <- result, do: :file.sync(output)
                 after
                   File.close(output)
                 end
@@ -548,6 +764,8 @@ defmodule Pinchflat.MediaWatch.ReplacementIntent do
         File.close(output)
       end
     end
+  rescue
+    error in File.Error -> {:error, error.reason}
   end
 
   defp remove_owned_temporary(path, %{inode: inode, major_device: major, minor_device: minor}) do

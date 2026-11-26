@@ -45,6 +45,7 @@ defmodule Pinchflat.Sources.Source do
     collection_name
     collection_id
     collection_type
+    owner_channel_id
     source_type
     custom_name
     custom_name_locked
@@ -64,9 +65,11 @@ defmodule Pinchflat.Sources.Source do
     download_media
     download_public_media
     download_members_only_media
+    only_owner_uploads
     last_indexed_at
     original_url
     download_cutoff_date
+    download_cutoff_days
     index_cutoff_date
     retention_period_days
     title_filter_regex
@@ -78,6 +81,10 @@ defmodule Pinchflat.Sources.Source do
     min_duration_seconds
     max_duration_seconds
     watch_window_days
+    keep_newest_count
+    sponsorblock_mark_categories
+    sponsorblock_remove_categories
+    title_language
   )a
 
   # Expensive API calls are made when a source is inserted/updated so
@@ -102,6 +109,96 @@ defmodule Pinchflat.Sources.Source do
                                   collection_type
                                 )a
 
+  # YouTube interface languages accepted by yt-dlp's `youtube:lang` extractor argument.
+  # yt-dlp matches them case-sensitively, so input is mapped to this spelling.
+  @title_language_options [
+    {"Afrikaans (af)", "af"},
+    {"Albanian (sq)", "sq"},
+    {"Amharic (am)", "am"},
+    {"Arabic (ar)", "ar"},
+    {"Armenian (hy)", "hy"},
+    {"Assamese (as)", "as"},
+    {"Azerbaijani (az)", "az"},
+    {"Basque (eu)", "eu"},
+    {"Belarusian (be)", "be"},
+    {"Bengali (bn)", "bn"},
+    {"Bosnian (bs)", "bs"},
+    {"Bulgarian (bg)", "bg"},
+    {"Burmese (my)", "my"},
+    {"Catalan (ca)", "ca"},
+    {"Chinese - Hong Kong (zh-HK)", "zh-HK"},
+    {"Chinese - Simplified (zh-CN)", "zh-CN"},
+    {"Chinese - Traditional (zh-TW)", "zh-TW"},
+    {"Croatian (hr)", "hr"},
+    {"Czech (cs)", "cs"},
+    {"Danish (da)", "da"},
+    {"Dutch (nl)", "nl"},
+    {"English (en)", "en"},
+    {"English - India (en-IN)", "en-IN"},
+    {"English - United Kingdom (en-GB)", "en-GB"},
+    {"Estonian (et)", "et"},
+    {"Filipino (fil)", "fil"},
+    {"Finnish (fi)", "fi"},
+    {"French (fr)", "fr"},
+    {"French - Canada (fr-CA)", "fr-CA"},
+    {"Galician (gl)", "gl"},
+    {"Georgian (ka)", "ka"},
+    {"German (de)", "de"},
+    {"Greek (el)", "el"},
+    {"Gujarati (gu)", "gu"},
+    {"Hebrew (iw)", "iw"},
+    {"Hindi (hi)", "hi"},
+    {"Hungarian (hu)", "hu"},
+    {"Icelandic (is)", "is"},
+    {"Indonesian (id)", "id"},
+    {"Italian (it)", "it"},
+    {"Japanese (ja)", "ja"},
+    {"Kannada (kn)", "kn"},
+    {"Kazakh (kk)", "kk"},
+    {"Khmer (km)", "km"},
+    {"Korean (ko)", "ko"},
+    {"Kyrgyz (ky)", "ky"},
+    {"Lao (lo)", "lo"},
+    {"Latvian (lv)", "lv"},
+    {"Lithuanian (lt)", "lt"},
+    {"Macedonian (mk)", "mk"},
+    {"Malay (ms)", "ms"},
+    {"Malayalam (ml)", "ml"},
+    {"Marathi (mr)", "mr"},
+    {"Mongolian (mn)", "mn"},
+    {"Nepali (ne)", "ne"},
+    {"Norwegian (no)", "no"},
+    {"Odia (or)", "or"},
+    {"Persian (fa)", "fa"},
+    {"Polish (pl)", "pl"},
+    {"Portuguese (pt)", "pt"},
+    {"Portuguese - Portugal (pt-PT)", "pt-PT"},
+    {"Punjabi (pa)", "pa"},
+    {"Romanian (ro)", "ro"},
+    {"Russian (ru)", "ru"},
+    {"Serbian (sr)", "sr"},
+    {"Serbian - Latin (sr-Latn)", "sr-Latn"},
+    {"Sinhala (si)", "si"},
+    {"Slovak (sk)", "sk"},
+    {"Slovenian (sl)", "sl"},
+    {"Spanish (es)", "es"},
+    {"Spanish - Latin America (es-419)", "es-419"},
+    {"Spanish - United States (es-US)", "es-US"},
+    {"Swahili (sw)", "sw"},
+    {"Swedish (sv)", "sv"},
+    {"Tamil (ta)", "ta"},
+    {"Telugu (te)", "te"},
+    {"Thai (th)", "th"},
+    {"Turkish (tr)", "tr"},
+    {"Ukrainian (uk)", "uk"},
+    {"Urdu (ur)", "ur"},
+    {"Uzbek (uz)", "uz"},
+    {"Vietnamese (vi)", "vi"},
+    {"Zulu (zu)", "zu"}
+  ]
+  @title_languages Enum.map(@title_language_options, fn {_label, code} -> code end)
+  @title_languages_by_downcase Map.new(@title_languages, &{String.downcase(&1), &1})
+
   schema "sources" do
     field :enabled, :boolean, default: true
     # This is _not_ used as the primary key or internally in the database
@@ -116,6 +213,10 @@ defmodule Pinchflat.Sources.Source do
     field :collection_name, :string
     field :collection_id, :string
     field :collection_type, Ecto.Enum, values: [:channel, :playlist, :video]
+    # The channel that owns this collection. For playlists this is the playlist
+    # owner, so items uploaded by other channels can be told apart.
+    field :owner_channel_id, :string
+    field :only_owner_uploads, :boolean, default: false
     field :source_type, Ecto.Enum, values: [:automatic, :channel, :playlist, :video], virtual: true, default: :automatic
     field :index_frequency_minutes, :integer, default: 60 * 24
     field :fast_index, :boolean, default: false
@@ -127,10 +228,13 @@ defmodule Pinchflat.Sources.Source do
     # Keep both policies enabled by default so existing sources retain their
     # current behavior after the policy fields are introduced.
     field :download_public_media, :boolean, default: true
-    field :download_members_only_media, :boolean, default: true
+    field :download_members_only_media, :boolean, default: false
     field :last_indexed_at, :utc_datetime
     # Only download media items that were published after this date
     field :download_cutoff_date, :date
+    # Rolling alternative to download_cutoff_date: only download media published
+    # within this many days of the run. Mutually exclusive with the fixed date.
+    field :download_cutoff_days, :integer
     # Stop indexing a channel once it reaches media published before this date.
     # Only applied to YouTube channels — their tab listings are newest-first,
     # which is what makes an early abort on an old video safe. Playlists are
@@ -140,8 +244,16 @@ defmodule Pinchflat.Sources.Source do
     field :retention_period_days, :integer
     # nil inherits the profile value; zero explicitly disables watch window.
     field :watch_window_days, :integer
+    # nil is off; otherwise keep only the newest N downloaded/eligible items for this source.
+    field :keep_newest_count, :integer
+    # nil inherits the profile list; an empty list disables that SponsorBlock action
+    # for this source even when the profile enables it.
+    field :sponsorblock_mark_categories, {:array, :string}
+    field :sponsorblock_remove_categories, {:array, :string}
     field :original_url, :string
     field :title_filter_regex, :string
+    # nil disables translated titles for this source
+    field :title_language, :string
     field :download_subdirectory, :string
     field :output_path_template_override, :string
     field :output_path_template_shorts_override, :string
@@ -192,6 +304,64 @@ defmodule Pinchflat.Sources.Source do
 
   def effective_watch_window_days(%__MODULE__{watch_window_days: days}), do: days
 
+  @doc """
+  Returns the effective download cutoff date for a source, changeset, or map.
+
+  A fixed `download_cutoff_date` takes precedence. Otherwise a positive
+  `download_cutoff_days` is resolved against `today` as a rolling window.
+  Returns `nil` when neither is set.
+  """
+  def effective_download_cutoff_date(source_or_changeset, today \\ Date.utc_today())
+
+  def effective_download_cutoff_date(%Ecto.Changeset{} = changeset, today) do
+    effective_cutoff(
+      get_field(changeset, :download_cutoff_date),
+      get_field(changeset, :download_cutoff_days),
+      today
+    )
+  end
+
+  def effective_download_cutoff_date(%__MODULE__{} = source, today) do
+    effective_cutoff(source.download_cutoff_date, source.download_cutoff_days, today)
+  end
+
+  def effective_download_cutoff_date(source, today) when is_map(source) do
+    effective_cutoff(Map.get(source, :download_cutoff_date), Map.get(source, :download_cutoff_days), today)
+  end
+
+  defp effective_cutoff(%Date{} = date, _days, _today), do: date
+
+  defp effective_cutoff(_date, days, today) when is_integer(days) and days > 0, do: Date.add(today, -days)
+
+  defp effective_cutoff(_date, _days, _today), do: nil
+
+  @doc """
+  Returns the SponsorBlock categories to remove for a source with a loaded media profile.
+  A nil source value inherits the profile list; an empty list disables the action.
+  """
+  def effective_sponsorblock_remove_categories(%__MODULE__{} = source, media_profile \\ nil) do
+    effective_sponsorblock_categories(source, :sponsorblock_remove_categories, media_profile)
+  end
+
+  @doc """
+  Returns the SponsorBlock categories to mark as chapters for a source with a loaded
+  media profile. A nil source value inherits the profile list; an empty list disables
+  the action.
+  """
+  def effective_sponsorblock_mark_categories(%__MODULE__{} = source, media_profile \\ nil) do
+    effective_sponsorblock_categories(source, :sponsorblock_mark_categories, media_profile)
+  end
+
+  defp effective_sponsorblock_categories(%__MODULE__{} = source, field, media_profile) do
+    effective_sponsorblock_value(Map.fetch!(source, field), media_profile || source.media_profile, field)
+  end
+
+  defp effective_sponsorblock_value(nil, %MediaProfile{} = profile, field),
+    do: Map.fetch!(profile, field) || []
+
+  defp effective_sponsorblock_value(nil, _media_profile, _field), do: []
+  defp effective_sponsorblock_value(categories, _media_profile, _field), do: categories
+
   @doc false
   def changeset(source, attrs, validation_stage \\ :initial) do
     # See above for rationale
@@ -204,6 +374,7 @@ defmodule Pinchflat.Sources.Source do
 
     source
     |> cast(attrs, @allowed_fields)
+    |> clear_video_source_filters()
     |> update_change(:original_url, &normalize_youtube_host/1)
     |> normalize_show_url()
     |> dynamic_default(:custom_name, fn cs -> get_field(cs, :collection_name) end)
@@ -211,9 +382,13 @@ defmodule Pinchflat.Sources.Source do
     |> validate_required(required_fields)
     |> validate_original_url()
     |> validate_title_regex()
+    |> normalize_title_language()
+    |> validate_title_language()
     |> normalize_download_subdirectory()
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
+    |> validate_number(:download_cutoff_days, greater_than: 0)
+    |> validate_download_cutoff_exclusivity()
     |> validate_index_cutoff_date()
     |> normalize_player_client_fallbacks()
     |> validate_player_client_fallbacks()
@@ -221,11 +396,18 @@ defmodule Pinchflat.Sources.Source do
     |> validate_number(:retention_period_days, greater_than_or_equal_to: 0)
     |> validate_number(:watch_window_days, greater_than_or_equal_to: 0, less_than_or_equal_to: 365)
     |> check_constraint(:watch_window_days, name: :sources_watch_window_days_check)
+    |> validate_number(:keep_newest_count, greater_than: 0)
+    |> check_constraint(:keep_newest_count, name: :sources_keep_newest_count_check)
+    |> validate_subset(:sponsorblock_mark_categories, MediaProfile.sponsorblock_categories())
+    |> validate_subset(:sponsorblock_remove_categories, MediaProfile.sponsorblock_categories())
+    |> validate_sponsorblock_categories_do_not_overlap()
     # Ensures it ends with `.{{ ext }}` or `.%(ext)s` or similar (with a little wiggle room)
     |> validate_format(:output_path_template_override, MediaProfile.ext_regex(), message: "must end with .{{ ext }}")
     |> validate_format(:output_path_template_shorts_override, MediaProfile.ext_regex(),
       message: "must end with .{{ ext }}"
     )
+    |> MediaProfile.validate_output_path_template(:output_path_template_override)
+    |> MediaProfile.validate_output_path_template(:output_path_template_shorts_override)
     |> cast_assoc(:metadata, with: &SourceMetadata.changeset/2, required: false)
     |> unique_constraint([:collection_id, :media_profile_id, :title_filter_regex], error_key: :original_url)
   end
@@ -500,6 +682,26 @@ defmodule Pinchflat.Sources.Source do
 
   defp validate_title_regex(changeset), do: changeset
 
+  @doc """
+  Returns `{label, code}` options for the source title language selector.
+  """
+  def title_language_options do
+    @title_language_options
+  end
+
+  defp normalize_title_language(changeset) do
+    update_change(changeset, :title_language, fn
+      value when is_binary(value) -> Map.get(@title_languages_by_downcase, String.downcase(value), value)
+      value -> value
+    end)
+  end
+
+  defp validate_title_language(changeset) do
+    validate_inclusion(changeset, :title_language, @title_languages,
+      message: "must be a YouTube language code such as en, ja, pt-PT or zh-CN"
+    )
+  end
+
   defp validate_regex(regex) do
     if Pinchflat.Database.postgres?() do
       Repo.query("SELECT '' ~ $1", [regex])
@@ -508,14 +710,55 @@ defmodule Pinchflat.Sources.Source do
     end
   end
 
+  # A source configures its download cutoff either as a fixed date or as a
+  # rolling number of days. Both at once would be ambiguous.
+  defp validate_download_cutoff_exclusivity(changeset) do
+    if get_field(changeset, :download_cutoff_date) && get_field(changeset, :download_cutoff_days) do
+      add_error(changeset, :download_cutoff_days, "must be blank when a download cutoff date is set")
+    else
+      changeset
+    end
+  end
+
   # An indexing cutoff after the download cutoff would stop indexing before
   # reaching media the download cutoff still allows — that media would never be
   # indexed, so it could never be downloaded
-  defp validate_index_cutoff_date(changeset) do
-    index_cutoff = get_field(changeset, :index_cutoff_date)
-    download_cutoff = get_field(changeset, :download_cutoff_date)
+  # Cutoffs and download filters choose media from a channel or playlist. On a
+  # single video source they can only block the one video the user asked for,
+  # and the form hides them, so a value left over from another source type is cleared.
+  @video_source_cleared_fields [
+    :index_cutoff_date,
+    :download_cutoff_date,
+    :download_cutoff_days,
+    :title_filter_regex,
+    :min_duration_seconds,
+    :max_duration_seconds
+  ]
 
-    if index_cutoff && download_cutoff && Date.compare(index_cutoff, download_cutoff) == :gt do
+  defp clear_video_source_filters(changeset) do
+    if video_source_changeset?(changeset) do
+      Enum.reduce(@video_source_cleared_fields, changeset, fn field, cs ->
+        if get_field(cs, field), do: put_change(cs, field, nil), else: cs
+      end)
+    else
+      changeset
+    end
+  end
+
+  defp video_source_changeset?(changeset) do
+    case get_field(changeset, :collection_type) do
+      nil -> get_field(changeset, :source_type) == :video
+      collection_type -> collection_type == :video
+    end
+  end
+
+  defp validate_index_cutoff_date(changeset) do
+    video_source? = video_source_changeset?(changeset)
+
+    index_cutoff = get_field(changeset, :index_cutoff_date)
+    download_cutoff = effective_download_cutoff_date(changeset)
+
+    if not video_source? && index_cutoff && download_cutoff && Date.compare(index_cutoff, download_cutoff) == :gt do
       add_error(changeset, :index_cutoff_date, "must be on or before the download cutoff date")
     else
       changeset
@@ -624,6 +867,31 @@ defmodule Pinchflat.Sources.Source do
           cs
       end
     end)
+  end
+
+  # Mirrors the profile's rule. Uses the effective lists when the profile is
+  # already loaded on the source, so an inherited list is checked against an
+  # overridden one. When it is not loaded, only the source's own values are
+  # compared, and anything left nil inherits without being checked here.
+  defp validate_sponsorblock_categories_do_not_overlap(changeset) do
+    mark = effective_sponsorblock_changeset_categories(changeset, :sponsorblock_mark_categories)
+    remove = effective_sponsorblock_changeset_categories(changeset, :sponsorblock_remove_categories)
+
+    case Enum.filter(mark, &(&1 in remove)) do
+      [] ->
+        changeset
+
+      overlap ->
+        add_error(
+          changeset,
+          :sponsorblock_mark_categories,
+          "can't mark and remove the same category: #{Enum.join(overlap, ", ")}"
+        )
+    end
+  end
+
+  defp effective_sponsorblock_changeset_categories(changeset, field) do
+    effective_sponsorblock_value(get_field(changeset, field), changeset.data.media_profile, field)
   end
 
   defp validate_min_and_max_durations(changeset) do

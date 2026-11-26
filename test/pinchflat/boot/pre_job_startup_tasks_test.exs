@@ -15,6 +15,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
     stub(YtDlpRunnerMock, :version, fn -> {:ok, "1"} end)
     stub(AppriseRunnerMock, :version, fn -> {:ok, "2"} end)
     stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "3", 0} end)
+    stub(DiskSpaceCheckerMock, :available_bytes, fn _ -> {:ok, 1_000_000_000_000} end)
 
     :ok
   end
@@ -86,6 +87,25 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
 
       assert Repo.reload!(job).state == "retryable"
     end
+
+    test "resets executing download jobs so their stale staging can be cleaned" do
+      item = media_item_fixture()
+      root = DownloadStaging.replacement_directory()
+      {:ok, stage} = DownloadStaging.prepare(item.id, root: root)
+      File.touch!(stage, {{2020, 1, 1}, {0, 0, 0}})
+
+      {:ok, job} =
+        %{"id" => item.id}
+        |> Pinchflat.Downloading.MediaDownloadWorker.new()
+        |> Oban.insert()
+
+      Repo.update_all(Oban.Job, set: [state: "executing"])
+
+      PreJobStartupTasks.init(%{})
+
+      assert Repo.reload!(job).state == "retryable"
+      refute File.exists?(stage)
+    end
   end
 
   describe "revive_stalled_reconcile_jobs" do
@@ -119,6 +139,44 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
 
       # attempt 0 < max_attempts 1, so it isn't stalled and isn't disturbed
       assert Repo.reload!(job).state == "available"
+    end
+  end
+
+  describe "watch recovery ordering" do
+    test "leaves recovery artifacts intact while sweeping stale download staging" do
+      Application.put_env(:pinchflat, :download_staging_directory, nil)
+      root = DownloadStaging.replacement_directory()
+      File.mkdir_p!(root)
+
+      stage = Path.join(root, "media-99-#{Ecto.UUID.generate()}")
+      File.mkdir_p!(stage)
+      File.write!(Path.join(stage, "video.mp4"), "stale staged bytes")
+      assert :ok = File.touch(stage, {{2020, 1, 1}, {0, 0, 0}})
+
+      # A pending replacement journal belongs to the watch recovery pass; the
+      # sweep must not run until that pass has reconciled it.
+      watch_dir = Path.join(root, "quarantine-98-#{Ecto.UUID.generate()}")
+      File.mkdir_p!(watch_dir)
+
+      journal =
+        Path.join(
+          Path.dirname(DownloadStaging.replacement_directory()),
+          ".pinchflat-originals/98/replacement_intent.json"
+        )
+
+      File.mkdir_p!(Path.dirname(journal))
+      File.write!(journal, "unreadable on purpose")
+
+      on_exit(fn ->
+        File.rm_rf!(stage)
+        File.rm_rf!(watch_dir)
+        File.rm_rf!(Path.dirname(journal))
+      end)
+
+      assert {:ok, _} = PreJobStartupTasks.init(%{})
+
+      assert File.read!(journal) == "unreadable on purpose"
+      assert File.dir?(watch_dir)
     end
   end
 

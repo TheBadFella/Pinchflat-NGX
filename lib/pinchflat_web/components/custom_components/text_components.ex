@@ -11,7 +11,10 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   attr :media_item, :map, required: true
   attr :task, :any, default: nil
 
-  @doc "Renders recovery guidance and collapsed technical details for a download failure."
+  @doc """
+  Renders a download failure as a button naming the reason. The button opens the recovery
+  guidance, retry status and collapsed technical details, so failed rows stay compact.
+  """
   def download_failure(assigns) do
     {title, advice, settings?} = DownloadFailureHelpers.explanation(assigns.media_item.last_error)
     {retry_status, scheduled_at} = DownloadFailureHelpers.retry_status(assigns.media_item, assigns.task)
@@ -25,33 +28,56 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
       |> assign(:scheduled_at, scheduled_at)
 
     ~H"""
-    <div class="download-failure theme-danger-panel min-w-0 space-y-2 rounded-m3-sm p-3 text-sm break-words">
-      <p class="font-medium">{@title}</p>
-
-      <p>{@advice}</p>
-
-      <p>
-        {@retry_status}
-        <span :if={@scheduled_at}>
-          Scheduled for <.datetime_in_zone datetime={@scheduled_at} format="%Y-%m-%d %H:%M" />.
+    <div class="min-w-0" x-data="{ open: false }">
+      <button
+        type="button"
+        class="download-failure-toggle theme-danger-panel inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-m3-sm px-2.5 text-xs font-medium sm:min-h-8"
+        aria-expanded="false"
+        x-bind:aria-expanded="open.toString()"
+        x-on:click="open = !open"
+      >
+        <CoreComponents.icon name="hero-exclamation-circle-solid" class="h-4 w-4 shrink-0" />
+        <span class="min-w-0 py-1 text-left"><span class="sr-only">Download failed: </span>{@title}</span>
+        <span class="inline-flex shrink-0 transition-transform" x-bind:class="open && 'rotate-180'">
+          <CoreComponents.icon name="hero-chevron-down" class="h-4 w-4" />
         </span>
-      </p>
+      </button>
+      <div
+        class="download-failure theme-danger-panel mt-2 min-w-0 space-y-2 rounded-m3-sm p-3 text-sm break-words"
+        x-show="open"
+        x-cloak
+      >
+        <p class="font-medium">{@title}</p>
 
-      <div class="flex flex-wrap gap-3">
-        <.link :if={@settings?} href={~p"/settings"} class="theme-touch-target inline-flex min-h-11 items-center underline">
-          Open settings
-        </.link>
+        <p>{@advice}</p>
 
-        <.link href={~p"/diagnostics"} class="theme-touch-target inline-flex min-h-11 items-center underline">
-          Open diagnostics
-        </.link>
+        <p>
+          {@retry_status}
+          <span :if={@scheduled_at}>
+            Scheduled for <.datetime_in_zone datetime={@scheduled_at} format="%Y-%m-%d %H:%M" />.
+          </span>
+        </p>
+
+        <div class="flex flex-wrap gap-3">
+          <.link
+            :if={@settings?}
+            href={~p"/settings"}
+            class="theme-touch-target inline-flex min-h-11 items-center underline"
+          >
+            Open settings
+          </.link>
+
+          <.link href={~p"/diagnostics"} class="theme-touch-target inline-flex min-h-11 items-center underline">
+            Open diagnostics
+          </.link>
+        </div>
+
+        <details>
+          <summary class="theme-touch-target min-h-11 cursor-pointer py-3 underline">Technical details</summary>
+
+          <p class="mt-2 whitespace-pre-wrap break-words text-xs">{@media_item.last_error}</p>
+        </details>
       </div>
-
-      <details>
-        <summary class="theme-touch-target min-h-11 cursor-pointer py-3 underline">Technical details</summary>
-
-        <p class="mt-2 whitespace-pre-wrap break-words text-xs">{@media_item.last_error}</p>
-      </details>
     </div>
     """
   end
@@ -103,6 +129,7 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   """
   attr :href, :string, required: true
   attr :target, :string, default: "_self"
+  attr :class, :string, default: nil
   slot :inner_block
 
   def subtle_link(assigns) do
@@ -110,7 +137,10 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
     <.link
       href={@href}
       target={@target}
-      class="underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface"
+      class={[
+        "underline decoration-theme-on-surface-muted/60 decoration-1 transition hover:text-theme-on-surface hover:decoration-theme-on-surface",
+        @class
+      ]}
     >
       {render_slot(@inner_block)}
     </.link>
@@ -263,63 +293,68 @@ defmodule PinchflatWeb.CustomComponents.TextComponents do
   end
 
   @doc """
-  Renders a tooltip with the given content
+  Renders a small "i" button whose tip opens on hover, keyboard focus or tap.
+  The tip text also describes the button for screen readers.
+  """
+  attr :id, :string, required: true
+  attr :text, :string, required: true
+  attr :label, :string, required: true, doc: "accessible name of the button, for example \"About whole words\""
+  attr :align, :string, default: "left", values: ~w(left right)
+
+  def info_tip(assigns) do
+    ~H"""
+    <span class="theme-info relative inline-flex align-middle">
+      <button type="button" class="theme-info-button" aria-label={@label} aria-describedby={@id}>
+        <CoreComponents.icon name="hero-information-circle" class="h-4 w-4" />
+      </button>
+      <span id={@id} role="tooltip" class={["theme-info-tip", if(@align == "right", do: "right-0", else: "left-0")]}>
+        {@text}
+      </span>
+    </span>
+    """
+  end
+
+  @doc """
+  Renders a tooltip with the given content.
+
+  The tip opens in the browser's top layer (see `assets/js/tooltips.mjs`), so scrolling tables
+  and neighbouring cards can't clip or cover it. It is centred on its trigger and kept on screen.
+  `position` "top" prefers above the trigger; any other value prefers below. Either flips when
+  there isn't room.
   """
 
   attr :tooltip, :string, required: true
   attr :position, :string, default: ""
   attr :tooltip_class, :any, default: ""
-  attr :tooltip_arrow_class, :any, default: ""
   slot :inner_block
-
-  def tooltip(%{position: "bottom-right"} = assigns) do
-    ~H"""
-    <.tooltip tooltip={@tooltip} tooltip_class={@tooltip_class} tooltip_arrow_class={["-top-1", @tooltip_arrow_class]}>
-      {render_slot(@inner_block)}
-    </.tooltip>
-    """
-  end
-
-  def tooltip(%{position: "bottom"} = assigns) do
-    ~H"""
-    <.tooltip
-      tooltip={@tooltip}
-      tooltip_class={["left-1/2 -translate-x-1/2", @tooltip_class]}
-      tooltip_arrow_class={["-top-1 left-1/2 -translate-x-1/2", @tooltip_arrow_class]}
-    >
-      {render_slot(@inner_block)}
-    </.tooltip>
-    """
-  end
-
-  def tooltip(%{position: "bottom-left"} = assigns) do
-    ~H"""
-    <.tooltip
-      tooltip={@tooltip}
-      tooltip_class={["left-0", @tooltip_class]}
-      tooltip_arrow_class={["-top-1 left-4", @tooltip_arrow_class]}
-    >
-      {render_slot(@inner_block)}
-    </.tooltip>
-    """
-  end
 
   def tooltip(assigns) do
     ~H"""
-    <div class="group relative inline-flex cursor-pointer items-center justify-center overflow-visible align-middle">
+    <div
+      class="inline-flex cursor-pointer items-center justify-center align-middle"
+      data-tooltip-anchor={@tooltip && "true"}
+    >
       <div class="inline-flex min-w-0 items-center justify-center">{render_slot(@inner_block)}</div>
 
       <div
         :if={@tooltip}
+        popover="manual"
+        role="tooltip"
+        data-tooltip
+        data-position={if @position == "top", do: "top", else: "bottom"}
         class={[
-          "theme-surface-accent hidden absolute top-full z-50 mt-3 whitespace-nowrap rounded-m3-sm p-1.5 text-sm font-medium opacity-0 group-hover:block group-hover:opacity-100 text-wrap shadow-m3-2",
+          "theme-surface-accent group/tip pointer-events-none hidden fixed inset-auto z-50 m-0 max-w-80 overflow-visible rounded-m3-sm p-1.5 text-sm font-medium shadow-m3-2",
           @tooltip_class
         ]}
       >
-        <span class={[
-          "absolute -z-10 h-2 w-2 rotate-45 rounded-[2px] border-l border-t border-theme-outline/80 bg-theme-surface-3",
-          @tooltip_arrow_class
-        ]}></span>
+        <span
+          data-tooltip-arrow
+          class={[
+            "absolute -z-10 h-2 w-2 -translate-x-1/2 rotate-45 rounded-[2px] border-theme-outline/80 bg-theme-surface-3",
+            "group-data-[side=top]/tip:-bottom-1 group-data-[side=top]/tip:border-b group-data-[side=top]/tip:border-r",
+            "group-data-[side=bottom]/tip:-top-1 group-data-[side=bottom]/tip:border-l group-data-[side=bottom]/tip:border-t"
+          ]}
+        ></span>
         <div class="px-3">{@tooltip}</div>
       </div>
     </div>

@@ -2,20 +2,30 @@
   <h2 class="text-title-md2 font-bold text-theme-on-surface">Confirm cutoff change</h2>
   <section class="theme-surface-raised space-y-4 p-5">
     <p class="text-theme-on-surface">
-      Set the download cutoff to
-      <strong>{if @preview.cutoff, do: Date.to_iso8601(@preview.cutoff), else: "No cutoff"}</strong>
+      Set the download cutoff to <strong>{bulk_cutoff_label(@preview)}</strong>
       for the following {length(@preview.sources)} selected {if length(@preview.sources) == 1,
         do: "source",
-        else: "sources"}. <span :if={@preview.cutoff}>Media uploaded on or after this date is included.</span>
+        else: "sources"}.
+      <span :if={@preview.cutoff && is_nil(@preview.rolling_days)}>Media uploaded on or after this date is included.</span>
+      <span :if={@preview.rolling_days}>
+        Media uploaded in the last {@preview.rolling_days} days of each run is included. The counts below use today's
+        window, which starts on {Date.to_iso8601(@preview.cutoff)}.
+      </span>
       <span :if={is_nil(@preview.cutoff)}>All upload dates are eligible, subject to the other source settings.</span>
     </p>
     <ul class="space-y-2 text-sm text-theme-on-surface-muted">
       <li :for={source <- @preview.sources} class="break-words">
-        {source.custom_name}: {if source.download_cutoff_date,
-          do: Date.to_iso8601(source.download_cutoff_date),
-          else: "No cutoff"}
+        {source.custom_name}: {source_cutoff_label(source)}
       </li>
     </ul>
+    <p
+      :if={@count_changed}
+      id="cutoff-count-changed"
+      class="theme-status-warning rounded-m3-sm p-3 text-sm"
+      role="alert"
+    >
+      The number of downloads affected changed since you opened this page. Review the new counts and confirm again.
+    </p>
     <dl id="cutoff-impact" class="space-y-3 text-theme-on-surface">
       <div class="flex justify-between gap-4">
         <dt>Downloaded items before cutoff</dt>

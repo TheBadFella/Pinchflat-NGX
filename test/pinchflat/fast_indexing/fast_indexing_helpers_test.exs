@@ -209,7 +209,186 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
     end
   end
 
+  describe "index_and_kickoff_downloads/1 when testing the playlist owner lock" do
+    test "indexes every upload but only enqueues the owner's when the lock is on" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          fast_index: true,
+          only_owner_uploads: true,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(HTTPClientMock, :get, fn _url ->
+        {:ok, "<yt:videoId>v_owner</yt:videoId><yt:videoId>v_foreign</yt:videoId>"}
+      end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn url, :get_media_attributes, _opts, _ot, _addl ->
+        cond do
+          String.ends_with?(url, "v_owner") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_owner", channel_id: "UC_owner_123"})}
+
+          String.ends_with?(url, "v_foreign") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_foreign", channel_id: "UC_other_456"})}
+        end
+      end)
+
+      assert items = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      refute_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+
+    test "indexes every upload and enqueues both when the lock is off" do
+      source =
+        source_fixture(%{
+          collection_type: :playlist,
+          fast_index: true,
+          only_owner_uploads: false,
+          owner_channel_id: "UC_owner_123"
+        })
+
+      expect(HTTPClientMock, :get, fn _url ->
+        {:ok, "<yt:videoId>v_owner</yt:videoId><yt:videoId>v_foreign</yt:videoId>"}
+      end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn url, :get_media_attributes, _opts, _ot, _addl ->
+        cond do
+          String.ends_with?(url, "v_owner") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_owner", channel_id: "UC_owner_123"})}
+
+          String.ends_with?(url, "v_foreign") ->
+            {:ok, media_attributes_return_fixture(%{id: "v_foreign", channel_id: "UC_other_456"})}
+        end
+      end)
+
+      assert items = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Enum.sort(Enum.map(items, & &1.media_id)) == ["v_foreign", "v_owner"]
+
+      owner_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_owner")
+      foreign_item = Repo.get_by!(MediaItem, source_id: source.id, media_id: "v_foreign")
+
+      assert owner_item.channel_id == "UC_owner_123"
+      assert foreign_item.channel_id == "UC_other_456"
+
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => owner_item.id})
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => foreign_item.id})
+    end
+  end
+
   describe "index_and_kickoff_downloads/1 when testing cookies" do
+    test "fast indexing completes the download after cookie recovery with artwork disabled" do
+      profile = media_profile_fixture(download_source_images: false, download_nfo: false)
+      source = source_fixture(cookie_behaviour: :when_needed, fast_index: true, media_profile_id: profile.id)
+      path = Path.join(Application.get_env(:pinchflat, :media_directory), "cookie-recovery/Recovered video.mp4")
+      metadata = render_parsed_metadata(:media_metadata)
+
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _template, addl ->
+        refute addl[:use_cookies]
+        {:error, "Sign in to confirm you're not a bot", 1}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _template, addl ->
+        assert addl[:use_cookies]
+        {:ok, media_attributes_return_fixture(%{id: "video1", title: "Recovered video", filename: path})}
+      end)
+
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+      stub(AppriseRunnerMock, :run, fn _server, _opts -> {:ok, ""} end)
+
+      assert {:ok, _} = perform_job(FastIndexingWorker, %{id: source.id})
+      assert [job] = all_enqueued(worker: MediaDownloadWorker)
+      item = Repo.get!(MediaItem, job.args["id"])
+      assert item.title == "Recovered video"
+      assert item.predicted_media_filepath == path
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :download, _opts, _template, _addl ->
+          File.mkdir_p!(Path.dirname(path))
+          File.cp!(media_filepath_fixture(), path)
+
+          {:ok,
+           Jason.encode!(Map.merge(metadata, %{"id" => "video1", "title" => "Recovered video", "filepath" => path}))}
+
+        _url, :download_thumbnail, _opts, _template, _addl ->
+          {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaDownloadWorker, job.args)
+      completed = Repo.reload!(item)
+      assert completed.title == "Recovered video"
+      assert completed.media_filepath == path
+      assert completed.media_downloaded_at
+      assert File.read!(path) == File.read!(media_filepath_fixture())
+
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+      assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Repo.aggregate(MediaItem, :count) == 1
+    end
+
+    test "retries authentication failures once with cookies and persists the new video" do
+      source = source_fixture(cookie_behaviour: :when_needed)
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes, opts, template, addl ->
+        refute addl[:use_cookies]
+        send(self(), {:metadata_request, url, opts, template})
+        {:error, "Sign in to confirm you're not a bot", 1}
+      end)
+
+      expect(YtDlpRunnerMock, :run, fn url, :get_media_attributes, opts, template, addl ->
+        assert addl[:use_cookies]
+        assert_received {:metadata_request, ^url, ^opts, ^template}
+        {:ok, media_attributes_return_fixture(%{filename: "/tmp/test/media/Video 1.mp4"})}
+      end)
+
+      assert [item] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      assert Repo.reload!(item).title == "Video 1"
+      assert item.predicted_media_filepath == "/tmp/test/media/Video 1.mp4"
+      assert_enqueued(worker: MediaDownloadWorker, args: %{id: item.id})
+    end
+
+    for {policy, message} <- [
+          {:disabled, "Sign in to confirm you're not a bot"},
+          {:all_operations, "Sign in to confirm you're not a bot"},
+          {:when_needed, "HTTP Error 429: Too Many Requests"},
+          {:when_needed, "Video unavailable"}
+        ] do
+      test "does not retry #{policy} metadata requests after #{message}" do
+        source = source_fixture(cookie_behaviour: unquote(policy))
+        expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+        expect(YtDlpRunnerMock, :run, fn _url, :get_media_attributes, _opts, _template, addl ->
+          assert addl[:use_cookies] == (unquote(policy) == :all_operations)
+          {:error, unquote(message), 1}
+        end)
+
+        assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+        refute_enqueued(worker: MediaDownloadWorker)
+      end
+    end
+
+    test "does not loop when the authenticated retry also fails" do
+      source = source_fixture(cookie_behaviour: :when_needed)
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>video1</yt:videoId>"} end)
+
+      expect(YtDlpRunnerMock, :run, 2, fn _url, :get_media_attributes, _opts, _template, _addl ->
+        {:error, "This video is available to this channel's members", 1}
+      end)
+
+      assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+      refute_enqueued(worker: MediaDownloadWorker)
+    end
+
     test "sets use_cookies if the source uses cookies" do
       expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
 
@@ -296,6 +475,65 @@ defmodule Pinchflat.FastIndexing.FastIndexingHelpersTest do
 
       assert [%MediaItem{}] = FastIndexingHelpers.index_and_kickoff_downloads(source)
     end
+  end
+
+  describe "index_and_kickoff_downloads/1 when translating titles" do
+    test "stores the translated title when the listing title differs from the canonical title" do
+      source = source_fixture(%{title_language: "de"})
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, opts, _template, _addl ->
+          assert {:playlist_end, 30} in opts
+          {:ok, translated_titles_output(%{"video1" => "Titel Eins"})}
+
+        _url, :get_media_attributes, _opts, _template, _addl ->
+          {:ok, media_attributes_return_fixture()}
+      end)
+
+      assert [%MediaItem{translated_title: "Titel Eins"} = item] =
+               FastIndexingHelpers.index_and_kickoff_downloads(source)
+
+      assert item.title == "Video 1"
+    end
+
+    test "does not fetch the listing when there are no new media ids" do
+      source = source_fixture(%{title_language: "de"})
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+      media_item_fixture(source_id: source.id, media_id: "test_1")
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, _opts, _template, _addl ->
+          flunk("should not fetch translated titles when there are no new media ids")
+
+        _url, :get_media_attributes, _opts, _template, _addl ->
+          {:ok, media_attributes_return_fixture()}
+      end)
+
+      assert [] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+    end
+
+    test "does not fetch the listing when title_language is nil" do
+      source = source_fixture(%{title_language: nil})
+      expect(HTTPClientMock, :get, fn _url -> {:ok, "<yt:videoId>test_1</yt:videoId>"} end)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_translated_titles, _opts, _template, _addl ->
+          flunk("should not fetch translated titles when title_language is nil")
+
+        _url, :get_media_attributes, _opts, _template, _addl ->
+          {:ok, media_attributes_return_fixture()}
+      end)
+
+      assert [%MediaItem{translated_title: nil}] = FastIndexingHelpers.index_and_kickoff_downloads(source)
+    end
+  end
+
+  defp translated_titles_output(titles) do
+    titles
+    |> Enum.map_join("\n", fn {media_id, title} ->
+      Phoenix.json_library().encode!(%{id: media_id, title: title})
+    end)
   end
 
   defp with_debug_logs(fun) do

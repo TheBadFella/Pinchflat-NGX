@@ -244,6 +244,142 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     end
   end
 
+  @doc """
+  Fetches the translated titles for a collection listing.
+
+  Runs one flat-playlist request against the given listing URL with
+  `youtube:lang=<language>` so the listing returns titles in that language.
+  Only media IDs and titles are requested.
+
+  Any `extractor_args` in `command_opts` or `addl_opts` are preserved and merged
+  with the requested language. Additional command options (such as
+  `playlist_end: N`) are appended so callers can bound the listing.
+
+  The returned map contains what the listing reported. Deciding whether a title
+  is an actual translation is left to the caller.
+
+  Returns `{:ok, %{media_id => title}}` | `{:error, reason}`.
+  """
+  def get_translated_titles(url, language, command_opts \\ [], addl_opts \\ []) do
+    output_template = "%(.{id,title})j"
+    action = :get_translated_titles
+
+    {command_extractor_args, command_opts} = Keyword.pop_values(command_opts, :extractor_args)
+    {addl_extractor_args, addl_opts} = Keyword.pop_values(addl_opts, :extractor_args)
+
+    extractor_args =
+      (command_extractor_args ++ addl_extractor_args)
+      |> merge_youtube_language(language)
+      |> Enum.map(&{:extractor_args, &1})
+
+    all_command_opts = [:flat_playlist, :skip_download] ++ extractor_args ++ command_opts
+
+    case backend_runner().run(url, action, all_command_opts, output_template, addl_opts) do
+      {:ok, output} -> {:ok, parse_translated_titles(output)}
+      {:error, reason} -> {:error, reason}
+      {:error, reason, status} -> {:error, {reason, status}}
+      other -> {:error, other}
+    end
+  end
+
+  @doc """
+  Fetches translated titles for a source's listing URLs in the source's `title_language`.
+
+  Returns an empty map when the source has no title language or isn't a YouTube channel or
+  playlist. A failed or empty listing is logged and contributes no titles, so indexing continues
+  with original titles only. Translated titles must be fetched before media items are created,
+  because downloads can be enqueued immediately and the output path is built at download time.
+
+  Returns %{media_id => title}
+  """
+  def get_source_translated_titles(source, urls, command_opts \\ [])
+
+  def get_source_translated_titles(%Source{title_language: nil}, _urls, _command_opts), do: %{}
+
+  def get_source_translated_titles(%Source{collection_type: type} = source, urls, command_opts)
+      when type in [:channel, :playlist] do
+    if Source.supported_youtube_url?(source.original_url) do
+      Enum.reduce(urls, %{}, fn url, titles ->
+        case get_translated_titles(url, source.title_language, command_opts) do
+          {:ok, listing_titles} ->
+            if map_size(listing_titles) == 0 do
+              Logger.info("translated_titles_listing_empty source_id=#{source.id} url=#{url}")
+            end
+
+            Map.merge(titles, listing_titles)
+
+          {:error, reason} ->
+            Logger.info("translated_titles_listing_failed source_id=#{source.id} url=#{url} reason=#{inspect(reason)}")
+            titles
+        end
+      end)
+    else
+      %{}
+    end
+  end
+
+  def get_source_translated_titles(_source, _urls, _command_opts), do: %{}
+
+  @doc """
+  Picks the translated title for indexed media from a `get_source_translated_titles/3` result.
+  Blank titles and titles identical to the original aren't translations.
+
+  Returns binary() | nil
+  """
+  def translated_title_for(%{media_id: media_id, title: title}, translated_titles) when is_binary(media_id) do
+    case Map.get(translated_titles, media_id) do
+      translated when is_binary(translated) ->
+        if String.trim(translated) != "" and translated != title, do: translated
+
+      _ ->
+        nil
+    end
+  end
+
+  def translated_title_for(_media_attrs, _translated_titles), do: nil
+
+  defp merge_youtube_language([], language), do: ["youtube:lang=#{language}"]
+
+  defp merge_youtube_language(extractor_args, language) do
+    case Enum.find_index(extractor_args, &youtube_extractor_args?/1) do
+      nil -> extractor_args ++ ["youtube:lang=#{language}"]
+      index -> List.update_at(extractor_args, index, &put_youtube_language(&1, language))
+    end
+  end
+
+  defp youtube_extractor_args?("youtube:" <> _rest), do: true
+  defp youtube_extractor_args?(_extractor_args), do: false
+
+  defp put_youtube_language("youtube:" <> rest, language) do
+    keys =
+      rest
+      |> String.split(";", trim: true)
+      |> Enum.reject(&String.starts_with?(&1, "lang="))
+
+    "youtube:" <> Enum.join(keys ++ ["lang=#{language}"], ";")
+  end
+
+  defp parse_translated_titles(output) do
+    output
+    |> String.split("\n")
+    |> Enum.reduce(%{}, fn line, titles ->
+      case decode_translated_title(line) do
+        {media_id, title} -> Map.put(titles, media_id, title)
+        nil -> titles
+      end
+    end)
+  end
+
+  defp decode_translated_title(line) do
+    with true <- String.trim(line) != "",
+         {:ok, %{"id" => media_id, "title" => title}} <- Phoenix.json_library().decode(line),
+         true <- is_binary(media_id) and is_binary(title) do
+      {media_id, title}
+    else
+      _ -> nil
+    end
+  end
+
   defp format_source_details(response) do
     # Collection ownership is available even when the first video's channel metadata is missing.
     response =

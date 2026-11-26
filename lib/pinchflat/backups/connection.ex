@@ -54,11 +54,17 @@ defmodule Pinchflat.Backups.Connection do
 
   def from_url(_url), do: {:error, :database_url_missing}
 
-  @doc "Returns the configured `DATABASE_URL` without exposing it to callers."
+  @doc """
+  Returns the database URL the Repo connects to, without exposing it to callers.
+
+  The Repo's `:url` comes from `DATABASE_URL` in config/runtime.exs, so they match in
+  production. Preferring the Repo's value keeps backups on the database the app uses,
+  such as the per-partition test database.
+  """
   @spec configured_url() :: String.t() | nil
   def configured_url do
-    System.get_env("DATABASE_URL") ||
-      Application.get_env(:pinchflat, Pinchflat.Repo, [])[:url]
+    Application.get_env(:pinchflat, Pinchflat.Repo, [])[:url] ||
+      System.get_env("DATABASE_URL")
   end
 
   @doc "Builds connection details from the configured database URL."

@@ -179,10 +179,8 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
         where: j.state == "retryable"
       )
 
-    case Oban.retry_all_jobs(query) do
-      {:ok, count} -> count
-      _ -> 0
-    end
+    {:ok, count} = Oban.retry_all_jobs(query)
+    count
   end
 
   @doc """
@@ -195,10 +193,8 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
         where: j.state == "discarded"
       )
 
-    case Oban.retry_all_jobs(query) do
-      {:ok, count} -> count
-      _ -> 0
-    end
+    {:ok, count} = Oban.retry_all_jobs(query)
+    count
   end
 
   @doc """
@@ -216,10 +212,8 @@ defmodule Pinchflat.Diagnostics.QueueDiagnostics do
         where: j.state in ["retryable", "discarded"]
       )
 
-    case Oban.retry_all_jobs(query) do
-      {:ok, count} -> count
-      _ -> 0
-    end
+    {:ok, count} = Oban.retry_all_jobs(query)
+    count
   end
 
   @doc """

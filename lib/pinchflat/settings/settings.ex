@@ -39,8 +39,11 @@ defmodule Pinchflat.Settings do
     |> Setting.changeset(attrs)
     |> Repo.update(log: false)
     |> tap(fn
-      {:ok, %Setting{} = updated_setting} -> cache_record(updated_setting)
-      _ -> :ok
+      {:ok, %Setting{} = updated_setting} ->
+        if not Repo.in_transaction?(), do: cache_record(updated_setting)
+
+      _ ->
+        :ok
     end)
   end
 
@@ -90,6 +93,25 @@ defmodule Pinchflat.Settings do
   """
   def change_setting(%Setting{} = setting, attrs \\ %{}) do
     Setting.changeset(setting, attrs)
+  end
+
+  @doc """
+  Clears the cached setting record so the next read loads from the database.
+  """
+  def invalidate_cache do
+    if cache_enabled?() do
+      :persistent_term.erase(@cache_key)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Refreshes the cached setting record from the database.
+  """
+  def refresh_cache do
+    invalidate_cache()
+    record()
   end
 
   defp cached_record do

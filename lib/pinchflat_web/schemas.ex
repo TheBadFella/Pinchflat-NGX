@@ -238,6 +238,12 @@ defmodule PinchflatWeb.Schemas do
           nullable: true,
           description: "Only download media after this date"
         },
+        download_cutoff_days: %Schema{
+          type: :integer,
+          nullable: true,
+          description:
+            "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+        },
         retention_period_days: %Schema{
           type: :integer,
           nullable: true,
@@ -249,9 +255,33 @@ defmodule PinchflatWeb.Schemas do
           nullable: true,
           description: "Resolved source/profile age-based period (0 or null means no age-based cleanup)"
         },
+        keep_newest_count: %Schema{
+          type: :integer,
+          nullable: true,
+          minimum: 1,
+          description:
+            "Maximum number of newest videos to keep downloaded or pending for this source. Nil disables the limit."
+        },
         title_filter_regex: %Schema{type: :string, nullable: true, description: "Regex to filter media titles"},
+        title_language: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Language code for translated titles",
+          example: "en"
+        },
         min_duration_seconds: %Schema{type: :integer, nullable: true, description: "Minimum media duration"},
         max_duration_seconds: %Schema{type: :integer, nullable: true, description: "Maximum media duration"},
+        owner_channel_id: %Schema{
+          type: :string,
+          nullable: true,
+          readOnly: true,
+          description:
+            "Channel ID of the source's owner: the playlist owner, the channel itself, or a single video's uploader. Null when YouTube reports no owner (for example a mix)."
+        },
+        only_owner_uploads: %Schema{
+          type: :boolean,
+          description: "Only download playlist videos uploaded by owner_channel_id"
+        },
         watch_window_days: %Schema{
           type: :integer,
           nullable: true,
@@ -259,6 +289,22 @@ defmodule PinchflatWeb.Schemas do
           maximum: 365,
           description:
             "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
+        },
+        sponsorblock_mark_categories: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          description:
+            "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut.",
+          example: ["intro", "outro"]
+        },
+        sponsorblock_remove_categories: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          description:
+            "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut.",
+          example: ["sponsor", "selfpromo"]
         },
         series_directory: %Schema{type: :string, nullable: true, description: "Directory for series organization"},
         nfo_filepath: %Schema{type: :string, nullable: true, description: "Path to NFO file"},
@@ -297,6 +343,12 @@ defmodule PinchflatWeb.Schemas do
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         },
         title: %Schema{type: :string, description: "Media title", example: "My Video Title"},
+        translated_title: %Schema{
+          type: :string,
+          nullable: true,
+          description: "Channel-provided translated title",
+          example: "My Translated Title"
+        },
         media_id: %Schema{type: :string, description: "External media ID", example: "youtube_video_id"},
         source_id: %Schema{type: :integer, description: "ID of the source this media belongs to", example: 1},
         availability: %Schema{
@@ -478,6 +530,20 @@ defmodule PinchflatWeb.Schemas do
               description:
                 "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
             },
+            sponsorblock_mark_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
+            sponsorblock_remove_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
             enabled: %Schema{type: :boolean, description: "Whether the source is active", default: true},
             download_media: %Schema{type: :boolean, description: "Download media items", default: true},
             download_public_media: %Schema{
@@ -487,8 +553,9 @@ defmodule PinchflatWeb.Schemas do
             },
             download_members_only_media: %Schema{
               type: :boolean,
-              description: "Download subscriber-only, premium-only, and authentication-required media",
-              default: true
+              description:
+                "Download subscriber-only, premium-only, and authentication-required media. These usually need cookies.",
+              default: false
             },
             fast_index: %Schema{type: :boolean, description: "Use fast indexing", default: false},
             player_client: %Schema{
@@ -526,19 +593,41 @@ defmodule PinchflatWeb.Schemas do
               format: :date,
               description: "Only download media after this date (YYYY-MM-DD)"
             },
+            download_cutoff_days: %Schema{
+              type: :integer,
+              nullable: true,
+              description:
+                "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+            },
             retention_period_days: %Schema{
               type: :integer,
               nullable: true,
               minimum: 0,
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
             },
+            keep_newest_count: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Maximum number of newest videos to keep downloaded or pending for this source"
+            },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
+            title_language: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Language code for translated titles",
+              example: "en"
+            },
             download_subdirectory: %Schema{
               type: :string,
               description: "Relative folder under the media root for this source"
             },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
+            only_owner_uploads: %Schema{
+              type: :boolean,
+              description: "Only download playlist videos uploaded by owner_channel_id"
+            },
             output_path_template_shorts_override: %Schema{
               type: :string,
               nullable: true,
@@ -586,6 +675,20 @@ defmodule PinchflatWeb.Schemas do
               description:
                 "Watch-window override in days; blank inherits the media profile and 0 disables watching for this source. 1-365 watches the remote item for that many days from its first completed local download, keeping a saved original and holding replacements after a suspected change."
             },
+            sponsorblock_mark_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock chapters to mark for this source; null inherits the media profile list, [] marks nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
+            sponsorblock_remove_categories: %Schema{
+              type: :array,
+              items: %Schema{type: :string},
+              nullable: true,
+              description:
+                "SponsorBlock segments to remove for this source; null inherits the media profile list, [] removes nothing for this source, and a non-empty list replaces the profile list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut."
+            },
             description_locked: %Schema{
               type: :boolean,
               description: "Prevent automated metadata refreshes from changing the description"
@@ -624,19 +727,41 @@ defmodule PinchflatWeb.Schemas do
               format: :date,
               description: "Only download media after this date"
             },
+            download_cutoff_days: %Schema{
+              type: :integer,
+              nullable: true,
+              description:
+                "Rolling window: only download media published within this many days. Mutually exclusive with download_cutoff_date"
+            },
             retention_period_days: %Schema{
               type: :integer,
               nullable: true,
               minimum: 0,
               description: "Null inherits profile retention; 0 disables age-based cleanup; positive days override"
             },
+            keep_newest_count: %Schema{
+              type: :integer,
+              nullable: true,
+              minimum: 1,
+              description: "Maximum number of newest videos to keep downloaded or pending for this source"
+            },
             title_filter_regex: %Schema{type: :string, description: "Regex to filter media titles"},
+            title_language: %Schema{
+              type: :string,
+              nullable: true,
+              description: "Language code for translated titles",
+              example: "en"
+            },
             download_subdirectory: %Schema{
               type: :string,
               description: "Relative folder under the media root for this source"
             },
             min_duration_seconds: %Schema{type: :integer, description: "Minimum media duration in seconds"},
             max_duration_seconds: %Schema{type: :integer, description: "Maximum media duration in seconds"},
+            only_owner_uploads: %Schema{
+              type: :boolean,
+              description: "Only download playlist videos uploaded by owner_channel_id"
+            },
             output_path_template_shorts_override: %Schema{
               type: :string,
               nullable: true,

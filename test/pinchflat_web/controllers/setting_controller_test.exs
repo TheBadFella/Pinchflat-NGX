@@ -9,7 +9,7 @@ defmodule PinchflatWeb.SettingControllerTest do
       html = html_response(conn, 200)
 
       assert html =~ "Settings"
-      assert html =~ "Search settings..."
+      assert html =~ ~s(id="setting-search")
       assert html =~ "Notification Settings"
       assert html =~ "Extractor Settings"
       assert html =~ "Cookies"
@@ -19,8 +19,69 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert html =~ ~s(href="/backups")
       refute html =~ ~s(data-settings-group="backups")
       refute html =~ ~s(id="postgres-backups")
-      assert html =~ "Review PostgreSQL migration"
+      refute html =~ ~s(id="database-migration")
       assert html =~ ~s(href="/postgres_migration")
+    end
+  end
+
+  describe "settings page layout" do
+    test "renders section navigation, the settings search and collapsed media servers", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      for id <-
+            ~w(settings-notifications settings-extractor settings-discovery settings-yt-dlp
+               settings-codecs settings-storage media-server-settings settings-yt-dlp-plugins settings-cookies
+               api-access-settings) do
+        assert html =~ ~s(id="#{id}")
+        assert html =~ ~s(href="##{id}")
+      end
+
+      assert html =~ ~s|x-data="settingsPage()"|
+      refute html =~ ~s(aria-label="Settings in )
+      refute html =~ "matchGroup"
+
+      for title <- ["Plex Media Server", "Jellyfin", "Emby"] do
+        assert html =~ ~r/<details[^>]*>\s*<summary[^>]*>.*?#{title}.*?Off.*?<\/summary>/s
+      end
+
+      refute html =~ ~r/<details[^>]*\sopen/
+    end
+
+    test "keeps every embedded LiveView reachable from the section list", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      for id <-
+            ~w(settings-apprise settings-youtube-api-key settings-yt-dlp-version settings-yt-dlp-config
+               settings-plugins settings-cookie-file settings-default-cookie-behaviour settings-share-tokens) do
+        assert html =~ ~r/<div[^>]*id="#{id}"[^>]*data-setting[^>]*>\s*<div[^>]*data-phx-session/
+      end
+    end
+
+    test "uses a toggle for on/off settings and a dropdown for the time format", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      assert html =~ ~s(id="settings-form_notification_include_video_titles-wrapper")
+      assert html =~ ~s(id="cookie-health-monitoring-enabled-wrapper")
+      assert html =~ ~r/<input[^>]*type="hidden"[^>]*name="setting\[time_format\]"[^>]*value="24h"/
+      assert html =~ "24-hour"
+      assert html =~ "12-hour"
+    end
+
+    test "shows the codec preferences without an editing mode", %{conn: conn} do
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      refute html =~ "advancedMode"
+      refute html =~ "Editing Mode"
+      assert html =~ ~r/<section\s+id="settings-codecs"\s+data-setting-group\s+class="[^"]*"\s*>/
+    end
+
+    test "opens a media server group when one of its fields has an error", %{conn: conn} do
+      conn = put(conn, ~p"/settings", setting: %{jellyfin_enabled: "true", jellyfin_url: ""})
+      html = html_response(conn, 200)
+
+      assert [opened] = Regex.scan(~r/<details[^>]*\sopen[^>]*>.*?<\/summary>/s, html)
+      assert hd(opened) =~ "Jellyfin"
+      assert hd(opened) =~ "Refresh on"
     end
   end
 
@@ -90,11 +151,13 @@ defmodule PinchflatWeb.SettingControllerTest do
       conn = put(conn, ~p"/settings", setting: update_attrs)
       assert redirected_to(conn) == ~p"/settings"
 
-      conn = get(conn, ~p"/settings")
-      assert html_response(conn, 200) =~ update_attrs[:apprise_server]
-      assert html_response(conn, 200) =~ update_attrs[:external_base_url]
-      assert html_response(conn, 200) =~ "Download Workers"
-      assert html_response(conn, 200) =~ "Base yt-dlp Config"
+      html = conn |> get(~p"/settings") |> html_response(200)
+      toast = html |> LazyHTML.from_document() |> LazyHTML.query(".theme-toast-stack [role=status]") |> LazyHTML.text()
+      assert String.trim(toast) == "Settings saved"
+      assert html =~ update_attrs[:apprise_server]
+      assert html =~ update_attrs[:external_base_url]
+      assert html =~ "Download Workers"
+      assert html =~ "Base yt-dlp Config"
     end
 
     test "shows compose ownership when a worker env var is set", %{conn: conn} do
@@ -135,6 +198,107 @@ defmodule PinchflatWeb.SettingControllerTest do
       put(conn, ~p"/settings", setting: %{apprise_server: "test://server"})
 
       assert Pinchflat.Reconciliation.get_plan!(plan.id).status == :stale
+    end
+  end
+
+  describe "codec preferences in settings" do
+    setup do
+      on_exit(fn ->
+        Pinchflat.Settings.update_setting(Pinchflat.Settings.record(), %{
+          video_codec_preference: "avc",
+          audio_codec_preference: "m4a"
+        })
+      end)
+
+      :ok
+    end
+
+    test "lists every codec once, ticked ones first in saved order", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "vp9,avc")
+      Pinchflat.Settings.set(audio_codec_preference: "opus,m4a")
+
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      refute html =~ "@{"
+      refute html =~ "Add codec"
+      assert html =~ ~s(<legend class="mb-2 text-sm font-medium text-theme-on-surface">Video codec preferences</legend>)
+      assert html =~ ~s(x-bind:id="&#39;settings-form_video_codec_preference-&#39; + row.codec")
+
+      video_rows = html |> state_rows("settings-form_video_codec_preference-list")
+      assert Enum.take(video_rows, 2) == [{"vp9", true}, {"avc", true}]
+      assert length(video_rows) == 6
+      assert Enum.count(video_rows, &elem(&1, 1)) == 2
+
+      audio_rows = html |> state_rows("settings-form_audio_codec_preference-list")
+      assert Enum.take(audio_rows, 2) == [{"opus", true}, {"m4a", true}]
+      assert length(audio_rows) == 9
+    end
+
+    test "shows every codec unticked when no preference is set", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "")
+      Pinchflat.Settings.set(audio_codec_preference: "")
+
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      rows = state_rows(html, "settings-form_video_codec_preference-list")
+      assert length(rows) == 6
+      refute Enum.any?(rows, &elem(&1, 1))
+      assert html =~ "Reset to yt-dlp order"
+    end
+
+    test "saves ordered codec preferences", %{conn: conn} do
+      conn =
+        put(conn, ~p"/settings", %{
+          setting: %{video_codec_preference: "vp9,avc,av1", audio_codec_preference: "opus,m4a"}
+        })
+
+      assert redirected_to(conn) == ~p"/settings"
+
+      assert Pinchflat.Settings.get!(:video_codec_preference) == "vp9,avc,av1"
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == "opus,m4a"
+    end
+
+    test "saves codec aliases canonicalized to select values", %{conn: conn} do
+      conn =
+        put(conn, ~p"/settings", %{
+          setting: %{video_codec_preference: "H264,VP09", audio_codec_preference: "aac,aiff"}
+        })
+
+      assert redirected_to(conn) == ~p"/settings"
+      assert Pinchflat.Settings.get!(:video_codec_preference) == "avc,vp9"
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == "m4a,wav"
+    end
+
+    test "renders legacy stored aliases canonicalized to select values", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "h264")
+      Pinchflat.Settings.set(audio_codec_preference: "aac")
+
+      html = conn |> get(~p"/settings") |> html_response(200)
+
+      assert html =~ ~s(&quot;codec&quot;:&quot;avc&quot;)
+      assert html =~ ~s(&quot;codec&quot;:&quot;m4a&quot;)
+      refute html =~ ~s(&quot;codec&quot;:&quot;h264&quot;)
+      refute html =~ ~s(&quot;codec&quot;:&quot;aac&quot;)
+    end
+
+    test "clears codec preferences to an empty string", %{conn: conn} do
+      Pinchflat.Settings.set(video_codec_preference: "vp9,avc")
+      Pinchflat.Settings.set(audio_codec_preference: "opus,m4a")
+
+      conn = put(conn, ~p"/settings", %{setting: %{video_codec_preference: "", audio_codec_preference: ""}})
+
+      assert redirected_to(conn) == ~p"/settings"
+      assert Pinchflat.Settings.get!(:video_codec_preference) == ""
+      assert Pinchflat.Settings.get!(:audio_codec_preference) == ""
+    end
+
+    test "rejects an unknown codec and keeps the draft", %{conn: conn} do
+      conn = put(conn, ~p"/settings", %{setting: %{video_codec_preference: "vp9,boguscodec"}})
+
+      html = html_response(conn, 200)
+      assert html =~ "unsupported codec"
+      assert html =~ "boguscodec"
+      assert Pinchflat.Settings.get!(:video_codec_preference) != "vp9,boguscodec"
     end
   end
 
@@ -251,6 +415,15 @@ defmodule PinchflatWeb.SettingControllerTest do
       assert redirected_to(conn) == ~p"/settings"
       assert conn.assigns[:flash]["error"] =~ "still below the recovery threshold"
       assert Pinchflat.Settings.get!(:download_space_protection_blocked) == true
+    end
+  end
+
+  defp state_rows(html, list_id) do
+    [_, state] = Regex.run(~r/id="#{list_id}"[^>]*x-data="([^"]*)"/, html)
+
+    for [row] <- Regex.scan(~r/\{[^{}]*codec&quot;[^{}]*\}/, state) do
+      [_, codec] = Regex.run(~r/codec&quot;:&quot;([a-z0-9]+)/, row)
+      {codec, row =~ "on&quot;:true"}
     end
   end
 end

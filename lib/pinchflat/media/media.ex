@@ -19,6 +19,8 @@ defmodule Pinchflat.Media do
   alias Pinchflat.Metadata.MediaMetadata
 
   alias Pinchflat.Lifecycle.UserScripts.CommandRunner, as: UserScriptRunner
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.ScopedYtDlpOptions
 
   # Some fields should only be set on insert and not on update.
   @fields_to_drop_on_update [:playlist_index]
@@ -122,10 +124,37 @@ defmodule Pinchflat.Media do
   Returns [%MediaItem{}, ...].
   """
   def list_pending_media_items_for(%Source{} = source) do
-    MediaQuery.new()
-    |> MediaQuery.require_assoc(:media_profile)
-    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
-    |> order_by([mi], asc: mi.id)
+    source
+    |> pending_media_items_query()
+    |> Repo.all()
+  end
+
+  @doc """
+  Counts the media items Download Pending would queue for a source.
+
+  Returns integer()
+  """
+  def count_pending_media_items_for(%Source{} = source) do
+    source
+    |> pending_media_items_query()
+    |> exclude(:order_by)
+    |> Repo.aggregate(:count, :id)
+  end
+
+  @doc """
+  Returns pending media items for a given source with only `:id` loaded from the
+  database, for callers that only need to enqueue work.
+
+  Every other field is its schema default rather than the stored value, so these
+  structs must not be used for display or download decisions. Use
+  `list_pending_media_items_for/1` when full rows are needed.
+
+  Returns [%MediaItem{}, ...].
+  """
+  def list_pending_media_items_for_enqueue(%Source{} = source) do
+    source
+    |> pending_media_items_query()
+    |> select([mi], struct(mi, [:id]))
     |> Repo.all()
   end
 
@@ -197,11 +226,38 @@ defmodule Pinchflat.Media do
   def search(search_term, opts) do
     limit = Keyword.get(opts, :limit, 50)
 
-    MediaQuery.new()
-    |> MediaQuery.matching_search_term(search_term)
-    |> Repo.maybe_limit(limit)
-    |> Repo.all()
+    items =
+      MediaQuery.new()
+      |> MediaQuery.matching_search_term(search_term)
+      |> Repo.maybe_limit(limit)
+      |> Repo.all()
+
+    if Keyword.get(opts, :include_source_names, false) and is_integer(limit) and length(items) < limit do
+      items ++ search_by_source_name(search_term, limit - length(items), Enum.map(items, & &1.id))
+    else
+      items
+    end
     |> preload_api_assocs()
+  end
+
+  defp search_by_source_name(term, limit, excluded_ids) do
+    pattern = Pinchflat.Utils.StringUtils.contains_like_pattern(term)
+
+    if pattern do
+      MediaQuery.new()
+      |> join(:inner, [mi], source in assoc(mi, :source))
+      |> where([mi, source], mi.id not in ^excluded_ids)
+      |> where(
+        [mi, source],
+        fragment("lower(?) LIKE ? ESCAPE '\\'", source.custom_name, ^pattern) or
+          fragment("lower(?) LIKE ? ESCAPE '\\'", source.collection_name, ^pattern)
+      )
+      |> order_by([mi], desc: mi.uploaded_at, desc: mi.id)
+      |> Repo.maybe_limit(limit)
+      |> Repo.all()
+    else
+      []
+    end
   end
 
   @doc """
@@ -232,8 +288,11 @@ defmodule Pinchflat.Media do
 
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
-  def create_media_item_from_backend_attrs(source, media_attrs_struct) do
-    attrs = Map.merge(%{source_id: source.id}, Map.from_struct(media_attrs_struct))
+  def create_media_item_from_backend_attrs(source, media_attrs_struct, translated_title \\ nil) do
+    attrs =
+      %{source_id: source.id}
+      |> Map.merge(Map.from_struct(media_attrs_struct))
+      |> maybe_put_translated_title(translated_title)
 
     result =
       case attrs.media_id do
@@ -303,6 +362,58 @@ defmodule Pinchflat.Media do
     media_item
     |> MediaItem.changeset(update_attrs)
     |> Repo.update()
+  end
+
+  @doc """
+  Updates a media_item and its scoped yt-dlp options in one transaction. A file
+  failure rolls back the media item update.
+
+  Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}} |
+  {:error, %Ecto.Changeset{}, reason}
+  """
+  def update_media_item_with_yt_dlp_options(%MediaItem{} = media_item, attrs, opts \\ []) do
+    payload = ScopedYtDlpOptions.payload(opts)
+
+    if payload == :absent do
+      update_media_item(media_item, attrs)
+    else
+      expected = ScopedYtDlpOptions.expected_version(opts, :any)
+      prior = ScopedYtDlpOptions.prior(:media_item, media_item.id)
+
+      result =
+        Repo.transaction(fn ->
+          case update_media_item(media_item, attrs) do
+            {:ok, updated} ->
+              case ScopedYtDlpOptions.save(payload, :media_item, updated.id, expected) do
+                :ok ->
+                  :ok = PendingMediaItemOptions.supersede_for_item(updated)
+                  updated
+
+                {:error, reason} ->
+                  Repo.rollback({:yt_dlp_options, reason})
+              end
+
+            {:error, changeset} ->
+              Repo.rollback({:changeset, changeset})
+          end
+        end)
+
+      case result do
+        {:ok, updated} ->
+          {:ok, updated}
+
+        {:error, {:changeset, changeset}} ->
+          {:error, changeset}
+
+        {:error, {:yt_dlp_options, reason}} ->
+          ScopedYtDlpOptions.restore(:media_item, media_item.id, prior, payload)
+          {:error, %{change_media_item(media_item, attrs) | action: :update}, reason}
+
+        {:error, reason} ->
+          ScopedYtDlpOptions.restore(:media_item, media_item.id, prior, payload)
+          {:error, %{change_media_item(media_item, attrs) | action: :update}, reason}
+      end
+    end
   end
 
   @doc """
@@ -395,6 +506,13 @@ defmodule Pinchflat.Media do
     MediaQuery.new()
     |> MediaQuery.require_assoc(:media_profile)
     |> where(^dynamic(^MediaQuery.download_failed()))
+  end
+
+  defp pending_media_items_query(%Source{} = source) do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.for_source(source) and ^MediaQuery.pending()))
+    |> order_by([mi], asc: mi.id)
   end
 
   defp source_media_direct_status_counts(%Source{} = source) do
@@ -565,11 +683,23 @@ defmodule Pinchflat.Media do
       attrs
       |> Map.drop(@fields_to_drop_on_update)
       |> preserve_known_availability(media_item)
+      |> preserve_translated_title(media_item)
 
     media_item
     |> MediaItem.changeset(attrs)
     |> Repo.update()
   end
+
+  defp maybe_put_translated_title(attrs, nil), do: attrs
+  defp maybe_put_translated_title(attrs, translated_title), do: Map.put(attrs, :translated_title, translated_title)
+
+  # A translated title is captured once. Later indexing or downloads must not
+  # replace an existing value with an A/B variant.
+  defp preserve_translated_title(attrs, %{translated_title: translated_title}) when not is_nil(translated_title) do
+    Map.delete(attrs, :translated_title)
+  end
+
+  defp preserve_translated_title(attrs, _media_item), do: attrs
 
   # A later backend response can omit availability while yt-dlp is unable to determine it.
   # Keep a value already captured instead of replacing it with nil.

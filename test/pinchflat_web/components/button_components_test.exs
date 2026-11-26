@@ -42,4 +42,43 @@ defmodule PinchflatWeb.ButtonComponentsTest do
       refute html =~ ~s(href="/sources/new")
     end
   end
+
+  test "dropdown menus stay hidden until the page script opens them" do
+    html =
+      render_component(&ButtonComponents.button_dropdown/1,
+        text: "More actions",
+        option: [%{inner_block: fn _, _ -> "Start all" end}]
+      )
+
+    assert html =~ ~r/<div[^>]*x-show="dropdownOpen"[^>]*x-cloak/
+  end
+
+  test "a dropdown trigger uses the styled tooltip when given one, and the browser title otherwise" do
+    options = [%{inner_block: fn _, _ -> "Start all" end}]
+
+    with_tooltip =
+      render_component(&ButtonComponents.button_dropdown/1,
+        icon_name: "hero-ellipsis-vertical-solid",
+        aria_label: "More actions for Example",
+        tooltip: "More actions",
+        option: options
+      )
+
+    without_tooltip =
+      render_component(&ButtonComponents.button_dropdown/1,
+        icon_name: "hero-ellipsis-vertical-solid",
+        aria_label: "More actions for Example",
+        option: options
+      )
+
+    assert with_tooltip =~ ~s(role="tooltip")
+    assert with_tooltip =~ ~s(popover="manual")
+    assert with_tooltip =~ "More actions"
+    refute with_tooltip =~ ~s(title="More actions for Example")
+    assert with_tooltip =~ ~s(x-ref="trigger")
+
+    refute without_tooltip =~ ~s(role="tooltip")
+    assert without_tooltip =~ ~s(title="More actions for Example")
+    assert without_tooltip =~ ~s(x-ref="trigger")
+  end
 end

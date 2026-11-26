@@ -223,6 +223,24 @@ if database_adapter == :sqlite do
     ]
 end
 
+# Parallel test partitions (tooling/test_partitions.sh) each need their own database.
+# This is chosen at boot rather than in config/test.exs, so every partition reuses the
+# same compiled test build instead of recompiling for a different compile-time config.
+test_partition = System.get_env("MIX_TEST_PARTITION", "")
+
+if config_env() == :test and test_partition != "" do
+  if database_adapter == :postgres do
+    config :pinchflat, Pinchflat.Repo,
+      url: System.get_env("DATABASE_URL", "ecto://postgres:postgres@localhost/pinchflat_test") <> test_partition
+  else
+    test_database =
+      System.get_env("TEST_DATABASE_PATH") || Path.expand("../priv/repo/pinchflat_test.db", __DIR__)
+
+    config :pinchflat, Pinchflat.Repo,
+      database: Path.rootname(test_database) <> test_partition <> Path.extname(test_database)
+  end
+end
+
 # Some users may want to increase the number of workers that use yt-dlp to improve speeds
 # Others may want to decrease the number of these workers to lessen the chance of an IP ban.
 # Downloads can be tuned separately from indexing so slow media fetches don't starve indexing.

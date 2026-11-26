@@ -169,4 +169,174 @@ defmodule Pinchflat.SettingsTest do
                Settings.change_setting(setting, %{yt_dlp_update_policy: "pinned", yt_dlp_pinned_version: "2025.12.08"})
     end
   end
+
+  describe "codec preference validation" do
+    setup do
+      on_exit(fn ->
+        Settings.update_setting(Settings.record(), %{
+          video_codec_preference: "avc",
+          audio_codec_preference: "m4a"
+        })
+      end)
+
+      {:ok, setting: Settings.record()}
+    end
+
+    test "accepts a single legacy codec", %{setting: setting} do
+      assert %Ecto.Changeset{valid?: true} = Settings.change_setting(setting, %{video_codec_preference: "avc"})
+      assert %Ecto.Changeset{valid?: true} = Settings.change_setting(setting, %{audio_codec_preference: "m4a"})
+    end
+
+    test "accepts an ordered list and canonicalizes it", %{setting: setting} do
+      changeset = Settings.change_setting(setting, %{video_codec_preference: " AV1 , vp9 ,avc "})
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :video_codec_preference) == "av1,vp9,avc"
+    end
+
+    test "canonicalizes aliases to canonical select values on save", %{setting: setting} do
+      video_changeset = Settings.change_setting(setting, %{video_codec_preference: "H264,VP09"})
+      assert video_changeset.valid?
+      assert Ecto.Changeset.get_change(video_changeset, :video_codec_preference) == "avc,vp9"
+
+      # Default setting has audio_codec_preference == "m4a", so start with a different value to observe change
+      audio_setting = %{setting | audio_codec_preference: "opus"}
+      audio_changeset = Settings.change_setting(audio_setting, %{audio_codec_preference: "aac"})
+      assert audio_changeset.valid?
+      assert Ecto.Changeset.get_change(audio_changeset, :audio_codec_preference) == "m4a"
+
+      wav_changeset = Settings.change_setting(audio_setting, %{audio_codec_preference: "aiff,opus"})
+      assert wav_changeset.valid?
+      assert Ecto.Changeset.get_change(wav_changeset, :audio_codec_preference) == "wav,opus"
+    end
+
+    test "round-trips wav and aiff aliases through save and reload", %{setting: setting} do
+      assert {:ok, saved} = Settings.update_setting(setting, %{audio_codec_preference: "aiff,opus"})
+      assert saved.audio_codec_preference == "wav,opus"
+
+      reloaded = Pinchflat.Repo.reload!(saved)
+      assert reloaded.audio_codec_preference == "wav,opus"
+
+      # Subsequent save with the stored canonical value succeeds and remains valid
+      changeset = Settings.change_setting(reloaded, %{audio_codec_preference: reloaded.audio_codec_preference})
+      assert changeset.valid?
+    end
+
+    test "an unrelated settings save does not rewrite an already-stored legacy value unexpectedly", %{setting: setting} do
+      # Directly set legacy codec values in the database without going through canonicalization
+      legacy_attrs = %{video_codec_preference: "h264", audio_codec_preference: "mp4a"}
+      {:ok, legacy_setting} = Pinchflat.Repo.update(Ecto.Changeset.change(setting, legacy_attrs))
+      assert legacy_setting.video_codec_preference == "h264"
+      assert legacy_setting.audio_codec_preference == "mp4a"
+
+      # Perform an unrelated save (only updating extractor_sleep_interval_seconds)
+      assert {:ok, updated} = Settings.update_setting(legacy_setting, %{extractor_sleep_interval_seconds: 10})
+
+      # The legacy values are preserved untouched because normalize_codec_preferences detects
+      # the fields were omitted from the update attrs and returns :unchanged
+      assert updated.video_codec_preference == "h264"
+      assert updated.audio_codec_preference == "mp4a"
+      assert updated.extractor_sleep_interval_seconds == 10
+    end
+
+    test "round-trips an empty string as an empty string", %{setting: setting} do
+      changeset = Settings.change_setting(setting, %{video_codec_preference: "", audio_codec_preference: ""})
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :video_codec_preference) == ""
+      assert Ecto.Changeset.get_change(changeset, :audio_codec_preference) == ""
+    end
+
+    test "persists a cleared list without violating NOT NULL", %{setting: setting} do
+      assert {:ok, saved} = Settings.update_setting(setting, %{video_codec_preference: "avc"})
+      assert {:ok, saved} = Settings.update_setting(saved, %{video_codec_preference: ""})
+
+      assert saved.video_codec_preference == ""
+    end
+
+    test "rejects an unknown codec", %{setting: setting} do
+      changeset = Settings.change_setting(setting, %{video_codec_preference: "boguscodec"})
+
+      refute changeset.valid?
+      assert {msg, _} = changeset.errors[:video_codec_preference]
+      assert msg =~ "unsupported codec" and msg =~ "boguscodec"
+    end
+
+    test "rejects an unknown audio codec", %{setting: setting} do
+      changeset = Settings.change_setting(setting, %{audio_codec_preference: "fakeaudio"})
+
+      refute changeset.valid?
+      assert {msg, _} = changeset.errors[:audio_codec_preference]
+      assert msg =~ "unsupported codec" and msg =~ "fakeaudio"
+    end
+
+    test "rejects duplicate equivalent video codecs", %{setting: setting} do
+      changeset = Settings.change_setting(setting, %{video_codec_preference: "vp9,vp09"})
+
+      refute changeset.valid?
+
+      assert {"lists the same codec twice (vp9, vp09); keep only one entry", _} =
+               changeset.errors[:video_codec_preference]
+    end
+
+    test "rejects duplicate equivalent audio codecs", %{setting: setting} do
+      changeset = Settings.change_setting(setting, %{audio_codec_preference: "aac,m4a"})
+
+      refute changeset.valid?
+
+      assert {"lists the same codec twice (aac, m4a); keep only one entry", _} =
+               changeset.errors[:audio_codec_preference]
+    end
+
+    test "rejects more than nine codecs", %{setting: setting} do
+      changeset =
+        Settings.change_setting(setting, %{
+          video_codec_preference: "avc,vp9,av1,hevc,mpeg4,theora,wmv3,flv1,vp8,h263"
+        })
+
+      refute changeset.valid?
+      assert {"must contain at most 9 codecs", _} = changeset.errors[:video_codec_preference]
+    end
+
+    test "rejects a list longer than 256 bytes", %{setting: setting} do
+      value = String.duplicate("avc,", 70) <> "avc"
+      changeset = Settings.change_setting(setting, %{video_codec_preference: value})
+
+      refute changeset.valid?
+      assert {"must be at most 256 bytes; shorten the list", _} = changeset.errors[:video_codec_preference]
+    end
+  end
+
+  describe "default_media_profile_id caching and transactions" do
+    import Pinchflat.ProfilesFixtures
+
+    test "rolled-back transactional update never leaks into the settings cache" do
+      original_cache = Application.get_env(:pinchflat, :settings_cache)
+      Application.put_env(:pinchflat, :settings_cache, true)
+      Settings.invalidate_cache()
+
+      on_exit(fn ->
+        Settings.invalidate_cache()
+
+        if is_nil(original_cache),
+          do: Application.delete_env(:pinchflat, :settings_cache),
+          else: Application.put_env(:pinchflat, :settings_cache, original_cache)
+      end)
+
+      p1 = media_profile_fixture(%{name: "CachedFirst"})
+      p2 = media_profile_fixture(%{name: "CachedSecond"})
+
+      assert {:ok, _} = Settings.set(default_media_profile_id: p1.id)
+      assert Settings.get!(:default_media_profile_id) == p1.id
+
+      assert {:error, :rolled_back} =
+               Repo.transaction(fn ->
+                 {:ok, _} = Settings.update_setting(Settings.record(), %{default_media_profile_id: p2.id})
+                 Repo.rollback(:rolled_back)
+               end)
+
+      assert Settings.get!(:default_media_profile_id) == p1.id
+      assert Settings.refresh_cache().default_media_profile_id == p1.id
+    end
+  end
 end

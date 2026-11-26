@@ -405,31 +405,81 @@ defmodule Pinchflat.Downloading.DownloadStaging do
   end
 
   defp move_file(source, destination, opts) do
-    :ok = File.mkdir_p(Path.dirname(destination))
-
-    with :ok <- stash_pre_image(destination, pre_image_for(destination, opts)) do
-      do_move_file(source, destination, opts)
+    with :ok <- File.mkdir_p(Path.dirname(destination)) do
+      case pre_image_for(destination, opts) do
+        nil -> do_move_file(source, destination, opts)
+        _backup -> stage_incoming(source, destination, opts)
+      end
     end
   end
 
-  # A watched replacement keeps the pre-image bytes next to the destination
-  # until the database commit is durable. Restoring is then a rename that needs
-  # no free space, even when the replacement filled the disk.
-  defp stash_pre_image(_destination, nil), do: :ok
+  # A watched replacement stages bytes next to the destination and leaves the
+  # active file alone until the write transaction swaps them. Because the
+  # incoming file is already on the destination filesystem, the swap is a
+  # millisecond rename that runs under the locked watch - a worker pausing here
+  # cannot hold up a reader, and one that lost the lease never swaps at all.
+  defp stage_incoming(source, destination, opts) do
+    incoming = incoming_path(destination, pre_image_for(destination, opts))
 
-  defp stash_pre_image(destination, backup) do
-    case File.lstat(destination) do
-      {:ok, %{type: :regular}} ->
-        case File.rename(destination, backup) do
-          :ok -> :ok
-          {:error, reason} -> {:error, {:pre_image_backup_failed, reason}}
+    with :ok <- ensure_lease_current(opts),
+         :ok <- copy_verified(source, incoming) do
+      remove_staged_source(source, destination, opts)
+    end
+  end
+
+  defp ensure_lease_current(opts) do
+    case Keyword.get(opts, :lease_valid?) do
+      fun when is_function(fun, 0) -> if fun.(), do: :ok, else: {:error, :lost_lease}
+      _ -> :ok
+    end
+  end
+
+  @doc """
+  Returns the staged path a watched replacement copies to before its swap.
+
+  The operation identity is carried by the pre-image backup name, so both the
+  transfer and the committing transaction derive the same path without passing
+  extra state through the caller's transfer function.
+  """
+  def incoming_path(destination, backup) when is_binary(destination) and is_binary(backup) do
+    destination <> ".pinchflat-incoming-" <> operation_id(backup)
+  end
+
+  defp operation_id(backup) do
+    backup |> Path.basename() |> String.split(".pinchflat-previous-") |> List.last()
+  end
+
+  defp copy_verified(source, incoming) do
+    with {:ok, expected} <- file_checksum(source),
+         :ok <- File.cp(source, incoming),
+         {:ok, ^expected} <- file_checksum(incoming) do
+      :ok
+    else
+      {:ok, _other} -> {:error, :incoming_checksum_mismatch}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The staged copy has been published (or parked as incoming), so it is consumed
+  # either way - `do_move_file/3` removes it for both rename and copy transfers.
+  defp remove_staged_source(source, destination, _opts) do
+    if Path.expand(source) != Path.expand(destination), do: _ = File.rm(source)
+    :ok
+  end
+
+  defp file_checksum(path) do
+    with {:ok, %{type: :regular}} <- File.lstat(path),
+         {:ok, stream} <- File.open(path, [:read, :binary]) do
+      hash =
+        try do
+          stream
+          |> IO.binstream(1024 * 1024)
+          |> Enum.reduce(:crypto.hash_init(:sha256), &:crypto.hash_update(&2, &1))
+        after
+          File.close(stream)
         end
 
-      {:error, :enoent} ->
-        :ok
-
-      {:ok, _other} ->
-        {:error, :pre_image_not_regular}
+      {:ok, Base.encode16(:crypto.hash_final(hash), case: :lower)}
     end
   end
 

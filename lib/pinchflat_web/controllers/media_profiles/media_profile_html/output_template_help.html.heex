@@ -1,8 +1,8 @@
 <%!-- The heex HTML formatter is really struggling with this file - I apologize in advance --%>
-<aside>
+<aside class="w-full min-w-0">
   <h2 class="text-xl font-bold mb-2">Output Template Syntax</h2>
 
-  <section class="ml-2 md:ml-4 mb-4 max-w-prose overflow-auto">
+  <section class="ml-2 md:ml-4 mb-4 w-full min-w-0">
     <p>When generating an output template, you have 3 options for syntax:</p>
 
     <ul class="list-disc list-inside ml-2 md:ml-5">
@@ -59,8 +59,8 @@
 
   <h2 class="text-xl font-bold mb-2">Template Options</h2>
 
-  <section class="ml-2 md:ml-4 mb-4 overflow-auto">
-    <p class="max-w-prose">
+  <section class="ml-2 md:ml-4 mb-4 w-full min-w-0">
+    <p>
       Any single-word <code class="text-sm">yt-dlp</code>
       option
       <.inline_link href="https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#output-template">
@@ -72,7 +72,7 @@
 
     <h3 class="text-lg font-bold my-2">Media Center Custom Aliases</h3>
 
-    <ul class="list-disc list-inside mb-4 ml-2 md:ml-5 max-w-prose">
+    <ul class="list-disc list-inside mb-4 ml-2 md:ml-5">
       <li :for={{k, v} <- media_center_custom_output_template_options()} class="mt-1">
         <.inline_code>{double_brace(k)}</.inline_code>
         <span :if={v}>- {html_escape({:safe, v})}</span>
@@ -81,7 +81,7 @@
 
     <h3 class="text-lg font-bold mb-2">Other Custom Aliases</h3>
 
-    <ul class="list-disc list-inside mb-4 ml-2 md:ml-5 max-w-prose">
+    <ul class="list-disc list-inside mb-4 ml-2 md:ml-5">
       <li :for={{k, v} <- other_custom_output_template_options()} class="mt-1">
         <.inline_code>{double_brace(k)}</.inline_code>
         <span :if={v}>- {html_escape({:safe, v})}</span>

@@ -24,6 +24,7 @@ defmodule Pinchflat.Media.MediaItem do
     :playlist_index,
     # these fields are captured on indexing (and again on download)
     :title,
+    :translated_title,
     :media_id,
     :description,
     :original_url,
@@ -31,6 +32,7 @@ defmodule Pinchflat.Media.MediaItem do
     :source_id,
     :short_form_content,
     :availability,
+    :channel_id,
     :uploaded_at,
     :upload_date_index,
     :duration_seconds,
@@ -76,12 +78,14 @@ defmodule Pinchflat.Media.MediaItem do
     field :uuid, Ecto.UUID
 
     field :title, :string
+    field :translated_title, :string
     field :media_id, :string
     field :description, :string
     field :original_url, :string
     field :livestream, :boolean, default: false
     field :short_form_content, :boolean, default: false
     field :availability, Ecto.Enum, values: @availability_values
+    field :channel_id, :string
     field :media_downloaded_at, :utc_datetime
     field :watch_download_started_at, :utc_datetime
     field :watch_enrollment_pending_at, :utc_datetime

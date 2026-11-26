@@ -11,6 +11,16 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
   attr :changeset, Ecto.Changeset, required: true
   attr :action, :string, required: true
   attr :method, :string, required: true
+  attr :yt_dlp_options, :string, default: ""
+  attr :yt_dlp_options_version, :any, default: :missing
+  attr :yt_dlp_options_present, :boolean, default: false
+  attr :yt_dlp_options_readable, :boolean, default: true
+  attr :yt_dlp_options_clearable, :boolean, default: false
+  attr :yt_dlp_options_inherited, :map, default: %{}
+  attr :yt_dlp_options_profile_presence, :map, default: %{}
+  attr :yt_dlp_error, :string, default: nil
+  attr :show_make_default, :boolean, default: false
+  attr :make_default, :boolean, default: false
 
   def media_profile_form(assigns)
 
@@ -72,13 +82,14 @@ defmodule PinchflatWeb.MediaProfiles.MediaProfileHTML do
       source_collection_name:
         "the YouTube name of the sources that use this profile (often the same as source_custom_name)",
       source_collection_type: "the collection type of the sources using this profile. Either 'channel' or 'playlist'",
+      translated_title: "Translated title for the source's title language. Falls back to the original title.",
       artist_name: "the name of the artist with fallbacks to other uploader fields",
       season_from_date: "alias for upload_year",
       season_episode_from_date: "the upload date formatted as <code>sYYYYeMMDD</code>",
       season_episode_index_from_date:
         "the upload date formatted as <code>sYYYYeMMDDII</code> where <code>II</code> is an index to prevent date collisions",
       media_playlist_index:
-        "the place of the media item in the playlist. Do not use with channels. May not work if the playlist is updated",
+        "the place of the media item in the playlist, padded to 2 digits. Add a width for more, eg: <code>{{ media_playlist_index:3 }}</code> gives <code>007</code>. Do not use with channels. May not work if the playlist is updated",
       media_item_id: "the ID of the media item in Pinchflat-ngx's database",
       source_id: "the ID of the source in Pinchflat-ngx's database",
       media_profile_id: "the ID of the media profile in Pinchflat-ngx's database"

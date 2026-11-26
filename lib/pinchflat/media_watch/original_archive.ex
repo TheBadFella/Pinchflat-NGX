@@ -15,8 +15,6 @@ defmodule Pinchflat.MediaWatch.OriginalArchive do
   authenticated, version-bound release intent; interrupted cleanup is resumable.
   """
 
-  require Logger
-
   alias Pinchflat.Media.MediaItem
 
   @root_name ".pinchflat-originals"

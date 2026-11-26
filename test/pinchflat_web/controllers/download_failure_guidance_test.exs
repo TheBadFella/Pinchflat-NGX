@@ -61,6 +61,14 @@ defmodule PinchflatWeb.DownloadFailureGuidanceTest do
       assert has_element?(view, ".download-failure", "Automatic downloads are blocked for this item")
       assert has_element?(view, ".download-failure a[href='/settings']", "Open settings")
       assert has_element?(view, ".download-failure details:not([open]) summary", "Technical details")
+      # The guidance starts collapsed behind a button that names the reason.
+      assert has_element?(
+               view,
+               "button.download-failure-toggle[aria-expanded=false]",
+               "Download failed: Sign-in is required"
+             )
+
+      assert has_element?(view, ".download-failure[x-show=open][x-cloak]")
       assert has_element?(view, ".download-failure details", item.last_error)
       refute has_element?(view, ".download-failure script")
       refute has_element?(view, ".download-failure", "automatic retry is scheduled")
@@ -166,6 +174,9 @@ defmodule PinchflatWeb.DownloadFailureGuidanceTest do
           event: "change",
           payload: %{media_item_id: item.id, source_id: source.id}
         })
+
+        # The source media table throttles bursts; its trailing refresh applies the later change
+        if view.module == PinchflatWeb.Sources.MediaItemTableLive, do: send(view.pid, :throttled_refresh)
 
         assert has_element?(view, ".download-failure", message)
       end

@@ -14,6 +14,18 @@ defmodule Pinchflat.SourcesFixtures do
   Generate a source.
   """
   def source_fixture(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    media_profile_id =
+      Map.get(attrs, :media_profile_id) ||
+        Map.get(attrs, "media_profile_id") ||
+        ProfilesFixtures.media_profile_fixture().id
+
+    attrs =
+      attrs
+      |> Map.delete(:media_profile_id)
+      |> Map.delete("media_profile_id")
+
     {:ok, source} =
       %Source{}
       |> Source.changeset(
@@ -27,8 +39,10 @@ defmodule Pinchflat.SourcesFixtures do
             custom_name: "Cool and good internal name!",
             description: "This is a description",
             original_url: "https://www.youtube.com/@#{youtube_handle_fixture()}",
-            media_profile_id: ProfilesFixtures.media_profile_fixture().id,
-            index_frequency_minutes: 60
+            media_profile_id: media_profile_id,
+            index_frequency_minutes: 60,
+            # most tests predate the members-only default turning off
+            download_members_only_media: true
           }
         ),
         :pre_insert

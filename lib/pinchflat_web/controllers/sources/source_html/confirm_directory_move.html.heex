@@ -98,7 +98,20 @@
 
       <.form :if={!Enum.any?(@directory_move_plan.conflicts)} for={%{}} action={~p"/sources/#{@source}"} method="put">
         <input type="hidden" name="confirm_directory_move" value="true" />
-        <input :for={{key, value} <- @source_params} type="hidden" name={"source[#{key}]"} value={value || ""} />
+        <input type="hidden" name="yt_dlp_options" value={@yt_dlp_options} />
+        <input
+          type="hidden"
+          name="yt_dlp_options_version"
+          value={
+            case @yt_dlp_options_version do
+              :missing -> "missing"
+              :any -> "any"
+              version when is_binary(version) -> version
+              _ -> "any"
+            end
+          }
+        />
+        <.resubmitted_source_inputs source_params={@source_params} />
         <.button rounding="rounded-m3-sm">Save and Move Files</.button>
       </.form>
     </div>

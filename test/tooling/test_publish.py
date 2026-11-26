@@ -199,7 +199,6 @@ class PublishTests(unittest.TestCase):
                 [
                     {"name": REQUIRED_CHECK_NAMES[0], "status": "completed", "conclusion": "failure"},
                     {"name": REQUIRED_CHECK_NAMES[1], "status": "completed", "conclusion": "success"},
-                    {"name": REQUIRED_CHECK_NAMES[2], "status": "completed", "conclusion": "success"},
                 ],
             )
             with self.assertRaises(ReleaseError) as raised:

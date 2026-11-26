@@ -15,6 +15,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Settings
+  alias Pinchflat.Sources.Source
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
@@ -28,26 +29,37 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.MediaServers
   alias Pinchflat.MediaWatch
 
+  # A stream that has ended but is still being processed by YouTube is rechecked
+  # on this interval, up to the give-up limit below.
+  @post_live_recheck_seconds 30 * 60
+  @post_live_give_up_hours 72
+  @post_live_terminal_error "This stream ended but YouTube was still processing the recording after 72 hours. Retry the download later."
+
   @doc """
   Starts the media_item media download worker and creates a task for the media_item.
 
   Returns {:ok, %Task{}} | {:error, :duplicate_job} | {:error, %Ecto.Changeset{}}
   """
   def kickoff_with_task(media_item, job_args \\ %{}, job_opts \\ []) do
-    Repo.transaction(fn ->
-      maybe_replace_existing_manual_retry(media_item, job_args)
+    case Repo.transaction(fn ->
+           maybe_replace_existing_manual_retry(media_item, job_args)
 
-      result =
-        %{id: media_item.id}
-        |> Map.merge(job_args)
-        |> MediaDownloadWorker.new(job_opts)
-        |> Tasks.create_job_with_task(media_item)
+           result =
+             %{id: media_item.id}
+             |> Map.merge(job_args)
+             |> MediaDownloadWorker.new(job_opts)
+             |> Tasks.create_job_with_task(media_item)
 
-      case result do
-        {:ok, task} -> task
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
+           case result do
+             {:ok, task} -> {:created, task}
+             {:error, :duplicate_job} -> {:duplicate, nil}
+             {:error, reason} -> Repo.rollback(reason)
+           end
+         end) do
+      {:ok, {:created, task}} -> {:ok, task}
+      {:ok, {:duplicate, _}} -> {:error, :duplicate_job}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """
@@ -64,7 +76,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   Returns :ok | {:error, any, ...any}
   """
   @impl Oban.Worker
-  def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args}) do
+  def perform(%Oban.Job{id: job_id, args: %{"id" => media_item_id} = args} = job) do
     case SpaceProtection.preflight(job_id) do
       :ok ->
         should_force = Map.get(args, "force", false)
@@ -74,6 +86,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         current = Media.get_media_item!(media_item_id)
 
         cond do
+          missing_watched_active_file?(current) ->
+            restore_missing_active_file(current, job_id)
+
           not is_nil(current.watch_enrollment_pending_at) or
               (not is_nil(current.watch_download_started_at) and current.watch_postprocessing_pending) ->
             if current.watch_postprocessing_pending do
@@ -96,7 +111,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
                   is_quality_upgrade,
                   should_force,
                   should_reset_last_error,
-                  job_id
+                  job
                 )
 
               {:skip, reason} ->
@@ -121,6 +136,33 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     error in [Exqlite.Error, Postgrex.Error, DBConnection.ConnectionError] ->
       Logger.error("media download state unavailable for item ##{media_item_id}: #{inspect(error)}")
       {:error, :download_state_unavailable}
+  end
+
+  # A watched item whose active file vanished still has a verified original
+  # archive, so it can be repaired without a yt-dlp run. Only a genuinely
+  # missing file triggers this; a present-but-different active file is a user
+  # edit and is left alone.
+  defp missing_watched_active_file?(%MediaItem{} = item) do
+    watch = MediaWatch.get_watch_for_media_item(item.id)
+
+    is_binary(item.media_filepath) and not is_nil(watch) and watch.archive_state == "published" and
+      is_nil(watch.released_at) and not File.regular?(item.media_filepath)
+  end
+
+  defp restore_missing_active_file(%MediaItem{} = item, job_id) do
+    Logger.info("restoring missing active media for watched item ##{item.id} from its verified archive")
+
+    case MediaWatch.restore_active_from_archive(item) do
+      {:ok, restored} ->
+        maybe_update_progress(job_id, %{progress_status: "Restored active media from verified original archive"})
+
+        {:ok, _} = Media.update_media_item(Repo.reload(restored), %{last_error: nil, error_type: nil})
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("active media restoration unavailable for item ##{item.id}: #{inspect(reason)}")
+        {:error, :active_media_restore_failed}
+    end
   end
 
   # Recheck retention here because media may have expired while its upgrade was queued.
@@ -169,7 +211,13 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     Repo.preload(media_item, source: :media_profile)
   end
 
-  defp download_media_and_schedule_jobs(media_item, is_quality_upgrade, should_force, should_reset_last_error, job_id) do
+  defp download_media_and_schedule_jobs(
+         media_item,
+         is_quality_upgrade,
+         should_force,
+         should_reset_last_error,
+         %Oban.Job{id: job_id} = job
+       ) do
     overwrite_behaviour = if should_force || is_quality_upgrade, do: :force_overwrites, else: :no_force_overwrites
 
     override_opts = [
@@ -208,10 +256,24 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
         persist_download_failure(media_item, :transient, should_force)
         {:ok, :non_retry}
 
+      {:error, :post_live_processing, message} ->
+        handle_post_live_processing(media_item, job, message, should_force)
+
       {:error, :staging_unavailable, message} ->
         persist_download_failure(media_item, :transient, should_force)
         maybe_update_progress(job_id, %{progress_status: message})
         {:ok, :non_retry}
+
+      {:error, :watch_hold, message} ->
+        persist_download_failure(media_item, :transient, should_force)
+        maybe_update_progress(job_id, %{progress_status: message})
+        Logger.warning("watched replacement held for media item ##{media_item.id}: #{message}")
+        {:ok, :non_retry}
+
+      {:error, :codec_plugin_unavailable, message} ->
+        maybe_update_progress(job_id, %{progress_status: message})
+        Logger.error("ordered codec plugin unavailable: #{inspect(message)}")
+        {:snooze, 60}
 
       {:error, :cancelled, message} ->
         maybe_update_progress(job_id, %{progress_status: message})
@@ -240,10 +302,64 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     end
   end
 
+  # The broadcast has ended, but yt-dlp reports the recording is still processing.
+  # Keep the item pending and recheck, until the give-up limit measured from the
+  # publication time (or the job's insert time when that is unknown) is reached.
+  # The limit only stops the waiting; it is not a readiness signal.
+  defp handle_post_live_processing(media_item, job, message, should_force) do
+    if post_live_waiting_expired?(media_item, job) do
+      persist_post_live_give_up(media_item, should_force)
+      maybe_update_progress(job.id, %{progress_status: @post_live_terminal_error})
+      Logger.info("post_live give-up for media item ##{media_item.id}: #{inspect(message)}")
+      {:ok, :non_retry}
+    else
+      next_check = DateTime.utc_now() |> DateTime.add(@post_live_recheck_seconds, :second)
+
+      maybe_update_progress(job.id, %{
+        progress_status:
+          "Stream ended; YouTube is still processing the recording. Next check at " <>
+            format_utc_datetime(next_check) <> " UTC"
+      })
+
+      Logger.info("post_live recheck scheduled for media item ##{media_item.id} at #{DateTime.to_iso8601(next_check)}")
+
+      {:snooze, @post_live_recheck_seconds}
+    end
+  end
+
+  defp post_live_waiting_expired?(media_item, %Oban.Job{inserted_at: inserted_at}) do
+    reference = media_item.uploaded_at || inserted_at
+
+    DateTime.diff(DateTime.utc_now(), reference, :hour) >= @post_live_give_up_hours
+  end
+
+  # The transient state and the explanation are written together so the item page
+  # shows both, and a later index or manual retry can still clear them.
+  defp persist_post_live_give_up(media_item, should_force) do
+    current = Repo.reload!(media_item)
+    attrs = DownloadState.transition(current, {:failure, :transient, should_force})
+    {:ok, _} = Media.update_media_item(current, Map.put(attrs, :last_error, @post_live_terminal_error))
+    :ok
+  end
+
+  defp format_utc_datetime(%DateTime{} = datetime) do
+    datetime
+    |> DateTime.truncate(:second)
+    |> Calendar.strftime("%Y-%m-%d %H:%M")
+  end
+
   defp resume_first_artifact(item) do
-    with {:ok, metadata} <- FirstArtifact.recover(item),
+    with {:ok, metadata} <- FirstArtifact.resume(item),
          {:ok, recovered} <- MediaDownloader.restore_first_artifact(item, metadata) do
-      finish_first_download_postprocessing(item, recovered, false)
+      case finish_first_download_postprocessing(item, recovered, false) do
+        :ok ->
+          # The failure that left this journal is resolved; don't keep showing it.
+          {:ok, _} = Media.update_media_item(Repo.reload(recovered), %{last_error: nil, error_type: nil})
+          :ok
+
+        error ->
+          error
+      end
     else
       {:error, reason} ->
         Logger.error("first artifact recovery failed for media item ##{item.id}: #{inspect(reason)}")
@@ -460,6 +576,9 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
       too_long?(media_item, source) ->
         :format_or_profile_mismatch
 
+      foreign_upload?(media_item, source) ->
+        :format_or_profile_mismatch
+
       media_profile.shorts_behaviour == :exclude && media_item.short_form_content ->
         :format_or_profile_mismatch
 
@@ -480,9 +599,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     end
   end
 
-  defp before_cutoff?(media_item, %{download_cutoff_date: %Date{} = cutoff_date})
-       when not is_nil(media_item.uploaded_at) do
-    Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
+  defp before_cutoff?(media_item, source) when not is_nil(media_item.uploaded_at) do
+    case Source.effective_download_cutoff_date(source) do
+      %Date{} = cutoff_date -> Date.compare(DateTime.to_date(media_item.uploaded_at), cutoff_date) == :lt
+      nil -> false
+    end
   end
 
   defp before_cutoff?(_media_item, _source), do: false
@@ -500,6 +621,13 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   end
 
   defp too_long?(_media_item, _source), do: false
+
+  defp foreign_upload?(media_item, %{only_owner_uploads: true, owner_channel_id: owner_channel_id})
+       when not is_nil(owner_channel_id) and not is_nil(media_item.channel_id) do
+    media_item.channel_id != owner_channel_id
+  end
+
+  defp foreign_upload?(_media_item, _source), do: false
 
   defp maybe_replace_existing_manual_retry(media_item, job_args) do
     if Map.get(job_args, :reset_last_error) || Map.get(job_args, "reset_last_error") do
@@ -544,7 +672,6 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   end
 
   defp percent_change_exceeds_threshold?(nil, _last_percent), do: false
-  defp percent_change_exceeds_threshold?(_percent, nil), do: true
 
   defp percent_change_exceeds_threshold?(percent, last_percent) do
     abs(percent - last_percent) >= 2.0

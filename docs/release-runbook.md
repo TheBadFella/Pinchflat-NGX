@@ -103,7 +103,8 @@ Protect `master` so the release PR can be merged as a merge commit:
 - Require a pull request before merging.
 - Allow merge commits. Do not require squash or rebase merges. The publish step
   verifies that the approved candidate head is a parent of the merge commit.
-- Require the SQLite, PostgreSQL, and PostgreSQL schema migration checks.
+- Require the SQLite and PostgreSQL checks. The PostgreSQL check also runs the
+  isolated schema migration tests.
 - Do not require linear history.
 - Allow the automation identity to push `release/stable-candidate` and create
   tags/releases. If tag protection rules exist, allow the App to create tags and
@@ -140,8 +141,8 @@ Protect `master` so the release PR can be merged as a merge commit:
    - Confirms the commit is the merge commit of the release candidate PR.
    - Confirms the merged metadata matches the candidate head, source, baseline,
      version, and tag.
-   - Waits for the SQLite, PostgreSQL, and schema migration checks on the exact
-     merge commit.
+   - Waits for the SQLite and PostgreSQL checks (which include the schema
+     migration tests) on the exact merge commit.
    - Creates the `YEAR.MONTH.PATCH` tag and the GitHub Release with the
      maintainer notes, excluding internal checklists and metadata.
    - Dispatches `docker_release.yml` with the stable inputs. Its hidden marker

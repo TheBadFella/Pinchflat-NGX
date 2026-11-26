@@ -5,6 +5,15 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
 
   alias Pinchflat.Downloading.OutputPath.Parser, as: TemplateParser
 
+  @padded_identifiers ~w(media_playlist_index media_upload_date_index)
+  @default_padding_width 2
+  @max_padding_width 6
+
+  @yt_dlp_field_regex ~r/%%|%\((?:[^()]|\([^()]*\))*\)[#0\-+ ]*\d*(?:\.\d+)?[hlL]?[diouxXeEfFgGcrsaBjhlqDSU]/u
+  @whole_yt_dlp_field_regex Regex.compile!("\\A(?:" <> Regex.source(@yt_dlp_field_regex) <> ")\\z", "u")
+  @windows_unsafe_regex ~r/[<>:"|?*\x00-\x1f\x7f]/u
+  @restricted_chars String.graphemes("|*<>!&'()[]{}$;`^,#")
+
   @doc """
   Encodes a display name as one literal filename component, without interpreting
   template syntax or allowing directory separators.
@@ -18,6 +27,148 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
       |> String.replace("%", "%%")
 
     {:literal, if(component == "", do: "_", else: component)}
+  end
+
+  @doc """
+  Sanitizes the literal text in the filename part of a yt-dlp output template,
+  following `--restrict-filenames` when `restrict` is true and replacing
+  characters Windows can't use otherwise. Folders and `%(...)` fields are
+  unchanged.
+
+  When restricted, accented Latin letters lose their accents, but letters and
+  digits with no ASCII form (Cyrillic, Greek, CJK...) are kept as typed.
+
+  Returns binary()
+  """
+  def sanitize_literal_text(template, restrict) do
+    pieces = Regex.split(@yt_dlp_field_regex, template, include_captures: true)
+
+    case last_separator_index(pieces) do
+      nil ->
+        sanitize_filename(template, restrict)
+
+      index ->
+        [directory_tail, filename_head] =
+          Regex.run(~r{\A(.*[/\\])(.*)\z}s, Enum.at(pieces, index), capture: :all_but_first)
+
+        directory = Enum.join(Enum.take(pieces, index)) <> directory_tail
+        filename = filename_head <> Enum.join(Enum.drop(pieces, index + 1))
+
+        directory <> sanitize_filename(filename, restrict)
+    end
+  end
+
+  defp last_separator_index(pieces) do
+    pieces
+    |> Enum.with_index()
+    |> Enum.reverse()
+    |> Enum.find_value(fn {piece, index} ->
+      if not field?(piece) and String.contains?(piece, ["/", "\\"]), do: index
+    end)
+  end
+
+  defp sanitize_filename(filename, restrict) do
+    sanitized =
+      @yt_dlp_field_regex
+      |> Regex.split("/" <> filename, include_captures: true)
+      |> Enum.map_join(fn piece -> if field?(piece), do: piece, else: sanitize_text(piece, restrict) end)
+      |> String.replace_prefix("/", "")
+
+    if sanitized == "", do: filename, else: sanitized
+  end
+
+  defp field?(piece), do: Regex.match?(@whole_yt_dlp_field_regex, piece)
+
+  defp sanitize_text(text, false), do: String.replace(text, @windows_unsafe_regex, "_")
+
+  defp sanitize_text(text, true) do
+    text
+    |> String.graphemes()
+    |> Enum.flat_map(&restrict_grapheme/1)
+    |> collapse_replaced_underscores()
+    |> trim_replaced_underscores()
+    |> Enum.map_join(fn {char, _replaced?} -> char end)
+  end
+
+  # "é" becomes "e"; a letter or digit with no ASCII form is kept as typed
+  defp restrict_grapheme(grapheme) do
+    ascii = grapheme |> :unicode.characters_to_nfkd_binary() |> String.replace(~r/\p{Mn}/u, "")
+
+    cond do
+      ascii != "" and ascii =~ ~r/\A[\x00-\x7f]+\z/ -> ascii |> String.graphemes() |> Enum.flat_map(&restrict_char/1)
+      grapheme =~ ~r/\A[\p{L}\p{N}]/u -> [{grapheme, false}]
+      true -> [{"_", true}]
+    end
+  end
+
+  defp restrict_char("/"), do: [{"/", false}]
+  defp restrict_char(char) when char in ["?", "\""], do: []
+  defp restrict_char(":"), do: [{"_", true}, {"-", true}]
+  defp restrict_char(<<codepoint::utf8>>) when codepoint < 32 or codepoint == 127, do: []
+
+  defp restrict_char(char) do
+    if char in @restricted_chars or byte_size(char) > 1 or String.trim(char) == "",
+      do: [{"_", true}],
+      else: [{char, false}]
+  end
+
+  defp collapse_replaced_underscores(chars) do
+    chars
+    |> Enum.reduce([], fn
+      {"_", replaced?}, [{"_", previous_replaced?} | rest] when replaced? or previous_replaced? ->
+        [{"_", replaced? and previous_replaced?} | rest]
+
+      char, acc ->
+        [char | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  defp trim_replaced_underscores(chars) do
+    chars
+    |> Enum.with_index()
+    |> Enum.reject(fn
+      {{"_", true}, index} ->
+        previous = if index > 0, do: Enum.at(chars, index - 1)
+        following = Enum.at(chars, index + 1)
+
+        match?({"/", _}, previous) or match?({"/", _}, following) or match?({".", _}, following)
+
+      _ ->
+        false
+    end)
+    |> Enum.map(fn {char, _index} -> char end)
+  end
+
+  @doc """
+  Wraps an integer so templates render it zero-padded: two digits by default,
+  or the width given with `{{ identifier:N }}`.
+  """
+  def padded_integer(value), do: {:padded_integer, value}
+
+  @doc """
+  Checks that a template parses and only sets a padding width on the numeric
+  index variables, within the supported range.
+
+  Returns `:ok` or `{:error, binary()}`.
+  """
+  def validate_template(template_string) do
+    case TemplateParser.interpolations(template_string) do
+      {:ok, interpolations} -> Enum.find_value(interpolations, :ok, &validate_interpolation/1)
+      {:error, _message} -> {:error, "has a {{ }} variable that can't be read"}
+    end
+  end
+
+  defp validate_interpolation({_identifier, nil}), do: nil
+
+  defp validate_interpolation({identifier, width}) when identifier in @padded_identifiers do
+    if width in 1..@max_padding_width,
+      do: nil,
+      else: {:error, "sets #{identifier} padding to #{width}; use a width from 1 to #{@max_padding_width}"}
+  end
+
+  defp validate_interpolation({identifier, _width}) do
+    {:error, "sets a padding width on #{identifier}; only #{Enum.join(@padded_identifiers, " and ")} accept one"}
   end
 
   @doc """
@@ -39,6 +190,9 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
           {:literal, literal} ->
             {key, literal}
 
+          {:padded_integer, _} ->
+            {key, value}
+
           template ->
             {:ok, parse_result} = TemplateParser.parse(template, combined_options, &identifier_fn/2)
             {key, parse_result}
@@ -54,12 +208,26 @@ defmodule Pinchflat.Downloading.OutputPathBuilder do
   #
   # For all "custom" variables, we use the `Map.get/3` function to look up the value in the provided.
   # See `custom_yt_dlp_option_map` for a list of those.
+  defp identifier_fn({identifier, width}, variables) do
+    case Map.get(variables, identifier) do
+      {:padded_integer, value} -> pad_integer(value, width)
+      _ -> identifier_fn(identifier, variables)
+    end
+  end
+
   defp identifier_fn(identifier, variables) do
     case Map.get(variables, identifier) do
       nil -> "%(#{identifier})S"
       {:literal, literal} -> literal
+      {:padded_integer, value} -> pad_integer(value, @default_padding_width)
       value -> value
     end
+  end
+
+  defp pad_integer(value, width) do
+    value
+    |> to_string()
+    |> String.pad_leading(width, "0")
   end
 
   # This isn't the only source for custom options, since they can be passed in my the caller.

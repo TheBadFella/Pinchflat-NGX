@@ -6,7 +6,6 @@ defmodule Pinchflat.YoutubeBrowser.ProviderCoordinator do
   """
 
   use GenServer
-  require Logger
 
   @max_concurrent 2
   @rate_limit_max 5

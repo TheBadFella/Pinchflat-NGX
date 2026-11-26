@@ -70,7 +70,7 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorker do
   NOTE: Since indexing can take a LONG time, I should check what happens if an
   application restart occurs while a job is running. Will the job be lost?
 
-  Returns :ok | {:ok, %Task{}}
+  Returns :ok | {:ok, %Task{}} | {:error, reason}
   """
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"id" => source_id} = args}) do
@@ -79,24 +79,28 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorker do
     case {source.index_frequency_minutes, source.last_indexed_at} do
       {index_freq, _} when index_freq > 0 ->
         # If the indexing is on a schedule simply run indexing and reschedule
-        perform_indexing_and_notification(source, was_forced: args["force"])
-        maybe_enqueue_fast_indexing_task(source)
-        reschedule_indexing(source)
+        with result when is_list(result) <- perform_indexing_and_notification(source, was_forced: args["force"]) do
+          maybe_enqueue_fast_indexing_task(source)
+          reschedule_indexing(source)
+        end
 
       {_, nil} ->
         # If the source has never been indexed, index it once
         # even if it's not meant to reschedule
-        perform_indexing_and_notification(source, was_forced: args["force"])
-        :ok
+        with result when is_list(result) <- perform_indexing_and_notification(source, was_forced: args["force"]) do
+          :ok
+        end
 
       _ ->
         # If the source HAS been indexed and is not meant to reschedule,
         # perform a no-op (unless forced)
         if args["force"] do
-          perform_indexing_and_notification(source, was_forced: true)
+          with result when is_list(result) <- perform_indexing_and_notification(source, was_forced: true) do
+            :ok
+          end
+        else
+          :ok
         end
-
-        :ok
     end
   rescue
     Ecto.NoResultsError -> Logger.info("#{__MODULE__} discarded: source #{source_id} not found")

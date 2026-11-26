@@ -5,7 +5,6 @@ defmodule Pinchflat.MediaServers.Plex do
   Official reference: https://developer.plex.tv/pms/
   """
 
-  require Logger
   alias Pinchflat.HTTP.HTTPClient
 
   @doc """

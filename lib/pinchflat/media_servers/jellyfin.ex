@@ -5,7 +5,6 @@ defmodule Pinchflat.MediaServers.Jellyfin do
   Official reference: https://typescript-sdk.jellyfin.org/classes/generated-client.LibraryApi.html
   """
 
-  require Logger
   alias Pinchflat.HTTP.HTTPClient
 
   @doc """

@@ -22,6 +22,15 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     "inserted_at" => :inserted_at,
     "media_downloaded_at" => :media_downloaded_at
   }
+  # The list view sorts by its column headers; grids and phone cards have no headers, so they use this menu.
+  @sort_choices [
+    {"Recently indexed", "inserted_at:desc"},
+    {"Oldest indexed", "inserted_at:asc"},
+    {"Newest uploads", "uploaded_at:desc"},
+    {"Oldest uploads", "uploaded_at:asc"},
+    {"Recently downloaded", "media_downloaded_at:desc"},
+    {"Oldest downloads", "media_downloaded_at:asc"}
+  ]
   @error_type_filters %{"all" => nil, "transient" => :transient, "permanent" => :permanent}
 
   def render(%{records: []} = assigns) do
@@ -35,9 +44,21 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       sort_direction={@sort_direction}
       time_range={@time_range}
     />
-    <div class="mb-4 flex items-center">
+    <div class="mb-4 flex flex-wrap items-center gap-3">
       <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
-      <p class="ml-2">{if @media_state == "latest", do: "No media indexed in this time frame.", else: "Nothing Here!"}</p>
+      <p class="ml-2">
+        {cond do
+          @media_state != "latest" -> "Nothing Here!"
+          @time_range.range == "day" -> "Nothing was indexed in the past 24 hours."
+          true -> "No media indexed in this time frame."
+        end}
+      </p>
+    </div>
+    <div :if={@media_state == "latest" and @time_range.range == "day"} class="flex flex-wrap gap-2">
+      <.button href={~p"/?#{[tab: "latest", range: "week"]}"} variant="secondary" size="compact">
+        Show past 7 days
+      </.button>
+      <.button href={~p"/?tab=downloaded"} variant="secondary" size="compact">View downloaded</.button>
     </div>
     """
   end
@@ -54,6 +75,11 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         sort_direction={@sort_direction}
         time_range={@time_range}
       />
+      <p :if={@media_state == "excluded"} id="excluded-explanation" class="mb-4 text-sm text-theme-on-surface-muted">
+        These items are not downloaded because their source's rules skip them: the media profile's shorts or
+        livestream setting, its title filter or duration limits, a publication date before the source's download
+        cutoff, or availability. They stay indexed. To get one, download it manually or change those rules.
+      </p>
       <span class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="flex items-center">
           <.icon_button icon_name="hero-arrow-path" class="h-10 w-10" phx-click="reload_page" tooltip="Refresh" />
@@ -111,6 +137,15 @@ defmodule Pinchflat.Pages.HistoryTableLive do
     """
   end
 
+  defp sort_choices, do: @sort_choices
+
+  defp sort_value(sort_key, sort_direction), do: "#{sort_key}:#{sort_direction}"
+
+  defp sort_label(sort_key, sort_direction) do
+    value = sort_value(sort_key, sort_direction)
+    Enum.find_value(@sort_choices, "Recently indexed", fn {label, choice} -> choice == value && label end)
+  end
+
   attr :transient_failure_count, :integer, default: 0
   attr :permanent_failure_count, :integer, default: 0
 
@@ -154,19 +189,24 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   attr :tasks_by_media_item_id, :map, required: true
 
   defp history_records(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :any_actions?,
+        Enum.any?(assigns.records, &Map.has_key?(assigns.tasks_by_media_item_id, &1.id))
+      )
+
     ~H"""
     <div class={
       if @view_mode == "grid", do: "grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3", else: "space-y-4 md:hidden"
     }>
       <article :for={media_item <- @records} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
+        <.media_thumbnail media_item={media_item} size="card" />
+
         <div class="flex flex-col gap-3">
           <div class="min-w-0 flex-1 space-y-2">
             <div class="flex flex-wrap items-start gap-2">
-              <.icon
-                :if={media_item.last_error}
-                name="hero-exclamation-circle-solid"
-                class="theme-status-error mt-0.5 shrink-0"
-              /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+              <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
               <div class="w-full min-w-0">
                 <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
                   <span class="block whitespace-normal break-words font-medium text-theme-on-surface">
@@ -282,62 +322,62 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         <div class="overflow-x-auto overflow-y-hidden">
           <.table rows={@records} sort_key={@sort_key} sort_direction={@sort_direction}>
             <:col :let={media_item} label="Title" class="max-w-sm">
-              <section class="space-y-2">
-                <div class="flex items-start space-x-1 gap-2">
-                  <.icon
-                    :if={media_item.last_error}
-                    name="hero-exclamation-circle-solid"
-                    class="theme-status-error shrink-0"
-                  /> <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
-                  <.icon_button
-                    :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
-                    icon_name="hero-arrow-down-tray"
-                    class="h-10 w-10"
-                    phx-click="force_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm={MediaCleanupHelpers.download_confirmation(media_item, media_item.source)}
-                    tooltip="Force Download"
-                    tooltip_position="bottom-left"
-                  />
-                  <.icon_button
-                    :if={@media_state == "failed" and media_item.error_type != :permanent}
-                    icon_name="hero-arrow-path"
-                    class="h-10 w-10"
-                    phx-click="retry_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm={
-                      MediaCleanupHelpers.download_confirmation(media_item, media_item.source, "Retry this download now?")
-                    }
-                    tooltip="Retry Now"
-                    tooltip_position="bottom-left"
-                  />
-                  <.icon_button
-                    :if={@media_state == "failed" and media_item.error_type == :permanent}
-                    icon_name="hero-arrow-path"
-                    class="h-10 w-10"
-                    phx-click="force_download"
-                    phx-value-media-id={media_item.id}
-                    data-confirm={
-                      MediaCleanupHelpers.download_confirmation(
-                        media_item,
-                        media_item.source,
-                        "Force a retry of this permanent failure?"
-                      )
-                    }
-                    tooltip="Force Retry"
-                    tooltip_position="bottom-left"
-                  />
-                  <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
-                    <span class="block whitespace-normal break-words">{media_item.title}</span>
-                  </.subtle_link>
-                </div>
+              <div class="flex items-start gap-3">
+                <.media_thumbnail media_item={media_item} size="row" />
 
-                <.download_failure
-                  :if={media_item.last_error}
-                  media_item={media_item}
-                  task={Map.get(@tasks_by_media_item_id, media_item.id)}
-                />
-              </section>
+                <section class="flex min-h-16 min-w-0 flex-1 flex-col justify-center gap-2">
+                  <div class="flex items-center gap-2">
+                    <.failure_badge :if={@media_state == "failed"} error_type={media_item.error_type} />
+                    <.icon_button
+                      :if={is_nil(media_item.media_downloaded_at) and @media_state != "failed"}
+                      icon_name="hero-arrow-down-tray"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm={MediaCleanupHelpers.download_confirmation(media_item, media_item.source)}
+                      tooltip="Force Download"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type != :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="retry_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm={
+                        MediaCleanupHelpers.download_confirmation(media_item, media_item.source, "Retry this download now?")
+                      }
+                      tooltip="Retry Now"
+                      tooltip_position="bottom-left"
+                    />
+                    <.icon_button
+                      :if={@media_state == "failed" and media_item.error_type == :permanent}
+                      icon_name="hero-arrow-path"
+                      class="h-10 w-10"
+                      phx-click="force_download"
+                      phx-value-media-id={media_item.id}
+                      data-confirm={
+                        MediaCleanupHelpers.download_confirmation(
+                          media_item,
+                          media_item.source,
+                          "Force a retry of this permanent failure?"
+                        )
+                      }
+                      tooltip="Force Retry"
+                      tooltip_position="bottom-left"
+                    />
+                    <.subtle_link href={~p"/sources/#{media_item.source_id}/media/#{media_item.id}"}>
+                      <span class="block whitespace-normal break-words">{media_item.title}</span>
+                    </.subtle_link>
+                  </div>
+
+                  <.download_failure
+                    :if={media_item.last_error}
+                    media_item={media_item}
+                    task={Map.get(@tasks_by_media_item_id, media_item.id)}
+                  />
+                </section>
+              </div>
             </:col>
 
             <:col :let={media_item} :if={@media_state == "latest"} label="Status">
@@ -366,7 +406,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
               </.subtle_link>
             </:col>
 
-            <:col :let={media_item} label="Action">
+            <:col :let={media_item} :if={@any_actions?} label="Action">
               <.icon_button
                 :if={Map.has_key?(@tasks_by_media_item_id, media_item.id)}
                 icon_name="hero-stop-solid"
@@ -459,10 +499,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         </div>
 
         <p id="latest-mobile-summary" class="text-xs text-theme-on-surface-muted" aria-live="polite">
-          {if @grouping == "source", do: "By source", else: "Latest first"} · {Map.fetch!(
-            %{inserted_at: "Indexed at", uploaded_at: "Upload date", media_downloaded_at: "Downloaded at"},
-            @sort_key
-          )} · {if @sort_direction == :desc, do: "Newest first", else: "Oldest first"}
+          {if @grouping == "source", do: "By source", else: "Latest first"} · {sort_label(@sort_key, @sort_direction)}
         </p>
 
         <p :if={@time_range.range == "custom"} class="text-xs text-theme-on-surface-muted">
@@ -546,29 +583,16 @@ defmodule Pinchflat.Pages.HistoryTableLive do
           <form
             id="latest-sort"
             phx-change="latest_sort"
-            class="grid w-full grid-cols-2 items-end gap-3 sm:ml-auto sm:w-auto lg:w-80 2xl:w-auto"
+            class={["w-full sm:ml-auto sm:w-56", @view_mode == "list" && "md:hidden"]}
           >
             <.input
               type="select"
-              id="latest-sort-key"
-              name="sort_key"
-              label="Sort by"
-              value={@sort_key}
-              options={[
-                {"Indexed At", :inserted_at},
-                {"Upload Date", :uploaded_at},
-                {"Downloaded At", :media_downloaded_at}
-              ]}
-              inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
-            />
-            <.input
-              type="select"
-              id="latest-sort-direction"
-              name="sort_direction"
-              label="Order"
+              id="latest-sort-choice"
+              name="sort"
+              label="Sort"
               align="right"
-              value={@sort_direction}
-              options={[{"Newest first", :desc}, {"Oldest first", :asc}]}
+              value={sort_value(@sort_key, @sort_direction)}
+              options={sort_choices()}
               inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
             />
           </form>
@@ -620,31 +644,14 @@ defmodule Pinchflat.Pages.HistoryTableLive do
             </p>
           </div>
 
-          <form
-            id="latest-mobile-sort"
-            phx-change="latest_sort"
-            class="grid w-full grid-cols-1 items-end gap-3"
-          >
+          <form id="latest-mobile-sort" phx-change="latest_sort">
             <.input
               type="select"
-              id="latest-mobile-sort-key"
-              name="sort_key"
-              label="Sort by"
-              value={@sort_key}
-              options={[
-                {"Indexed At", :inserted_at},
-                {"Upload Date", :uploaded_at},
-                {"Downloaded At", :media_downloaded_at}
-              ]}
-              inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
-            />
-            <.input
-              type="select"
-              id="latest-mobile-sort-direction"
-              name="sort_direction"
-              label="Order"
-              value={@sort_direction}
-              options={[{"Newest first", :desc}, {"Oldest first", :asc}]}
+              id="latest-mobile-sort-choice"
+              name="sort"
+              label="Sort"
+              value={sort_value(@sort_key, @sort_direction)}
+              options={sort_choices()}
               inputclass="min-h-11 gap-2! px-3! py-2 text-sm"
             />
           </form>
@@ -807,6 +814,13 @@ defmodule Pinchflat.Pages.HistoryTableLive do
 
       :error ->
         {:noreply, socket}
+    end
+  end
+
+  def handle_event("latest_sort", %{"sort" => choice}, socket) when is_binary(choice) do
+    case String.split(choice, ":") do
+      [key, direction] -> handle_event("latest_sort", %{"sort_key" => key, "sort_direction" => direction}, socket)
+      _invalid -> {:noreply, socket}
     end
   end
 
@@ -1095,6 +1109,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       [m],
       struct(m, [
         :id,
+        :uuid,
         :title,
         :uploaded_at,
         :inserted_at,
@@ -1105,9 +1120,16 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :prevent_culling,
         :error_type,
         :download_prevented_reason,
-        :media_size_bytes
+        :media_size_bytes,
+        :thumbnail_filepath
       ])
     )
+  end
+
+  defp generate_base_query_for_state("excluded") do
+    MediaQuery.new()
+    |> MediaQuery.require_assoc(:media_profile)
+    |> where(^dynamic(^MediaQuery.excluded()))
   end
 
   defp generate_base_query_for_state("failed") do
@@ -1118,6 +1140,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       [m],
       struct(m, [
         :id,
+        :uuid,
         :title,
         :uploaded_at,
         :inserted_at,
@@ -1128,7 +1151,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :prevent_culling,
         :error_type,
         :download_prevented_reason,
-        :media_size_bytes
+        :media_size_bytes,
+        :thumbnail_filepath
       ])
     )
   end
@@ -1141,6 +1165,7 @@ defmodule Pinchflat.Pages.HistoryTableLive do
       [m],
       struct(m, [
         :id,
+        :uuid,
         :title,
         :uploaded_at,
         :inserted_at,
@@ -1151,7 +1176,8 @@ defmodule Pinchflat.Pages.HistoryTableLive do
         :prevent_culling,
         :error_type,
         :download_prevented_reason,
-        :media_size_bytes
+        :media_size_bytes,
+        :thumbnail_filepath
       ])
     )
   end
@@ -1186,7 +1212,13 @@ defmodule Pinchflat.Pages.HistoryTableLive do
   end
 
   defp latest_query(time_range, grouping) do
-    query = filter_indexed_time(MediaQuery.new(), time_range)
+    # Items the source's rules skip have their own Excluded tab, so Latest only shows media that will download.
+    query =
+      MediaQuery.new()
+      |> MediaQuery.require_assoc(:media_profile)
+      |> where(^dynamic(not (^MediaQuery.excluded())))
+      |> filter_indexed_time(time_range)
+
     if grouping == "source", do: group_sources(query), else: query
   end
 

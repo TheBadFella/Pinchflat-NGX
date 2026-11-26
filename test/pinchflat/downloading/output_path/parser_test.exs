@@ -37,12 +37,35 @@ defmodule Pinchflat.Downloading.OutputPath.ParserTest do
       assert {:error, "expected end of string"} = Parser.parse("{{ 1-1 }", %{})
     end
 
+    test "it passes an optional :width to the fetcher" do
+      fetcher = fn
+        {id, width}, _ -> "#{id}@#{width}"
+        id, _ -> id
+      end
+
+      assert {:ok, "a@3 b b@12"} = Parser.parse("{{ a:3 }} {{b}} {{ b : 12 }}", %{}, fetcher)
+    end
+
+    test "the default fetcher ignores a width" do
+      assert {:ok, "bar"} = Parser.parse("{{ foo:3 }}", %{"foo" => "bar"})
+    end
+
     test "it supports a custom fetcher function" do
       custom_fetcher = fn _, _ ->
         "quux"
       end
 
       assert {:ok, "quux"} = Parser.parse("{{ foo }}", %{}, custom_fetcher)
+    end
+  end
+
+  describe "interpolations/1" do
+    test "lists identifiers with their optional width" do
+      assert {:ok, [{"a", nil}, {"b", 3}]} = Parser.interpolations("x/{{ a }}/{{ b:3 }}.%(ext)s")
+    end
+
+    test "returns an error for an unreadable template" do
+      assert {:error, _} = Parser.interpolations("{{ a:x }}")
     end
   end
 end

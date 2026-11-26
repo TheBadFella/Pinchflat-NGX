@@ -13,7 +13,6 @@ defmodule Pinchflat.ShareTokens.RateLimiter do
   """
 
   use GenServer
-  require Logger
 
   @table :share_intake_rate_limiter
   @intake_limit 10

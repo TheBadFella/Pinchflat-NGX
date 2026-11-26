@@ -1,0 +1,578 @@
+#!/bin/sh
+# Optional PUID/PGID handling for docker_start.
+#
+# When PUID and PGID are set together, a root-started container prepares the
+# selected application directories, optionally repairs ownership, and then
+# permanently drops privileges before runtime_setup runs. A non-root container
+# may only continue when its actual identity already matches the pair.
+#
+# This file is sourced by docker_start. It does not enable shell options.
+
+PINCHFLAT_PRIVILEGE_DROP_ARG="--pinchflat-privileges-dropped"
+PINCHFLAT_MAX_ID="2147483647"
+
+pin_fail() {
+  echo "Pinchflat-ngx startup error: $*" >&2
+  exit 1
+}
+
+pin_read_id() {
+  pin_read_value="$1"
+  pin_read_label="$2"
+
+  case "$pin_read_value" in
+    "" | *[!0-9]*)
+      pin_fail "could not determine a numeric ${pin_read_label} (id returned '${pin_read_value:-}')"
+      ;;
+  esac
+}
+
+pin_validate_id() {
+  pin_id_label="$1"
+  pin_id_value="$2"
+
+  [ -n "$pin_id_value" ] || pin_fail "$pin_id_label must not be empty. Set both PUID and PGID to nonzero decimal IDs, or unset both to keep the starting identity."
+
+  case "$pin_id_value" in
+    *[!0-9]*)
+      pin_fail "$pin_id_label must be a nonzero decimal integer, got '$pin_id_value'."
+      ;;
+  esac
+
+  pin_normalized_id="$pin_id_value"
+  while :; do
+    case "$pin_normalized_id" in
+      0*) pin_normalized_id="${pin_normalized_id#0}" ;;
+      *) break ;;
+    esac
+  done
+
+  [ -n "$pin_normalized_id" ] || pin_fail "$pin_id_label must be greater than zero."
+
+  if [ "${#pin_normalized_id}" -gt 10 ] ||
+    { [ "${#pin_normalized_id}" -eq 10 ] && [ "$pin_normalized_id" -gt "$PINCHFLAT_MAX_ID" ]; }; then
+    pin_fail "$pin_id_label must not exceed ${PINCHFLAT_MAX_ID}, got '$pin_id_value'."
+  fi
+
+  pin_validated_id="$pin_normalized_id"
+}
+
+pin_path_within() {
+  pin_within_candidate="$1"
+  pin_within_container="$2"
+
+  [ "$pin_within_candidate" = "$pin_within_container" ] && return 0
+
+  case "$pin_within_candidate" in
+    "$pin_within_container"/*) return 0 ;;
+  esac
+
+  return 1
+}
+
+pin_paths_overlap() {
+  pin_path_within "$1" "$2" || pin_path_within "$2" "$1"
+}
+
+pin_dangerous_root() {
+  case "$1" in
+    / | /etc | /usr | /usr/local | /bin | /sbin | /lib | /lib32 | /lib64 | /boot | /dev | /proc | /sys | /app | /opt | /root | /home | /var | /tmp | /run)
+      return 0
+      ;;
+  esac
+
+  # The image creates this dedicated tzdata directory under /etc.
+  [ "$1" = "/etc/elixir_tzdata_data" ] && return 1
+
+  for pin_protected_root in /etc /usr /bin /sbin /lib /lib32 /lib64 /boot /dev /proc /sys /app; do
+    pin_path_within "$1" "$pin_protected_root" && return 0
+  done
+
+  return 1
+}
+
+pin_reject_symlink_path() {
+  pin_symlink_label="$1"
+  pin_symlink_path="$2"
+
+  if [ -L "$pin_symlink_path" ]; then
+    pin_fail "$pin_symlink_label '$pin_symlink_path' is a symlink. Use the real directory path so root cannot change ownership outside the approved tree."
+  fi
+
+  pin_symlink_parent="$pin_symlink_path"
+  while :; do
+    pin_symlink_parent="$(dirname -- "$pin_symlink_parent")"
+    [ "$pin_symlink_parent" = "/" ] && break
+    [ "$pin_symlink_parent" = "." ] && break
+
+    if [ -L "$pin_symlink_parent" ]; then
+      pin_fail "$pin_symlink_label '$pin_symlink_path' has symlinked parent '$pin_symlink_parent'. Use the real directory path so root cannot change ownership outside the approved tree."
+    fi
+  done
+}
+
+pin_validate_target() {
+  pin_target_label="$1"
+  pin_target_value="$2"
+
+  case "$pin_target_value" in
+    /*) ;;
+    *) pin_fail "$pin_target_label must be an absolute path, got '$pin_target_value'." ;;
+  esac
+
+  pin_target_resolved="$(realpath -m -- "$pin_target_value" 2>/dev/null)" ||
+    pin_fail "could not resolve $pin_target_label '$pin_target_value'."
+
+  [ -n "$pin_target_resolved" ] || pin_fail "could not resolve $pin_target_label '$pin_target_value'."
+
+  if pin_dangerous_root "$pin_target_resolved"; then
+    pin_fail "$pin_target_label '$pin_target_value' resolves to '$pin_target_resolved', which is a protected system path. Use a dedicated application directory."
+  fi
+
+  pin_reject_symlink_path "$pin_target_label" "$pin_target_value"
+  pin_validated_path="$pin_target_resolved"
+}
+
+pin_prepare_top_level() {
+  pin_prepare_label="$1"
+  pin_prepare_path="$2"
+
+  [ -n "$pin_prepare_path" ] || return 0
+
+  if [ -L "$pin_prepare_path" ]; then
+    pin_fail "$pin_prepare_label '$pin_prepare_path' became a symlink. Refusing to change ownership through it."
+  fi
+
+  if [ ! -e "$pin_prepare_path" ]; then
+    mkdir -p -- "$pin_prepare_path" ||
+      pin_fail "could not create $pin_prepare_label '$pin_prepare_path'."
+  elif [ ! -d "$pin_prepare_path" ]; then
+    pin_fail "$pin_prepare_label '$pin_prepare_path' exists but is not a directory."
+  fi
+
+  pin_python="$(command -v python3 || echo /usr/bin/python3)"
+  if [ -x "$pin_python" ]; then
+    if ! "$pin_python" -c '
+import os, sys
+
+root = sys.argv[1]
+uid = int(sys.argv[2])
+gid = int(sys.argv[3])
+
+if not os.path.isabs(root):
+    sys.exit(1)
+
+parts = [p for p in root.split("/") if p and p != "."]
+if not parts:
+    sys.exit(1)
+
+curr_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+for comp in parts:
+    try:
+        next_fd = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0), dir_fd=curr_fd)
+    except OSError:
+        os.close(curr_fd)
+        sys.exit(1)
+    os.close(curr_fd)
+    curr_fd = next_fd
+
+try:
+    os.fchown(curr_fd, uid, gid)
+finally:
+    os.close(curr_fd)
+' "$pin_prepare_path" "$pin_puid" "$pin_pgid" 2>/dev/null; then
+      pin_fail "could not change ownership of $pin_prepare_label '$pin_prepare_path' to ${pin_puid}:${pin_pgid}."
+    fi
+  else
+    chown -h -- "${pin_puid}:${pin_pgid}" "$pin_prepare_path" ||
+      pin_fail "could not change ownership of $pin_prepare_label '$pin_prepare_path' to ${pin_puid}:${pin_pgid}."
+  fi
+}
+
+pin_reject_nested_mounts() {
+  pin_mount_label="$1"
+  pin_mount_root="$2"
+
+  [ -r /proc/self/mountinfo ] || return 0
+
+  pin_mount_targets="$(awk '{print $5}' /proc/self/mountinfo 2>/dev/null |
+    sed -e 's/\\040/ /g' -e 's/\\134/\\/g')" || pin_mount_targets=""
+  [ -n "$pin_mount_targets" ] || return 0
+
+  while IFS= read -r pin_mount_target; do
+    case "$pin_mount_target" in
+      "$pin_mount_root"/*)
+        pin_fail "$pin_mount_label '$pin_mount_root' contains a nested mount at '$pin_mount_target'. Recursive repair does not cross mount boundaries; repair that mount separately or disable FIX_PERMISSIONS."
+        ;;
+    esac
+  done <<PIN_MOUNT_LIST
+$pin_mount_targets
+PIN_MOUNT_LIST
+}
+
+pin_repair_tree() {
+  pin_repair_label="$1"
+  pin_repair_root="$2"
+
+  [ -e "$pin_repair_root" ] || return 0
+
+  if [ -L "$pin_repair_root" ] || [ ! -d "$pin_repair_root" ]; then
+    pin_fail "$pin_repair_label '$pin_repair_root' is not a real directory. Refusing recursive ownership repair."
+  fi
+
+  pin_reject_nested_mounts "$pin_repair_label" "$pin_repair_root"
+
+  pin_python="$(command -v python3 || echo /usr/bin/python3)"
+  [ -x "$pin_python" ] || pin_fail "python3 is required for secure directory-relative permission repair."
+
+  if ! "$pin_python" -c '
+import os, stat, sys
+
+root = sys.argv[1]
+uid = int(sys.argv[2])
+gid = int(sys.argv[3])
+
+if not os.path.isabs(root):
+    sys.exit(1)
+
+parts = [p for p in root.split("/") if p and p != "."]
+if not parts:
+    sys.exit(1)
+
+curr_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+for comp in parts:
+    try:
+        next_fd = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0), dir_fd=curr_fd)
+    except OSError:
+        os.close(curr_fd)
+        sys.exit(1)
+    os.close(curr_fd)
+    curr_fd = next_fd
+
+root_fd = curr_fd
+try:
+    root_stat = os.fstat(root_fd)
+    root_dev = root_stat.st_dev
+    os.fchown(root_fd, uid, gid)
+    for dirpath, dirnames, filenames, dirfd in os.fwalk(dir_fd=root_fd):
+        cur_stat = os.fstat(dirfd)
+        if cur_stat.st_dev != root_dev:
+            dirnames.clear()
+            continue
+        to_remove = []
+        for d in dirnames:
+            try:
+                st = os.stat(d, dir_fd=dirfd, follow_symlinks=False)
+                if stat.S_ISLNK(st.st_mode):
+                    to_remove.append(d)
+                os.chown(d, uid, gid, dir_fd=dirfd, follow_symlinks=False)
+            except OSError:
+                sys.exit(1)
+        for d in to_remove:
+            dirnames.remove(d)
+        for f in filenames:
+            try:
+                os.chown(f, uid, gid, dir_fd=dirfd, follow_symlinks=False)
+            except OSError:
+                sys.exit(1)
+except OSError:
+    sys.exit(1)
+finally:
+    os.close(root_fd)
+' "$pin_repair_root" "$pin_puid" "$pin_pgid"; then
+    pin_fail "ownership repair failed under $pin_repair_label '$pin_repair_root'. Some files may remain unchanged. Check the mount for read-only, NFS root-squash, SMB or ACL restrictions, then rerun. No root fallback was attempted."
+  fi
+}
+
+pin_capability_value() {
+  sed -n "s/^$1:[[:space:]]*//p" /proc/self/status 2>/dev/null
+}
+
+pin_verify_dropped_identity() {
+  pin_actual_uid="$(id -u 2>/dev/null)" || pin_fail "could not read the UID after dropping privileges."
+  pin_actual_gid="$(id -g 2>/dev/null)" || pin_fail "could not read the GID after dropping privileges."
+
+  [ "$pin_actual_uid" = "$pin_puid" ] ||
+    pin_fail "privilege drop ended at UID ${pin_actual_uid}, expected ${pin_puid}."
+  [ "$pin_actual_gid" = "$pin_pgid" ] ||
+    pin_fail "privilege drop ended at GID ${pin_actual_gid}, expected ${pin_pgid}."
+
+  pin_actual_groups="$(id -G 2>/dev/null)" || pin_fail "could not read supplementary groups after dropping privileges."
+
+  for pin_actual_group in $pin_actual_groups; do
+    [ "$pin_actual_group" = "0" ] &&
+      pin_fail "supplementary group 0 is still present after dropping privileges to ${pin_puid}:${pin_pgid}."
+  done
+
+  for pin_capability in CapEff CapPrm CapInh CapAmb; do
+    pin_capability_text="$(pin_capability_value "$pin_capability")"
+    [ -n "$pin_capability_text" ] ||
+      pin_fail "could not read $pin_capability from /proc/self/status after dropping privileges."
+    [ "$pin_capability_text" = "0000000000000000" ] ||
+      pin_fail "$pin_capability is '$pin_capability_text' after dropping privileges; root capabilities must be empty."
+  done
+}
+
+pin_prepare_and_drop() {
+  case "$pin_script_path" in
+    /*) ;;
+    *) pin_fail "internal error: startup script path '$pin_script_path' is not absolute." ;;
+  esac
+
+  pin_config_value="${CONFIG_PATH:-/config}"
+  pin_media_value="${MEDIA_PATH:-/downloads}"
+  pin_extras_value="${EXTRAS_PATH:-${pin_config_value}/extras}"
+  pin_metadata_value="${METADATA_PATH:-${pin_config_value}/metadata}"
+  pin_log_value="${LOG_PATH:-${pin_config_value}/logs/pinchflat.log}"
+  pin_log_dir_value="$(dirname -- "$pin_log_value")"
+  pin_backup_value="${POSTGRES_BACKUP_PATH:-${pin_extras_value}/backups}"
+  pin_tzdata_value="${TZ_DATA_PATH:-${pin_extras_value}/elixir_tz_data}"
+  pin_staging_value="${DOWNLOAD_STAGING_PATH:-}"
+  pin_tmpfile_value="${TMPFILE_PATH:-}"
+
+  if [ "${DATABASE_ADAPTER:-sqlite}" = "sqlite" ]; then
+    pin_database_value="${DATABASE_PATH:-${pin_config_value}/db/pinchflat.db}"
+    pin_database_dir_value="$(dirname -- "$pin_database_value")"
+  else
+    pin_database_dir_value=""
+  fi
+
+  pin_validate_target "CONFIG_PATH" "$pin_config_value"
+  pin_config_resolved="$pin_validated_path"
+
+  pin_validate_target "MEDIA_PATH" "$pin_media_value"
+  pin_media_resolved="$pin_validated_path"
+
+  pin_validate_target "EXTRAS_PATH" "$pin_extras_value"
+  pin_extras_resolved="$pin_validated_path"
+
+  pin_validate_target "METADATA_PATH" "$pin_metadata_value"
+  pin_metadata_resolved="$pin_validated_path"
+
+  pin_validate_target "LOG_PATH parent" "$pin_log_dir_value"
+  pin_log_resolved="$pin_validated_path"
+
+  pin_validate_target "POSTGRES_BACKUP_PATH" "$pin_backup_value"
+  pin_backup_resolved="$pin_validated_path"
+
+  pin_validate_target "TZ_DATA_PATH" "$pin_tzdata_value"
+  pin_tzdata_resolved="$pin_validated_path"
+
+  if [ -n "$pin_database_dir_value" ]; then
+    pin_validate_target "DATABASE_PATH parent" "$pin_database_dir_value"
+    pin_database_resolved="$pin_validated_path"
+  else
+    pin_database_resolved=""
+  fi
+
+  if [ -n "$pin_staging_value" ]; then
+    pin_validate_target "DOWNLOAD_STAGING_PATH" "$pin_staging_value"
+    pin_staging_resolved="$pin_validated_path"
+  else
+    pin_staging_resolved=""
+  fi
+
+  if [ -n "$pin_tmpfile_value" ]; then
+    pin_validate_target "TMPFILE_PATH" "$pin_tmpfile_value"
+    pin_tmpfile_resolved="$pin_validated_path"
+  else
+    pin_tmpfile_resolved=""
+  fi
+
+  pin_legacy_tzdata_resolved=""
+  if [ -d /etc/elixir_tzdata_data ] && [ "$pin_tzdata_resolved" != "/etc/elixir_tzdata_data" ]; then
+    pin_validate_target "legacy tzdata directory" "/etc/elixir_tzdata_data"
+    pin_legacy_tzdata_resolved="$pin_validated_path"
+  fi
+
+  for pin_state_pair in \
+    "CONFIG_PATH:${pin_config_resolved}" \
+    "EXTRAS_PATH:${pin_extras_resolved}" \
+    "METADATA_PATH:${pin_metadata_resolved}" \
+    "LOG_PATH parent:${pin_log_resolved}" \
+    "POSTGRES_BACKUP_PATH:${pin_backup_resolved}" \
+    "TZ_DATA_PATH:${pin_tzdata_resolved}" \
+    ${pin_database_resolved:+"DATABASE_PATH parent:${pin_database_resolved}"} \
+    ${pin_staging_resolved:+"DOWNLOAD_STAGING_PATH:${pin_staging_resolved}"} \
+    ${pin_tmpfile_resolved:+"TMPFILE_PATH:${pin_tmpfile_resolved}"} \
+    ${pin_legacy_tzdata_resolved:+"legacy tzdata directory:${pin_legacy_tzdata_resolved}"}
+  do
+    pin_label="${pin_state_pair%%:*}"
+    pin_target="${pin_state_pair#*:}"
+    [ -n "$pin_target" ] || continue
+
+    if pin_paths_overlap "$pin_target" "$pin_media_resolved"; then
+      pin_fail "$pin_label '$pin_target' and MEDIA_PATH '$pin_media_resolved' overlap. Recursive permission repair must not touch the media tree; keep configuration and downloads in separate directories."
+    fi
+  done
+
+  pin_prepare_top_level "CONFIG_PATH" "$pin_config_resolved"
+  pin_prepare_top_level "MEDIA_PATH" "$pin_media_resolved"
+  pin_prepare_top_level "EXTRAS_PATH" "$pin_extras_resolved"
+  pin_prepare_top_level "METADATA_PATH" "$pin_metadata_resolved"
+  pin_prepare_top_level "LOG_PATH parent" "$pin_log_resolved"
+  pin_prepare_top_level "POSTGRES_BACKUP_PATH" "$pin_backup_resolved"
+  pin_prepare_top_level "TZ_DATA_PATH" "$pin_tzdata_resolved"
+
+  if [ -n "$pin_database_resolved" ]; then
+    pin_prepare_top_level "DATABASE_PATH parent" "$pin_database_resolved"
+  fi
+
+  if [ -n "$pin_staging_resolved" ]; then
+    pin_prepare_top_level "DOWNLOAD_STAGING_PATH" "$pin_staging_resolved"
+  fi
+
+  if [ -n "$pin_tmpfile_resolved" ]; then
+    pin_prepare_top_level "TMPFILE_PATH" "$pin_tmpfile_resolved"
+  fi
+
+  if [ -n "$pin_legacy_tzdata_resolved" ]; then
+    pin_prepare_top_level "legacy tzdata directory" "$pin_legacy_tzdata_resolved"
+  fi
+
+  if [ "$pin_fix_permissions" = "1" ]; then
+    echo "Pinchflat-ngx: repairing ownership of application state for ${pin_puid}:${pin_pgid}"
+    for pin_state_pair in \
+      "CONFIG_PATH:${pin_config_resolved}" \
+      "EXTRAS_PATH:${pin_extras_resolved}" \
+      "METADATA_PATH:${pin_metadata_resolved}" \
+      "LOG_PATH parent:${pin_log_resolved}" \
+      "POSTGRES_BACKUP_PATH:${pin_backup_resolved}" \
+      "TZ_DATA_PATH:${pin_tzdata_resolved}" \
+      ${pin_database_resolved:+"DATABASE_PATH parent:${pin_database_resolved}"} \
+      ${pin_staging_resolved:+"DOWNLOAD_STAGING_PATH:${pin_staging_resolved}"} \
+      ${pin_tmpfile_resolved:+"TMPFILE_PATH:${pin_tmpfile_resolved}"} \
+      ${pin_legacy_tzdata_resolved:+"legacy tzdata directory:${pin_legacy_tzdata_resolved}"}
+    do
+      pin_label="${pin_state_pair%%:*}"
+      pin_target="${pin_state_pair#*:}"
+      [ -n "$pin_target" ] || continue
+      pin_repair_tree "$pin_label" "$pin_target"
+    done
+  fi
+
+  [ -x /usr/bin/setpriv ] ||
+    pin_fail "the required privilege-drop utility /usr/bin/setpriv is missing from the image."
+
+  pin_supplementary_groups=""
+  pin_group_list="$(id -G 2>/dev/null)" || pin_fail "could not read supplementary groups before dropping privileges."
+
+  for pin_group in $pin_group_list; do
+    [ "$pin_group" = "0" ] && continue
+    [ "$pin_group" = "$pin_pgid" ] && continue
+
+    if [ -z "$pin_supplementary_groups" ]; then
+      pin_supplementary_groups="$pin_group"
+    else
+      pin_supplementary_groups="${pin_supplementary_groups},${pin_group}"
+    fi
+  done
+
+  echo "Pinchflat-ngx: dropping privileges to PUID:PGID ${pin_puid}:${pin_pgid} (FIX_PERMISSIONS=${pin_fix_permissions})"
+
+  if [ -n "$pin_supplementary_groups" ]; then
+    exec /usr/bin/setpriv \
+      --reuid "$pin_puid" \
+      --regid "$pin_pgid" \
+      --groups "$pin_supplementary_groups" \
+      --inh-caps=-all \
+      --ambient-caps=-all \
+      --bounding-set=-all \
+      --nnp \
+      -- "$pin_script_path" "$PINCHFLAT_PRIVILEGE_DROP_ARG"
+  else
+    exec /usr/bin/setpriv \
+      --reuid "$pin_puid" \
+      --regid "$pin_pgid" \
+      --clear-groups \
+      --inh-caps=-all \
+      --ambient-caps=-all \
+      --bounding-set=-all \
+      --nnp \
+      -- "$pin_script_path" "$PINCHFLAT_PRIVILEGE_DROP_ARG"
+  fi
+
+  pin_fail "privilege drop did not replace the startup process."
+}
+
+pin_apply_startup_identity() {
+  pin_script_path="${1:-}"
+  [ -n "$pin_script_path" ] || pin_fail "internal error: the startup script path is missing."
+  shift 2>/dev/null || true
+
+  pin_after_drop=0
+  if [ "${1:-}" = "$PINCHFLAT_PRIVILEGE_DROP_ARG" ]; then
+    pin_after_drop=1
+    shift
+  fi
+
+  pin_start_uid="$(id -u 2>/dev/null)" || pin_fail "could not determine the starting UID."
+  pin_start_gid="$(id -g 2>/dev/null)" || pin_fail "could not determine the starting GID."
+
+  pin_read_id "$pin_start_uid" "UID"
+  pin_read_id "$pin_start_gid" "GID"
+
+  pin_puid_set=0
+  pin_pgid_set=0
+  [ "${PUID+x}" = x ] && pin_puid_set=1
+  [ "${PGID+x}" = x ] && pin_pgid_set=1
+
+  if [ "$pin_puid_set" = "0" ] && [ "$pin_pgid_set" = "0" ]; then
+    [ "$pin_after_drop" = "0" ] ||
+      pin_fail "the internal privilege-drop marker was present without PUID and PGID."
+
+    if [ "${FIX_PERMISSIONS+x}" = x ]; then
+      pin_fail "FIX_PERMISSIONS is only available when PUID and PGID are set together and the container starts as root."
+    fi
+
+    return 0
+  fi
+
+  if [ "$pin_puid_set" = "0" ] || [ "$pin_pgid_set" = "0" ]; then
+    pin_fail "PUID and PGID must be set together. Set both to nonzero decimal IDs, or unset both to keep the container's starting identity. GID, GUID and TUID are not supported aliases."
+  fi
+
+  pin_validate_id "PUID" "${PUID}"
+  pin_puid="$pin_validated_id"
+
+  pin_validate_id "PGID" "${PGID}"
+  pin_pgid="$pin_validated_id"
+
+  pin_fix_permissions="0"
+  pin_fix_permissions_set=0
+  if [ "${FIX_PERMISSIONS+x}" = x ]; then
+    pin_fix_permissions_set=1
+
+    case "${FIX_PERMISSIONS}" in
+      0) pin_fix_permissions="0" ;;
+      1) pin_fix_permissions="1" ;;
+      *)
+        pin_fail "FIX_PERMISSIONS must be 0 or 1, got '${FIX_PERMISSIONS}'."
+        ;;
+    esac
+  fi
+
+  if [ "$pin_after_drop" = "1" ]; then
+    [ "$pin_start_uid" != "0" ] ||
+      pin_fail "the internal privilege-drop marker was present while still running as root."
+
+    pin_verify_dropped_identity
+    echo "Pinchflat-ngx: running as PUID:PGID ${pin_puid}:${pin_pgid} (privileges dropped)"
+    return 0
+  fi
+
+  if [ "$pin_start_uid" != "0" ]; then
+    if [ "$pin_fix_permissions_set" = "1" ]; then
+      pin_fail "FIX_PERMISSIONS is only available when the container starts as root and PUID and PGID are set."
+    fi
+
+    if [ "$pin_start_uid" = "$pin_puid" ] && [ "$pin_start_gid" = "$pin_pgid" ]; then
+      echo "Pinchflat-ngx: running as requested PUID:PGID ${pin_puid}:${pin_pgid}; ownership preparation is unavailable without root."
+      return 0
+    fi
+
+    pin_fail "PUID:PGID ${pin_puid}:${pin_pgid} does not match the container's starting identity ${pin_start_uid}:${pin_start_gid}. Docker 'user:'/--user takes precedence; remove it or set it to the requested IDs."
+  fi
+
+  pin_prepare_and_drop
+}

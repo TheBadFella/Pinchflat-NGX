@@ -1,0 +1,146 @@
+#!/bin/sh
+# Prepares a private, writable runtime for yt-dlp and its temporary files.
+# This is sourced by docker_start before permission checks, migrations and the
+# application start, so a numeric UID without a passwd entry can run the image.
+#
+# The runtime owns only its private tree. Existing symlinked, foreign-owned or
+# group/world-writable paths are rejected rather than repaired, and no root
+# fallback is attempted.
+
+runtime_uid="$(id -u 2>/dev/null)"
+
+case "$runtime_uid" in
+  "" | *[!0-9]*)
+    echo "Pinchflat-ngx startup error: could not determine a numeric UID (id -u returned '${runtime_uid:-}')" >&2
+    exit 1
+    ;;
+esac
+
+runtime_dir="${PINCHFLAT_RUNTIME_DIR:-/tmp/pinchflat-runtime-${runtime_uid}}"
+runtime_bin="${runtime_dir}/bin"
+runtime_home="${runtime_dir}/home"
+runtime_tmp="${runtime_dir}/tmp"
+yt_dlp_seed="${PINCHFLAT_YT_DLP_SEED:-/usr/local/bin/yt-dlp}"
+yt_dlp_target="${runtime_bin}/yt-dlp"
+
+fail() {
+  echo "Pinchflat-ngx startup error: $*" >&2
+  exit 1
+}
+
+check_private_directory() {
+  path="$1"
+  label="${2:-$path}"
+
+  [ -L "$path" ] && fail "$label is a symlink; refusing to use it as the private runtime directory for uid ${runtime_uid}"
+  [ -d "$path" ] || fail "$label is not a directory for uid ${runtime_uid}"
+
+  owner="$(stat -c %u "$path" 2>/dev/null)" || fail "could not read the owner of $label"
+  [ "$owner" = "$runtime_uid" ] || fail "$label is owned by uid ${owner}, not the running uid ${runtime_uid}"
+
+  mode="$(stat -c %a "$path" 2>/dev/null)" || fail "could not read the mode of $label"
+  owner_bits=$(( (0$mode / 64) % 8 ))
+  [ "$owner_bits" -eq 7 ] || fail "$label is not readable, writable and searchable by uid ${runtime_uid} (mode ${mode})"
+  [ -r "$path" ] && [ -w "$path" ] && [ -x "$path" ] || fail "$label is not readable, writable and searchable by uid ${runtime_uid} (mode ${mode})"
+  tail_mode="$(printf '%s' "$mode" | tail -c 2)"
+
+  if [ "$tail_mode" != "00" ]; then
+    fail "$label has mode ${mode}; remove group/world permissions (chmod 700) for uid ${runtime_uid}"
+  fi
+}
+
+create_private_directory() {
+  path="$1"
+
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    return 0
+  fi
+
+  (umask 077 && mkdir "$path") 2>/dev/null || true
+
+  [ -d "$path" ] || fail "could not create $path for uid ${runtime_uid}"
+}
+
+create_private_directory "$runtime_dir"
+check_private_directory "$runtime_dir"
+
+create_private_directory "$runtime_bin"
+check_private_directory "$runtime_bin"
+
+create_private_directory "$runtime_home"
+check_private_directory "$runtime_home"
+
+create_private_directory "$runtime_tmp"
+check_private_directory "$runtime_tmp"
+
+# Seed yt-dlp only when the private copy is absent. A container restart then
+# keeps the last successful update; recreating the container reseeds from the
+# image and the configured update policy runs again on boot.
+if [ -L "$yt_dlp_target" ]; then
+  fail "$yt_dlp_target is a symlink; refusing to run an attacker-controlled yt-dlp"
+fi
+
+if [ ! -e "$yt_dlp_target" ]; then
+  [ -f "$yt_dlp_seed" ] || fail "seed yt-dlp is missing at $yt_dlp_seed"
+  [ -x "$yt_dlp_seed" ] || fail "seed yt-dlp at $yt_dlp_seed is not executable"
+
+  staging="${runtime_bin}/.yt-dlp-seed-${runtime_uid}-$$"
+
+  (umask 077 && cp "$yt_dlp_seed" "$staging") || {
+    rm -f "$staging"
+    fail "could not copy $yt_dlp_seed to $staging"
+  }
+
+  chmod 700 "$staging" || {
+    rm -f "$staging"
+    fail "could not set mode 700 on $staging"
+  }
+
+  mv -f "$staging" "$yt_dlp_target" || {
+    rm -f "$staging"
+    fail "could not move $staging into place"
+  }
+fi
+
+[ -f "$yt_dlp_target" ] || fail "$yt_dlp_target is not a regular file after seeding"
+
+owner="$(stat -c %u "$yt_dlp_target" 2>/dev/null)" || fail "could not read the owner of $yt_dlp_target"
+[ "$owner" = "$runtime_uid" ] || fail "$yt_dlp_target is owned by uid ${owner}, not the running uid ${runtime_uid}"
+
+mode="$(stat -c %a "$yt_dlp_target" 2>/dev/null)" || fail "could not read the mode of $yt_dlp_target"
+owner_bits=$(( (0$mode / 64) % 8 ))
+[ "$owner_bits" -eq 7 ] || fail "$yt_dlp_target is not executable by uid ${runtime_uid} (mode ${mode})"
+[ -x "$yt_dlp_target" ] || fail "$yt_dlp_target is not executable by uid ${runtime_uid} (mode ${mode})"
+tail_mode="$(printf '%s' "$mode" | tail -c 2)"
+
+case "$tail_mode" in
+  00 | 55) ;;
+  *) fail "$yt_dlp_target has mode ${mode}; expected 0700 or 0755 owned by uid ${runtime_uid}" ;;
+esac
+
+PATH="${runtime_bin}:${PATH}"
+export PATH
+
+resolved_yt_dlp="$(command -v yt-dlp 2>/dev/null)" || fail "yt-dlp could not be found on PATH"
+[ "$resolved_yt_dlp" = "$yt_dlp_target" ] || fail "yt-dlp on PATH resolved to ${resolved_yt_dlp}, expected private copy at ${yt_dlp_target}"
+
+if [ -n "${HOME:-}" ] && [ "${HOME}" != "/" ] && [ -d "${HOME}" ] && [ -w "${HOME}" ]; then
+  :
+else
+  HOME="$runtime_home"
+  export HOME
+fi
+
+case "${TMPDIR:-}" in
+  "" | "/tmp")
+    TMPDIR="$runtime_tmp"
+    ;;
+  *)
+    check_private_directory "$TMPDIR" "TMPDIR $TMPDIR"
+    ;;
+esac
+
+export TMPDIR
+export TMP="$TMPDIR"
+
+echo "Pinchflat-ngx: using private runtime directory ${runtime_dir} for uid ${runtime_uid}"

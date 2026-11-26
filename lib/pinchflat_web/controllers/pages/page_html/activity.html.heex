@@ -1,0 +1,13 @@
+<h2 class="mb-6 text-title-md2 font-bold text-theme-on-surface">Activity</h2>
+
+<div class="theme-surface-raised p-5">
+  <.tabbed_layout active_tab={@active_tab} tab_href={@tab_href}>
+    <:tab title="Active Tasks" id="active-tasks">{live_render(@conn, Pinchflat.Pages.JobTableLive)}</:tab>
+
+    <:tab title="Job Queue" id="job-queue">{live_render(@conn, Pinchflat.Pages.JobQueueLive)}</:tab>
+
+    <:tab title="System Health" id="system-health">
+      {live_render(@conn, Pinchflat.Pages.SystemHealthLive)}
+    </:tab>
+  </.tabbed_layout>
+</div>

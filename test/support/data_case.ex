@@ -45,8 +45,28 @@ defmodule Pinchflat.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Pinchflat.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    unless tags[:unboxed] do
+      pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Pinchflat.Repo, shared: not tags[:async])
+
+      on_exit(fn ->
+        Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+        await_sandbox_rollback()
+      end)
+    end
+  end
+
+  # stop_owner/1 returns before the test's transaction is rolled back: the ownership
+  # proxy rolls it back later, in its own process. Until then that SQLite connection
+  # keeps the write lock, and a following test that reads before writing (such as
+  # Settings.set/1 in a setup block) fails at once with "Database busy", because SQLite
+  # never waits when upgrading a read transaction to a write. Taking and releasing the
+  # write lock on another connection waits, under busy_timeout, until the rollback ends.
+  defp await_sandbox_rollback do
+    unless Pinchflat.Database.postgres?() do
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Pinchflat.Repo, sandbox: false)
+      {:ok, :ok} = Pinchflat.Repo.transaction(fn -> :ok end, mode: :immediate)
+      Ecto.Adapters.SQL.Sandbox.checkin(Pinchflat.Repo)
+    end
   end
 
   @doc """

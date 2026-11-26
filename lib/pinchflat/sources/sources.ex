@@ -15,6 +15,8 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.DirectoryMove
   alias Pinchflat.Sources.CustomPoster
+  alias Pinchflat.Sources.SavedTitleFilter
+  alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.YtDlp.MediaCollection
@@ -26,6 +28,10 @@ defmodule Pinchflat.Sources do
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.FastIndexing.FastIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
+  alias Pinchflat.Settings.PendingMediaItemOptions
+  alias Pinchflat.Settings.ScopedYtDlpOptions
+
+  @selection_limit 500
 
   @automated_metadata_lock_fields %{
     custom_name: :custom_name_locked,
@@ -33,18 +39,30 @@ defmodule Pinchflat.Sources do
   }
 
   @doc """
-  Pauses downloads for up to 100 available sources without disabling monitoring
+  Pauses downloads for up to #{@selection_limit} available sources without disabling monitoring
   or deleting files. Rejects the entire selection if any source is unavailable.
 
   Returns {:ok, [%Source{}]} | {:error, term()}
   """
-  def pause_selected_sources(ids) do
+  def pause_selected_sources(ids),
+    do: switch_off_selected_sources(ids, %{download_media: false}, run_post_commit_tasks: false)
+
+  @doc """
+  Stops up to #{@selection_limit} available sources, as Stop All does for one: monitoring and
+  downloads turn off and queued and running downloads are cancelled. Files are kept. Rejects the
+  entire selection if any source is unavailable.
+
+  Returns {:ok, [%Source{}]} | {:error, term()}
+  """
+  def stop_selected_sources(ids), do: switch_off_selected_sources(ids, %{enabled: false, download_media: false}, [])
+
+  defp switch_off_selected_sources(ids, attrs, opts) do
     result =
       Repo.transaction(fn ->
         case get_selected_sources(ids, lock: true) do
           {:ok, sources} ->
             Enum.map(sources, fn source ->
-              case update_source(source, %{download_media: false}, run_post_commit_tasks: false) do
+              case update_source(source, attrs, opts) do
                 {:ok, updated} -> updated
                 {:error, changeset} -> Repo.rollback(changeset)
               end
@@ -66,7 +84,7 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
-  Resumes downloads for up to 100 available sources without changing monitoring
+  Resumes downloads for up to #{@selection_limit} available sources without changing monitoring
   or deleting files. Rejects the entire selection if any source is unavailable.
   Enqueues pending download tasks for enabled sources.
 
@@ -94,7 +112,42 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
-  Updates the media profile for up to 100 available sources.
+  Marks up to #{@selection_limit} available sources for deletion and starts their deletion jobs.
+  Downloaded files are kept unless `delete_files: true` is given, matching the source page's
+  Delete Source and Delete Source + Files. Rejects the entire selection if any source is
+  unavailable or still has watch-protected videos.
+
+  Returns {:ok, [%Source{}]} | {:error, :watch_protected | term()}
+  """
+  def delete_selected_sources(ids, opts \\ []) do
+    delete_files = Keyword.get(opts, :delete_files, false)
+
+    result =
+      Repo.transaction(fn ->
+        with {:ok, sources} <- get_selected_sources(ids, lock: true),
+             false <- Enum.any?(sources, &MediaWatch.deletion_blocked?/1) do
+          marked_at = DateTime.utc_now()
+
+          Enum.map(sources, fn source ->
+            case update_source(source, %{marked_for_deletion_at: marked_at}, run_post_commit_tasks: false) do
+              {:ok, updated} -> updated
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end)
+        else
+          true -> Repo.rollback(:watch_protected)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    with {:ok, sources} <- result do
+      Enum.each(sources, &SourceDeletionWorker.kickoff(&1, %{delete_files: delete_files}))
+      {:ok, sources}
+    end
+  end
+
+  @doc """
+  Updates the media profile for up to #{@selection_limit} available sources.
   Rejects the entire selection if any source is unavailable or if the profile is invalid.
 
   Returns {:ok, [%Source{}]} | {:error, term()}
@@ -104,6 +157,33 @@ defmodule Pinchflat.Sources do
       case validate_target_profile(profile_id) do
         {:ok, profile} -> update_selected_sources(ids, %{media_profile_id: profile.id})
         {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @doc """
+  Sets how often up to #{@selection_limit} selected sources are indexed. Sources with fast
+  indexing, and single videos, keep their fixed schedule and are counted as skipped.
+
+  Returns {:ok, %{updated: integer(), skipped: integer()}} | {:error, term()}
+  """
+  def set_selected_sources_index_frequency(ids, minutes) when is_integer(minutes) do
+    Repo.transaction(fn ->
+      case get_selected_sources(ids, lock: true) do
+        {:ok, sources} ->
+          {fixed, changeable} = Enum.split_with(sources, &(&1.fast_index or &1.collection_type == :video))
+
+          Enum.each(changeable, fn source ->
+            case update_source(source, %{index_frequency_minutes: minutes}) do
+              {:ok, _updated} -> :ok
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end)
+
+          %{updated: length(changeable), skipped: length(fixed)}
+
+        {:error, reason} ->
+          Repo.rollback(reason)
       end
     end)
   end
@@ -143,14 +223,41 @@ defmodule Pinchflat.Sources do
   defp validate_target_profile(_profile_id), do: {:error, :invalid_profile}
 
   @doc """
-  Loads up to 100 selected sources, rejecting the selection if any source or
+  Returns the ids of the given sources that have download jobs running or waiting to run.
+  Queued jobs count too, so a status shown from this stays steady between items in a batch.
+
+  Returns MapSet.t()
+  """
+  def downloading_source_ids([]), do: MapSet.new()
+
+  def downloading_source_ids(source_ids) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      join: mi in assoc(t, :media_item),
+      where: mi.source_id in ^source_ids,
+      where: j.state in ["executing", "available"],
+      where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+      distinct: true,
+      select: mi.source_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  @doc """
+  Returns the most sources a bulk action accepts at once.
+  """
+  def selection_limit, do: @selection_limit
+
+  @doc """
+  Loads up to #{@selection_limit} selected sources, rejecting the selection if any source or
   profile is being deleted. Use `lock: true` within a transaction when updating.
 
   Returns {:ok, [%Source{}]} | {:error, :invalid_selection | :unavailable_source}
   """
   def get_selected_sources(ids, opts \\ [])
 
-  def get_selected_sources(ids, opts) when is_list(ids) and length(ids) in 1..100 do
+  def get_selected_sources(ids, opts) when is_list(ids) and length(ids) in 1..@selection_limit do
     if Enum.all?(ids, &(is_binary(&1) and Regex.match?(~r/^[1-9][0-9]{0,17}$/, &1))) do
       ids = ids |> Enum.map(&String.to_integer/1) |> Enum.uniq()
 
@@ -212,6 +319,98 @@ defmodule Pinchflat.Sources do
   end
 
   @doc """
+  Checks titles against a title filter regex with the database matcher that
+  decides which media is downloaded, so the answer matches real behaviour on
+  both SQLite and PostgreSQL.
+
+  Returns {:ok, [%{title: binary(), match: boolean()}]} | {:error, binary()}
+  """
+  def test_title_filter(regex, titles) when is_binary(regex) and is_list(titles) do
+    sql = if Pinchflat.Database.postgres?(), do: "SELECT $1::text ~ $2::text", else: "SELECT regexp_like(?1, ?2)"
+
+    # shortcut: one query per title, fine for the capped lists the form sends; batch if the caps grow
+    {:ok,
+     Enum.map(titles, fn title ->
+       %{rows: [[match]]} = Repo.query!(sql, [title, regex])
+       %{title: title, match: match in [true, 1]}
+     end)}
+  rescue
+    error in [Exqlite.Error, Postgrex.Error] -> {:error, Exception.message(error)}
+  end
+
+  @doc """
+  Lists the saved title filters, ordered by name.
+
+  Returns [%SavedTitleFilter{}]
+  """
+  def list_saved_title_filters do
+    SavedTitleFilter
+    |> order_by([f], asc: f.name, asc: f.id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Stores a new title filter under a name that no other stored filter uses. The
+  regex must be one the database can use, checked the same way as a source's
+  title filter.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, %Ecto.Changeset{}}
+  """
+  def create_saved_title_filter(attrs) do
+    %SavedTitleFilter{}
+    |> SavedTitleFilter.changeset(attrs)
+    |> validate_saved_title_filter_name_available()
+    |> validate_saved_title_filter_regex()
+    |> Repo.insert()
+  end
+
+  @doc """
+  Replaces the regex of a stored title filter, keeping its name. The regex is
+  checked the same way as when the filter was stored.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, %Ecto.Changeset{}} | {:error, :not_found}
+  """
+  def update_saved_title_filter(id, attrs) do
+    case Repo.get(SavedTitleFilter, id) do
+      nil ->
+        {:error, :not_found}
+
+      saved_title_filter ->
+        saved_title_filter
+        |> SavedTitleFilter.changeset(Map.take(attrs, ["regex", :regex]))
+        |> validate_saved_title_filter_regex()
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Deletes a saved title filter by id.
+
+  Returns {:ok, %SavedTitleFilter{}} | {:error, :not_found}
+  """
+  def delete_saved_title_filter(id) do
+    case Repo.get(SavedTitleFilter, id) do
+      nil -> {:error, :not_found}
+      saved_title_filter -> Repo.delete(saved_title_filter)
+    end
+  end
+
+  @doc """
+  Returns the titles of a source's most recently published indexed media.
+
+  Returns [binary()]
+  """
+  def recent_media_titles(source_id, limit) do
+    from(mi in MediaItem,
+      where: mi.source_id == ^source_id and not is_nil(mi.title),
+      order_by: [desc: mi.uploaded_at, desc: mi.id],
+      limit: ^limit,
+      select: mi.title
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Writes contents to the shared cookie file, creating parent directories as needed.
 
   Returns :ok | {:error, any()}
@@ -231,6 +430,26 @@ defmodule Pinchflat.Sources do
       {:error, _reason} = err -> err
     end
   end
+
+  @doc """
+  Counts the currently downloaded items a source would lose at the next cleanup
+  if its keep-newest limit became `target_count`.
+
+  Only items the cleanup itself would delete are counted: downloaded, not
+  `prevent_culling`, not watch-protected, outside the newest `target_count`
+  counted items, and without an active download job. Watch-protected items
+  occupy a counted slot but are never counted as removable.
+
+  Returns integer()
+  """
+  def count_removable_media_for_keep_newest(%Source{} = source, target_count)
+      when is_integer(target_count) and target_count > 0 do
+    MediaQuery.new()
+    |> where(^MediaQuery.removable_beyond_keep_newest(source.id, target_count))
+    |> Repo.aggregate(:count)
+  end
+
+  def count_removable_media_for_keep_newest(%Source{}, _target_count), do: 0
 
   @doc """
   Returns the relevant output path template for a source.
@@ -275,6 +494,36 @@ defmodule Pinchflat.Sources do
   """
   def list_sources do
     Repo.all(Source)
+  end
+
+  @doc """
+  Returns sources whose custom name or collection name contains `term`, ignoring case.
+  Blank terms return no sources. Only the fields needed to list and link a source are loaded.
+
+  Options:
+    - `:limit` - maximum number of sources (default 5)
+
+  Returns [%Source{}, ...]
+  """
+  def search_sources(term, opts \\ []) do
+    excluded_ids = Keyword.get(opts, :exclude_ids, [])
+
+    case Pinchflat.Utils.StringUtils.contains_like_pattern(term) do
+      nil ->
+        []
+
+      pattern ->
+        from(s in Source,
+          where: s.id not in ^excluded_ids,
+          where:
+            fragment("lower(?) LIKE ? ESCAPE '\\'", s.custom_name, ^pattern) or
+              fragment("lower(?) LIKE ? ESCAPE '\\'", s.collection_name, ^pattern),
+          order_by: [asc: s.custom_name, asc: s.id],
+          limit: ^Keyword.get(opts, :limit, 5),
+          select: struct(s, [:id, :uuid, :custom_name, :collection_name, :collection_type, :last_indexed_at])
+        )
+        |> Repo.all()
+    end
   end
 
   @doc """
@@ -569,17 +818,21 @@ defmodule Pinchflat.Sources do
   # date the thing doing the excluding, rather than the duration/title/format
   # filters? Reuses the same query fragment the Skipped tab's reason filter uses,
   # so this can't disagree with the per-row reason shown there.
-  defp everything_before_cutoff?(%Source{download_cutoff_date: nil}, _counts), do: false
-
   defp everything_before_cutoff?(%Source{} = source, counts) do
-    before_cutoff_count =
-      MediaQuery.new()
-      |> MediaQuery.require_assoc(:source)
-      |> where(^MediaQuery.for_source(source))
-      |> where(^dynamic(not (^MediaQuery.upload_date_after_source_cutoff()) and not (^MediaQuery.downloaded())))
-      |> Repo.aggregate(:count)
+    case Source.effective_download_cutoff_date(source) do
+      nil ->
+        false
 
-    before_cutoff_count > 0 and before_cutoff_count == counts.skipped
+      _cutoff_date ->
+        before_cutoff_count =
+          MediaQuery.new()
+          |> MediaQuery.require_assoc(:source)
+          |> where(^MediaQuery.for_source(source))
+          |> where(^dynamic(not (^MediaQuery.upload_date_after_source_cutoff()) and not (^MediaQuery.downloaded())))
+          |> Repo.aggregate(:count)
+
+        before_cutoff_count > 0 and before_cutoff_count == counts.skipped
+    end
   end
 
   # Oban's queue state lives in memory, not the database. In test (and any other
@@ -687,6 +940,58 @@ defmodule Pinchflat.Sources do
       changeset ->
         Repo.insert(changeset)
     end
+  end
+
+  @doc """
+  Enriches attrs for the New Source form using metadata from `original_url`.
+
+  Fills a missing `custom_name` and sets `source_type` when it is still
+  `:automatic` and yt-dlp inspection succeeds. Does not add changeset errors; returns attrs
+  unchanged when the URL is absent, enrichment is not needed, or lookup fails.
+
+  ## Options
+
+    * `:cookie_behaviour` — used to decide whether authenticated cookies are
+      sent to yt-dlp (same as create/update URL inspection)
+
+  """
+  @spec enrich_new_source_attrs_from_url(map(), keyword()) :: map()
+  def enrich_new_source_attrs_from_url(attrs, opts \\ []) when is_map(attrs) do
+    original_url = prefill_string(attrs["original_url"])
+
+    if is_binary(original_url) and should_enrich_new_source_from_url?(attrs) do
+      cookie_behaviour = Keyword.get(opts, :cookie_behaviour, :disabled)
+      source_type = enrichment_lookup_source_type(attrs)
+      should_use_cookies = cookie_behaviour == :all_operations and cookie_file_configured?()
+      watch_later? = watch_later_source?(original_url, source_type)
+
+      if watch_later? and not should_use_cookies do
+        attrs
+      else
+        command_opts =
+          DownloadOptionBuilder.player_client_options(nil) ++ Pinchflat.YtDlp.PoTokenProvider.options()
+
+        addl_opts = [use_cookies: should_use_cookies, skip_sleep_interval: true, source_type: source_type]
+
+        case MediaCollection.get_source_details(original_url, command_opts, addl_opts) do
+          {:ok, source_details} ->
+            apply_new_source_url_enrichment(attrs, source_details)
+
+          _ ->
+            attrs
+        end
+      end
+    else
+      attrs
+    end
+  end
+
+  @doc false
+  def should_enrich_new_source_from_url?(attrs) when is_map(attrs) do
+    original_url = prefill_string(attrs["original_url"])
+
+    is_binary(original_url) and
+      (blank_prefill_string?(attrs["custom_name"]) or automatic_prefill_source_type?(attrs["source_type"]))
   end
 
   @doc """
@@ -920,6 +1225,92 @@ defmodule Pinchflat.Sources do
     |> Enum.each(&FilesystemUtils.delete_file_and_remove_empty_directories/1)
   end
 
+  defp apply_new_source_url_enrichment(attrs, source_details) do
+    detected_type = detected_source_type(source_details)
+
+    attrs
+    |> maybe_put_enriched_custom_name(source_details, detected_type)
+    |> maybe_put_enriched_source_type(detected_type)
+  end
+
+  defp maybe_put_enriched_custom_name(attrs, _source_details, detected_type) when detected_type == :unknown, do: attrs
+
+  defp maybe_put_enriched_custom_name(attrs, source_details, detected_type) do
+    if blank_prefill_string?(attrs["custom_name"]) do
+      case enrichment_suggested_custom_name(source_details, detected_type) do
+        name when is_binary(name) and name != "" -> Map.put(attrs, "custom_name", name)
+        _ -> attrs
+      end
+    else
+      attrs
+    end
+  end
+
+  defp maybe_put_enriched_source_type(attrs, detected_type)
+       when detected_type in [:channel, :playlist, :video] do
+    if automatic_prefill_source_type?(attrs["source_type"]) do
+      Map.put(attrs, "source_type", detected_type)
+    else
+      attrs
+    end
+  end
+
+  defp maybe_put_enriched_source_type(attrs, _detected_type), do: attrs
+
+  defp enrichment_suggested_custom_name(source_details, :video) do
+    Map.get(source_details, :video_title)
+  end
+
+  defp enrichment_suggested_custom_name(source_details, :channel) do
+    Map.get(source_details, :channel_name)
+  end
+
+  defp enrichment_suggested_custom_name(source_details, :playlist) do
+    channel = Map.get(source_details, :channel_name)
+    playlist = Map.get(source_details, :playlist_name)
+
+    cond do
+      is_binary(channel) and channel != "" and is_binary(playlist) and playlist != "" and channel != playlist ->
+        "#{channel} | #{playlist}"
+
+      is_binary(playlist) and playlist != "" ->
+        playlist
+
+      is_binary(channel) and channel != "" ->
+        channel
+
+      true ->
+        nil
+    end
+  end
+
+  defp enrichment_suggested_custom_name(_source_details, _), do: nil
+
+  defp enrichment_lookup_source_type(attrs) do
+    case attrs["source_type"] do
+      type when type in [:automatic, :channel, :playlist, :video] -> type
+      "automatic" -> :automatic
+      "channel" -> :channel
+      "playlist" -> :playlist
+      "video" -> :video
+      _ -> :automatic
+    end
+  end
+
+  defp prefill_string(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: nil, else: trimmed
+  end
+
+  defp prefill_string(_), do: nil
+
+  defp blank_prefill_string?(value), do: is_nil(prefill_string(value))
+
+  defp automatic_prefill_source_type?(nil), do: true
+  defp automatic_prefill_source_type?(:automatic), do: true
+  defp automatic_prefill_source_type?("automatic"), do: true
+  defp automatic_prefill_source_type?(_), do: false
+
   defp add_source_details_to_changeset(source, changeset) do
     original_url = changeset.changes.original_url
     source_type = Ecto.Changeset.get_field(changeset, :source_type, :automatic)
@@ -983,7 +1374,8 @@ defmodule Pinchflat.Sources do
     collection_changes = %{
       collection_type: :video,
       collection_id: source_details.video_id,
-      collection_name: source_details.video_title
+      collection_name: source_details.video_title,
+      owner_channel_id: source_details.channel_id
     }
 
     change_source(source, Map.merge(changes, collection_changes))
@@ -993,7 +1385,8 @@ defmodule Pinchflat.Sources do
     collection_changes = %{
       collection_type: :channel,
       collection_id: source_details.channel_id,
-      collection_name: source_details.channel_name
+      collection_name: source_details.channel_name,
+      owner_channel_id: source_details.channel_id
     }
 
     change_source(source, Map.merge(changes, collection_changes))
@@ -1003,7 +1396,8 @@ defmodule Pinchflat.Sources do
     collection_changes = %{
       collection_type: :playlist,
       collection_id: source_details.playlist_id,
-      collection_name: source_details.playlist_name
+      collection_name: source_details.playlist_name,
+      owner_channel_id: source_details.channel_id
     }
 
     change_source(source, Map.merge(changes, collection_changes))
@@ -1207,32 +1601,142 @@ defmodule Pinchflat.Sources do
 
   defp commit_without_move(changeset, opts) do
     run_post_commit_tasks = Keyword.get(opts, :run_post_commit_tasks, true)
+    payload = ScopedYtDlpOptions.payload(opts)
+    prior = options_prior(changeset, payload)
 
-    case Repo.insert_or_update(changeset) do
+    {result, created_id} = transaction_with_source_options(changeset, opts, payload)
+
+    case result do
       {:ok, %Source{} = source} ->
         log_source_created(changeset, source)
 
-        if run_post_commit_tasks do
-          maybe_handle_media_tasks(changeset, source)
-          maybe_run_indexing_task(changeset, source)
-          maybe_run_metadata_storage_task(changeset, source)
-        end
+        warnings =
+          if run_post_commit_tasks do
+            schedule_after_commit(changeset, source, opts)
+          else
+            []
+          end
 
-        {:ok, source}
+        if warnings == [], do: {:ok, source}, else: {:ok, source, warnings}
 
-      err ->
-        err
+      {:error, {:changeset, %Ecto.Changeset{} = error_changeset}} ->
+        {:error, error_changeset}
+
+      {:error, {:yt_dlp_options, reason}} ->
+        restore_source_options(changeset, created_id, prior, payload)
+        {:error, %{changeset | action: source_changeset_action(changeset)}, reason}
+
+      {:error, reason} ->
+        restore_source_options(changeset, created_id, prior, payload)
+        {:error, reason}
     end
   end
 
+  defp transaction_with_source_options(changeset, opts, payload) do
+    key = {__MODULE__, :source_options_id}
+    Process.delete(key)
+    expected = ScopedYtDlpOptions.expected_version(opts, default_options_version(changeset))
+
+    result =
+      Repo.transaction(fn ->
+        case Repo.insert_or_update(changeset) do
+          {:ok, %Source{} = source} ->
+            Process.put(key, source.id)
+
+            if source_identity_changed?(changeset) do
+              PendingMediaItemOptions.supersede_for_source(source)
+            end
+
+            case ScopedYtDlpOptions.save(payload, :source, source.id, expected) do
+              :ok -> source
+              {:error, reason} -> Repo.rollback({:yt_dlp_options, reason})
+            end
+
+          {:error, error_changeset} ->
+            Repo.rollback({:changeset, error_changeset})
+        end
+      end)
+
+    {result, Process.delete(key)}
+  end
+
+  defp options_prior(%{data: %{__meta__: %{state: :built}}}, _payload), do: :missing
+  defp options_prior(_changeset, :absent), do: :missing
+  defp options_prior(changeset, _payload), do: ScopedYtDlpOptions.prior(:source, changeset.data.id)
+
+  defp default_options_version(%{data: %{__meta__: %{state: :built}}}), do: :missing
+  defp default_options_version(_changeset), do: :any
+
+  defp source_identity_changed?(%{changes: changes}) do
+    Enum.any?([:collection_type, :collection_id, :original_url, :media_profile_id], &Map.has_key?(changes, &1))
+  end
+
+  defp source_changeset_action(%{data: %{__meta__: %{state: :built}}}), do: :insert
+  defp source_changeset_action(_changeset), do: :update
+
+  defp restore_source_options(changeset, created_id, prior, payload) do
+    source_id = changeset.data.id || created_id
+
+    if is_integer(source_id) do
+      ScopedYtDlpOptions.restore(:source, source_id, prior, payload)
+    else
+      :ok
+    end
+  end
+
+  defp schedule_after_commit(changeset, source, opts) do
+    results = [
+      maybe_handle_media_tasks(changeset, source),
+      maybe_run_indexing_task(changeset, source),
+      maybe_run_metadata_storage_task(changeset, source)
+    ]
+
+    warnings =
+      results
+      |> Enum.flat_map(fn
+        :ok -> []
+        {:error, _reason} -> [:task_scheduling_failed]
+        {:error, _reason, _detail} -> [:task_scheduling_failed]
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    if Keyword.get(opts, :report_task_warnings, false), do: warnings, else: []
+  end
+
   defp commit_directory_move(changeset, plan, opts) do
+    payload = ScopedYtDlpOptions.payload(opts)
+    prior = options_prior(changeset, payload)
+
     # ponytail: serialize folder moves while sharing a queue pause; per-source reservations if needed.
-    :global.trans({__MODULE__.DirectoryMove, self()}, fn ->
-      case with_move_queues_paused(fn -> do_commit_directory_move(changeset, plan, opts) end) do
-        {:error, :queues_not_paused} -> {:error, directory_move_error(changeset, :queues_not_paused)}
-        result -> result
-      end
-    end)
+    result =
+      :global.trans({__MODULE__.DirectoryMove, self()}, fn ->
+        case with_move_queues_paused(fn ->
+               do_commit_directory_move(changeset, plan, opts, payload, prior)
+             end) do
+          {:error, :queues_not_paused} -> {:error, directory_move_error(changeset, :queues_not_paused)}
+          result -> result
+        end
+      end)
+
+    case result do
+      {:error, {:yt_dlp_options, reason}} ->
+        ScopedYtDlpOptions.restore(:source, changeset.data.id, prior, payload)
+        {:error, %{changeset | action: :update}, reason}
+
+      {:error, {:changeset, %Ecto.Changeset{} = error}} ->
+        {:error, error}
+
+      {:error, %Ecto.Changeset{} = error} ->
+        {:error, error}
+
+      {:error, reason} ->
+        ScopedYtDlpOptions.restore(:source, changeset.data.id, prior, payload)
+        {:error, directory_move_error(changeset, reason)}
+
+      result ->
+        result
+    end
   end
 
   defp with_move_queues_paused(callback) do
@@ -1267,42 +1771,13 @@ defmodule Pinchflat.Sources do
     end
   end
 
-  defp do_commit_directory_move(changeset, plan, opts) do
-    blocked =
-      cond do
-        active_source_jobs?(changeset.data) -> :busy
-        missing_source_files?(changeset.data, plan.old_directory) -> :missing_files
-        shared_directory_files?(changeset.data, plan.old_directory) -> :shared_files
-        shared_directory_files?(changeset.data, plan.new_directory) -> :shared_destination
-        true -> nil
-      end
+  defp do_commit_directory_move(changeset, plan, opts, payload, prior) do
+    case check_directory_move_blocked(changeset, plan) do
+      {:blocked, reason} ->
+        {:error, directory_move_error(changeset, reason)}
 
-    if blocked do
-      {:error, directory_move_error(changeset, blocked)}
-    else
-      DirectoryMove.with_moves(
-        plan,
-        fn ->
-          Repo.transaction(fn ->
-            case Repo.update(changeset) do
-              {:ok, source} ->
-                update_media_filepaths_for_source(source, plan.old_directory, plan.new_directory)
-                update_metadata_filepaths_for_source(source, plan.old_directory, plan.new_directory)
-                run_move_tasks(changeset, source, opts)
-                Repo.reload!(source)
-
-              {:error, error} ->
-                Repo.rollback(error)
-            end
-          end)
-        end,
-        source_id: changeset.data.id
-      )
-      |> case do
-        {:error, %Ecto.Changeset{} = error} -> {:error, error}
-        {:error, reason} -> {:error, directory_move_error(changeset, reason)}
-        result -> result
-      end
+      :ok ->
+        execute_directory_move(changeset, plan, opts, payload)
     end
   rescue
     _error in [
@@ -1312,7 +1787,55 @@ defmodule Pinchflat.Sources do
       Ecto.InvalidChangesetError,
       Ecto.StaleEntryError
     ] ->
+      ScopedYtDlpOptions.restore(:source, changeset.data.id, prior, payload)
       {:error, directory_move_error(changeset, :database_error)}
+  end
+
+  defp check_directory_move_blocked(changeset, plan) do
+    cond do
+      active_source_jobs?(changeset.data) -> {:blocked, :busy}
+      missing_source_files?(changeset.data, plan.old_directory) -> {:blocked, :missing_files}
+      shared_directory_files?(changeset.data, plan.old_directory) -> {:blocked, :shared_files}
+      shared_directory_files?(changeset.data, plan.new_directory) -> {:blocked, :shared_destination}
+      true -> :ok
+    end
+  end
+
+  defp execute_directory_move(changeset, plan, opts, payload) do
+    expected = ScopedYtDlpOptions.expected_version(opts, :any)
+
+    DirectoryMove.with_moves(
+      plan,
+      fn ->
+        Repo.transaction(fn ->
+          apply_directory_move(changeset, plan, opts, payload, expected)
+        end)
+      end,
+      source_id: changeset.data.id
+    )
+  end
+
+  defp apply_directory_move(changeset, plan, opts, payload, expected) do
+    case Repo.update(changeset) do
+      {:ok, source} ->
+        if source_identity_changed?(changeset) do
+          PendingMediaItemOptions.supersede_for_source(source)
+        end
+
+        case ScopedYtDlpOptions.save(payload, :source, source.id, expected) do
+          :ok ->
+            update_media_filepaths_for_source(source, plan.old_directory, plan.new_directory)
+            update_metadata_filepaths_for_source(source, plan.old_directory, plan.new_directory)
+            run_move_tasks(changeset, source, opts)
+            Repo.reload!(source)
+
+          {:error, reason} ->
+            Repo.rollback({:yt_dlp_options, reason})
+        end
+
+      {:error, error} ->
+        Repo.rollback({:changeset, error})
+    end
   end
 
   defp missing_source_files?(source, directory) do
@@ -1560,6 +2083,13 @@ defmodule Pinchflat.Sources do
         {%{enabled: false}, _} ->
           DownloadingHelpers.dequeue_pending_download_tasks(source)
 
+        # A relaxed or cleared cutoff or filter can make indexed media eligible again.
+        {changes, %{enabled: true, download_media: true}}
+        when is_map_key(changes, :download_cutoff_date) or is_map_key(changes, :download_cutoff_days) or
+               is_map_key(changes, :title_filter_regex) or is_map_key(changes, :min_duration_seconds) or
+               is_map_key(changes, :max_duration_seconds) ->
+          DownloadingHelpers.enqueue_pending_download_tasks(source)
+
         _ ->
           nil
       end
@@ -1584,10 +2114,8 @@ defmodule Pinchflat.Sources do
     case changeset.data do
       # If the changeset is new (not persisted), attempt indexing no matter what
       %{__meta__: %{state: :built}} ->
-        SlowIndexingHelpers.kickoff_indexing_task(source)
-
-        if Ecto.Changeset.get_field(changeset, :fast_index) do
-          FastIndexingHelpers.kickoff_indexing_task(source)
+        with :ok <- normalize_task_result(SlowIndexingHelpers.kickoff_indexing_task(source)) do
+          maybe_kickoff_fast_indexing(changeset, source)
         end
 
       # If the record has been persisted, only run indexing if the
@@ -1595,24 +2123,47 @@ defmodule Pinchflat.Sources do
       %{__meta__: %{state: :loaded}} ->
         maybe_update_slow_indexing_task(changeset, source)
         maybe_update_fast_indexing_task(changeset, source)
+        :ok
     end
   end
+
+  defp maybe_kickoff_fast_indexing(changeset, source) do
+    if Ecto.Changeset.get_field(changeset, :fast_index) do
+      source
+      |> FastIndexingHelpers.kickoff_indexing_task()
+      |> normalize_task_result()
+    else
+      :ok
+    end
+  end
+
+  defp normalize_task_result({:ok, _task}), do: :ok
+  defp normalize_task_result({:error, :duplicate_job}), do: :ok
+  defp normalize_task_result({:error, reason}), do: {:error, reason}
+  defp normalize_task_result(:ok), do: :ok
+  defp normalize_task_result(other), do: {:error, other}
 
   defp maybe_run_metadata_storage_task(changeset, source) do
     case {changeset.data, changeset.changes} do
       # If the changeset is new (not persisted), fetch metadata no matter what
       {%{__meta__: %{state: :built}}, _} ->
-        SourceMetadataStorageWorker.kickoff_with_task(source)
+        source
+        |> SourceMetadataStorageWorker.kickoff_with_task()
+        |> normalize_task_result()
 
       # If the record has been persisted, only fetch metadata if the
       # original_url has changed
       {_, %{original_url: _}} ->
-        SourceMetadataStorageWorker.kickoff_with_task(source)
+        source
+        |> SourceMetadataStorageWorker.kickoff_with_task()
+        |> normalize_task_result()
 
       # If the media_profile_id has changed, re-fetch metadata to potentially
       # download source images if the new profile has download_source_images enabled
       {_, %{media_profile_id: _}} ->
-        SourceMetadataStorageWorker.kickoff_with_task(source)
+        source
+        |> SourceMetadataStorageWorker.kickoff_with_task()
+        |> normalize_task_result()
 
       _ ->
         :ok
@@ -1756,4 +2307,37 @@ defmodule Pinchflat.Sources do
   end
 
   defp log_source_created(_changeset, _source), do: :ok
+
+  defp validate_saved_title_filter_name_available(%Ecto.Changeset{valid?: false} = changeset), do: changeset
+
+  defp validate_saved_title_filter_name_available(changeset) do
+    name = Ecto.Changeset.get_field(changeset, :name)
+
+    if Repo.exists?(from(f in SavedTitleFilter, where: f.name == ^name)) do
+      Ecto.Changeset.add_error(changeset, :name, "is already used by another stored filter")
+    else
+      changeset
+    end
+  end
+
+  defp validate_saved_title_filter_regex(%Ecto.Changeset{valid?: false} = changeset), do: changeset
+
+  defp validate_saved_title_filter_regex(changeset) do
+    regex = Ecto.Changeset.get_field(changeset, :regex)
+    sql = if Pinchflat.Database.postgres?(), do: "SELECT '' ~ $1", else: "SELECT regexp_like('', ?)"
+
+    # A savepoint, so a regex Postgres rejects does not abort an enclosing transaction
+    result =
+      Repo.transaction(fn ->
+        case Repo.query(sql, [regex]) do
+          {:ok, _} -> :ok
+          {:error, _error} -> Repo.rollback(:invalid_regex)
+        end
+      end)
+
+    case result do
+      {:ok, _} -> changeset
+      {:error, :invalid_regex} -> Ecto.Changeset.add_error(changeset, :regex, "is not a regex the database can use")
+    end
+  end
 end

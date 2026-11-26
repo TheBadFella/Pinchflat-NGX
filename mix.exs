@@ -4,18 +4,14 @@ defmodule Pinchflat.MixProject do
   def project do
     [
       app: :pinchflat,
-      version: "2026.11.2",
-      elixir: "~> 1.17",
+      version: "2026.11.3",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       elixirc_options: [warnings_as_errors: System.get_env("EX_CHECK") == "1"],
       listeners: [Phoenix.CodeReloader],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      preferred_cli_env: [
-        check: :test,
-        credo: :test
-      ],
       test_coverage: [
         ignore_modules: [
           Pinchflat.HTTP.HTTPClient,
@@ -39,6 +35,19 @@ defmodule Pinchflat.MixProject do
     ]
   end
 
+  def cli do
+    [preferred_envs: [check: :test, credo: :test]]
+  end
+
+  # Regenerates the ERD only when MIX_ENV is unset (local development).
+  defp maybe_create_erd(_args) do
+    if System.get_env("MIX_ENV") in [nil, ""] and Mix.shell().cmd("yarn run create-erd") == 0 do
+      :ok
+    else
+      Mix.shell().info("No ERD generated")
+    end
+  end
+
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
@@ -50,13 +59,13 @@ defmodule Pinchflat.MixProject do
     [
       {:phoenix, "~> 1.8.5"},
       {:assent, "~> 0.4.0"},
-      {:req, "~> 0.4"},
+      {:req, "~> 0.7"},
       {:phoenix_ecto, "~> 4.4"},
       {:ecto, "~> 3.14"},
       {:ecto_sql, "~> 3.14"},
       {:ecto_sqlite3, "~> 0.26.0"},
       {:ecto_sqlite3_extras, "~> 1.2.0"},
-      {:postgrex, "~> 0.21"},
+      {:postgrex, "~> 0.23"},
       {:phoenix_html, "~> 4.2"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.3"},
@@ -106,11 +115,11 @@ defmodule Pinchflat.MixProject do
       "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"],
       "ecto.migrate": [
         "ecto.migrate",
-        ~s(cmd [ -z "$MIX_ENV" ] && yarn run create-erd || echo "No ERD generated")
+        &maybe_create_erd/1
       ],
       "ecto.rollback": [
         "ecto.rollback",
-        ~s(cmd [ -z "$MIX_ENV" ] && yarn run create-erd || echo "No ERD generated")
+        &maybe_create_erd/1
       ],
       "version.bump": "cmd ./tooling/version_bump.sh"
     ]

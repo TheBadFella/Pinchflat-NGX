@@ -17,7 +17,9 @@ defmodule Pinchflat.Database.PostgresTransferTest do
     directory = Path.join(System.tmp_dir!(), "sqlite-transfer-template-#{System.unique_integer([:positive])}")
     File.mkdir_p!(directory)
     path = Path.join(directory, "migrated.db")
-    sqlite_build = Path.join(directory, "build")
+    # A SQLite-adapter build of the app migrates the fixture. It lives beside the test
+    # build so later runs compile incrementally, and CI builds it while mix check runs.
+    sqlite_build = Path.join(Path.dirname(Mix.Project.build_path()), "sqlite_transfer_fixture")
 
     {output, status} =
       System.cmd("mix", ["run", "--no-start", "test/support/scripts/sqlite_transfer_fixture.exs", "--", path],

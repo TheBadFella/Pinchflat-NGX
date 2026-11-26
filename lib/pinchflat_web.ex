@@ -54,11 +54,10 @@ defmodule PinchflatWeb do
 
   def live_view do
     quote do
-      use Phoenix.Component, global_prefixes: ~w(x-)
-
       # LiveView mount logs inspect raw sessions, including settings credentials.
       # Keep telemetry and application logs, but omit automatic payload logging.
-      use Phoenix.LiveView, log: false
+      # Phoenix.LiveView already uses Phoenix.Component and forwards global_prefixes.
+      use Phoenix.LiveView, log: false, global_prefixes: ~w(x-)
 
       on_mount PinchflatWeb.LiveAuth
 
@@ -104,6 +103,9 @@ defmodule PinchflatWeb do
       import PinchflatWeb.CustomComponents.TextComponents
       import PinchflatWeb.CustomComponents.TableComponents
       import PinchflatWeb.CustomComponents.ButtonComponents
+      import PinchflatWeb.CustomComponents.MediaComponents
+      import PinchflatWeb.CustomComponents.YtDlpOptionsComponents
+      import PinchflatWeb.CustomComponents.SettingsNavComponents
       import Pinchflat.Utils.StringUtils, only: [double_brace: 1]
 
       alias Pinchflat.Settings

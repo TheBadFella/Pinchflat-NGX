@@ -8,6 +8,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Repo
+  alias Pinchflat.Settings
   alias Pinchflat.Sources.Source
   alias Pinchflat.Tasks.Task
   alias PinchflatWeb.Browse.BrowseLive
@@ -116,6 +117,16 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
     assert html =~ "https://youtu.be/dQw4w9WgXcQ"
     assert html =~ "paste_url_resolve_button"
     assert {Repo.aggregate(Source, :count), Repo.aggregate(Oban.Job, :count)} == before_counts
+  end
+
+  test "paste=1 opens an empty Paste URL dialog with the only profile selected", %{conn: conn} do
+    profile = media_profile_fixture()
+    assert conn |> get(~p"/browse?paste=1") |> html_response(200) =~ "paste-url-dialog"
+    {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{"open_paste" => true})
+
+    assert has_element?(view, "#paste-url-dialog")
+    assert has_element?(view, "#paste_url_input[value='']")
+    assert has_element?(view, ~s(#paste_profile_select[value="#{profile.id}"]))
   end
 
   test "browse keeps the application sidebar and header", %{conn: conn} do
@@ -315,9 +326,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
 
       # With 2 profiles, explicit selection is required (R216-8)
-      view
-      |> form("#profile_selector_form", %{"profile_id" => to_string(profile_a.id)})
-      |> render_change()
+      render_change(view, "select_profile", %{"profile_id" => to_string(profile_a.id)})
 
       view
       |> form("#browse_search_form", %{"query" => "profile_test"})
@@ -328,9 +337,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       assert html_alpha =~ "In other profile (Profile Beta)"
 
       # Switch to Profile Beta
-      view
-      |> form("#profile_selector_form", %{"profile_id" => to_string(profile_b.id)})
-      |> render_change()
+      render_change(view, "select_profile", %{"profile_id" => to_string(profile_b.id)})
 
       # Now under Profile Beta, it shows "Indexed"
       html_beta = render(view)
@@ -379,6 +386,29 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
       assert :ok = perform_job(Pinchflat.SlowIndexing.MediaCollectionIndexingWorker, %{id: source.id})
       assert Repo.reload!(source).custom_name == "Indexed Browse title"
+    end
+
+    test "applies current default_cookie_behaviour when downloading from search results", %{conn: conn} do
+      profile = media_profile_fixture()
+
+      Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "cookie_search", _opts ->
+        {:ok, @mock_videos}
+      end)
+
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+
+      view
+      |> form("#browse_search_form", %{"query" => "cookie_search"})
+      |> render_submit()
+
+      render_async(view)
+      assert {:ok, "when_needed"} = Settings.set(default_cookie_behaviour: "when_needed")
+
+      download_btn = element(view, "button[phx-click='download_video'][phx-value-id='vid_test_123']")
+      render_click(download_btn)
+
+      source = Repo.get_by!(Source, collection_id: "vid_test_123", media_profile_id: profile.id)
+      assert source.cookie_behaviour == :when_needed
     end
   end
 
@@ -746,6 +776,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
       view |> element("#open-paste-url-button") |> render_click()
+      assert {:ok, "all_operations"} = Settings.set(default_cookie_behaviour: "all_operations")
       render_change(view, "select_paste_profile", %{"profile_id" => to_string(profile.id)})
 
       view
@@ -766,6 +797,7 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       # Single-video source must now exist in DB
       source = Repo.get_by(Source, collection_id: test_video_id, media_profile_id: profile.id)
       assert source != nil
+      assert source.cookie_behaviour == :all_operations
       assert has_element?(view, "#paste-download-destination[href='/sources?type=videos']", "View in Individual videos")
     end
 
@@ -953,6 +985,37 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
 
       assert html =~ "Long profile name"
       assert has_element?(view, "#open-paste-url-button")
+    end
+  end
+
+  describe "default media profile preselection" do
+    test "selects configured default profile at mount, preserves restore_search, and allows Paste URL override", %{
+      conn: conn
+    } do
+      p1 = media_profile_fixture(%{name: "Alpha"})
+      p2 = media_profile_fixture(%{name: "Beta"})
+
+      # Without default and multiple profiles, selection starts blank
+      {:ok, view_blank, _html} = live_isolated(conn, BrowseLive, session: %{})
+      assert :sys.get_state(view_blank.pid).socket.assigns.selected_profile_id == nil
+
+      # With configured default, mount selects it and Paste URL starts with it
+      assert {:ok, ^p2} = Pinchflat.Profiles.set_default_media_profile(p2.id)
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+      assert :sys.get_state(view.pid).socket.assigns.selected_profile_id == p2.id
+
+      view |> element("#open-paste-url-button") |> render_click()
+      assert :sys.get_state(view.pid).socket.assigns.paste_selected_profile_id == p2.id
+
+      # Explicit override in Paste URL modal is respected
+      render_change(view, "select_paste_profile", %{"profile_id" => to_string(p1.id)})
+      assert :sys.get_state(view.pid).socket.assigns.paste_selected_profile_id == p1.id
+
+      # Valid restore_search selection is preserved over configured default
+      Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "restored", _opts -> {:ok, @mock_videos} end)
+      render_hook(view, "restore_search", %{"q" => "restored", "tab" => "videos", "profile" => to_string(p1.id)})
+      render_async(view)
+      assert :sys.get_state(view.pid).socket.assigns.selected_profile_id == p1.id
     end
   end
 end

@@ -5,8 +5,6 @@ defmodule Pinchflat.Lifecycle.Notifications.CommandRunner do
   without an explicit format option request embed presentation.
   """
 
-  require Logger
-
   alias Pinchflat.Utils.CliUtils
   alias Pinchflat.Utils.FunctionUtils
   alias Pinchflat.Lifecycle.Notifications.AppriseCommandRunner
