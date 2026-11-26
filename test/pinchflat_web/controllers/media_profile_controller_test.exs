@@ -282,6 +282,22 @@ defmodule PinchflatWeb.MediaProfileControllerTest do
       assert %{id: id} = redirected_params(conn)
       assert Profiles.default_media_profile_id() == String.to_integer(id)
     end
+
+    test "renders the specific error near the checkbox when setting default fails on create", %{conn: conn} do
+      Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: true])
+
+      try do
+        html =
+          conn
+          |> post(~p"/media_profiles", media_profile: @create_attrs, make_default: "true")
+          |> html_response(200)
+
+        assert html =~ ~r/id="make_default"[^>]*checked/
+        assert html =~ "could not set as default media profile"
+      after
+        Repo.update_all(Pinchflat.Settings.Setting, set: [plex_enabled: false])
+      end
+    end
   end
 
   defp create_media_profile(_) do

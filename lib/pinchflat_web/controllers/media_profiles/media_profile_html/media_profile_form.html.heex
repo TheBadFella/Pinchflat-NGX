@@ -466,6 +466,7 @@
               Make this my default media profile
             </label>
           </div>
+          <.error :for={error <- Keyword.get_values(@changeset.errors, :base)}>{translate_error(error)}</.error>
         </section>
 
         <div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">

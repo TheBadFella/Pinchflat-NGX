@@ -2235,6 +2235,23 @@ defmodule PinchflatWeb.SourceControllerTest do
       html = conn |> get(~p"/sources/new") |> html_response(200)
       assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{beta.id}"/
       refute html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{alpha.id}"/
+
+      # Failed create redisplay uses the same filtered profile list
+      error_html =
+        conn
+        |> recycle()
+        |> post(~p"/sources",
+          source: %{
+            source_type: :video,
+            original_url: "https://www.youtube.com/watch?v=vid_err",
+            media_profile_id: beta.id,
+            retention_period_days: -1
+          }
+        )
+        |> html_response(200)
+
+      assert error_html =~ beta.name
+      refute error_html =~ alpha.name
     end
   end
 
