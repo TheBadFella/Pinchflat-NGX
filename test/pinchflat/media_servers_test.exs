@@ -108,6 +108,16 @@ defmodule Pinchflat.MediaServersTest do
     end
   end
 
+  describe "parse_server_type/1" do
+    test "returns each supported type and rejects anything else" do
+      assert {:ok, :plex} = MediaServers.parse_server_type("plex")
+      assert {:ok, :jellyfin} = MediaServers.parse_server_type("jellyfin")
+      assert {:ok, :emby} = MediaServers.parse_server_type("emby")
+      assert :error = MediaServers.parse_server_type("kodi")
+      assert :error = MediaServers.parse_server_type(nil)
+    end
+  end
+
   describe "test_connection/2" do
     test "dispatches test to appropriate server module" do
       expect(HTTPClientMock, :get, fn url, headers, _opts ->
