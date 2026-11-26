@@ -35,6 +35,17 @@ defmodule Pinchflat.Discovery.CandidateScoringSampleTest do
     assert Scoring.score(candidate) == Scoring.score(candidate)
   end
 
+  test "returns sampled suggestions in score order with a stable tie-breaker" do
+    first = %Candidate{external_channel_id: @channel_id, score: 10}
+    second = %Candidate{external_channel_id: "UC" <> String.duplicate("b", 22), score: 10}
+    higher = %Candidate{external_channel_id: "UC" <> String.duplicate("c", 22), score: 20}
+    omitted = %Candidate{external_channel_id: "UC" <> String.duplicate("d", 22), score: 30}
+    random_fun = fn pool, size -> pool |> Enum.reverse() |> Enum.take(size) end
+
+    assert Sample.select([second, omitted, first, higher], 3, random_fun: random_fun, score_fun: & &1.score) ==
+             [higher, first, second]
+  end
+
   test "selects a bounded random sample from a bounded pool" do
     candidates =
       for index <- 1..100 do
