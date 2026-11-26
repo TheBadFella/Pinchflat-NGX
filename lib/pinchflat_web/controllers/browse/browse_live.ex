@@ -5,6 +5,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
   require Logger
 
   alias Pinchflat.Profiles
+  alias Pinchflat.Settings
   alias Pinchflat.Settings.YtDlpConfigFile
   alias Pinchflat.YoutubeBrowser
   alias Pinchflat.YoutubeBrowser.Status
@@ -411,7 +412,7 @@ defmodule PinchflatWeb.Browse.BrowseLive do
 
       true ->
         socket = assign(socket, paste_downloading?: true, paste_error: nil)
-        opts = intake_options(socket.assigns.paste_yt_dlp)
+        opts = [cookie_behaviour: default_cookie_behaviour()] ++ intake_options(socket.assigns.paste_yt_dlp)
 
         case YoutubeBrowser.download_video(video.id, profile_id, opts) do
           {:ok, outcome} ->
@@ -529,11 +530,12 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       {:noreply, put_flash(socket, :error, "Please select a media profile first.")}
     else
       opts =
-        if YtDlpOptionsHelpers.truthy?(params["from_detail"] || params["from-detail"]) do
-          intake_options(socket.assigns.detail_yt_dlp)
-        else
-          []
-        end
+        [cookie_behaviour: default_cookie_behaviour()] ++
+          if YtDlpOptionsHelpers.truthy?(params["from_detail"] || params["from-detail"]) do
+            intake_options(socket.assigns.detail_yt_dlp)
+          else
+            []
+          end
 
       case YoutubeBrowser.download_video(video_id, profile_id, opts) do
         {:ok, outcome} ->
@@ -1373,6 +1375,19 @@ defmodule PinchflatWeb.Browse.BrowseLive do
       String.trim(draft.yt_dlp_options) != "" -> {:present, draft.yt_dlp_options}
       draft.yt_dlp_options_edited? -> {:present, ""}
       true -> :absent
+    end
+  end
+
+  defp default_cookie_behaviour do
+    case Settings.get!(:default_cookie_behaviour) do
+      val when val in ["disabled", "when_needed", "all_operations"] ->
+        String.to_existing_atom(val)
+
+      val when val in [:disabled, :when_needed, :all_operations] ->
+        val
+
+      _ ->
+        :disabled
     end
   end
 

@@ -426,19 +426,21 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
   end
 
   defp do_create_and_kickoff_single_video_source(video_id, profile_id, source_name, payload, opts) do
-    source_attrs = %{
-      collection_type: :video,
-      source_type: :video,
-      collection_id: video_id,
-      collection_name: source_name,
-      custom_name: source_name,
-      original_url: "https://www.youtube.com/watch?v=#{video_id}",
-      media_profile_id: profile_id,
-      download_media: true,
-      index_frequency_minutes: 0,
-      fast_index: false,
-      enabled: true
-    }
+    source_attrs =
+      %{
+        collection_type: :video,
+        source_type: :video,
+        collection_id: video_id,
+        collection_name: source_name,
+        custom_name: source_name,
+        original_url: "https://www.youtube.com/watch?v=#{video_id}",
+        media_profile_id: profile_id,
+        download_media: true,
+        index_frequency_minutes: 0,
+        fast_index: false,
+        enabled: true
+      }
+      |> maybe_put_cookie_behaviour(opts)
 
     changeset =
       %Source{}
@@ -765,6 +767,13 @@ defmodule Pinchflat.YoutubeBrowser.Intake do
       version when version in [:missing, :any] -> version
       version when is_binary(version) -> version
       _other -> :any
+    end
+  end
+
+  defp maybe_put_cookie_behaviour(attrs, opts) do
+    case option(opts, :cookie_behaviour, nil) do
+      nil -> attrs
+      behaviour -> Map.put(attrs, :cookie_behaviour, behaviour)
     end
   end
 

@@ -463,6 +463,86 @@ defmodule Pinchflat.YoutubeBrowser.ScopedIntakeWorkflowTest do
     assert Repo.aggregate(MediaItemOptionHandoff, :count, :id) == 0
   end
 
+  test "B14: cookie_behaviour flows from intake through indexing, download, and final file" do
+    assert :ok = Sources.write_cookie_file("fixture-cookie-data")
+
+    cases = [
+      {:all_operations, true, true},
+      {:when_needed, true, false},
+      {:disabled, false, false}
+    ]
+
+    for {mode, expect_index_cookies, expect_download_cookies} <- cases do
+      dest_dir = Path.join(Application.fetch_env!(:pinchflat, :media_directory), "cookie-dest-#{mode}")
+      File.mkdir_p!(dest_dir)
+
+      profile =
+        media_profile_fixture(%{
+          name: "Cookie Profile #{mode}",
+          output_path_template: Path.join(dest_dir, "{{ title }}.%(ext)s")
+        })
+
+      video_id = "cookie_vid_#{mode}"
+
+      assert {:ok, :indexing} =
+               Intake.download_video(video_id, profile.id, cookie_behaviour: mode, video_title: "Cookie Video #{mode}")
+
+      source = Repo.get_by!(Source, collection_id: video_id, media_profile_id: profile.id)
+      assert source.cookie_behaviour == mode
+
+      expected_file = Path.join(dest_dir, "Cookie Video #{mode}.mp4")
+
+      stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
+      stub(AppriseRunnerMock, :run, fn _, _ -> {:ok, ""} end)
+      stub(HTTPClientMock, :get, fn _url, _headers, _opts -> {:ok, ""} end)
+
+      stub(YtDlpRunnerMock, :run, fn
+        _url, :get_media_attributes_for_collection, _opts, _template, addl ->
+          send(self(), {:index_cookies, mode, Keyword.get(addl, :use_cookies)})
+          {:ok, Phoenix.json_library().encode!(video_metadata(video_id, source))}
+
+        _url, :get_downloadable_status, _opts, _template, addl ->
+          send(self(), {:precheck_cookies, mode, Keyword.get(addl, :use_cookies)})
+          {:ok, "{}"}
+
+        _url, :predict_filepath_from_metadata, _opts, _template, _addl ->
+          {:ok, Phoenix.json_library().encode!(%{"filename" => expected_file})}
+
+        _url, :download, _opts, _template, addl ->
+          send(self(), {:download_cookies, mode, Keyword.get(addl, :use_cookies)})
+          File.write!(expected_file, "video-bytes")
+
+          metadata =
+            render_parsed_metadata(:media_metadata)
+            |> Map.merge(%{
+              "id" => video_id,
+              "title" => "Cookie Video #{mode}",
+              "filepath" => expected_file,
+              "infojson_filename" => nil,
+              "requested_subtitles" => nil,
+              "thumbnails" => []
+            })
+            |> Phoenix.json_library().encode!()
+
+          {:ok, metadata}
+
+        _url, :download_thumbnail, _opts, _template, _addl ->
+          {:ok, ""}
+      end)
+
+      assert :ok = perform_job(MediaCollectionIndexingWorker, %{id: source.id})
+      assert_receive {:index_cookies, ^mode, ^expect_index_cookies}
+
+      item = Repo.get_by!(MediaItem, source_id: source.id, media_id: video_id)
+      assert :ok = perform_job(MediaDownloadWorker, %{id: item.id})
+      assert_receive {:download_cookies, ^mode, ^expect_download_cookies}
+
+      reloaded = Repo.reload!(item)
+      assert reloaded.media_filepath == expected_file
+      assert File.exists?(expected_file)
+    end
+  end
+
   defp stub_video_index(video_id, source) do
     stub(YtDlpRunnerMock, :run, fn
       _url, :get_media_attributes_for_collection, _opts, _output_template, _addl ->
