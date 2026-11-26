@@ -111,15 +111,92 @@ defmodule Pinchflat.Sources.Source do
 
   # YouTube interface languages accepted by yt-dlp's `youtube:lang` extractor argument.
   # yt-dlp matches them case-sensitively, so input is mapped to this spelling.
-  @title_languages ~w(
-    af az id ms bs ca cs da de et en-IN en-GB
-    en es es-419 es-US eu fil fr fr-CA gl hr zu is
-    it sw lv lt hu nl no uz pl pt-PT pt ro
-    sq sk sl sr-Latn fi sv vi tr be bg ky kk
-    mk mn ru sr uk el hy iw ur ar fa ne
-    mr hi as bn pa gu or ta te kn ml si
-    th lo my ka am km zh-CN zh-TW zh-HK ja ko
-  )
+  @title_language_options [
+    {"Afrikaans (af)", "af"},
+    {"Albanian (sq)", "sq"},
+    {"Amharic (am)", "am"},
+    {"Arabic (ar)", "ar"},
+    {"Armenian (hy)", "hy"},
+    {"Assamese (as)", "as"},
+    {"Azerbaijani (az)", "az"},
+    {"Basque (eu)", "eu"},
+    {"Belarusian (be)", "be"},
+    {"Bengali (bn)", "bn"},
+    {"Bosnian (bs)", "bs"},
+    {"Bulgarian (bg)", "bg"},
+    {"Burmese (my)", "my"},
+    {"Catalan (ca)", "ca"},
+    {"Chinese - Hong Kong (zh-HK)", "zh-HK"},
+    {"Chinese - Simplified (zh-CN)", "zh-CN"},
+    {"Chinese - Traditional (zh-TW)", "zh-TW"},
+    {"Croatian (hr)", "hr"},
+    {"Czech (cs)", "cs"},
+    {"Danish (da)", "da"},
+    {"Dutch (nl)", "nl"},
+    {"English (en)", "en"},
+    {"English - India (en-IN)", "en-IN"},
+    {"English - United Kingdom (en-GB)", "en-GB"},
+    {"Estonian (et)", "et"},
+    {"Filipino (fil)", "fil"},
+    {"Finnish (fi)", "fi"},
+    {"French (fr)", "fr"},
+    {"French - Canada (fr-CA)", "fr-CA"},
+    {"Galician (gl)", "gl"},
+    {"Georgian (ka)", "ka"},
+    {"German (de)", "de"},
+    {"Greek (el)", "el"},
+    {"Gujarati (gu)", "gu"},
+    {"Hebrew (iw)", "iw"},
+    {"Hindi (hi)", "hi"},
+    {"Hungarian (hu)", "hu"},
+    {"Icelandic (is)", "is"},
+    {"Indonesian (id)", "id"},
+    {"Italian (it)", "it"},
+    {"Japanese (ja)", "ja"},
+    {"Kannada (kn)", "kn"},
+    {"Kazakh (kk)", "kk"},
+    {"Khmer (km)", "km"},
+    {"Korean (ko)", "ko"},
+    {"Kyrgyz (ky)", "ky"},
+    {"Lao (lo)", "lo"},
+    {"Latvian (lv)", "lv"},
+    {"Lithuanian (lt)", "lt"},
+    {"Macedonian (mk)", "mk"},
+    {"Malay (ms)", "ms"},
+    {"Malayalam (ml)", "ml"},
+    {"Marathi (mr)", "mr"},
+    {"Mongolian (mn)", "mn"},
+    {"Nepali (ne)", "ne"},
+    {"Norwegian (no)", "no"},
+    {"Odia (or)", "or"},
+    {"Persian (fa)", "fa"},
+    {"Polish (pl)", "pl"},
+    {"Portuguese (pt)", "pt"},
+    {"Portuguese - Portugal (pt-PT)", "pt-PT"},
+    {"Punjabi (pa)", "pa"},
+    {"Romanian (ro)", "ro"},
+    {"Russian (ru)", "ru"},
+    {"Serbian (sr)", "sr"},
+    {"Serbian - Latin (sr-Latn)", "sr-Latn"},
+    {"Sinhala (si)", "si"},
+    {"Slovak (sk)", "sk"},
+    {"Slovenian (sl)", "sl"},
+    {"Spanish (es)", "es"},
+    {"Spanish - Latin America (es-419)", "es-419"},
+    {"Spanish - United States (es-US)", "es-US"},
+    {"Swahili (sw)", "sw"},
+    {"Swedish (sv)", "sv"},
+    {"Tamil (ta)", "ta"},
+    {"Telugu (te)", "te"},
+    {"Thai (th)", "th"},
+    {"Turkish (tr)", "tr"},
+    {"Ukrainian (uk)", "uk"},
+    {"Urdu (ur)", "ur"},
+    {"Uzbek (uz)", "uz"},
+    {"Vietnamese (vi)", "vi"},
+    {"Zulu (zu)", "zu"}
+  ]
+  @title_languages Enum.map(@title_language_options, fn {_label, code} -> code end)
   @title_languages_by_downcase Map.new(@title_languages, &{String.downcase(&1), &1})
 
   schema "sources" do
@@ -603,6 +680,13 @@ defmodule Pinchflat.Sources.Source do
   end
 
   defp validate_title_regex(changeset), do: changeset
+
+  @doc """
+  Returns `{label, code}` options for the source title language selector.
+  """
+  def title_language_options do
+    @title_language_options
+  end
 
   defp normalize_title_language(changeset) do
     update_change(changeset, :title_language, fn

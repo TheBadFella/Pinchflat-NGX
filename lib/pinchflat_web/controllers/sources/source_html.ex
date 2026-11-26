@@ -1465,6 +1465,20 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     end
   end
 
+  defp title_language_options do
+    [{"Default (channel language)", ""} | Source.title_language_options()]
+  end
+
+  defp title_language_label(nil), do: "Default (channel language)"
+  defp title_language_label(""), do: "Default (channel language)"
+
+  defp title_language_label(code) do
+    case Enum.find(Source.title_language_options(), fn {_label, value} -> value == code end) do
+      {label, _value} -> label
+      nil -> to_string(code)
+    end
+  end
+
   @doc """
   Whether the source has the given on-disk artwork image (`:banner` or
   `:poster`), used to decide between a real `<img>` and the placeholder/initials

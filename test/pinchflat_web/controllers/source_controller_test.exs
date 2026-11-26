@@ -880,13 +880,37 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       html = conn |> recycle() |> get(~p"/sources/#{source}/edit") |> html_response(200)
       assert html =~ ~r/id="source_title_language"[^>]*value="zh-CN"/
-      assert html =~ ~r/<summary[^>]*>.*?Title language.*?zh-CN.*?<\/summary>/s
+      assert html =~ "Chinese - Simplified (zh-CN)"
+      assert html =~ ~r/<summary[^>]*>.*?Title language.*?Chinese - Simplified \(zh-CN\).*?<\/summary>/s
+
+      # Blank clears the field back to nil and default label
+      conn = conn |> recycle() |> put(~p"/sources/#{source}", source: %{title_language: ""})
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      assert is_nil(Repo.reload!(source).title_language)
+
+      cleared_html = conn |> recycle() |> get(~p"/sources/#{source}/edit") |> html_response(200)
+      assert cleared_html =~ ~r/<summary[^>]*>.*?Title language.*?Default \(channel language\).*?<\/summary>/s
+    end
+
+    test "redisplays the selected title language when another field fails validation", %{
+      conn: conn,
+      source: source
+    } do
+      response =
+        conn
+        |> put(~p"/sources/#{source}", source: %{title_language: "pt-PT", watch_window_days: 9999})
+        |> html_response(200)
+
+      assert response =~ ~r/id="source_title_language"[^>]*value="pt-PT"/
+      assert response =~ ~r/<summary[^>]*>.*?Title language.*?Portuguese - Portugal \(pt-PT\).*?<\/summary>/s
     end
 
     test "shows the default summary when no title language is set", %{conn: conn} do
       html = conn |> get(~p"/sources/new") |> html_response(200)
 
       assert html =~ ~s(name="source[title_language]")
+      assert html =~ "Default (channel language)"
+      assert html =~ "Portuguese - Portugal (pt-PT)"
       assert html =~ ~r/<summary[^>]*>.*?Title language.*?Default \(channel language\).*?<\/summary>/s
     end
 

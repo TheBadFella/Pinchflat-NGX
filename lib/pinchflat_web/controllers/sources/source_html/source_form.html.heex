@@ -1327,15 +1327,14 @@
             open={Keyword.has_key?(@changeset.errors, :title_language)}
             data-setting-group
           >
-            <:status>{f[:title_language].value || "Default (channel language)"}</:status>
+            <:status>{title_language_label(f[:title_language].value)}</:status>
             <div data-setting>
               <.input
                 field={f[:title_language]}
-                type="text"
-                inputclass="font-mono"
+                options={title_language_options()}
+                type="select"
                 label="Title language"
-                placeholder="en"
-                help="Language code such as en or ja. When set, Pinchflat-ngx saves the channel's translated title for that language next to the original title. Existing downloads keep their names."
+                help="When set, Pinchflat-ngx saves the channel's translated title for that language next to the original title. Existing downloads keep their names."
               />
             </div>
           </.form_disclosure>
