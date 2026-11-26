@@ -83,6 +83,25 @@ defmodule PinchflatWeb.DiscoveryLiveTest do
     assert %{"original_url" => ^original_url, "source_type" => "channel"} = URI.decode_query(uri.query || "")
   end
 
+  test "accepting keeps the suggestion until the source is saved", %{conn: conn} do
+    suggestion = suggestion_fixture()
+    {:ok, view, _html} = live_isolated(conn, DiscoveryLive, session: %{})
+
+    assert {:error, {:live_redirect, _}} =
+             view
+             |> element("#accept-suggestion-#{suggestion.external_channel_id}")
+             |> render_click()
+
+    assert %Suggestion{state: :validated} = Discovery.get_suggestion!(suggestion.id)
+    assert [%Suggestion{id: id}] = Discovery.list_suggestions()
+    assert id == suggestion.id
+
+    Pinchflat.SourcesFixtures.source_fixture(collection_type: :channel, collection_id: suggestion.external_channel_id)
+
+    {:ok, view, _html} = live_isolated(conn, DiscoveryLive, session: %{})
+    refute has_element?(view, "#accept-suggestion-#{suggestion.external_channel_id}")
+  end
+
   test "accepting an invalid prefill still uses normal source validation", %{conn: conn} do
     invalid_url = "https://www.youtube.com/watch"
     suggestion = suggestion_fixture(%{canonical_url: invalid_url})

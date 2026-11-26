@@ -26,6 +26,16 @@ defmodule Pinchflat.DiscoveryTest do
       assert Enum.map(Discovery.list_suggestions(include_terminal: true), & &1.id) ==
                Enum.sort([visible.id, dismissed.id, accepted.id])
     end
+
+    test "hides channels that are already sources" do
+      {:ok, visible} = Discovery.upsert_suggestion(suggestion_attrs(@channel_id))
+      {:ok, saved} = Discovery.upsert_suggestion(suggestion_attrs(@other_channel_id))
+      source_fixture(collection_type: :channel, collection_id: @other_channel_id)
+
+      assert [visible.id] == Enum.map(Discovery.list_suggestions(), & &1.id)
+      assert [@channel_id] == Enum.map(Discovery.sample_suggestions(), & &1.external_channel_id)
+      assert saved.id in Enum.map(Discovery.list_suggestions(include_terminal: true), & &1.id)
+    end
   end
 
   describe "upsert_suggestion/1" do

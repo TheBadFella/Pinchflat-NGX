@@ -40,13 +40,16 @@ defmodule Pinchflat.Discovery do
   Returns visible suggestions ordered by descending score and stable ID.
 
   Terminal suggestions are excluded unless `include_terminal: true` or an
-  explicit `states:` option is supplied.
+  explicit `states:` option is supplied. Channels that are already sources
+  are hidden unless `include_terminal: true`, so saving a source from a
+  suggestion removes it.
   """
   def list_suggestions(opts \\ []) do
     states = states_for_listing(opts)
 
     Suggestion
     |> where([suggestion], suggestion.state in ^states)
+    |> maybe_exclude_sources(opts)
     |> order_by([suggestion], desc: suggestion.score, asc: suggestion.id)
     |> maybe_limit(Keyword.get(opts, :limit))
     |> Repo.all()
@@ -807,6 +810,20 @@ defmodule Pinchflat.Discovery do
   defp has_key?(attrs, key), do: Map.has_key?(attrs, key) or Map.has_key?(attrs, Atom.to_string(key))
   defp blank?(nil), do: true
   defp blank?(value), do: String.trim(value) == ""
+
+  defp maybe_exclude_sources(query, opts) do
+    if Keyword.get(opts, :include_terminal, false) do
+      query
+    else
+      source_ids =
+        from(source in Source,
+          where: source.collection_type == ^:channel and not is_nil(source.collection_id),
+          select: source.collection_id
+        )
+
+      where(query, [suggestion], suggestion.external_channel_id not in subquery(source_ids))
+    end
+  end
 
   defp maybe_limit(query, nil), do: query
   defp maybe_limit(query, limit) when is_integer(limit) and limit >= 0, do: limit(query, ^limit)
