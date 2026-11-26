@@ -27,7 +27,7 @@ defmodule PinchflatWeb.ApiDocsController do
           data-theme="default"
         ></script>
         <script
-          src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.83.0/dist/browser/standalone.js"
+          src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.84.0/dist/browser/standalone.js"
           integrity="sha384-Z2Wz4L/5mCSEGTCpHPw3JIN6+eRxpIwq2sE2QfGtP+hmmwcgJKNVK9zBbfnbjlKN"
           crossorigin="anonymous"
         ></script>
