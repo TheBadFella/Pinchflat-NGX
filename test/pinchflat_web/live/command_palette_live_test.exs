@@ -8,7 +8,7 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
 
   alias PinchflatWeb.CommandPaletteLive
 
-  defp search(view, query), do: view |> element("form") |> render_change(%{"query" => query})
+  defp search(view, query), do: render_hook(view, "search", %{"query" => query})
 
   test "mounts closed without querying the database", %{conn: conn} do
     handler = "palette-mount-#{System.unique_integer([:positive])}"
@@ -54,7 +54,7 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
     assert html =~ "downloaded"
     assert html =~ "Not downloaded"
     assert html =~ "See all media results for &quot;bread&quot;"
-    assert html =~ ~s(href="/search?q=bread")
+    assert html =~ ~s(href="/search?q=bread&amp;source_names=true")
   end
 
   test "url-encodes the see-all link", %{conn: conn} do
@@ -62,7 +62,7 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
 
     {:ok, view, _html} = live_isolated(conn, CommandPaletteLive)
 
-    assert search(view, "rock and") =~ ~s(href="/search?q=rock+and")
+    assert search(view, "rock and") =~ ~s(href="/search?q=rock+and&amp;source_names=true")
   end
 
   test "a one-character query skips media but still matches pages", %{conn: conn} do
@@ -73,7 +73,7 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
 
     assert html =~ "Type at least 2 characters to search media."
     refute html =~ "See all media results"
-    assert html =~ ~s(href="/activity")
+    assert html =~ ~s(href="/sources/new")
   end
 
   test "finds sources and media profiles", %{conn: conn} do
@@ -85,6 +85,46 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
 
     assert html =~ ~s(href="/sources/#{source.id}")
     assert html =~ ~s(href="/media_profiles/#{profile.id}")
+  end
+
+  test "sources come first and channel names find their media", %{conn: conn} do
+    source = source_fixture(%{custom_name: "Bread Channel"})
+    item = media_item_fixture(%{source_id: source.id, title: "Sourdough basics"})
+    {:ok, view, _html} = live_isolated(conn, CommandPaletteLive)
+
+    html = search(view, "bread")
+    assert [{source_position, _}] = :binary.matches(html, ~s(aria-label="Sources"))
+    assert [{media_position, _}] = :binary.matches(html, ~s(aria-label="Media"))
+    assert source_position < media_position
+    assert html =~ ~s(href="/sources/#{source.id}/media/#{item.id}")
+  end
+
+  test "single videos appear once in Everything and remain searchable as sources", %{conn: conn} do
+    source = source_fixture(%{custom_name: "Single Bread Video", collection_type: :video})
+    item = media_item_fixture(%{source_id: source.id, title: "Single Bread Video"})
+    {:ok, view, _html} = live_isolated(conn, CommandPaletteLive)
+
+    html = search(view, "bread")
+    assert html =~ ~s(href="/sources/#{source.id}/media/#{item.id}")
+    refute html =~ ~s(href="/sources/#{source.id}")
+
+    html = view |> element(~s(button[phx-value-scope="sources"])) |> render_click()
+    assert html =~ ~s(href="/sources/#{source.id}")
+  end
+
+  test "whitespace preserves results and title text, and clearing restores navigation", %{conn: conn} do
+    source_fixture(%{custom_name: "Hot Bread Today"})
+    {:ok, view, _html} = live_isolated(conn, CommandPaletteLive)
+
+    for query <- ["bre", "bre ", "bre"] do
+      html = search(view, query)
+      assert html =~ ~s(Hot <mark class="theme-palette-mark">Bre</mark>ad Today)
+    end
+
+    html = search(view, "")
+    assert html =~ "Go to"
+    refute html =~ ~s(href="/")
+    refute html =~ ~s(href="/activity")
   end
 
   test "the media scope shows only media", %{conn: conn} do

@@ -5,7 +5,7 @@ defmodule PinchflatWeb.Searches.SearchController do
 
   def show(conn, params) do
     search_term = Map.get(params, "q", "")
-    search_results = Media.search(search_term)
+    search_results = Media.search(search_term, include_source_names: params["source_names"] == "true")
 
     render(conn, :show, search_term: search_term, search_results: search_results)
   end

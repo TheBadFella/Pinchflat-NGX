@@ -97,6 +97,10 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   """
   attr :text, :string, default: nil
   attr :text_class, :string, default: nil, doc: "classes for the trigger text, such as truncation for long values"
+  attr :leading_icon, :string, default: nil, doc: "an icon before the trigger text"
+  attr :short_text, :string, default: nil, doc: "a shorter label shown instead of the text when narrow"
+  attr :short_class, :string, default: "lg:hidden", doc: "when the short label shows"
+  attr :long_class, :string, default: "max-lg:hidden", doc: "when the full label hides for the short one"
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :class, :string, default: ""
@@ -106,13 +110,18 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
 
   attr :tooltip, :string, default: nil, doc: "a styled tooltip for the trigger, used instead of the browser title"
   attr :tooltip_position, :string, default: "bottom"
+  attr :tooltip_class, :string, default: "text-nowrap"
 
   attr :align, :string,
     default: "end",
     values: ["end", "start"],
     doc: "end lines the menu up with the trigger's right edge; start opens it below the left edge"
 
+  attr :menu_class, :string, default: nil
+
   slot :option, required: true
+  slot :trigger, doc: "content for a compact chip trigger, such as a value in a table cell, instead of a button"
+  attr :chevron_class, :string, default: nil, doc: "classes for a chip trigger's chevron, such as hiding it when narrow"
 
   def button_dropdown(assigns) do
     size_class = button_size_class(assigns.size)
@@ -131,11 +140,10 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
       x-on:resize.window="dropdownOpen = false"
       class={["relative flex", @class]}
     >
-      <TextComponents.tooltip :if={@tooltip} tooltip={@tooltip} position={@tooltip_position} tooltip_class="text-nowrap">
+      <TextComponents.tooltip :if={@tooltip} tooltip={@tooltip} position={@tooltip_position} tooltip_class={@tooltip_class}>
         <.dropdown_trigger {trigger_assigns(assigns)} />
       </TextComponents.tooltip>
       <.dropdown_trigger :if={!@tooltip} {trigger_assigns(assigns)} title={@aria_label} />
-
       <%!-- x-cloak keeps every menu hidden until Alpine starts, so a list of rows doesn't flash open on load. --%>
       <div
         x-show="dropdownOpen"
@@ -143,7 +151,10 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
         x-on:click.outside="dropdownOpen = false"
         x-ref="menu"
         x-bind:style="menuStyle"
-        class="fixed z-40 min-w-40 w-max max-w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-2 text-theme-on-surface shadow-m3-2"
+        class={[
+          "fixed z-40 min-w-40 w-max max-w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-m3-sm border border-theme-outline/80 bg-theme-surface-2 py-2 text-theme-on-surface shadow-m3-2",
+          @menu_class
+        ]}
       >
         <ul class="flex flex-col">
           <li :for={option <- @option} class="theme-dropdown-option">
@@ -204,8 +215,7 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           ]}
           {@rest}
         >
-          <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} />
-          <span class="sr-only">{@tooltip}</span>
+          <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} /> <span class="sr-only">{@tooltip}</span>
         </.link>
       <% else %>
         <button
@@ -219,13 +229,15 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           disabled={@disabled}
           {@rest}
         >
-          <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} />
-          <span class="sr-only">{@tooltip}</span>
+          <CoreComponents.icon name={@icon_name} class={@resolved_icon_class} /> <span class="sr-only">{@tooltip}</span>
         </button>
       <% end %>
     </TextComponents.tooltip>
     """
   end
+
+  defp compact_gap("theme-button-compact"), do: "gap-1.5"
+  defp compact_gap(_size_class), do: "gap-2.5"
 
   defp button_size_class("compact"), do: "theme-button-compact"
   defp button_size_class("large"), do: "theme-button-large"
@@ -264,11 +276,30 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   end
 
   defp trigger_assigns(assigns) do
-    Map.take(assigns, [:text, :text_class, :icon_name, :aria_label, :size_class, :variant_class, :disabled, :align])
+    Map.take(assigns, [
+      :text,
+      :text_class,
+      :leading_icon,
+      :short_text,
+      :short_class,
+      :long_class,
+      :icon_name,
+      :aria_label,
+      :size_class,
+      :variant_class,
+      :disabled,
+      :align,
+      :trigger,
+      :chevron_class
+    ])
   end
 
   attr :text, :string, default: nil
   attr :text_class, :string, default: nil
+  attr :leading_icon, :string, default: nil
+  attr :short_text, :string, default: nil
+  attr :short_class, :string, default: nil
+  attr :long_class, :string, default: nil
   attr :icon_name, :string, default: nil
   attr :aria_label, :string, default: nil
   attr :title, :string, default: nil
@@ -276,6 +307,8 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
   attr :variant_class, :string, default: nil
   attr :disabled, :boolean, default: false
   attr :align, :string, default: "end"
+  attr :trigger, :list, default: []
+  attr :chevron_class, :string, default: nil
 
   defp dropdown_trigger(assigns) do
     ~H"""
@@ -297,27 +330,51 @@ defmodule PinchflatWeb.CustomComponents.ButtonComponents do
           ? { bottom: (window.innerHeight - rect.top + 8) + 'px', ...side, maxHeight: Math.min(480, above) + 'px' }
           : { top: (rect.bottom + 8) + 'px', ...side, maxHeight: Math.min(480, below) + 'px' };
         dropdownOpen = !dropdownOpen;
+        const opened = menuStyle;
+        requestAnimationFrame(() => {
+          if (!dropdownOpen || menuStyle !== opened) return;
+          const menu = $refs.menu.getBoundingClientRect();
+          if (menu.width === 0) return;
+          const width = document.documentElement.clientWidth;
+          const { left, right, ...rest } = menuStyle;
+          if (menu.left < 16) menuStyle = { ...rest, left: '16px' };
+          else if (menu.right > width - 16) menuStyle = { ...rest, right: '16px' };
+        });
       "
-      class={[
-        if(@icon_name, do: "theme-icon-button", else: ["theme-button gap-2.5", @size_class]),
-        @variant_class
-      ]}
+      class={
+        cond do
+          @trigger != [] -> "theme-chip-trigger"
+          @icon_name -> ["theme-icon-button", @variant_class]
+          true -> ["theme-button", compact_gap(@size_class), @size_class, @variant_class]
+        end
+      }
       aria-label={@aria_label}
       title={@title}
       disabled={@disabled}
       data-align={@align}
     >
-      <%= if @icon_name do %>
-        <CoreComponents.icon name={@icon_name} class="h-5 w-5" />
-        <span class="sr-only">{@text || @aria_label}</span>
-      <% else %>
-        <span :if={@text_class} class={@text_class}>{@text}</span>
-        {if is_nil(@text_class), do: @text}
-        <CoreComponents.icon
-          name="hero-chevron-down"
-          class="h-4 w-4 fill-current duration-200 ease-linear"
-          x-bind:class="dropdownOpen && 'rotate-180'"
-        />
+      <%= cond do %>
+        <% @trigger != [] -> %>
+          {render_slot(@trigger)}
+          <CoreComponents.icon
+            name="hero-chevron-down"
+            class={"h-3.5 w-3.5 shrink-0 opacity-70 transition-transform #{@chevron_class}"}
+            x-bind:class="dropdownOpen && 'rotate-180'"
+          />
+        <% @icon_name -> %>
+          <CoreComponents.icon name={@icon_name} class="h-5 w-5" /> <span class="sr-only">{@text || @aria_label}</span>
+        <% true -> %>
+          <CoreComponents.icon :if={@leading_icon} name={@leading_icon} class="-mr-1 h-4 w-4" />
+          <span :if={@short_text} class={@short_class}>{@short_text}</span>
+          <span :if={@text_class} class={[@text_class, @short_text && @long_class]}>{@text}</span>
+          <span :if={is_nil(@text_class) && @short_text} class={@long_class}>{@text}</span> {if is_nil(@text_class) &&
+                                                                                                  is_nil(@short_text),
+                                                                                                do: @text}
+          <CoreComponents.icon
+            name="hero-chevron-down"
+            class="-mr-1 h-3.5 w-3.5 fill-current duration-200 ease-linear"
+            x-bind:class="dropdownOpen && 'rotate-180'"
+          />
       <% end %>
     </button>
     """

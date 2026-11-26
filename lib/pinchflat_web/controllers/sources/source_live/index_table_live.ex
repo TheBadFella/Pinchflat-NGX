@@ -13,6 +13,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   alias Pinchflat.Profiles
   alias Pinchflat.Repo
   alias Pinchflat.Sources
+  alias Pinchflat.Sources.BulkCutoff
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.SourceActions
   alias PinchflatWeb.Sources.SourceHTML
@@ -30,24 +31,46 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defdelegate source_status(source, downloading?), to: SourceHTML
 
   @doc """
-  Returns the effective retention as a short value for the source table, such as
-  "30 days" or "Off". The full wording, including where it comes from, is
-  `SourceHTML.retention_policy_label/1`.
+  Returns a source's download cutoff as a short value for its chip in the sources list:
+  the fixed date as YY-MM-DD, the rolling window as "30 Days", or "Off".
   """
-  def retention_short_label(source) do
-    days =
-      case source do
-        %{retention_period_days: days} when is_integer(days) -> days
-        %{media_profile: %{retention_period_days: days}} -> days
-        _ -> nil
+  def cutoff_short_label(%{download_cutoff_date: %Date{} = date}), do: Calendar.strftime(date, "%y-%m-%d")
+  def cutoff_short_label(%{download_cutoff_days: 1}), do: "1 Day"
+  def cutoff_short_label(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "#{days} Days"
+  def cutoff_short_label(_source), do: "Off"
+
+  @doc """
+  Returns how often a source is indexed as a short value for the source list,
+  such as "Daily" or "10 Min" for fast indexing, and the full wording for its
+  tooltip.
+
+  Returns `{short_label, full_label}`.
+  """
+  def index_frequency_labels(%{fast_index: true}),
+    do: {"10 Min", "Fast indexing checks for new uploads every 10 minutes, with a full index monthly"}
+
+  def index_frequency_labels(%{index_frequency_minutes: minutes}) when is_integer(minutes) and minutes > 0 do
+    short =
+      case minutes do
+        1440 -> "Daily"
+        10_080 -> "Weekly"
+        43_200 -> "Monthly"
+        60 -> "Hourly"
+        minutes when rem(minutes, 60) == 0 -> "#{div(minutes, 60)} Hours"
+        minutes -> "#{minutes} Min"
       end
 
-    case days do
-      days when days in [nil, 0] -> "Off"
-      1 -> "1 day"
-      days -> "#{days} days"
-    end
+    {short, "Indexed every #{index_frequency_phrase(minutes)}"}
   end
+
+  def index_frequency_labels(_source), do: {"Once", "Indexed only once, when the source was added"}
+
+  defp index_frequency_phrase(1440), do: "day"
+  defp index_frequency_phrase(10_080), do: "week"
+  defp index_frequency_phrase(43_200), do: "30 days"
+  defp index_frequency_phrase(60), do: "hour"
+  defp index_frequency_phrase(minutes) when rem(minutes, 60) == 0, do: "#{div(minutes, 60)} hours"
+  defp index_frequency_phrase(minutes), do: "#{minutes} minutes"
 
   @doc """
   Returns the poster URL used by the source library card.
@@ -106,8 +129,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   The total is downloaded plus pending, so a caught-up source reaches 100%.
   Pending already leaves out items skipped by the cutoff, title filter,
   duration limits, format preference, availability rules, keep-newest limit
-  and Prevent Download. Items whose files retention removed are no longer
-  downloaded or pending, so they are left out too.
+  and Prevent Download, and the label names how many indexed items that is.
+  Items whose files retention removed are no longer downloaded or pending, so
+  they count as skipped too.
 
   Returns a map with `:state`, `:label`, and either a `:percent` or `nil`.
   """
@@ -119,14 +143,18 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   def source_progress(%{media_count: indexed, downloaded_count: downloaded, pending_count: pending})
       when indexed > 0 do
     to_download = downloaded + pending
+    skipped = skipped_suffix(max(indexed - to_download, 0))
 
     if to_download == 0 do
-      %{state: :all_skipped, label: "Nothing to download", percent: nil}
+      %{state: :all_skipped, label: "Nothing to download#{skipped}", percent: nil}
     else
       percent = min(div(downloaded * 100, to_download), 100)
-      %{state: :known, label: "#{downloaded} of #{to_download} items downloaded", percent: percent}
+      %{state: :known, label: "#{downloaded} of #{to_download} downloaded#{skipped}", percent: percent}
     end
   end
+
+  defp skipped_suffix(0), do: ""
+  defp skipped_suffix(skipped), do: " · #{skipped} skipped"
 
   attr :source, :map, required: true
   attr :tooltip_position, :string, default: "top"
@@ -153,6 +181,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   attr :return_to, :string, required: true
   attr :tooltip_position, :string, default: "top"
   attr :fold_edit_delete, :boolean, default: false, doc: "list Edit and Delete in the menu when the table is narrow"
+  attr :downloading, :boolean, default: false
 
   defp source_row_actions(assigns) do
     ~H"""
@@ -163,6 +192,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       source={@source}
       pending_count={@source.pending_count}
       downloaded_count={@source.downloaded_count}
+      downloading={@downloading}
+      show_feed={false}
+      live
       return_to={@return_to}
       icon_name="hero-ellipsis-vertical-solid"
       aria_label={"More actions for #{@source.custom_name}"}
@@ -173,74 +205,343 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   attr :source, :map, required: true
-  attr :id, :string, default: nil
+  attr :id, :string, required: true
+  attr :timezone, :string, required: true
+  attr :confirm, :map, default: nil, doc: "a cutoff change waiting for a second Apply, when it is for this source"
   attr :show_icon, :boolean, default: false
   attr :class, :string, default: nil
+  attr :chevron_class, :string, default: nil
 
   defp source_retention(assigns) do
+    source = assigns.source
+
+    assigns =
+      assign(assigns,
+        cutoff_mode: cutoff_mode(source),
+        cutoff_note: cutoff_note(source)
+      )
+
     ~H"""
-    <.tooltip
-      position="top"
-      tooltip={"Retention: #{SourceHTML.retention_policy_label(@source)}. Age is counted from download time."}
+    <.button_dropdown
+      menu_class="theme-cutoff-menu"
+      tooltip={@cutoff_note}
+      tooltip_position="top"
       tooltip_class="text-center"
+      class={"w-fit #{@class}"}
+      chevron_class={@chevron_class}
     >
-      <span id={@id} class={["inline-flex items-center gap-1 whitespace-nowrap", @class]}>
-        <.icon :if={@show_icon} name="hero-archive-box-x-mark" class="h-4 w-4" aria-hidden="true" />
-        {retention_short_label(@source)}<span class="sr-only">, {SourceHTML.retention_policy_label(@source)}</span>
-      </span>
-    </.tooltip>
+      <:trigger>
+        <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
+          <.icon :if={@show_icon} name="hero-archive-box-x-mark" class="h-4 w-4" aria-hidden="true" />
+          {cutoff_short_label(@source)}<span class="sr-only">, {@cutoff_note}. Change the download cutoff</span>
+        </span>
+      </:trigger>
+      <:option>
+        <form
+          id={"retention-form-#{@source.id}-#{@id}"}
+          phx-submit="set_source_cutoff"
+          class="w-72 max-w-full px-4 pb-2 text-left"
+        >
+          <input type="hidden" name="source_id" value={@source.id} />
+          <div class="space-y-3">
+            <.cutoff_fields
+              id_base={"cutoff-#{@source.id}-#{@id}"}
+              source_id={@source.id}
+              date_name="download_cutoff_date"
+              days_name="download_cutoff_days"
+              mode={@cutoff_mode}
+              date={to_string(@source.download_cutoff_date || "")}
+              days={@source.download_cutoff_days}
+              timezone={@timezone}
+            />
+
+            <p :if={@confirm} class="theme-status-card theme-status-card-warning text-xs leading-5" role="alert">
+              {cutoff_warning(@confirm)}
+            </p>
+
+            <.button
+              type="submit"
+              size="compact"
+              variant={if @confirm, do: "warning", else: "primary"}
+              class="w-full"
+            >
+              {if @confirm && @confirm.removable > 0, do: "Apply and Delete #{@confirm.removable}", else: "Apply"}
+            </.button>
+          </div>
+        </form>
+      </:option>
+    </.button_dropdown>
     """
   end
 
-  attr :action, :string, required: true
-  attr :label, :string, required: true
-  attr :confirm_label, :string, required: true
-  attr :done_label, :string, required: true
-  attr :icon, :string, required: true
-  attr :armed, :boolean, required: true
-  attr :done, :boolean, required: true
-  attr :disabled, :boolean, default: false
+  attr :id_base, :string, required: true, doc: "the prefix for the field ids"
+  attr :source_id, :any, default: nil, doc: "the source a save closes the menu for; the bulk menu has none"
+  attr :date_name, :string, required: true
+  attr :days_name, :string, required: true
+  attr :mode, :string, required: true, values: ["none", "date", "days"]
+  attr :date, :string, default: ""
+  attr :days, :integer, default: nil
+  attr :timezone, :string, required: true
 
-  # The first click arms the action and the second runs it; the button then turns green briefly.
-  defp bulk_action_button(assigns) do
+  # The cutoff choice and the one field it needs, shared by a source's popover and the bulk menu.
+  # The sources list re-renders its rows while downloads run, so LiveView never patches these
+  # fields; a refresh would reset the choice being made, and Alpine doesn't set up fields that a
+  # patch adds inside an open menu. A save keeps the applied values and closes the menu; closing
+  # it without applying puts the fields back. The other choices' fields are disabled, so the
+  # browser neither checks nor sends them.
+  defp cutoff_fields(assigns) do
     ~H"""
-    <.button
-      type="button"
-      variant={if @done, do: "success", else: "outline"}
-      size="compact"
-      class={["gap-1.5 transition-colors duration-300", @armed && "theme-confirm-pending"]}
-      disabled={@disabled}
-      phx-click="bulk_action"
-      phx-value-action={@action}
-      data-armed={to_string(@armed)}
+    <div
+      id={"#{@id_base}-fields"}
+      phx-update="ignore"
+      data-source-id={@source_id}
+      x-data={"{
+        cutoffMode: '#{@mode}',
+        init() {
+          this.$watch('dropdownOpen', (open) => { if (!open) this.resetFields() });
+          window.addEventListener('phx:source-cutoff-saved', (event) => {
+            if (String(event.detail.id) !== this.$el.dataset.sourceId) return;
+            this.keepValues();
+            this.dropdownOpen = false;
+          });
+        },
+        keepValues() {
+          this.$el.querySelectorAll('input').forEach((field) => { field.defaultValue = field.value });
+          this.$el.querySelectorAll('option').forEach((option) => { option.defaultSelected = option.selected });
+        },
+        resetFields() {
+          this.$el.closest('form').reset();
+          this.$el.querySelectorAll('input, select').forEach((field) => {
+            field.dispatchEvent(new Event('input'));
+            field.dispatchEvent(new Event('change'));
+          });
+        }
+      }"}
+      class="space-y-3"
     >
-      <.icon name={if @done, do: "hero-check", else: @icon} class="h-4 w-4" />
-      {cond do
-        @done -> @done_label
-        @armed -> @confirm_label
-        true -> @label
-      end}
-    </.button>
+      <div>
+        <.label for={"#{@id_base}-mode"}>Download cutoff</.label>
+        <div class="theme-field-shell">
+          <select
+            id={"#{@id_base}-mode"}
+            name="cutoff_mode"
+            x-model="cutoffMode"
+            class="theme-input theme-select w-full rounded-m3-sm py-2.5 pl-4 pr-10 outline-none transition"
+          >
+            <option value="none" selected={@mode == "none"}>No cutoff</option>
+            <option value="date" selected={@mode == "date"}>Fixed date</option>
+            <option value="days" selected={@mode == "days"}>Rolling window (last N days)</option>
+          </select>
+        </div>
+      </div>
+
+      <fieldset x-show="cutoffMode === 'date'" x-bind:disabled="cutoffMode !== 'date'" x-cloak>
+        <.date_picker
+          id={"#{@id_base}-date"}
+          name={@date_name}
+          label="Cutoff date"
+          value={@date}
+          timezone={@timezone}
+          required={false}
+          presets={cutoff_date_presets()}
+        />
+      </fieldset>
+
+      <fieldset x-show="cutoffMode === 'days'" x-bind:disabled="cutoffMode !== 'days'" x-cloak>
+        <.input
+          type="number"
+          id={"#{@id_base}-days"}
+          name={@days_name}
+          value={@days}
+          label="Rolling window (days)"
+          placeholder="30"
+          min="1"
+          step="1"
+        >
+          <:input_append>
+            <.day_presets for={"#{@id_base}-days"} label="Rolling window presets" />
+          </:input_append>
+        </.input>
+      </fieldset>
+    </div>
+    """
+  end
+
+  attr :for, :string, required: true, doc: "the id of the number field the preset fills in"
+  attr :label, :string, required: true
+
+  defp day_presets(assigns) do
+    assigns = assign(assigns, :days, [7, 14, 30, 60, 90, 180, 365])
+
+    ~H"""
+    <select
+      class="theme-input theme-select ml-2 min-h-11 w-28 shrink-0 rounded-m3-sm px-3 py-2 text-sm"
+      aria-label={@label}
+      aria-controls={@for}
+      x-on:change={"if ($event.target.value) document.getElementById('#{@for}').value = $event.target.value; $event.target.value = ''"}
+    >
+      <option value="">Presets...</option>
+      <option :for={days <- @days} value={days}>{days} days</option>
+    </select>
+    """
+  end
+
+  attr :source, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :string, default: nil
+  attr :show_icon, :boolean, default: false
+  attr :chevron_class, :string, default: nil
+
+  defp source_index_frequency(assigns) do
+    {short, full} = index_frequency_labels(assigns.source)
+    assigns = assign(assigns, short: short, full: full, locked: index_frequency_locked?(assigns.source))
+
+    ~H"""
+    <.tooltip :if={@locked} position="top" tooltip={"#{@full}."} tooltip_class="text-center">
+      <span id={@id} class={["inline-flex items-center gap-1 whitespace-nowrap", @class]}>
+        <.icon :if={@show_icon} name="hero-clock" class="h-4 w-4 text-theme-tertiary" aria-hidden="true" />
+        {@short}<span class="sr-only">, {@full}</span>
+      </span>
+    </.tooltip>
+    <.button_dropdown
+      :if={!@locked}
+      tooltip={"#{@full}."}
+      tooltip_position="top"
+      tooltip_class="text-center"
+      class={"w-fit #{@class}"}
+      chevron_class={@chevron_class}
+    >
+      <:trigger>
+        <span id={@id} class="inline-flex items-center gap-1 whitespace-nowrap">
+          <.icon :if={@show_icon} name="hero-clock" class="h-4 w-4 text-theme-tertiary" aria-hidden="true" />
+          {@short}<span class="sr-only">, {@full}. Change index frequency</span>
+        </span>
+      </:trigger>
+      <:option :for={{label, minutes} <- SourceHTML.friendly_index_frequencies()}>
+        <button
+          type="button"
+          phx-click="set_source_index_frequency"
+          phx-value-id={@source.id}
+          phx-value-minutes={minutes}
+          x-on:click="dropdownOpen = false"
+          disabled={minutes == @source.index_frequency_minutes}
+          aria-current={if minutes == @source.index_frequency_minutes, do: "true"}
+          class="gap-1.5 px-2.5 disabled:cursor-default"
+        >
+          <.icon
+            name="hero-check"
+            class={"h-4 w-4 shrink-0 text-theme-primary #{if minutes != @source.index_frequency_minutes, do: "invisible"}"}
+            aria-hidden="true"
+          />
+          {label}
+        </button>
+      </:option>
+    </.button_dropdown>
+    """
+  end
+
+  # Fast indexing fixes the full index at monthly, and individual videos are only indexed once.
+  defp index_frequency_locked?(%{fast_index: true}), do: true
+  defp index_frequency_locked?(%{collection_type: :video}), do: true
+  defp index_frequency_locked?(_source), do: false
+
+  @bulk_switches [
+    {:resume, "hero-play-solid", "Resume", "Resumed",
+     "Resume downloads for the selected sources and queue their pending items"},
+    {:pause, "hero-pause-solid", "Pause", "Paused",
+     "Pause downloads for the selected sources and cancel queued and running ones"},
+    {:stop, "hero-stop-solid", "Stop", "Stopped",
+     "Stop the selected sources: pause their downloads and turn off indexing"}
+  ]
+
+  attr :armed, :any, required: true
+  attr :done_action, :any, required: true
+  attr :selected_ids, :any, required: true
+
+  # One chip for Resume, Pause and Stop. Clicking an icon arms it and the chip asks to confirm;
+  # the second click runs it and the chip turns green briefly.
+  defp bulk_downloads(assigns) do
+    count = MapSet.size(assigns.selected_ids)
+
+    active =
+      Enum.find(@bulk_switches, fn {action, _icon, _label, _done, _tip} ->
+        armed_for?(assigns.armed, action, assigns.selected_ids) or assigns.done_action == action
+      end)
+
+    assigns =
+      assign(assigns,
+        switches: @bulk_switches,
+        active: active,
+        count: count,
+        done: active && assigns.done_action == elem(active, 0)
+      )
+
+    ~H"""
+    <div
+      id="selected-source-downloads"
+      role="group"
+      aria-label="Downloads for the selected sources"
+      class={[
+        "inline-flex min-h-9 items-center rounded-m3-sm border text-xs font-medium transition-colors duration-300 max-sm:min-h-11",
+        cond do
+          @done -> "theme-success-button"
+          @active -> "theme-confirm-pending"
+          true -> "theme-outline-button"
+        end,
+        @count == 0 && "opacity-50"
+      ]}
+    >
+      <%= if @active do %>
+        <% {action, icon, label, done_label, _tip} = @active %>
+        <div id={"#{action}-selected-sources"} class="self-stretch">
+          <button
+            type="button"
+            class="flex h-full items-center gap-1.5 px-3"
+            phx-click="bulk_action"
+            phx-value-action={action}
+            data-armed={to_string(!@done)}
+          >
+            <.icon name={if @done, do: "hero-check", else: icon} class="h-4 w-4" />
+            {if @done, do: done_label, else: "#{label} #{@count}?"}
+          </button>
+        </div>
+      <% else %>
+        <span class="pl-3 pr-1 max-sm:sr-only">Downloads</span>
+        <div :for={{action, icon, label, _done, tip} <- @switches} id={"#{action}-selected-sources"}>
+          <.tooltip tooltip={tip} position="top" tooltip_class="text-center">
+            <button
+              type="button"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-m3-xs transition hover:bg-theme-surface-3 disabled:cursor-not-allowed max-sm:h-11 max-sm:w-11"
+              disabled={@count == 0}
+              phx-click="bulk_action"
+              phx-value-action={action}
+              data-armed="false"
+            >
+              <.icon name={icon} class="h-4 w-4" /><span class="sr-only">{label}</span>
+            </button>
+          </.tooltip>
+        </div>
+      <% end %>
+    </div>
     """
   end
 
   attr :source, :map, required: true
   attr :media_profiles, :list, required: true
   attr :text_class, :string, default: "max-w-48 truncate"
+  attr :chevron_class, :string, default: nil
 
   defp source_profile_picker(assigns) do
     ~H"""
     <.button_dropdown
-      text={@source.media_profile.name}
-      text_class={@text_class}
       aria_label={"#{@source.media_profile.name}, change the media profile for #{@source.custom_name}"}
       tooltip="Change Media Profile"
       tooltip_position="top"
-      variant="outline"
-      size="compact"
       align="start"
       class="w-fit"
+      chevron_class={@chevron_class}
     >
+      <:trigger><span class={@text_class}>{@source.media_profile.name}</span></:trigger>
       <:option :for={profile <- @media_profiles}>
         <button
           type="button"
@@ -264,6 +565,105 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     """
   end
 
+  defp save_cutoff(socket, id, value) do
+    expected =
+      case socket.assigns.cutoff_confirm do
+        %{id: ^id, value: ^value} = confirm -> confirm
+        _ -> %{fingerprint: nil, removable: 0, cutoff: nil}
+      end
+
+    case BulkCutoff.apply_preview([id], value, expected, :single) do
+      {:ok, [source]} ->
+        socket
+        |> assign(:cutoff_confirm, nil)
+        |> push_event("source-cutoff-saved", %{id: source.id})
+        |> set_sources()
+        |> then(&{:noreply, &1})
+
+      {:error, {:changed_impact, preview}} ->
+        confirm = preview |> Map.take([:removable, :cutoff, :fingerprint]) |> Map.merge(%{id: id, value: value})
+        {:noreply, assign(socket, :cutoff_confirm, confirm)}
+
+      {:error, :stale_preview} ->
+        message = "The source changed. Review the cutoff and apply it again."
+        {:noreply, socket |> assign(:cutoff_confirm, nil) |> put_notice({:error, message})}
+
+      {:error, _reason} ->
+        message = "Could not save the download cutoff. Check the source settings and its indexing cutoff."
+        {:noreply, socket |> assign(:cutoff_confirm, nil) |> put_notice({:error, message})}
+    end
+  end
+
+  defp cutoff_value(%{"cutoff_mode" => "date"} = params) do
+    case Date.from_iso8601(String.trim(params["download_cutoff_date"] || "")) do
+      {:ok, date} -> {:ok, Date.to_iso8601(date)}
+      _invalid -> {:error, "Pick a download cutoff date."}
+    end
+  end
+
+  defp cutoff_value(%{"cutoff_mode" => "days"} = params) do
+    case parse_whole_days(params["download_cutoff_days"], 1, "The rolling window") do
+      {:ok, days} when is_integer(days) -> {:ok, "days:#{days}"}
+      {:ok, nil} -> {:error, "Enter how many days the rolling window covers."}
+      error -> error
+    end
+  end
+
+  defp cutoff_value(_params), do: {:ok, ""}
+
+  defp selection_toggle_text(selected_ids, total) do
+    if all_selected?(selected_ids, total), do: "Selected: All", else: "Selected: #{MapSet.size(selected_ids)}"
+  end
+
+  defp selection_toggle_label(selected_ids, total) do
+    case MapSet.size(selected_ids) do
+      0 -> "Select every source"
+      count -> "#{selection_toggle_text(selected_ids, total)}. Clear the selection of #{count}"
+    end
+  end
+
+  defp listed_source(socket, id), do: Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
+
+  defp switch_done(:start), do: "downloads started"
+  defp switch_done(:pause), do: "downloads paused"
+  defp switch_done(:stop), do: "source stopped"
+
+  defp parse_whole_days(value, minimum, name) do
+    case String.trim(value || "") do
+      "" ->
+        {:ok, nil}
+
+      trimmed ->
+        case Integer.parse(trimmed) do
+          {days, ""} when days >= minimum -> {:ok, days}
+          _invalid -> {:error, "#{name} must be a whole number of days, #{minimum} or more."}
+        end
+    end
+  end
+
+  defp confirm_for(%{id: id} = confirm, source), do: if(id == to_string(source.id), do: confirm)
+  defp confirm_for(_confirm, _source), do: nil
+
+  defp cutoff_mode(%{download_cutoff_date: %Date{}}), do: "date"
+  defp cutoff_mode(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "days"
+  defp cutoff_mode(_source), do: "none"
+
+  defp cutoff_note(%{download_cutoff_date: %Date{} = date}), do: "Download cutoff: #{Date.to_iso8601(date)}"
+  defp cutoff_note(%{download_cutoff_days: 1}), do: "Download cutoff: last day"
+
+  defp cutoff_note(%{download_cutoff_days: days}) when is_integer(days) and days > 0,
+    do: "Download cutoff: last #{days} days"
+
+  defp cutoff_note(_source), do: "No download cutoff"
+
+  defp cutoff_warning(%{removable: 0}), do: "No downloaded items now qualify for removal. Apply again to confirm."
+
+  defp cutoff_warning(%{removable: count, cutoff: cutoff}) do
+    items = if count == 1, do: "1 downloaded item was", else: "#{count} downloaded items were"
+
+    "#{items} published before #{Date.to_iso8601(cutoff)} and will be deleted at the next cleanup. Apply again to confirm."
+  end
+
   defp bulk_jobs, do: for({job, label} <- SourceActions.jobs(), do: {to_string(job), job, label})
 
   defp notice_kind({:success, _text}), do: :info
@@ -273,20 +673,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   defp notice_title({:error, _text}), do: "Something went wrong"
 
   defp notice_text({_kind, text}), do: text
-
-  defp toggle_cutoff_panel(js \\ %JS{}) do
-    js
-    |> JS.toggle(to: "#selected-source-cutoff", display: "block")
-    |> JS.toggle_class("rotate-180", to: "#selected-source-cutoff-chevron")
-    |> JS.toggle_attribute({"aria-expanded", "true", "false"}, to: "#selected-source-cutoff-toggle")
-  end
-
-  defp hide_cutoff_panel(js) do
-    js
-    |> JS.hide(to: "#selected-source-cutoff")
-    |> JS.remove_class("rotate-180", to: "#selected-source-cutoff-chevron")
-    |> JS.set_attribute({"aria-expanded", "false"}, to: "#selected-source-cutoff-toggle")
-  end
 
   def mount(_params, session, socket) do
     if connected?(socket) do
@@ -319,7 +705,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
           notice_id: 0,
           downloading_ids: MapSet.new(),
           media_profiles: Enum.reject(Profiles.list_media_profiles(), & &1.marked_for_deletion_at),
-          timezone: Application.fetch_env!(:pinchflat, :timezone)
+          timezone: Application.fetch_env!(:pinchflat, :timezone),
+          cutoff_confirm: nil
         },
         search_pagination_attributes(source_type, search_term, 1, limit)
       )
@@ -364,7 +751,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
   end
 
   def handle_event("assign_source_profile", %{"id" => id, "profile_id" => profile_id}, socket) do
-    source = Enum.find(socket.assigns.sources, &(to_string(&1.id) == id))
+    source = listed_source(socket, id)
     profile = Enum.find(socket.assigns.media_profiles, &(to_string(&1.id) == profile_id))
 
     # The new profile name on the picker confirms the change, so only a failure gets a toast.
@@ -376,13 +763,104 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
+  def handle_event("toggle_source_enabled", %{"id" => id}, socket) do
+    with %{} = listed <- listed_source(socket, id),
+         {:ok, _source} <-
+           id |> Sources.get_source!() |> Sources.update_source(%{"enabled" => to_string(!listed.enabled)}) do
+      {:noreply, set_sources(socket)}
+    else
+      _error ->
+        notice = {:error, "Could not enable or disable the source. Reload the page and try again."}
+        {:noreply, socket |> put_notice(notice) |> set_sources()}
+    end
+  end
+
+  def handle_event("set_source_cutoff", %{"source_id" => id} = params, socket) do
+    with %{} <- listed_source(socket, id),
+         {:ok, value} <- cutoff_value(params) do
+      save_cutoff(socket, id, value)
+    else
+      {:error, message} ->
+        {:noreply, put_notice(socket, {:error, message})}
+
+      nil ->
+        {:noreply, socket |> put_notice({:error, "This source is no longer listed. Reload the page."}) |> set_sources()}
+    end
+  end
+
+  def handle_event("source_job", %{"id" => id, "action" => action}, socket) do
+    with %{} <- listed_source(socket, id),
+         {_name, job, _label} <- List.keyfind(bulk_jobs(), action, 0),
+         {:ok, summary} <- SourceActions.run(job, [id]) do
+      kind = if summary.failed > 0, do: :error, else: :success
+      {:noreply, socket |> put_notice({kind, bulk_job_message(job, summary)}) |> set_sources()}
+    else
+      _error -> {:noreply, put_notice(socket, {:error, "Could not queue this action. Reload the page and try again."})}
+    end
+  end
+
+  def handle_event("source_automatic_downloads", %{"id" => id, "enabled" => enabled}, socket) do
+    {change, done} =
+      if enabled == "true",
+        do: {&Sources.resume_selected_sources/1, "enabled"},
+        else: {&Sources.pause_selected_sources/1, "disabled"}
+
+    with %{} = source <- listed_source(socket, id),
+         {:ok, _sources} <- change.([id]) do
+      notice = {:success, "Automatic downloads #{done} for #{source.custom_name}."}
+      {:noreply, socket |> put_notice(notice) |> set_sources()}
+    else
+      _error ->
+        notice = {:error, "Could not change automatic downloads. Reload the page and try again."}
+        {:noreply, put_notice(socket, notice)}
+    end
+  end
+
+  def handle_event("source_switch", %{"id" => id, "action" => action}, socket) when action in ~w(start pause stop) do
+    action = String.to_existing_atom(action)
+
+    notice =
+      with %{} <- listed_source(socket, id),
+           {:ok, source} <- SourceActions.switch(action, Sources.get_source!(id)) do
+        {:success, "#{source.custom_name}: #{switch_done(action)}."}
+      else
+        :nothing_to_do -> {:success, "Nothing to #{action} for this source."}
+        _error -> {:error, "Could not change this source's downloads. Reload the page and try again."}
+      end
+
+    {:noreply, socket |> put_notice(notice) |> set_sources()}
+  end
+
+  def handle_event("set_source_index_frequency", %{"id" => id, "minutes" => minutes}, socket) do
+    allowed = Enum.map(SourceHTML.friendly_index_frequencies(), fn {_label, value} -> to_string(value) end)
+    source = listed_source(socket, id)
+
+    with true <- minutes in allowed,
+         %{} <- source,
+         false <- index_frequency_locked?(source),
+         {:ok, _source} <-
+           id |> Sources.get_source!() |> Sources.update_source(%{"index_frequency_minutes" => minutes}) do
+      {:noreply, set_sources(socket)}
+    else
+      _error ->
+        notice = {:error, "Could not change the index frequency. Reload the page and try again."}
+        {:noreply, socket |> put_notice(notice) |> set_sources()}
+    end
+  end
+
   # Bulk actions run on a second click for the same selection, within @bulk_arm_ms.
-  def handle_event("bulk_action", %{"action" => action}, socket) when action in ["pause", "resume"] do
+  def handle_event("bulk_action", %{"action" => action}, socket) when action in ["pause", "resume", "stop"] do
     bulk_click(socket, String.to_existing_atom(action))
   end
 
   def handle_event("bulk_profile", %{"profile_id" => profile_id}, socket) do
     bulk_click(socket, {:profile, to_string(profile_id)})
+  end
+
+  def handle_event("bulk_frequency", %{"minutes" => minutes}, socket) do
+    if minutes in Enum.map(SourceHTML.friendly_index_frequencies(), fn {_label, value} -> to_string(value) end),
+      do: bulk_click(socket, {:frequency, minutes}),
+      else: {:noreply, socket}
   end
 
   def handle_event("bulk_job", %{"action" => name}, socket) do
@@ -405,6 +883,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
       |> set_sources()
       |> then(&{:noreply, &1})
     end
+  end
+
+  def handle_event("toggle_selection", _params, %{assigns: assigns} = socket) do
+    if MapSet.size(assigns.selected_ids) > 0, do: clear_selection(socket), else: select_all(socket)
   end
 
   def handle_event("toggle_select_all", _params, %{assigns: assigns} = socket) do
@@ -467,10 +949,6 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     {:noreply, socket |> assign(:refresh_pending, false) |> set_sources()}
   end
 
-  def handle_info({:source_enabled_updated, _source_id}, socket) do
-    {:noreply, set_sources(socket)}
-  end
-
   def handle_async(:bulk_job, {:ok, {job, {:ok, summary}}}, socket) do
     kind = if summary.failed > 0, do: :error, else: :success
     {:noreply, socket |> assign(:job_running, nil) |> put_notice({kind, bulk_job_message(job, summary)})}
@@ -499,7 +977,55 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     end
   end
 
-  defp sort_attr(:enabled), do: dynamic([s], s.enabled)
+  # Ascending: enabled with automatic downloads, enabled without them, then disabled. Downloading is left out.
+  defp sort_attr(:status) do
+    dynamic(
+      [s],
+      fragment("CASE WHEN ? THEN (CASE WHEN ? THEN 0 ELSE 1 END) ELSE 2 END", s.enabled, s.download_media)
+    )
+  end
+
+  # Most frequent first when ascending: fast indexing counts as its 10-minute check, and sources
+  # indexed only once sort after every schedule.
+  defp sort_attr(:index_frequency) do
+    dynamic(
+      [s],
+      fragment(
+        "CASE WHEN ? THEN 10 WHEN ? <= 0 THEN 2147483647 ELSE ? END",
+        s.fast_index,
+        s.index_frequency_minutes,
+        s.index_frequency_minutes
+      )
+    )
+  end
+
+  # Shortest window first when ascending, counting a fixed date as the days since it, with no cutoff last.
+  defp sort_attr(:download_cutoff) do
+    if Database.postgres?() do
+      dynamic(
+        [s],
+        fragment(
+          "CASE WHEN ? IS NOT NULL THEN CURRENT_DATE - ? WHEN ? > 0 THEN ? ELSE 2147483647 END",
+          s.download_cutoff_date,
+          s.download_cutoff_date,
+          s.download_cutoff_days,
+          s.download_cutoff_days
+        )
+      )
+    else
+      dynamic(
+        [s],
+        fragment(
+          "CASE WHEN ? IS NOT NULL THEN CAST(julianday('now') - julianday(?) AS INTEGER) WHEN ? > 0 THEN ? ELSE 2147483647 END",
+          s.download_cutoff_date,
+          s.download_cutoff_date,
+          s.download_cutoff_days,
+          s.download_cutoff_days
+        )
+      )
+    end
+  end
+
   defp sort_attr(:collection_type), do: dynamic([s], s.collection_type)
 
   defp apply_search(%{assigns: assigns} = socket, search_term) do
@@ -607,11 +1133,39 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLive do
     |> then(&{:noreply, &1})
   end
 
+  defp run_bulk_action(socket, {:frequency, minutes}, ids) do
+    case Sources.set_selected_sources_index_frequency(ids, String.to_integer(minutes)) do
+      {:ok, %{updated: updated, skipped: skipped}} ->
+        Process.send_after(self(), {:clear_done, :frequency}, @bulk_done_ms)
+        socket = socket |> assign(:done_action, :frequency) |> set_sources()
+
+        if skipped > 0 do
+          noun = if updated == 1, do: "source", else: "sources"
+
+          notice =
+            {:success,
+             "Index frequency changed for #{updated} #{noun}. #{skipped} with fast indexing or a single video " <>
+               "kept their fixed schedule."}
+
+          {:noreply, put_notice(socket, notice)}
+        else
+          {:noreply, socket}
+        end
+
+      {:error, _reason} ->
+        notice =
+          {:error, "Nothing changed. Refresh and select up to #{Sources.selection_limit()} available sources."}
+
+        {:noreply, put_notice(socket, notice)}
+    end
+  end
+
   defp run_bulk_action(socket, action, ids) do
     result =
       case action do
         :pause -> Sources.pause_selected_sources(ids)
         :resume -> Sources.resume_selected_sources(ids)
+        :stop -> Sources.stop_selected_sources(ids)
         {:profile, profile_id} -> Sources.assign_selected_sources_profile(ids, profile_id)
       end
 

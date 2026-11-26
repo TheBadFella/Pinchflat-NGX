@@ -64,4 +64,23 @@ defmodule Pinchflat.Sources.SourceActionsTest do
   end
 
   defp ids(sources), do: Enum.map(sources, &to_string(&1.id))
+
+  describe "switch/2" do
+    test "starts a source with pending items and turns its downloads on" do
+      source = source_fixture(enabled: false, download_media: false)
+      media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      assert {:ok, %{enabled: true, download_media: true}} = SourceActions.switch(:start, source)
+    end
+
+    test "does nothing to start without pending items, or to pause or stop without downloads" do
+      source = source_fixture()
+
+      for action <- [:start, :pause, :stop] do
+        assert :nothing_to_do = SourceActions.switch(action, source)
+      end
+
+      assert %{enabled: true, download_media: true} = Repo.reload!(source)
+    end
+  end
 end

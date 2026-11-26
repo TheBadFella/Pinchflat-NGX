@@ -19,6 +19,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
   attr :sort_key, :atom, default: nil
   attr :sort_direction, :atom, default: nil
   attr :compact, :boolean, default: false, doc: "tighter padding; wrapping columns shrink before it scrolls"
+  attr :rounded, :boolean, default: true
 
   attr :row_item, :any,
     default: &Function.identity/1,
@@ -29,12 +30,13 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
     attr :label_icon, :string, doc: "an icon shown instead of the label, which stays the accessible name"
     attr :header, :any, doc: "rendered content for the header cell instead of the label, such as a select-all checkbox"
     attr :class, :string
+    attr :column_class, :string, doc: "classes for the header and the cells, such as hiding the column when narrow"
     attr :sort_key, :string
   end
 
   def table(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-m3-lg bg-theme-surface-1 shadow-m3-1">
+    <div class={["overflow-hidden bg-theme-surface-1 shadow-m3-1", @rounded && "rounded-m3-lg"]}>
       <div class="overflow-x-auto overflow-y-hidden">
         <table class={[
           "min-w-full table-auto text-theme-on-surface",
@@ -47,16 +49,16 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                 :for={col <- @col}
                 class={[
                   "font-medium text-theme-on-surface",
-                  if(@compact, do: "px-2", else: "px-4"),
+                  if(@compact, do: "whitespace-nowrap px-2", else: "px-4"),
                   header_padding(@compact, col[:sort_key] && !col[:header]),
                   col[:sort_key] && !col[:header] && "relative",
                   col[:label_icon] && "text-center",
-                  sorted_column?(@sort_key, col[:sort_key]) && "bg-theme-primary/10"
+                  col[:column_class]
                 ]}
                 aria-sort={column_sort(@sort_key, @sort_direction, col[:sort_key])}
               >
                 {col[:header]}
-                <.tooltip :if={col[:label_icon] && !col[:header]} tooltip={col[:label]} position="bottom">
+                <.tooltip :if={col[:label_icon] && !col[:header]} tooltip={col[:label]} position="top">
                   <.sort_button
                     :if={col[:sort_key]}
                     col={col}
@@ -87,7 +89,8 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
                 class={[
                   "text-theme-on-surface-muted",
                   if(@compact, do: "px-2 py-2.5", else: "px-4 py-5"),
-                  col[:class]
+                  col[:class],
+                  col[:column_class]
                 ]}
               >
                 {render_slot(col, @row_item.(row))}
@@ -113,7 +116,7 @@ defmodule PinchflatWeb.CustomComponents.TableComponents do
       class={[
         "theme-filter-button -mx-3 -my-1 flex-col gap-0 rounded-m3-xs py-0.5 align-middle",
         "after:absolute after:inset-0",
-        if(@sorted, do: "text-theme-primary", else: "hover:text-theme-primary")
+        "hover:text-theme-primary"
       ]}
       phx-click="sort_update"
       phx-value-sort_key={@col[:sort_key]}

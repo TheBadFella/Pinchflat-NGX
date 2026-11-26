@@ -118,6 +118,7 @@ defmodule PinchflatWeb.ApiSpec do
               :update_title_filter,
               :delete_title_filter,
               :restore_automatic_downloads,
+              :set_automatic_downloads,
               :start_all,
               :pause_all,
               :pause_selected,

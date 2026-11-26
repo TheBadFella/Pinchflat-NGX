@@ -53,26 +53,33 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
       assert html =~ "No individual videos yet"
       assert has_element?(view, "a[href='/browse']", "Browse YouTube")
+      refute has_element?(view, "#source-table")
+    end
+
+    test "leaves out the table header when a tab has no sources", %{conn: conn} do
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      assert has_element?(view, "h3", "No channels or playlists yet")
+      refute has_element?(view, "#source-table")
+      refute has_element?(view, "th")
     end
   end
 
   describe "initial rendering" do
-    test "shows effective retention and its origin in table and grid views", %{conn: conn} do
-      profile = media_profile_fixture(%{retention_period_days: 30})
-      source_fixture(custom_name: "Inheriting source", media_profile_id: profile.id)
-      source_fixture(custom_name: "Disabled retention", media_profile_id: profile.id, retention_period_days: 0)
-      source_fixture(custom_name: "Explicit retention", media_profile_id: profile.id, retention_period_days: 1)
+    test "shows each source's download cutoff in table and grid views", %{conn: conn} do
+      source_fixture(custom_name: "No cutoff")
+      source_fixture(custom_name: "Fixed cutoff", download_cutoff_date: ~D[2026-01-31])
+      source_fixture(custom_name: "Rolling cutoff", download_cutoff_days: 30)
 
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert html =~ "30 days (profile default)"
-      assert html =~ "No age-based cleanup (source override)"
-      assert html =~ "1 day (source override)"
+      assert html =~ "No download cutoff"
+      assert html =~ "Download cutoff: 2026-01-31"
+      assert html =~ "Download cutoff: last 30 days"
 
       grid = render_click(view, "view_change", %{"view" => "grid"})
-      assert grid =~ "30 days (profile default)"
-      assert grid =~ "No age-based cleanup (source override)"
-      assert grid =~ "1 day (source override)"
+      assert grid =~ "No download cutoff"
+      assert grid =~ "Download cutoff: 2026-01-31"
+      assert grid =~ "Download cutoff: last 30 days"
     end
 
     test "lists all sources", %{conn: conn} do
@@ -157,7 +164,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert grid_html =~ ~s(data-artwork-fallback)
       assert grid_html =~ ~s(href="/sources/#{source.id}")
       assert grid_html =~ ~s(href="/sources/#{source.id}/edit")
-      assert grid_html =~ ~s(aria-label="Monitor Grid candidate")
+      assert grid_html =~ ~s(id="source-status-grid-#{source.id}" role="switch")
     end
 
     test "renders the same exact source ID set in table and poster-grid views", %{conn: conn} do
@@ -242,20 +249,20 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert %{state: :unknown, percent: nil} =
                IndexTableLive.source_progress(%{media_count: nil, downloaded_count: 0, pending_count: 0})
 
-      assert %{state: :known, percent: 50, label: "1 of 2 items downloaded"} =
+      assert %{state: :known, percent: 50, label: "1 of 2 downloaded"} =
                IndexTableLive.source_progress(%{media_count: 2, downloaded_count: 1, pending_count: 1})
     end
 
-    test "measures against the items to download, leaving skipped ones out" do
-      assert %{state: :known, percent: 100, label: "5 of 5 items downloaded"} =
+    test "measures against the items to download and names the skipped ones" do
+      assert %{state: :known, percent: 100, label: "5 of 5 downloaded · 5 skipped"} =
                IndexTableLive.source_progress(%{media_count: 10, downloaded_count: 5, pending_count: 0})
 
-      assert %{state: :known, percent: 80, label: "12 of 15 items downloaded"} =
+      assert %{state: :known, percent: 80, label: "12 of 15 downloaded · 40 skipped"} =
                IndexTableLive.source_progress(%{media_count: 55, downloaded_count: 12, pending_count: 3})
     end
 
     test "says when every indexed item is skipped instead of claiming nothing is indexed" do
-      assert %{state: :all_skipped, percent: nil, label: "Nothing to download"} =
+      assert %{state: :all_skipped, percent: nil, label: "Nothing to download · 3 skipped"} =
                IndexTableLive.source_progress(%{media_count: 3, downloaded_count: 0, pending_count: 0})
     end
 
@@ -270,12 +277,12 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
 
       card = render_element(view, "#source-card-#{source.id}")
-      assert card =~ "1 of 1 items downloaded"
+      assert card =~ "1 of 1 downloaded · 1 skipped"
       assert card =~ ~s(aria-valuenow="100")
 
       skipped_card = render_element(view, "#source-card-#{skipped_only.id}")
       assert skipped_card =~ ~s(data-progress-state="all_skipped")
-      assert skipped_card =~ "Nothing to download"
+      assert skipped_card =~ "Nothing to download · 1 skipped"
       refute skipped_card =~ ~s(role="progressbar")
     end
   end
@@ -428,45 +435,47 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     end
   end
 
-  describe "when testing the enable toggle" do
-    test "updates the source's enabled status", %{conn: conn} do
+  describe "the status switch" do
+    test "disables and enables a source from the table", %{conn: conn} do
       source = source_fixture(enabled: true)
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      view
-      |> element("#source_enable_toggle_source_#{source.id}_enabled_form")
-      |> render_change(%{source: %{"enabled" => false}})
+      assert has_element?(view, ~s(button#source-status-table-#{source.id}[role="switch"][aria-checked="true"]))
 
+      click_element(view, "#source-status-table-#{source.id}")
       assert %{enabled: false} = Repo.get!(Source, source.id)
+
+      assert has_element?(
+               view,
+               ~s(#source-status-table-#{source.id}[aria-checked="false"][data-source-status="Disabled"])
+             )
+
+      click_element(view, "#source-status-table-#{source.id}")
+      assert %{enabled: true} = Repo.get!(Source, source.id)
     end
 
-    test "updates only the source whose poster-grid toggle changed", %{conn: conn} do
+    test "changes only the source whose poster-grid switch was clicked", %{conn: conn} do
       target = source_fixture(custom_name: "Target source", enabled: true)
       other = source_fixture(custom_name: "Other source", enabled: true)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
       click_element(view, ~s([data-view-toggle="grid"]))
-
-      view
-      |> element("#source_enable_toggle_source_#{target.id}_enabled_grid_form")
-      |> render_change(%{source: %{"enabled" => false}})
+      click_element(view, "#source-status-grid-#{target.id}")
 
       assert %{enabled: false} = Repo.get!(Source, target.id)
       assert %{enabled: true} = Repo.get!(Source, other.id)
     end
 
-    test "shows an error and restores the checked state when monitoring update fails", %{conn: conn} do
-      source = source_fixture(custom_name: "Toggle failure", enabled: true)
+    test "says what a click will do", %{conn: conn} do
+      enabled = source_fixture(custom_name: "On source", enabled: true)
+      disabled = source_fixture(custom_name: "Off source", enabled: false)
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      click_element(view, ~s([data-view-toggle="grid"]))
 
-      view
-      |> element("#source_enable_toggle_source_#{source.id}_enabled_grid_form")
-      |> render_change(%{source: %{"enabled" => "not-a-boolean"}})
-
-      assert render(view) =~ "Could not update monitoring state."
-      assert %{enabled: true} = Repo.get!(Source, source.id)
+      assert has_element?(view, ~s(#source-status-table-#{enabled.id}[aria-label$="Disable On source"]))
+      assert has_element?(view, ~s(#source-status-table-#{disabled.id}[aria-label$="Enable Off source"]))
+      assert has_element?(view, "#source-table [role=tooltip]", "Disabled")
+      refute render(view) =~ "Click to"
     end
   end
 
@@ -476,34 +485,50 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      icon = render_element(view, "#source-status-table-#{source.id}")
-      refute icon =~ "title="
-      assert has_element?(view, "#source-table td", "Enabled, Download Media off")
-      assert icon =~ "Enabled, Download Media off"
-      refute has_element?(view, "button#source-status-table-#{source.id}")
-      assert has_element?(view, "th button", "Enabled?")
+      switch = render_element(view, "#source-status-table-#{source.id}")
+      refute switch =~ "title="
+      assert has_element?(view, "#source-table td [role=tooltip]", "Indexing Enabled, No Automatic Downloads")
+      assert switch =~ "Indexing Enabled, No Automatic Downloads"
+      assert has_element?(view, ~s(th button[data-label="Status"]))
+      refute has_element?(view, "th button", "Enabled?")
     end
 
     test "has four states: disabled, downloading, and a bolt for Download Media on or off" do
       for download_media <- [true, false], downloading <- [true, false] do
-        assert %{label: "Disabled", icon: "hero-pause", class: "theme-badge-neutral"} =
+        assert %{label: "Disabled", icon: "hero-pause", switch_class: "theme-status-switch-neutral"} =
                  IndexTableLive.source_status(%{enabled: false, download_media: download_media}, downloading)
       end
 
       for download_media <- [true, false] do
-        assert %{label: "Downloading", icon: "hero-clock", class: "theme-badge-warning"} =
+        assert %{
+                 label: "Downloading",
+                 icon: "hero-clock",
+                 switch_class: "theme-status-switch-warning theme-status-switch-busy"
+               } =
                  IndexTableLive.source_status(%{enabled: true, download_media: download_media}, true)
       end
 
-      assert %{label: "Enabled, Download Media off", icon: "hero-bolt", class: "theme-badge-info"} =
+      assert %{
+               label: "Indexing Enabled, No Automatic Downloads",
+               icon: "hero-bolt",
+               switch_class: "theme-status-switch-info"
+             } =
                IndexTableLive.source_status(%{enabled: true, download_media: false}, false)
 
-      assert %{label: "Enabled", icon: "hero-bolt", class: "theme-badge-success"} =
+      assert %{
+               label: "Indexing Enabled, Automatically Downloads",
+               icon: "hero-bolt",
+               switch_class: "theme-status-switch-success"
+             } =
                IndexTableLive.source_status(%{enabled: true, download_media: true}, false)
     end
 
     test "shows the downloading state while download jobs are running or queued", %{conn: conn} do
-      for {state, expected} <- [{"executing", "Downloading"}, {"available", "Downloading"}, {"completed", "Enabled"}] do
+      for {state, expected} <- [
+            {"executing", "Downloading"},
+            {"available", "Downloading"},
+            {"completed", "Indexing Enabled, Automatically Downloads"}
+          ] do
         source = source_fixture()
         media_item = media_item_fixture(source_id: source.id, media_filepath: nil)
 
@@ -524,32 +549,274 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "retention column" do
-    test "shows the effective retention with its origin for assistive tech and on hover", %{conn: conn} do
+    test "shows only the download cutoff on the chip and in its hover text", %{conn: conn} do
       profile = media_profile_fixture(%{retention_period_days: 30})
-      inherited = source_fixture(custom_name: "Inherited", media_profile_id: profile.id)
-      override = source_fixture(custom_name: "Override", media_profile_id: profile.id, retention_period_days: 1)
-      off = source_fixture(custom_name: "Off", media_profile_id: profile.id, retention_period_days: 0)
+      none = source_fixture(custom_name: "None", media_profile_id: profile.id)
+      fixed = source_fixture(custom_name: "Fixed", media_profile_id: profile.id, download_cutoff_date: ~D[2026-01-31])
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      assert has_element?(view, ~s(th span[data-label="Retention"] [data-icon="hero-archive-box-x-mark"]))
-      assert row_retention(view, inherited) =~ "30 days"
-      assert row_retention(view, inherited) =~ "30 days (profile default)"
-      assert row_retention(view, override) =~ "1 day (source override)"
-      assert row_retention(view, off) =~ "Off"
-      assert row_retention(view, off) =~ "No age-based cleanup (source override)"
+      assert has_element?(
+               view,
+               ~s(th button[data-label="Download Retention Cutoff"] [data-icon="hero-archive-box-x-mark"])
+             )
+
+      assert row_retention(view, none) =~ "Off"
+      assert row_retention(view, none) =~ "No download cutoff"
+      assert row_retention(view, fixed) =~ "26-01-31"
+      assert row_retention(view, fixed) =~ "Download cutoff: 2026-01-31"
+      refute render_element(view, "#source-table") =~ "profile default"
     end
 
-    test "uses a short label" do
-      assert IndexTableLive.retention_short_label(%{
-               retention_period_days: nil,
-               media_profile: %{retention_period_days: 7}
-             }) ==
-               "7 days"
+    test "sets a fixed or rolling download cutoff, or removes it, from the list", %{conn: conn} do
+      source = source_fixture(custom_name: "Cutoff source")
+      form = retention_form(source)
 
-      assert IndexTableLive.retention_short_label(%{retention_period_days: 1, media_profile: nil}) == "1 day"
-      assert IndexTableLive.retention_short_label(%{retention_period_days: 0, media_profile: nil}) == "Off"
-      assert IndexTableLive.retention_short_label(%{retention_period_days: nil, media_profile: nil}) == "Off"
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      for days <- [7, 14, 30, 60, 90, 180, 365] do
+        assert has_element?(
+                 view,
+                 ~s|#{form} select[aria-label="Rolling window presets"] option[value="#{days}"]|,
+                 "#{days} days"
+               )
+      end
+
+      refute has_element?(view, ~s|#{form} input[name="retention_period_days"]|)
+
+      assert render_element(view, "#source-table") =~ "No download cutoff"
+
+      view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "14"}) |> render_submit()
+      assert %{download_cutoff_days: 14, download_cutoff_date: nil} = Repo.reload!(source)
+      assert render_element(view, "#source-table") =~ "Download cutoff: last 14 days"
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-31"}) |> render_submit()
+      assert %{download_cutoff_days: nil, download_cutoff_date: ~D[2020-01-31]} = Repo.reload!(source)
+
+      view |> form(form, %{cutoff_mode: "none"}) |> render_submit()
+      assert %{download_cutoff_days: nil, download_cutoff_date: nil} = Repo.reload!(source)
+
+      view |> form(form, %{cutoff_mode: "days", download_cutoff_days: ""}) |> render_submit()
+      assert render(view) =~ "Enter how many days the rolling window covers."
+      assert %{download_cutoff_days: nil} = Repo.reload!(source)
+    end
+
+    test "keeps the cutoff fields from being reset by list refreshes", %{conn: conn} do
+      source = source_fixture(custom_name: "Refreshing source", download_cutoff_days: 14)
+      form = retention_form(source)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      fields = ~s(#{form} [phx-update="ignore"][id$="-fields"][data-source-id="#{source.id}"])
+      assert has_element?(view, fields)
+      html = render_element(view, fields)
+      assert length(Regex.scan(~r/<fieldset[^>]*x-bind:disabled=/, html)) == 2
+      assert has_element?(view, ~s(#{fields} fieldset input[name=download_cutoff_days]))
+
+      send(view.pid, :throttled_refresh)
+      assert has_element?(view, fields)
+
+      view |> form(form, %{cutoff_mode: "days", download_cutoff_days: "30"}) |> render_submit()
+      assert_push_event(view, "source-cutoff-saved", %{id: pushed_id})
+      assert pushed_id == source.id
+      assert has_element?(view, fields)
+      assert Repo.reload!(source).download_cutoff_days == 30
+    end
+
+    test "asks for a second Apply before a cutoff makes downloaded items deletable", %{conn: conn} do
+      source = source_fixture(custom_name: "Old downloads")
+      media_item_fixture(source_id: source.id, uploaded_at: ~U[2019-06-01 00:00:00Z])
+      form = retention_form(source)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-01"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == nil
+      assert render(view) =~ "1 downloaded item was published before 2020-01-01"
+      assert has_element?(view, "#{form} button[type=submit]", "Apply and Delete 1")
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2020-01-01"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == ~D[2020-01-01]
+      refute render(view) =~ "Apply and Delete"
+    end
+
+    test "asks again with the new count when more downloads become deletable before the second Apply",
+         %{conn: conn} do
+      source = source_fixture(custom_name: "Growing downloads")
+      media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-09-01 00:00:00Z])
+      form = retention_form(source)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2026-10-15"}) |> render_submit()
+      assert has_element?(view, "#{form} button[type=submit]", "Apply and Delete 1")
+
+      media_item_fixture(source_id: source.id, uploaded_at: ~U[2026-09-02 00:00:00Z])
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2026-10-15"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == nil
+      assert has_element?(view, "#{form} button[type=submit]", "Apply and Delete 2")
+
+      view |> form(form, %{cutoff_mode: "date", download_cutoff_date: "2026-10-15"}) |> render_submit()
+      assert Repo.reload!(source).download_cutoff_date == ~D[2026-10-15]
+    end
+
+    test "shows the download cutoff on the chip" do
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: ~D[2026-01-31], download_cutoff_days: nil}) ==
+               "26-01-31"
+
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: nil, download_cutoff_days: 30}) == "30 Days"
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: nil, download_cutoff_days: 1}) == "1 Day"
+      assert IndexTableLive.cutoff_short_label(%{download_cutoff_date: nil, download_cutoff_days: nil}) == "Off"
+    end
+  end
+
+  describe "indexing column" do
+    test "shows how often each source is indexed in the table and the poster grid", %{conn: conn} do
+      daily = source_fixture(custom_name: "Daily", index_frequency_minutes: 24 * 60)
+      fast = source_fixture(custom_name: "Fast", fast_index: true)
+      once = source_fixture(custom_name: "Once", index_frequency_minutes: -1)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      assert has_element?(view, ~s(th button[data-label="Index Frequency"] [data-icon="hero-clock"]))
+      assert render_element(view, "#source-indexing-#{daily.id}") =~ "Daily"
+      assert render_element(view, "#source-indexing-mobile-#{daily.id}") =~ "Daily"
+      assert has_element?(view, "#source-retention-mobile-#{daily.id}")
+      refute has_element?(view, "article p", "Retention:")
+      assert render_element(view, "#source-indexing-#{daily.id}") =~ "Indexed every day"
+      assert render_element(view, "#source-indexing-#{fast.id}") =~ "10 Min"
+      assert render_element(view, "#source-indexing-#{once.id}") =~ "Indexed only once"
+
+      session = Map.put(create_session(), "initial_view_mode", "grid")
+      {:ok, grid, _html} = live_isolated(conn, IndexTableLive, session: session)
+      assert render_element(grid, "#source-indexing-grid-#{daily.id}") =~ "Daily"
+    end
+
+    test "changes a source's index frequency from the list", %{conn: conn} do
+      source = source_fixture(custom_name: "Editable", index_frequency_minutes: 24 * 60)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      option = ~s(#source-table button[phx-click="set_source_index_frequency"][phx-value-id="#{source.id}"])
+
+      for {label, _minutes} <- PinchflatWeb.Sources.SourceHTML.friendly_index_frequencies() do
+        assert has_element?(view, option, label)
+      end
+
+      assert has_element?(view, ~s(#{option}[aria-current="true"]), "Daily (recommended)")
+
+      view |> element(~s(#{option}[phx-value-minutes="360"])) |> render_click()
+
+      assert Repo.reload!(source).index_frequency_minutes == 360
+      assert render_element(view, "#source-indexing-#{source.id}") =~ "6 Hours"
+    end
+
+    test "leaves the index frequency read-only with fast indexing or for a single video", %{conn: conn} do
+      fast = source_fixture(custom_name: "Fast", fast_index: true)
+      video = source_fixture(custom_name: "Video", collection_type: :video, index_frequency_minutes: 0)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      refute has_element?(view, ~s(button[phx-click="set_source_index_frequency"][phx-value-id="#{fast.id}"]))
+
+      render_hook(view, "set_source_index_frequency", %{"id" => to_string(fast.id), "minutes" => "360"})
+      assert Repo.reload!(fast).index_frequency_minutes == fast.index_frequency_minutes
+
+      session = Map.put(create_session(), "source_type", "videos")
+      {:ok, videos, _html} = live_isolated(conn, IndexTableLive, session: session)
+      refute has_element?(videos, ~s(button[phx-click="set_source_index_frequency"]))
+      render_hook(videos, "set_source_index_frequency", %{"id" => to_string(video.id), "minutes" => "60"})
+      assert Repo.reload!(video).index_frequency_minutes == 0
+    end
+
+    test "leaves index frequency and the download cutoff off the Individual Videos tab", %{conn: conn} do
+      video = source_fixture(custom_name: "A video", collection_type: :video, index_frequency_minutes: 0)
+      session = Map.put(create_session(), "source_type", "videos")
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
+      render_click(view, "toggle_select_all")
+
+      refute has_element?(view, ~s(th button[data-label="Index Frequency"]))
+      refute has_element?(view, ~s(th button[data-label="Download Retention Cutoff"]))
+      refute has_element?(view, "#source-indexing-#{video.id}")
+      refute has_element?(view, "#source-retention-mobile-#{video.id}")
+      refute has_element?(view, "#selected-source-frequency")
+      refute has_element?(view, "#selected-source-cutoff-menu")
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+      refute has_element?(view, "#source-indexing-grid-#{video.id}")
+      refute has_element?(view, "#source-retention-grid-#{video.id}")
+      refute render_element(view, "#source-card-#{video.id}") =~ "Downloaded"
+      assert has_element?(view, ~s(#source-card-#{video.id} button[aria-label$="change the media profile for A video"]))
+    end
+
+    test "uses a short label with the full wording for the tooltip" do
+      assert {"Daily", "Indexed every day"} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 1440})
+
+      assert {"30 Min", "Indexed every 30 minutes"} =
+               IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 30})
+
+      assert {"Hourly", "Indexed every hour"} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 60})
+      assert {"6 Hours", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 360})
+      assert {"Monthly", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: 43_200})
+      assert {"10 Min", _} = IndexTableLive.index_frequency_labels(%{fast_index: true, index_frequency_minutes: 43_200})
+      assert {"Once", _} = IndexTableLive.index_frequency_labels(%{fast_index: false, index_frequency_minutes: 0})
+      assert {"Once", _} = IndexTableLive.index_frequency_labels(%{index_frequency_minutes: -1})
+    end
+  end
+
+  describe "sorting by status" do
+    test "orders automatic downloads, then no automatic downloads, then disabled, ignoring downloads", %{conn: conn} do
+      disabled = source_fixture(custom_name: "A disabled", enabled: false)
+      no_downloads = source_fixture(custom_name: "B no downloads", download_media: false)
+      downloading = source_fixture(custom_name: "C downloading")
+      automatic = source_fixture(custom_name: "D automatic")
+
+      media_item = media_item_fixture(source_id: downloading.id, media_filepath: nil)
+      {:ok, job} = %{id: media_item.id} |> Pinchflat.Downloading.MediaDownloadWorker.new() |> Oban.insert()
+      {:ok, _task} = Pinchflat.Tasks.create_task(job, media_item)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "sort_update", %{"sort_key" => "status"})
+
+      assert ordered_source_ids(render_element(view, "#source-table")) ==
+               [downloading.id, automatic.id, no_downloads.id, disabled.id]
+
+      render_click(view, "sort_update", %{"sort_key" => "status"})
+
+      assert ordered_source_ids(render_element(view, "#source-table")) ==
+               [disabled.id, no_downloads.id, downloading.id, automatic.id]
+    end
+  end
+
+  describe "sorting by index frequency and download cutoff" do
+    test "orders sources by how often they are indexed, with fast indexing first and once-only last",
+         %{conn: conn} do
+      weekly = source_fixture(custom_name: "A weekly", index_frequency_minutes: 7 * 24 * 60)
+      once = source_fixture(custom_name: "B once", index_frequency_minutes: -1)
+      fast = source_fixture(custom_name: "C fast", fast_index: true, index_frequency_minutes: 30 * 24 * 60)
+      hourly = source_fixture(custom_name: "D hourly", index_frequency_minutes: 60)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "sort_update", %{"sort_key" => "index_frequency"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [fast.id, hourly.id, weekly.id, once.id]
+
+      render_click(view, "sort_update", %{"sort_key" => "index_frequency"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [once.id, weekly.id, hourly.id, fast.id]
+    end
+
+    test "orders sources by their download cutoff, shortest window first and no cutoff last", %{conn: conn} do
+      none = source_fixture(custom_name: "A none")
+      month = source_fixture(custom_name: "B month", download_cutoff_days: 30)
+      fixed = source_fixture(custom_name: "C fixed", download_cutoff_date: Date.add(Date.utc_today(), -7))
+      year = source_fixture(custom_name: "D year", download_cutoff_days: 365)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+
+      render_click(view, "sort_update", %{"sort_key" => "download_cutoff"})
+      assert ordered_source_ids(render_element(view, "#source-table")) == [fixed.id, month.id, year.id, none.id]
     end
   end
 
@@ -671,12 +938,10 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       arrow = if direction == "asc", do: "up", else: "down"
 
-      assert has_element?(
-               view,
-               ~s(th[class*="bg-theme-primary/10"] button[data-label="Pending"][data-sorted="#{direction}"])
-             )
-
-      assert has_element?(view, ~s(th button[data-label="Pending"].text-theme-primary [data-sort-arrow="#{arrow}"] svg))
+      assert has_element?(view, ~s(th button[data-label="Pending"][data-sorted="#{direction}"]))
+      refute has_element?(view, ~s(th[class*="bg-theme-primary"]))
+      refute has_element?(view, ~s(th button[data-label="Pending"].text-theme-primary))
+      assert has_element?(view, ~s(th button[data-label="Pending"] [data-sort-arrow="#{arrow}"] svg))
       arrows = view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(~s(th button[data-label="Pending"] svg))
       assert Enum.count(arrows) == 1
       refute has_element?(view, ~s(th button[data-label="Downloaded"][data-sorted]))
@@ -730,49 +995,60 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "selecting sources" do
-    test "the select-all checkbox selects and clears every source", %{conn: conn} do
+    test "the selection button selects every source, then clears the selection", %{conn: conn} do
       first = source_fixture(custom_name: "First")
       second = source_fixture(custom_name: "Second")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      click_element(view, "#source-select-all-mobile")
-      assert has_element?(view, "#source-select-all-mobile[checked]")
-      assert has_element?(view, "#selected-source-actions", "2 selected")
+      assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="false"]), "Selected: 0")
+      click_element(view, "#source-selection-toggle")
+      assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="true"]), "Selected: All")
       assert has_element?(view, "#selected-source-cutoff input[value='#{first.id}']")
       assert has_element?(view, "#selected-source-cutoff input[value='#{second.id}']")
       refute has_element?(view, "#source-select-all")
 
-      click_element(view, "#source-select-all-mobile")
-      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]), "None selected")
+      click_element(view, "#source-selection-toggle")
+      assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
+      assert has_element?(view, "#source-selection-toggle", "Selected: 0")
 
-      for action <- ["#pause-selected-sources button", "#resume-selected-sources button", "button[phx-click]"] do
+      for action <- ["#pause-selected-sources button", "#resume-selected-sources button"] do
         assert has_element?(view, "#selected-source-actions #{action}[disabled]")
       end
 
-      refute has_element?(view, "button[aria-label='Clear selection']")
+      assert has_element?(view, "#selected-source-actions > button[phx-click][disabled]", "Delete")
 
       assert has_element?(view, "#selected-source-profile button[x-ref=trigger][disabled]")
-      assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"][disabled]))
+      assert has_element?(view, "#selected-source-cutoff-menu button[disabled]")
+      assert has_element?(view, "#selected-source-frequency button[disabled]")
     end
 
-    test "the table header checkbox selects every source, and the status column is not sortable", %{conn: conn} do
+    test "either view button switches to the other view", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, ~s([data-view-toggle="table"]))
+      assert has_element?(view, "#source-poster-grid")
+
+      click_element(view, ~s([data-view-toggle="grid"]))
+      assert has_element?(view, "#source-table")
+    end
+
+    test "the table header checkbox selects every source, and the status column sorts by enabled", %{conn: conn} do
       first = source_fixture(custom_name: "First")
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
 
       assert has_element?(view, "#source-table th #source-select-all-table")
-      assert has_element?(view, ~s(#source-table th span[data-label="Status"]))
-      refute has_element?(view, ~s(#source-table th button[data-label="Status"]))
+      assert has_element?(view, ~s(#source-table th button[data-label="Status"][phx-value-sort_key="status"]))
 
       click_element(view, "#source-select-all-table")
       assert has_element?(view, "#source-select-all-table[checked]")
       assert has_element?(view, "#selected-source-cutoff input[value='#{first.id}']")
 
       click_element(view, ~s([data-view-toggle="grid"]))
-      assert has_element?(view, ~s(#source-select-all-grid[aria-pressed="true"]), "Clear All")
+      assert has_element?(view, ~s(#source-selection-toggle[aria-pressed="true"]), "Selected: All")
       refute has_element?(view, "#source-select-all-table")
-      refute has_element?(view, "#source-select-all-mobile")
     end
 
     test "poster cards open the source and their corner tick selects them", %{conn: conn} do
@@ -784,7 +1060,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       refute has_element?(view, "#source-poster-grid input[name=source_selection]")
       refute render_element(view, "#source-poster-grid") =~ "Not monitored"
-      assert has_element?(view, "#source-select-all-grid", "Select All")
+      assert has_element?(view, "#source-selection-toggle", "Selected: 0")
 
       assert has_element?(
                view,
@@ -805,13 +1081,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#source-card-#{first.id}[data-selected="true"].ring-2))
       assert has_element?(view, ~s(#source-select-grid-#{first.id}[aria-pressed="true"]))
       assert has_element?(view, ~s(#source-card-#{second.id}[data-selected="false"]))
-      assert has_element?(view, "#selected-source-actions", "1 selected")
+      assert has_element?(view, "#source-selection-toggle", "Selected: 1")
 
-      click_element(view, "#source-select-grid-#{first.id}")
+      click_element(view, "#source-selection-toggle")
       assert has_element?(view, ~s(#source-card-#{first.id}[data-selected="false"]))
+      assert has_element?(view, "#source-selection-toggle", "Selected: 0")
 
-      click_element(view, "#source-select-all-grid")
-      assert has_element?(view, "#selected-source-actions", "2 selected")
+      click_element(view, "#source-selection-toggle")
+      assert has_element?(view, "#source-selection-toggle", "Selected: All")
     end
 
     test "selects every source in the tab and keeps it across pages", %{conn: conn} do
@@ -823,9 +1100,9 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
 
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
       assert has_element?(view, "#source-select-all", "All 3 channels & playlists are selected.")
-      assert has_element?(view, "#source-select-all-mobile[checked]")
+      assert has_element?(view, "#source-selection-toggle", "Selected: All")
 
       for source <- [first, second, third] do
         assert has_element?(view, "#selected-source-cutoff input[value='#{source.id}']")
@@ -834,7 +1111,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "#selected-source-cutoff input[value='#{video.id}']")
 
       click_element(view, "button.pagination-next")
-      assert has_element?(view, "#selected-source-actions", "3 selected")
+      assert has_element?(view, "#source-selection-toggle", "Selected: All")
       assert has_element?(view, "#source-select-table-#{third.id}[checked]")
 
       click_element(view, "#source-select-table-#{third.id}")
@@ -853,7 +1130,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: session)
       search(view, "zebra")
 
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
 
       assert has_element?(view, "#selected-source-cutoff input[value='#{zebra_a.id}']")
       assert has_element?(view, "#selected-source-cutoff input[value='#{zebra_b.id}']")
@@ -863,22 +1140,110 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       assert has_element?(view, ~s(#selected-source-actions[data-selected-count="0"]))
     end
 
-    test "keeps the actions on the search row and the cutoff form behind its button", %{conn: conn} do
+    test "keeps the actions on the search row and the cutoff form in its menu", %{conn: conn} do
       source_fixture()
 
       {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
-      click_element(view, "#source-select-all-mobile")
+      click_element(view, "#source-selection-toggle")
 
-      assert has_element?(view, "#source-toolbar #source-search-form")
+      assert has_element?(view, "#source-toolbar #source-search-form.max-sm\\:basis-full")
       assert has_element?(view, "#source-toolbar #selected-source-actions")
 
-      assert has_element?(view, ~s(#selected-source-actions button[aria-controls="selected-source-cutoff"]))
-      # The panel is always rendered (hidden) and the button toggles it on the client.
-      assert has_element?(view, "form#selected-source-cutoff.hidden")
-      toggle = view |> element("#selected-source-cutoff-toggle") |> render()
-      assert toggle =~ "#selected-source-cutoff"
-      assert toggle =~ ~s(aria-expanded="false")
-      refute render(view) =~ "cutoffOpen"
+      assert has_element?(view, "#selected-source-cutoff-menu form#selected-source-cutoff")
+      assert has_element?(view, "#selected-source-cutoff select[name=cutoff_mode] option[value=days]")
+      assert has_element?(view, "#selected-source-cutoff input[name=cutoff_days]")
+      assert has_element?(view, ~s(#selected-source-cutoff select[aria-label="Rolling window presets"]))
+    end
+
+    test "shows only icons for the bulk buttons on phones until they ask for confirmation", %{conn: conn} do
+      source_fixture()
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      click_element(view, "#source-selection-toggle")
+
+      assert has_element?(view, "#selected-source-downloads span.max-sm\\:sr-only", "Downloads")
+
+      for id <- ["resume-selected-sources", "pause-selected-sources", "stop-selected-sources"] do
+        assert has_element?(view, "##{id} button span.sr-only")
+      end
+
+      assert has_element?(view, "#selected-source-actions button span.max-sm\\:sr-only", "Delete")
+      assert has_element?(view, "#selected-source-frequency button span.max-sm\\:sr-only", "Index Frequency")
+      assert has_element?(view, "#selected-source-cutoff-menu button span.max-sm\\:sr-only", "Download Cutoff")
+      assert has_element?(view, "#selected-source-profile button span.\\@5xl\\:hidden", "Profile")
+      assert has_element?(view, "#selected-source-profile button span.\\@max-5xl\\:hidden", "Media Profile")
+
+      view |> element("#pause-selected-sources button") |> render_click()
+
+      assert has_element?(
+               view,
+               "#selected-source-downloads.theme-confirm-pending #pause-selected-sources button",
+               "Pause 1?"
+             )
+
+      refute has_element?(view, "#resume-selected-sources")
+    end
+
+    test "turns automatic downloads off and on from the bulk More actions menu", %{conn: conn} do
+      source = source_fixture(custom_name: "Bulk downloads", download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      off = ~s(#selected-source-jobs button[phx-value-action="pause"])
+      on = ~s(#selected-source-jobs button[phx-value-action="resume"])
+      assert has_element?(view, off, "Disable Automatic Downloads")
+      assert has_element?(view, on, "Enable Automatic Downloads")
+
+      view |> element(off) |> render_click()
+      assert has_element?(view, ~s(#{off}[data-armed="true"]), "Disable Automatic Downloads for 1?")
+      assert Repo.reload!(source).download_media
+
+      ripen_armed(view)
+      view |> element(off) |> render_click()
+      refute Repo.reload!(source).download_media
+
+      view |> element(on) |> render_click()
+      ripen_armed(view)
+      view |> element(on) |> render_click()
+      assert Repo.reload!(source).download_media
+    end
+
+    test "stops the selected sources from the Downloads chip on a second click", %{conn: conn} do
+      source = source_fixture(custom_name: "Stoppable", enabled: true, download_media: true)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      view |> element("#stop-selected-sources button") |> render_click()
+      assert has_element?(view, "#stop-selected-sources button", "Stop 1?")
+      assert Repo.reload!(source).enabled
+
+      ripen_armed(view)
+      view |> element("#stop-selected-sources button") |> render_click()
+
+      assert %{enabled: false, download_media: false} = Repo.reload!(source)
+      assert has_element?(view, "#selected-source-downloads.theme-success-button", "Stopped")
+    end
+
+    test "sets the index frequency of the selected sources on a second click", %{conn: conn} do
+      daily = source_fixture(custom_name: "Daily", index_frequency_minutes: 24 * 60)
+      fast = source_fixture(custom_name: "Fast", fast_index: true, index_frequency_minutes: 30 * 24 * 60)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      render_click(view, "toggle_select_all")
+
+      option = ~s(#selected-source-frequency button[phx-value-minutes="360"])
+      view |> element(option) |> render_click()
+      assert has_element?(view, ~s(#{option}[data-armed="true"]), "Use 6 Hours for 2?")
+      assert Repo.reload!(daily).index_frequency_minutes == 24 * 60
+
+      ripen_armed(view)
+      view |> element(option) |> render_click()
+
+      assert Repo.reload!(daily).index_frequency_minutes == 360
+      assert Repo.reload!(fast).index_frequency_minutes == 30 * 24 * 60
+      assert render(view) =~ "Index frequency changed for 1 source. 1 with fast indexing or a single video"
     end
   end
 
@@ -891,18 +1256,35 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       render_click(view, "toggle_select_all")
 
       view |> element("#pause-selected-sources button") |> render_click()
-      assert has_element?(view, ~s(#pause-selected-sources button[data-armed="true"].theme-confirm-pending), "Pause 2?")
+
+      assert has_element?(
+               view,
+               ~s(#selected-source-downloads.theme-confirm-pending #pause-selected-sources button[data-armed="true"]),
+               "Pause 2?"
+             )
+
       assert Pinchflat.Repo.reload!(first).download_media
 
       ripen_armed(view)
       view |> element("#pause-selected-sources button") |> render_click()
       refute Pinchflat.Repo.reload!(first).download_media
       refute Pinchflat.Repo.reload!(second).download_media
-      assert has_element?(view, "#pause-selected-sources button.theme-success-button", "Paused")
+
+      assert has_element?(
+               view,
+               "#selected-source-downloads.theme-success-button #pause-selected-sources button",
+               "Paused"
+             )
+
       refute has_element?(view, "#source-notice-toasts [role=status]")
 
       send(view.pid, {:clear_done, :pause})
-      assert has_element?(view, "#pause-selected-sources button.theme-outline-button", "Pause")
+
+      assert has_element?(
+               view,
+               "#selected-source-downloads.theme-outline-button #pause-selected-sources button",
+               "Pause"
+             )
     end
 
     test "a double-click arms the action without running it", %{conn: conn} do
@@ -981,20 +1363,25 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       card = render_element(view, "#source-card-#{busy.id}")
 
       for label <-
-            ["Copy RSS Feed", "Use as Template", "Download Pending", "Redownload Existing", "Force Index"] ++
-              ["Refresh Metadata", "Sync Files on Disk", "Reconcile Files", "Start All", "Stop All"] do
+            ["Use as Template", "Download Pending", "Redownload Existing", "Force Index"] ++
+              ["Refresh Metadata", "Sync Files on Disk", "Reconcile Files", "Downloads"] do
         assert card =~ label
       end
 
-      assert card =~ ~s(action="/sources/#{busy.id}/force_index")
+      menu = ~s(#source-card-#{busy.id} button[phx-click="source_job"][phx-value-id="#{busy.id}"])
+      assert has_element?(view, ~s(#{menu}[phx-value-action="force_index"]))
+      assert has_element?(view, ~s(#{menu}[phx-value-action="download_pending"]))
       assert card =~ ~s(href="/reconciliation?source_id=#{busy.id}")
       assert card =~ ~s(href="/sources/new?template_id=#{busy.id}")
-      assert card =~ ~s(name="return_to" value="/sources")
+      refute card =~ ~s(action="/sources/#{busy.id}/force_index")
       refute card =~ "Copy JSON"
+      refute card =~ "Copy RSS Feed"
 
       empty_card = render_element(view, "#source-card-#{empty.id}")
+      refute empty_card =~ ~s(phx-value-action="download_pending")
+      refute empty_card =~ ~s(phx-value-action="redownload_existing")
       refute empty_card =~ "Download Pending"
-      refute empty_card =~ "Redownload Existing"
+      assert empty_card =~ ~r/Redownload Existing\s*<span[^>]*>Nothing downloaded/
       assert empty_card =~ "Force Index"
     end
 
@@ -1149,6 +1536,7 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
 
       assert has_element?(view, "#source-search-empty h3", "No channels & playlists match “nothing-matches”")
       refute has_element?(view, "h3", "No channels or playlists yet")
+      refute has_element?(view, "#source-table")
       assert has_element?(view, ~s(#source-search-input[value="nothing-matches"]))
       assert has_element?(view, ~s(button[aria-label="Clear search"]))
 
@@ -1321,6 +1709,8 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
     |> String.trim()
   end
 
+  defp retention_form(source), do: "#retention-form-#{source.id}-source-retention-#{source.id}"
+
   defp row_retention(view, source) do
     view
     |> element("#source-retention-#{source.id}")
@@ -1358,17 +1748,20 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
   end
 
   describe "source action controls" do
-    test "row menus keep start, pause, stop and delete destinations", %{conn: conn} do
+    test "row menus run their actions without leaving the list", %{conn: conn} do
       source = source_fixture(custom_name: "Action source")
 
       {:ok, view, html} = live_isolated(conn, IndexTableLive, session: create_session())
 
-      for action <- ["start_all", "pause_all", "stop_all"] do
-        assert html =~ ~s(action="/sources/#{source.id}/#{action}")
+      for action <- ["start", "pause", "stop"] do
+        assert has_element?(
+                 view,
+                 ~s(#source-table button[phx-click="source_switch"][phx-value-action="#{action}"][phx-value-id="#{source.id}"])
+               )
       end
 
+      refute html =~ ~s(action="/sources/#{source.id}/start_all")
       assert has_element?(view, ~s(button[aria-label="More actions for Action source"]))
-      assert html =~ ~s(name="return_to" value="/sources")
       refute html =~ "data-confirm"
 
       # Delete Source opens the shared delete dialog for just this source.
@@ -1377,9 +1770,42 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "#source-table .theme-dropdown-option button", "Delete Source")
       assert has_element?(view, "#delete-selected-sources input[name='source_ids[]'][value='#{source.id}']")
       assert has_element?(view, "#delete-selected-sources button[name=delete_files]", "Delete Source + Files")
-      assert html =~ "Start All"
-      assert html =~ "Pause All"
-      assert html =~ "Stop All"
+
+      for label <- ["Start All", "Pause All", "Stop All"] do
+        assert has_element?(view, ~s(#source-table button[aria-label="#{label}: Action source"]))
+      end
+    end
+
+    test "a row's actions report a notice and keep the list in place", %{conn: conn} do
+      source = source_fixture(custom_name: "Live actions", download_media: true)
+      media_item_fixture(source_id: source.id, media_filepath: nil)
+
+      {:ok, view, _html} = live_isolated(conn, IndexTableLive, session: create_session())
+      job = ~s(#source-table button[phx-click="source_job"][phx-value-id="#{source.id}"])
+
+      view |> element(~s(#{job}[phx-value-action="force_index"])) |> render_click()
+      assert render(view) =~ "Force Index for 1 source"
+
+      view
+      |> element(~s(#source-table button[phx-click="source_automatic_downloads"][phx-value-id="#{source.id}"]))
+      |> render_click()
+
+      refute Repo.reload!(source).download_media
+      assert render(view) =~ "Automatic downloads disabled for Live actions."
+
+      view
+      |> element(~s(#source-table button[phx-click="source_automatic_downloads"][phx-value-enabled="true"]))
+      |> render_click()
+
+      assert Repo.reload!(source).download_media
+
+      view
+      |> element(
+        ~s(#source-table button[phx-click="source_switch"][phx-value-action="start"][phx-value-id="#{source.id}"])
+      )
+      |> render_click()
+
+      assert render(view) =~ "Live actions: downloads started."
     end
 
     test "keeps the selection checkbox accessible without visible Select label text", %{conn: conn} do
@@ -1392,13 +1818,14 @@ defmodule PinchflatWeb.Sources.SourceLive.IndexTableLiveTest do
       refute has_element?(view, "label > span:not(.sr-only)", "Select")
     end
 
-    test "keeps the individual-video return path on the action forms", %{conn: conn} do
+    test "keeps the Individual Videos tab for row actions and deletes", %{conn: conn} do
       source = source_fixture(custom_name: "Video source", collection_type: :video)
       session = Map.merge(create_session(), %{"source_type" => "videos"})
 
-      {:ok, _view, html} = live_isolated(conn, IndexTableLive, session: session)
+      {:ok, view, html} = live_isolated(conn, IndexTableLive, session: session)
 
-      assert html =~ ~s(action="/sources/#{source.id}/start_all")
+      assert has_element?(view, ~s(button[phx-click="source_switch"][phx-value-id="#{source.id}"]))
+      refute html =~ ~s(action="/sources/#{source.id}/start_all")
       assert html =~ ~s(name="return_to" value="/sources?type=videos")
     end
   end

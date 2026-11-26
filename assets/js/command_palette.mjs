@@ -74,6 +74,17 @@ export const commandPalette = {
 
     document.addEventListener('keydown', this.onDocumentKeydown)
     document.addEventListener('click', this.onDocumentClick)
+    this.input().addEventListener('input', () => {
+      clearTimeout(this.searchTimer)
+      const query = this.input().value
+      if (!query.trim()) {
+        this.pushEvent('search', { query })
+      } else {
+        this.searchTimer = setTimeout(() => this.pushEvent('search', { query }), 200)
+      }
+    })
+    this.input().form.addEventListener('submit', (event) => event.preventDefault())
+
     this.el.addEventListener('keydown', this.onPaletteKeydown)
     this.el.addEventListener('click', this.onPaletteClick)
     this.el.addEventListener('mousemove', this.onPaletteMousemove)
@@ -86,6 +97,7 @@ export const commandPalette = {
   },
 
   destroyed() {
+    clearTimeout(this.searchTimer)
     document.removeEventListener('keydown', this.onDocumentKeydown)
     document.removeEventListener('click', this.onDocumentClick)
   },
@@ -134,6 +146,7 @@ export const commandPalette = {
     this.js().hide(this.scrim)
     this.dialog.style.display = 'none'
     this.scrim.style.display = 'none'
+    clearTimeout(this.searchTimer)
     this.input().value = ''
     this.pushEvent('reset', {})
 
@@ -157,6 +170,7 @@ export const commandPalette = {
   },
 
   setQuery(value) {
+    clearTimeout(this.searchTimer)
     const input = this.input()
     input.value = value
     this.pushEvent('search', { query: value })

@@ -226,11 +226,38 @@ defmodule Pinchflat.Media do
   def search(search_term, opts) do
     limit = Keyword.get(opts, :limit, 50)
 
-    MediaQuery.new()
-    |> MediaQuery.matching_search_term(search_term)
-    |> Repo.maybe_limit(limit)
-    |> Repo.all()
+    items =
+      MediaQuery.new()
+      |> MediaQuery.matching_search_term(search_term)
+      |> Repo.maybe_limit(limit)
+      |> Repo.all()
+
+    if Keyword.get(opts, :include_source_names, false) and is_integer(limit) and length(items) < limit do
+      items ++ search_by_source_name(search_term, limit - length(items), Enum.map(items, & &1.id))
+    else
+      items
+    end
     |> preload_api_assocs()
+  end
+
+  defp search_by_source_name(term, limit, excluded_ids) do
+    pattern = Pinchflat.Utils.StringUtils.contains_like_pattern(term)
+
+    if pattern do
+      MediaQuery.new()
+      |> join(:inner, [mi], source in assoc(mi, :source))
+      |> where([mi, source], mi.id not in ^excluded_ids)
+      |> where(
+        [mi, source],
+        fragment("lower(?) LIKE ? ESCAPE '\\'", source.custom_name, ^pattern) or
+          fragment("lower(?) LIKE ? ESCAPE '\\'", source.collection_name, ^pattern)
+      )
+      |> order_by([mi], desc: mi.uploaded_at, desc: mi.id)
+      |> Repo.maybe_limit(limit)
+      |> Repo.all()
+    else
+      []
+    end
   end
 
   @doc """

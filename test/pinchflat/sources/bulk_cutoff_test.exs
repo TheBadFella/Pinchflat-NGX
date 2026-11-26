@@ -7,6 +7,25 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
   alias Pinchflat.Repo
   alias Pinchflat.Sources.BulkCutoff
 
+  test "rejects a changed number of downloads at the point of saving" do
+    source = source_fixture()
+    ids = [to_string(source.id)]
+    cutoff = "2026-01-02"
+    assert {:ok, preview} = BulkCutoff.preview(ids, cutoff)
+
+    media_item_fixture(%{
+      source_id: source.id,
+      uploaded_at: ~U[2026-01-01 12:00:00Z],
+      media_filepath: "/media/recently-finished.mp4"
+    })
+
+    assert {:error, {:changed_impact, %{removable: 1} = current}} =
+             BulkCutoff.apply_preview(ids, cutoff, preview)
+
+    assert is_nil(Pinchflat.Sources.get_source!(source.id).download_cutoff_date)
+    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, cutoff, current)
+  end
+
   test "normal retention honors the confirmed date, protects pinned media and includes the cutoff day" do
     stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
     source = source_fixture()
@@ -18,7 +37,7 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
     boundary = media_item_with_attachments(%{source_id: source.id, uploaded_at: ~U[2026-01-02 00:00:00Z]})
     ids = ["#{source.id}"]
     {:ok, preview} = BulkCutoff.preview(ids, "2026-01-02")
-    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview.fingerprint)
+    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview)
 
     assert File.exists?(old.media_filepath)
     assert :ok = perform_job(Pinchflat.Downloading.MediaRetentionWorker, %{})
@@ -58,7 +77,7 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
     ids = ["#{source.id}"]
     {:ok, preview} = BulkCutoff.preview(ids, "2026-01-02")
 
-    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview.fingerprint)
+    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview)
     updated = Repo.reload!(source)
     assert updated.download_cutoff_date == ~D[2026-01-02]
     assert updated.enabled == source.enabled
@@ -74,7 +93,7 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
     ids = ["#{source.id}"]
     assert {:ok, preview} = BulkCutoff.preview(ids, "")
     assert preview.removable == 0
-    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "", preview.fingerprint)
+    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "", preview)
     assert is_nil(Repo.reload!(source).download_cutoff_date)
     refute Repo.reload!(source).download_media
   end
@@ -84,7 +103,7 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
     ids = ["#{source.id}"]
 
     assert {:ok, preview} = BulkCutoff.preview(ids, "2026-01-02")
-    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview.fingerprint)
+    assert {:ok, [_]} = BulkCutoff.apply_preview(ids, "2026-01-02", preview)
 
     updated = Repo.reload!(source)
     assert updated.download_cutoff_date == ~D[2026-01-02]
@@ -112,7 +131,7 @@ defmodule Pinchflat.Sources.BulkCutoffTest do
     {:ok, preview} = BulkCutoff.preview(ids, "2026-01-02")
     second |> Ecto.Changeset.change(download_cutoff_date: ~D[2025-01-01]) |> Repo.update!()
 
-    assert {:error, :stale_preview} = BulkCutoff.apply_preview(ids, "2026-01-02", preview.fingerprint)
+    assert {:error, :stale_preview} = BulkCutoff.apply_preview(ids, "2026-01-02", preview)
     assert is_nil(Repo.reload!(first).download_cutoff_date)
     assert Repo.reload!(second).download_cutoff_date == ~D[2025-01-01]
   end

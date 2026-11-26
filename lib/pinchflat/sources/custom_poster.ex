@@ -323,8 +323,10 @@ defmodule Pinchflat.Sources.CustomPoster do
 
   Custom poster filenames contain a generated UUID and therefore change for
   every replacement, even when two database updates share the same second.
-  Sources without a custom poster retain the source timestamp as their cache
-  version.
+  Other sources use the time their metadata (and with it the fetched artwork)
+  last changed, so enabling a source, indexing it or counting its downloads
+  doesn't give the same artwork a new URL. Without loaded metadata, the source
+  timestamp is used.
   """
   def poster_cache_version(%Source{} = source) do
     case source.custom_poster_filename do
@@ -335,6 +337,9 @@ defmodule Pinchflat.Sources.CustomPoster do
         timestamp_cache_version(source)
     end
   end
+
+  defp timestamp_cache_version(%Source{metadata: %{updated_at: %DateTime{} = updated_at}}),
+    do: DateTime.to_unix(updated_at)
 
   defp timestamp_cache_version(%Source{updated_at: %DateTime{} = updated_at}), do: DateTime.to_unix(updated_at)
   defp timestamp_cache_version(%Source{}), do: 0

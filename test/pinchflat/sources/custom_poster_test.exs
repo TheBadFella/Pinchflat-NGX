@@ -169,6 +169,17 @@ defmodule Pinchflat.Sources.CustomPosterTest do
       refute first_url == second_url
     end
 
+    test "keeps a fetched poster's URL until the source's metadata changes" do
+      metadata = %Pinchflat.Metadata.SourceMetadata{updated_at: ~U[2026-01-01 00:00:00Z]}
+      source = %{source_fixture() | metadata: metadata}
+      toggled = %{source | enabled: false, updated_at: ~U[2026-02-01 00:00:00Z]}
+      refreshed = %{toggled | metadata: %{metadata | updated_at: ~U[2026-03-01 00:00:00Z]}}
+
+      assert SourceHTML.poster_preview_url(source) =~ "?v=#{DateTime.to_unix(metadata.updated_at)}"
+      assert SourceHTML.poster_preview_url(toggled) == SourceHTML.poster_preview_url(source)
+      refute SourceHTML.poster_preview_url(refreshed) == SourceHTML.poster_preview_url(source)
+    end
+
     test "removes the old file only after a successful replacement" do
       source = source_fixture()
 

@@ -44,13 +44,25 @@ defmodule Pinchflat.Sources do
 
   Returns {:ok, [%Source{}]} | {:error, term()}
   """
-  def pause_selected_sources(ids) do
+  def pause_selected_sources(ids),
+    do: switch_off_selected_sources(ids, %{download_media: false}, run_post_commit_tasks: false)
+
+  @doc """
+  Stops up to #{@selection_limit} available sources, as Stop All does for one: monitoring and
+  downloads turn off and queued and running downloads are cancelled. Files are kept. Rejects the
+  entire selection if any source is unavailable.
+
+  Returns {:ok, [%Source{}]} | {:error, term()}
+  """
+  def stop_selected_sources(ids), do: switch_off_selected_sources(ids, %{enabled: false, download_media: false}, [])
+
+  defp switch_off_selected_sources(ids, attrs, opts) do
     result =
       Repo.transaction(fn ->
         case get_selected_sources(ids, lock: true) do
           {:ok, sources} ->
             Enum.map(sources, fn source ->
-              case update_source(source, %{download_media: false}, run_post_commit_tasks: false) do
+              case update_source(source, attrs, opts) do
                 {:ok, updated} -> updated
                 {:error, changeset} -> Repo.rollback(changeset)
               end
@@ -145,6 +157,33 @@ defmodule Pinchflat.Sources do
       case validate_target_profile(profile_id) do
         {:ok, profile} -> update_selected_sources(ids, %{media_profile_id: profile.id})
         {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @doc """
+  Sets how often up to #{@selection_limit} selected sources are indexed. Sources with fast
+  indexing, and single videos, keep their fixed schedule and are counted as skipped.
+
+  Returns {:ok, %{updated: integer(), skipped: integer()}} | {:error, term()}
+  """
+  def set_selected_sources_index_frequency(ids, minutes) when is_integer(minutes) do
+    Repo.transaction(fn ->
+      case get_selected_sources(ids, lock: true) do
+        {:ok, sources} ->
+          {fixed, changeable} = Enum.split_with(sources, &(&1.fast_index or &1.collection_type == :video))
+
+          Enum.each(changeable, fn source ->
+            case update_source(source, %{index_frequency_minutes: minutes}) do
+              {:ok, _updated} -> :ok
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end)
+
+          %{updated: length(changeable), skipped: length(fixed)}
+
+        {:error, reason} ->
+          Repo.rollback(reason)
       end
     end)
   end
@@ -467,12 +506,15 @@ defmodule Pinchflat.Sources do
   Returns [%Source{}, ...]
   """
   def search_sources(term, opts \\ []) do
+    excluded_ids = Keyword.get(opts, :exclude_ids, [])
+
     case Pinchflat.Utils.StringUtils.contains_like_pattern(term) do
       nil ->
         []
 
       pattern ->
         from(s in Source,
+          where: s.id not in ^excluded_ids,
           where:
             fragment("lower(?) LIKE ? ESCAPE '\\'", s.custom_name, ^pattern) or
               fragment("lower(?) LIKE ? ESCAPE '\\'", s.collection_name, ^pattern),

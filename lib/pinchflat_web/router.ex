@@ -135,6 +135,7 @@ defmodule PinchflatWeb.Router do
 
     resources "/sources", Sources.SourceController do
       post "/restore_automatic_downloads", Sources.SourceController, :restore_automatic_downloads
+      post "/automatic_downloads", Sources.SourceController, :set_automatic_downloads
       post "/start_all", Sources.SourceController, :start_all
       post "/pause_all", Sources.SourceController, :pause_all
       post "/stop_all", Sources.SourceController, :stop_all

@@ -4,25 +4,13 @@
       <div
         :if={@tab_record_count > 0 or @search_term != nil}
         id="source-toolbar"
-        class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
+        class="@container mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
       >
-        <div class="flex w-full items-center gap-2 sm:w-auto">
-          <div :if={@view_mode == :table} class="md:hidden">
-            <.input
-              type="checkbox"
-              id="source-select-all-mobile"
-              name="source_select_all_mobile"
-              label="Select every source"
-              label_class="sr-only"
-              checked={all_selected?(@selected_ids, @total_record_count)}
-              disabled={@sources == []}
-              phx-click="toggle_select_all"
-            />
-          </div>
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <form
             id="source-search-form"
             role="search"
-            class="min-w-0 flex-1 sm:w-80 sm:flex-none lg:w-96"
+            class="min-w-0 flex-1 max-sm:order-first max-sm:basis-full sm:w-80 sm:flex-none lg:w-96"
             phx-change="search"
             phx-submit="search"
             x-data="{
@@ -68,25 +56,6 @@
               </:input_action>
             </.input>
           </form>
-          <.button
-            :if={@view_mode == :grid}
-            id="source-select-all-grid"
-            type="button"
-            variant="outline"
-            size="compact"
-            class="shrink-0 gap-1.5"
-            aria-pressed={to_string(all_selected?(@selected_ids, @total_record_count))}
-            aria-label={
-              if all_selected?(@selected_ids, @total_record_count),
-                do: "Clear selection",
-                else: "Select every source"
-            }
-            disabled={@sources == []}
-            phx-click="toggle_select_all"
-          >
-            <.icon name="hero-check-circle" class="h-4 w-4" />
-            {if all_selected?(@selected_ids, @total_record_count), do: "Clear All", else: "Select All"}
-          </.button>
         </div>
 
         <div
@@ -96,57 +65,33 @@
           data-selected-count={MapSet.size(@selected_ids)}
           class="ml-auto flex flex-wrap items-center justify-end gap-2"
         >
-          <div class="flex items-center gap-1">
-            <p
-              class={[
-                "text-sm font-medium",
-                if(MapSet.size(@selected_ids) == 0, do: "text-theme-on-surface-muted", else: "text-theme-primary")
-              ]}
-              role="status"
-            >
-              {if MapSet.size(@selected_ids) == 0, do: "None selected", else: "#{MapSet.size(@selected_ids)} selected"}
-            </p>
-            <button
-              :if={MapSet.size(@selected_ids) > 0}
-              type="button"
-              class="theme-field-action h-8 w-8 max-sm:h-11 max-sm:w-11"
-              aria-label="Clear selection"
-              title="Clear selection"
-              phx-click={JS.push("clear_selection") |> hide_cutoff_panel()}
-            >
-              <.icon name="hero-x-mark" class="h-4 w-4" />
-            </button>
-          </div>
-
-          <div id="pause-selected-sources">
-            <.bulk_action_button
-              action="pause"
-              label="Pause"
-              confirm_label={"Pause #{MapSet.size(@selected_ids)}?"}
-              done_label="Paused"
-              icon="hero-pause-solid"
-              armed={armed_for?(@armed, :pause, @selected_ids)}
-              done={@done_action == :pause}
-              disabled={MapSet.size(@selected_ids) == 0}
+          <.button
+            id="source-selection-toggle"
+            type="button"
+            variant="outline"
+            size="compact"
+            class={["shrink-0 gap-1.5", MapSet.size(@selected_ids) > 0 && "text-theme-primary"]}
+            aria-pressed={to_string(MapSet.size(@selected_ids) > 0)}
+            aria-label={selection_toggle_label(@selected_ids, @total_record_count)}
+            aria-live="polite"
+            disabled={@sources == []}
+            phx-click="toggle_selection"
+          >
+            <.icon
+              name={if MapSet.size(@selected_ids) > 0, do: "hero-x-mark", else: "hero-check-circle"}
+              class="h-4 w-4"
             />
-          </div>
+            {selection_toggle_text(@selected_ids, @total_record_count)}
+          </.button>
 
-          <div id="resume-selected-sources">
-            <.bulk_action_button
-              action="resume"
-              label="Resume"
-              confirm_label={"Resume #{MapSet.size(@selected_ids)}?"}
-              done_label="Resumed"
-              icon="hero-play-solid"
-              armed={armed_for?(@armed, :resume, @selected_ids)}
-              done={@done_action == :resume}
-              disabled={MapSet.size(@selected_ids) == 0}
-            />
-          </div>
+          <.bulk_downloads armed={@armed} done_action={@done_action} selected_ids={@selected_ids} />
 
           <div id="selected-source-profile">
             <.button_dropdown
               text={if @done_action == :profile, do: "Profile Changed", else: "Media Profile"}
+              short_text={if @done_action != :profile, do: "Profile"}
+              short_class="@5xl:hidden"
+              long_class="@max-5xl:hidden"
               variant={if @done_action == :profile, do: "success", else: "outline"}
               size="compact"
               disabled={MapSet.size(@selected_ids) == 0}
@@ -170,20 +115,76 @@
             </.button_dropdown>
           </div>
 
-          <.button
-            type="button"
-            variant="outline"
-            size="compact"
-            class="gap-1.5"
-            id="selected-source-cutoff-toggle"
-            aria-controls="selected-source-cutoff"
-            aria-expanded="false"
-            disabled={MapSet.size(@selected_ids) == 0}
-            phx-click={toggle_cutoff_panel()}
-          >
-            Download Cutoff
-            <.icon name="hero-chevron-down" id="selected-source-cutoff-chevron" class="h-4 w-4 transition" />
-          </.button>
+          <div :if={@source_type != :videos} id="selected-source-frequency">
+            <.button_dropdown
+              text={if @done_action == :frequency, do: "Frequency Changed", else: "Index Frequency"}
+              text_class={if @done_action == :frequency, do: "", else: "max-sm:sr-only"}
+              leading_icon="hero-clock"
+              aria_label="Index frequency for the selected sources"
+              variant={if @done_action == :frequency, do: "success", else: "outline"}
+              size="compact"
+              disabled={MapSet.size(@selected_ids) == 0}
+            >
+              <:option :for={{label, minutes} <- SourceHTML.friendly_index_frequencies()}>
+                <button
+                  type="button"
+                  phx-click="bulk_frequency"
+                  phx-value-minutes={minutes}
+                  data-armed={to_string(armed_for?(@armed, {:frequency, to_string(minutes)}, @selected_ids))}
+                  x-on:click="if ($el.dataset.armed === 'true') dropdownOpen = false"
+                  class={armed_for?(@armed, {:frequency, to_string(minutes)}, @selected_ids) && "theme-status-warning"}
+                >
+                  {if armed_for?(@armed, {:frequency, to_string(minutes)}, @selected_ids),
+                    do: "Use #{label} for #{MapSet.size(@selected_ids)}?",
+                    else: label}
+                </button>
+              </:option>
+            </.button_dropdown>
+          </div>
+
+          <div :if={@source_type != :videos} id="selected-source-cutoff-menu">
+            <.button_dropdown
+              menu_class="theme-cutoff-menu"
+              text="Download Cutoff"
+              text_class="max-sm:sr-only"
+              short_text="DL Cutoff"
+              short_class="@5xl:hidden max-sm:sr-only"
+              long_class="@max-5xl:hidden"
+              leading_icon="hero-archive-box-x-mark"
+              aria_label="Download cutoff for the selected sources"
+              variant="outline"
+              size="compact"
+              disabled={MapSet.size(@selected_ids) == 0}
+            >
+              <:option>
+                <.form
+                  for={%{}}
+                  id="selected-source-cutoff"
+                  action={~p"/sources/cutoff/apply_now"}
+                  method="post"
+                  class="w-72 px-4 pb-2 text-left"
+                >
+                  <input type="hidden" name="return_to" value={@return_to} />
+                  <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
+                  <div class="space-y-3">
+                    <.cutoff_fields
+                      id_base="selected-source-cutoff"
+                      date_name="cutoff_date"
+                      days_name="cutoff_days"
+                      mode="date"
+                      timezone={@timezone}
+                    />
+                    <p class="text-xs text-theme-on-surface-muted">
+                      If downloaded media would become eligible for cleanup, you'll see the counts and confirm first.
+                    </p>
+                    <.button type="submit" size="compact" class="w-full" disabled={MapSet.size(@selected_ids) == 0}>
+                      Apply
+                    </.button>
+                  </div>
+                </.form>
+              </:option>
+            </.button_dropdown>
+          </div>
 
           <.button
             type="button"
@@ -193,7 +194,7 @@
             disabled={MapSet.size(@selected_ids) == 0}
             phx-click={JS.push("confirm_delete") |> show_modal("delete-selected-sources-modal")}
           >
-            <.icon name="hero-trash" class="h-4 w-4" /> Delete
+            <.icon name="hero-trash" class="h-4 w-4" /> <span class="max-sm:sr-only">Delete</span>
           </.button>
 
           <div id="selected-source-jobs">
@@ -236,6 +237,29 @@
                   Reconcile Files <span class="text-xs font-normal">One source at a time</span>
                 </button>
               </:option>
+              <:option>
+                <div class="h-px w-full bg-theme-outline/70"></div>
+              </:option>
+              <:option :for={
+                {action, icon, label} <- [
+                  {:pause, "hero-bolt-slash-solid", "Disable Automatic Downloads"},
+                  {:resume, "hero-bolt-solid", "Enable Automatic Downloads"}
+                ]
+              }>
+                <button
+                  type="button"
+                  phx-click="bulk_action"
+                  phx-value-action={action}
+                  data-armed={to_string(armed_for?(@armed, action, @selected_ids))}
+                  x-on:click="if ($el.dataset.armed === 'true') dropdownOpen = false"
+                  class={armed_for?(@armed, action, @selected_ids) && "theme-status-warning"}
+                >
+                  <.icon name={icon} class="h-4 w-4" />
+                  {if armed_for?(@armed, action, @selected_ids),
+                    do: "#{label} for #{MapSet.size(@selected_ids)}?",
+                    else: label}
+                </button>
+              </:option>
             </.button_dropdown>
           </div>
         </div>
@@ -251,37 +275,6 @@
           <.localized_number number={@tab_record_count} /> {source_type_noun(@source_type)} for “{@search_term}”
         </span>
       </p>
-
-      <%!-- Always rendered so the date picker is ready when the panel opens. --%>
-      <.form
-        for={%{}}
-        id="selected-source-cutoff"
-        action={~p"/sources/cutoff/apply_now"}
-        method="post"
-        class="mb-4 hidden rounded-m3-sm border border-theme-outline/60 bg-theme-surface p-4"
-      >
-        <input type="hidden" name="return_to" value={@return_to} />
-        <input :for={id <- Enum.sort(@selected_ids)} type="hidden" name="source_ids[]" value={id} />
-        <div class="flex min-w-0 flex-wrap items-end gap-2">
-          <div class="min-w-0 flex-1">
-            <.date_picker
-              id="selected-source-cutoff-date"
-              name="cutoff_date"
-              label="Download Cutoff Date"
-              value=""
-              timezone={@timezone}
-              required={false}
-              presets={cutoff_date_presets()}
-              presets_inline
-            />
-          </div>
-          <.button type="submit" variant="outline" disabled={MapSet.size(@selected_ids) == 0}>Apply Cutoff</.button>
-          <p class="basis-full text-xs text-theme-on-surface-muted">
-            Downloads media published on or after this date. Leave blank to remove the cutoff. If downloaded media
-            published before the date would become eligible for cleanup, you'll see the counts and confirm first.
-          </p>
-        </div>
-      </.form>
 
       <SourceHTML.source_delete_dialog
         id="delete-selected-sources-modal"
@@ -309,7 +302,7 @@
             <button
               type="button"
               class="theme-touch-target font-semibold text-theme-primary hover:underline"
-              phx-click={JS.push("clear_selection") |> hide_cutoff_panel()}
+              phx-click="clear_selection"
             >
               Clear Selection
             </button>
@@ -402,21 +395,38 @@
           <div class="flex flex-col gap-3">
             <div class="min-w-0">
               <div class="flex items-start gap-3">
-                <SourceHTML.source_status_icon
-                  source={source}
-                  downloading={MapSet.member?(@downloading_ids, source.id)}
-                  id_prefix="mobile"
-                />
+                <div class="flex min-h-11 items-center">
+                  <SourceHTML.source_status_switch
+                    source={source}
+                    downloading={MapSet.member?(@downloading_ids, source.id)}
+                    id_prefix="mobile"
+                  />
+                </div>
 
                 <div class="min-w-0 flex-1">
                   <.subtle_link href={~p"/sources/#{source.id}"} class="flex min-h-11 items-center">
                     <span class="block text-pretty break-words font-medium text-theme-on-surface">{source.custom_name}</span>
                   </.subtle_link>
 
-                  <div class="mt-1">
+                  <div class="mt-1 flex flex-wrap items-center gap-2">
                     <.source_profile_picker source={source} media_profiles={@media_profiles} />
+                    <.source_index_frequency
+                      :if={@source_type != :videos}
+                      source={source}
+                      id={"source-indexing-mobile-#{source.id}"}
+                      show_icon
+                      class="text-xs text-theme-on-surface-muted"
+                    />
+                    <.source_retention
+                      :if={@source_type != :videos}
+                      source={source}
+                      id={"source-retention-mobile-#{source.id}"}
+                      timezone={@timezone}
+                      confirm={confirm_for(@cutoff_confirm, source)}
+                      show_icon
+                      class="text-xs text-theme-on-surface-muted"
+                    />
                   </div>
-                  <SourceHTML.retention_summary source={source} />
                 </div>
               </div>
             </div>
@@ -431,7 +441,11 @@
                 />
               </.tooltip>
               <.source_delete_button source={source} />
-              <.source_row_actions source={source} return_to={@return_to} />
+              <.source_row_actions
+                source={source}
+                return_to={@return_to}
+                downloading={MapSet.member?(@downloading_ids, source.id)}
+              />
             </div>
           </div>
 
@@ -469,24 +483,12 @@
                 <.readable_filesize byte_size={source.media_size_bytes} />
               </dd>
             </div>
-
-            <div class="flex items-start justify-between gap-3">
-              <dt class="text-theme-on-surface-muted">Enabled</dt>
-
-              <dd class="text-right">
-                <.live_component
-                  module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
-                  source={source}
-                  id={"source_#{source.id}_enabled_mobile"}
-                />
-              </dd>
-            </div>
           </dl>
         </article>
       </div>
 
-      <div id="source-table" data-view="table" class="@container hidden md:block">
-        <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction} compact>
+      <div :if={@sources != []} id="source-table" data-view="table" class="@container hidden md:block">
+        <.table rows={@sources} sort_key={@sort_key} sort_direction={@sort_direction} compact rounded={false}>
           <:col
             :let={source}
             label="Select"
@@ -512,15 +514,26 @@
             />
           </:col>
 
-          <:col :let={source} label="Status" label_icon="hero-bolt" class="w-px align-middle">
-            <SourceHTML.source_status_icon
+          <:col
+            :let={source}
+            label="Status"
+            label_icon="hero-bolt"
+            sort_key="status"
+            class="w-px text-center align-middle"
+          >
+            <SourceHTML.source_status_switch
               source={source}
               downloading={MapSet.member?(@downloading_ids, source.id)}
               id_prefix="table"
             />
           </:col>
 
-          <:col :let={source} label="Name" sort_key="custom_name" class="max-w-md whitespace-normal align-middle">
+          <:col
+            :let={source}
+            label="Name"
+            sort_key="custom_name"
+            class="w-full min-w-40 whitespace-normal align-middle @max-3xl:min-w-28"
+          >
             <div data-source-id={source.id} class="min-w-0 leading-6 text-pretty break-words whitespace-normal">
               <.subtle_link href={~p"/sources/#{source.id}"}>{source.custom_name}</.subtle_link>
             </div>
@@ -566,23 +579,56 @@
             </.subtle_link>
           </:col>
 
-          <:col :let={source} label="Size" sort_key="media_size_bytes">
+          <:col
+            :let={source}
+            label="Size"
+            sort_key="media_size_bytes"
+            class="whitespace-nowrap"
+            column_class="@max-3xl:hidden"
+          >
             <.readable_filesize byte_size={source.media_size_bytes} />
           </:col>
 
           <:col :let={source} label="Media Profile" sort_key="media_profile_name" class="max-w-64 align-middle">
-            <.source_profile_picker source={source} media_profiles={@media_profiles} text_class="max-w-38 truncate" />
-          </:col>
-
-          <:col :let={source} label="Retention" label_icon="hero-archive-box-x-mark" class="text-center">
-            <.source_retention source={source} id={"source-retention-#{source.id}"} />
-          </:col>
-
-          <:col :let={source} label="Enabled?" sort_key="enabled">
-            <.live_component
-              module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+            <.source_profile_picker
               source={source}
-              id={"source_#{source.id}_enabled"}
+              media_profiles={@media_profiles}
+              text_class="max-w-38 truncate @max-3xl:max-w-24"
+              chevron_class="@max-3xl:hidden!"
+            />
+          </:col>
+
+          <:col
+            :let={source}
+            :if={@source_type != :videos}
+            label="Index Frequency"
+            label_icon="hero-clock"
+            sort_key="index_frequency"
+            class="text-center"
+          >
+            <.source_index_frequency
+              source={source}
+              id={"source-indexing-#{source.id}"}
+              class="mx-auto"
+              chevron_class="@max-3xl:hidden!"
+            />
+          </:col>
+
+          <:col
+            :let={source}
+            :if={@source_type != :videos}
+            label="Download Retention Cutoff"
+            label_icon="hero-archive-box-x-mark"
+            sort_key="download_cutoff"
+            class="text-center"
+          >
+            <.source_retention
+              source={source}
+              id={"source-retention-#{source.id}"}
+              timezone={@timezone}
+              confirm={confirm_for(@cutoff_confirm, source)}
+              class="mx-auto"
+              chevron_class="@max-3xl:hidden!"
             />
           </:col>
 
@@ -603,7 +649,12 @@
                 </.tooltip>
                 <.source_delete_button source={source} />
               </div>
-              <.source_row_actions source={source} return_to={@return_to} fold_edit_delete />
+              <.source_row_actions
+                source={source}
+                return_to={@return_to}
+                downloading={MapSet.member?(@downloading_ids, source.id)}
+                fold_edit_delete
+              />
             </div>
           </:col>
         </.table>
@@ -700,44 +751,74 @@
                   size="compact"
                 />
                 <.source_delete_button source={source} tooltip_position="bottom" />
-                <.source_row_actions source={source} return_to={@return_to} tooltip_position="bottom" />
+                <.source_row_actions
+                  source={source}
+                  return_to={@return_to}
+                  downloading={MapSet.member?(@downloading_ids, source.id)}
+                  tooltip_position="bottom"
+                />
               </div>
             </div>
 
             <div class="flex flex-1 flex-col gap-3 p-4">
-              <%!-- Reserves room for a two-line name so every card has the same height. --%>
-              <div class="theme-source-card-head flex flex-col gap-3">
-                <h3
-                  class="line-clamp-2 break-words text-base font-semibold leading-5 text-theme-on-surface"
-                  title={source.custom_name}
-                >
-                  {source.custom_name}
-                </h3>
-
-                <div class="flex items-center justify-between gap-3 text-sm text-theme-on-surface">
-                  <SourceHTML.collection_type_badge collection_type={source.collection_type} />
-                  <div class="pointer-events-auto flex shrink-0 items-center gap-2">
-                    <SourceHTML.source_status_icon
+              <%!-- Reserves room for a two-line name so every card has the same height.
+                A narrow card shows the source type as its icon only, leaving room for the frequency chip. --%>
+              <div class={[
+                if(@source_type == :videos, do: "theme-source-card-head-compact", else: "theme-source-card-head"),
+                "@container flex flex-col gap-3"
+              ]}>
+                <div class="flex items-start justify-between gap-3">
+                  <h3
+                    class="line-clamp-2 min-w-0 break-words text-base font-semibold leading-5 text-theme-on-surface"
+                    title={source.custom_name}
+                  >
+                    {source.custom_name}
+                  </h3>
+                  <div class="pointer-events-auto shrink-0">
+                    <SourceHTML.source_status_switch
                       source={source}
                       downloading={MapSet.member?(@downloading_ids, source.id)}
                       id_prefix="grid"
                     />
-                    <.live_component
-                      module={PinchflatWeb.Sources.SourceLive.SourceEnableToggle}
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-theme-on-surface">
+                  <SourceHTML.collection_type_badge
+                    collection_type={source.collection_type}
+                    label_class="@max-3xs:sr-only"
+                  />
+                  <div :if={@source_type != :videos} class="pointer-events-auto shrink-0">
+                    <.source_index_frequency
                       source={source}
-                      id={"source_#{source.id}_enabled_grid"}
+                      id={"source-indexing-grid-#{source.id}"}
+                      show_icon
+                      class="text-xs text-theme-on-surface-muted"
+                    />
+                  </div>
+                  <div :if={@source_type == :videos} class="pointer-events-auto max-w-full">
+                    <.source_profile_picker
+                      source={source}
+                      media_profiles={@media_profiles}
+                      text_class="max-w-32 truncate"
                     />
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between gap-2">
-                  <div class="pointer-events-auto min-w-0">
-                    <.source_profile_picker source={source} media_profiles={@media_profiles} />
+                <div :if={@source_type != :videos} class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="pointer-events-auto max-w-full">
+                    <.source_profile_picker
+                      source={source}
+                      media_profiles={@media_profiles}
+                      text_class="max-w-32 truncate"
+                    />
                   </div>
                   <div class="pointer-events-auto shrink-0">
                     <.source_retention
                       source={source}
                       id={"source-retention-grid-#{source.id}"}
+                      timezone={@timezone}
+                      confirm={confirm_for(@cutoff_confirm, source)}
                       show_icon
                       class="text-xs text-theme-on-surface-muted"
                     />
@@ -746,7 +827,7 @@
               </div>
 
               <div class="mt-auto space-y-3">
-                <dl class="grid grid-cols-2 gap-3 text-sm">
+                <dl :if={@source_type != :videos} class="grid grid-cols-2 gap-3 text-sm">
                   <div class="rounded-m3-sm bg-theme-surface-2/70 p-3">
                     <dt class="text-theme-on-surface-muted">Downloaded</dt>
 
@@ -765,9 +846,9 @@
                 </dl>
                 <% progress = source_progress(source) %>
                 <div class="space-y-2" data-progress-state={progress.state}>
-                  <div class="flex items-start justify-between gap-3 text-xs">
-                    <span class="shrink-0 text-theme-on-surface-muted">Download progress</span>
-                    <span class="text-right text-theme-on-surface-muted">{progress.label}</span>
+                  <div class="flex items-center justify-between gap-2 text-xs text-theme-on-surface-muted">
+                    <span class="shrink-0">Progress</span>
+                    <span class="min-w-0 truncate text-right" title={progress.label}>{progress.label}</span>
                   </div>
 
                   <div
@@ -824,8 +905,8 @@
           )
         ]}
         phx-click="view_change"
-        phx-value-view="table"
-        x-on:click="remember('table')"
+        phx-value-view={if @view_mode == :table, do: "grid", else: "table"}
+        x-on:click={"remember('#{if @view_mode == :table, do: "grid", else: "table"}')"}
         aria-pressed={to_string(@view_mode == :table)}
         data-view-toggle="table"
       >
@@ -842,8 +923,8 @@
           )
         ]}
         phx-click="view_change"
-        phx-value-view="grid"
-        x-on:click="remember('grid')"
+        phx-value-view={if @view_mode == :table, do: "grid", else: "table"}
+        x-on:click={"remember('#{if @view_mode == :table, do: "grid", else: "table"}')"}
         aria-pressed={to_string(@view_mode == :grid)}
         data-view-toggle="grid"
       >
