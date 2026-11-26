@@ -18,15 +18,17 @@ defmodule PinchflatWeb.CommandPaletteLive do
   @all_limits %{media: 6, sources: 4, profiles: 4, pages: 4}
   @single_scope_limits %{media: 20, sources: 10, profiles: 10, pages: 10}
 
+  @add_source %{
+    name: "Add a source",
+    detail: "Action",
+    icon: "hero-plus",
+    path: "/sources/new",
+    keywords: "new add source channel"
+  }
+
   @pages [
     %{name: "Sources", detail: "Page", icon: "hero-tv", path: "/sources", keywords: "sources channels playlists"},
-    %{
-      name: "Add a source",
-      detail: "Action",
-      icon: "hero-plus",
-      path: "/sources/new",
-      keywords: "new add source channel"
-    },
+    @add_source,
     %{
       name: "Channel Discovery",
       detail: "Page",
@@ -76,10 +78,18 @@ defmodule PinchflatWeb.CommandPaletteLive do
       icon: "hero-cog-6-tooth",
       path: "/diagnostics",
       keywords: "diagnostics database logs"
+    },
+    %{name: "Home", detail: "Page", icon: "hero-home", path: "/", keywords: "home dashboard history"},
+    %{
+      name: "Activity",
+      detail: "Downloads, job queue and system health",
+      icon: "hero-queue-list",
+      path: "/activity",
+      keywords: "activity jobs queue tasks health"
     }
   ]
 
-  # A blank query only lists pages, so mounting and resetting never query the database.
+  # The default action requires no database queries.
   def mount(_params, _session, socket) do
     {:ok, run_search(socket, "", "all")}
   end
@@ -303,7 +313,7 @@ defmodule PinchflatWeb.CommandPaletteLive do
 
     groups =
       if term == "" do
-        [pages_group("Go to", Enum.take(@pages, 5))]
+        if scope in ["all", "pages"], do: [pages_group("Quick actions", [@add_source])], else: []
       else
         media = scope in ["all", "media"] && media_group(term, limits.media)
 

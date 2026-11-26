@@ -112,7 +112,7 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
     assert html =~ ~s(href="/sources/#{source.id}")
   end
 
-  test "whitespace preserves results and title text, and clearing restores navigation", %{conn: conn} do
+  test "whitespace preserves results and title text, and clearing restores the quick action", %{conn: conn} do
     source_fixture(%{custom_name: "Hot Bread Today"})
     {:ok, view, _html} = live_isolated(conn, CommandPaletteLive)
 
@@ -122,9 +122,35 @@ defmodule PinchflatWeb.CommandPaletteLiveTest do
     end
 
     html = search(view, "")
-    assert html =~ "Go to"
+    assert html =~ "Quick actions"
+    assert html =~ ~s(href="/sources/new")
     refute html =~ ~s(href="/")
     refute html =~ ~s(href="/activity")
+  end
+
+  test "sidebar destinations are searchable but absent from empty results", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, CommandPaletteLive)
+
+    destinations = [
+      {"Home", "/"},
+      {"Activity", "/activity"},
+      {"Sources", "/sources"},
+      {"Channel Discovery", "/discovery"},
+      {"Browse YouTube", "/browse"},
+      {"Media Profiles", "/media_profiles"},
+      {"Settings", "/settings"}
+    ]
+
+    for {name, path} <- destinations do
+      refute has_element?(view, ~s([role="option"][href="#{path}"]))
+      search(view, name)
+      assert has_element?(view, ~s([role="option"][href="#{path}"]))
+      search(view, "")
+    end
+
+    assert has_element?(view, ~s([role="option"][href="/sources/new"]))
+    view |> element(~s(button[phx-value-scope="media"])) |> render_click()
+    refute has_element?(view, ~s([role="option"][href="/sources/new"]))
   end
 
   test "the media scope shows only media", %{conn: conn} do
