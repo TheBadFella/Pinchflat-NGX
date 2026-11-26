@@ -35,7 +35,7 @@ defmodule PinchflatWeb.Settings.SettingController do
         Reconciliation.mark_ready_plans_stale()
 
         conn
-        |> put_flash(:info, "Settings updated successfully.")
+        |> put_flash(:settings_saved, "Settings saved")
         |> redirect(to: ~p"/settings")
 
       {:error, %Ecto.Changeset{} = changeset} ->

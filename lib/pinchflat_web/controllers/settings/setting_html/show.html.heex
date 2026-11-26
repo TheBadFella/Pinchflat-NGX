@@ -1,4 +1,13 @@
-<div x-data="settingsPage()">
+<div
+  x-data="settingsPage()"
+  data-settings-retry={@changeset.action != nil}
+  x-bind:data-settings-dirty="settingsDirty || $el.hasAttribute('data-settings-retry')"
+  x-bind:class="{ 'pb-24': settingsDirty || $el.hasAttribute('data-settings-retry') }"
+>
+  <div :if={message = Phoenix.Flash.get(@conn.assigns.flash, :settings_saved)} class="theme-toast-stack">
+    <.flash id="settings-saved-toast" kind={:info} toast>{message}</.flash>
+  </div>
+
   <h2 class="mb-6 ml-4 text-title-md2 font-bold text-theme-on-surface">Settings</h2>
 
   <div class="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
