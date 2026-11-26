@@ -19,14 +19,6 @@ defmodule PinchflatWeb.CommandPaletteLive do
   @single_scope_limits %{media: 20, sources: 10, profiles: 10, pages: 10}
 
   @pages [
-    %{name: "Home", detail: "Page", icon: "hero-home", path: "/", keywords: "home dashboard history"},
-    %{
-      name: "Activity",
-      detail: "Downloads, job queue and system health",
-      icon: "hero-queue-list",
-      path: "/activity",
-      keywords: "activity jobs queue tasks health"
-    },
     %{name: "Sources", detail: "Page", icon: "hero-tv", path: "/sources", keywords: "sources channels playlists"},
     %{
       name: "Add a source",
@@ -119,8 +111,6 @@ defmodule PinchflatWeb.CommandPaletteLive do
         <form
           id="command-palette-form"
           class="theme-palette-input-row"
-          phx-change="search"
-          phx-submit="search"
           autocomplete="off"
         >
           <.icon name="hero-magnifying-glass" class="h-5 w-5 shrink-0 text-theme-on-surface-muted" />
@@ -130,8 +120,7 @@ defmodule PinchflatWeb.CommandPaletteLive do
             data-palette-input
             type="text"
             name="query"
-            value={@query}
-            phx-debounce="200"
+            phx-update="ignore"
             spellcheck="false"
             role="combobox"
             aria-expanded="true"
@@ -184,13 +173,13 @@ defmodule PinchflatWeb.CommandPaletteLive do
           </p>
 
           <p :if={String.trim(@query) == ""} class="theme-palette-note">
-            Search looks at media titles and descriptions, source names, media profiles and pages.
+            Search looks at media titles, descriptions and source names, plus media profiles and pages.
           </p>
 
           <div :if={String.trim(@query) != "" && @groups == []} class="theme-palette-empty">
             <p class="font-semibold text-theme-on-surface">Nothing matches "{String.trim(@query)}"</p>
             <p>
-              Search looks at media titles and descriptions, source names, media profiles and pages. Media that
+              Search looks at media titles, descriptions and source names, plus media profiles and pages. Media that
               has not been indexed yet will not appear. To find a channel that is not in your library, use <.link
                 href={~p"/browse"}
                 class="text-theme-primary underline"
@@ -271,16 +260,17 @@ defmodule PinchflatWeb.CommandPaletteLive do
   attr :query, :string, required: true
 
   defp palette_title(assigns) do
-    assigns = assign(assigns, :parts, highlight_parts(assigns.text, assigns.query))
+    parts =
+      Enum.map(highlight_parts(assigns.text, assigns.query), fn {text, marked?} ->
+        {:safe, escaped} = Phoenix.HTML.html_escape(text)
+
+        if marked?, do: [~s(<mark class="theme-palette-mark">), escaped, "</mark>"], else: escaped
+      end)
+
+    assigns = assign(assigns, :highlighted_title, {:safe, parts})
 
     ~H"""
-    <span class="theme-palette-option-title"><%= for {text, marked?} <- @parts do %>
-      <%= if marked? do %>
-        <mark class="theme-palette-mark">{text}</mark>
-      <% else %>
-        {text}
-      <% end %>
-    <% end %></span>
+    <span class="theme-palette-option-title">{@highlighted_title}</span>
     """
   end
 
@@ -313,11 +303,17 @@ defmodule PinchflatWeb.CommandPaletteLive do
 
     groups =
       if term == "" do
-        if scope in ["all", "pages"], do: [pages_group("Go to", Enum.take(@pages, 5))], else: []
+        [pages_group("Go to", Enum.take(@pages, 5))]
       else
+        media = scope in ["all", "media"] && media_group(term, limits.media)
+
+        video_source_ids =
+          for %{media_item: %{source: %{collection_type: :video}, source_id: id}} <- (media && media.items) || [],
+              do: id
+
         [
-          scope in ["all", "media"] && media_group(term, limits.media),
-          scope in ["all", "sources"] && sources_group(term, limits.sources),
+          scope in ["all", "sources"] && sources_group(term, limits.sources, video_source_ids),
+          media,
           scope in ["all", "sources"] && profiles_group(term, limits.profiles),
           scope in ["all", "pages"] && pages_group("Pages and actions", matching_pages(term, limits.pages))
         ]
@@ -335,13 +331,19 @@ defmodule PinchflatWeb.CommandPaletteLive do
     else
       items =
         term
-        |> Media.search(limit: limit)
+        |> Media.search(limit: limit, include_source_names: true)
         |> Enum.map(&media_item/1)
 
       see_all =
         if items == [],
           do: [],
-          else: [%{kind: :see_all, title: ~s(See all media results for "#{term}"), href: ~p"/search?#{[q: term]}"}]
+          else: [
+            %{
+              kind: :see_all,
+              title: ~s(See all media results for "#{term}"),
+              href: ~p"/search?#{[q: term, source_names: "true"]}"
+            }
+          ]
 
       %{title: "Media", items: items ++ see_all}
     end
@@ -360,10 +362,10 @@ defmodule PinchflatWeb.CommandPaletteLive do
     }
   end
 
-  defp sources_group(term, limit) do
+  defp sources_group(term, limit, excluded_ids) do
     items =
       term
-      |> Sources.search_sources(limit: limit)
+      |> Sources.search_sources(limit: limit, exclude_ids: excluded_ids)
       |> Enum.map(fn source ->
         %{
           kind: :source,

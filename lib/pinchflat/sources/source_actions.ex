@@ -1,9 +1,15 @@
 defmodule Pinchflat.Sources.SourceActions do
   @moduledoc """
   Queues a source page's background actions (Download Pending, Redownload Existing,
-  Force Index, Refresh Metadata and Sync Files on Disk) for several sources at once.
+  Force Index, Refresh Metadata and Sync Files on Disk) for several sources at once,
+  and starts, pauses or stops one source's downloads.
   """
 
+  import Ecto.Query, warn: false
+
+  alias Pinchflat.Repo
+  alias Pinchflat.Media
+  alias Pinchflat.Tasks.Task
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.FileSyncingWorker
@@ -60,6 +66,46 @@ defmodule Pinchflat.Sources.SourceActions do
   def kickoff(:force_index, source), do: SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
   def kickoff(:refresh_metadata, source), do: SourceMetadataStorageWorker.kickoff_with_task(source)
   def kickoff(:sync_files, source), do: FileSyncingWorker.kickoff_with_task(source)
+
+  @doc """
+  Starts, pauses or stops one source's downloads, as Start All, Pause All and Stop All do.
+  Start turns monitoring and downloads on when items are pending. Pause turns downloads off
+  and cancels queued and running downloads; Stop also turns monitoring off. Pause and Stop
+  only act while downloads are queued or running.
+
+  Returns {:ok, %Source{}} | :nothing_to_do | {:error, %Ecto.Changeset{}}
+  """
+  def switch(:start, %Source{} = source) do
+    if Media.list_pending_media_items_for(source) != [],
+      do: Sources.update_source(source, %{enabled: true, download_media: true}),
+      else: :nothing_to_do
+  end
+
+  def switch(action, %Source{} = source) when action in [:pause, :stop] do
+    attrs = if action == :stop, do: %{enabled: false, download_media: false}, else: %{download_media: false}
+
+    with true <- downloads_queued_or_running?(source),
+         {:ok, source} <- Sources.update_source(source, attrs) do
+      DownloadingHelpers.dequeue_pending_download_tasks(source, include_executing: true)
+      {:ok, source}
+    else
+      false -> :nothing_to_do
+      error -> error
+    end
+  end
+
+  defp downloads_queued_or_running?(source) do
+    from(t in Task,
+      join: j in assoc(t, :job),
+      join: mi in assoc(t, :media_item),
+      where: mi.source_id == ^source.id,
+      where: fragment("? LIKE ?", j.worker, ^"%.MediaDownloadWorker"),
+      where: j.state in ["executing", "available", "scheduled", "retryable"],
+      select: count(t.id)
+    )
+    |> Repo.one()
+    |> Kernel.>(0)
+  end
 
   defp bulk_kickoff(action, %Source{download_media: false}) when action in [:download_pending, :redownload_existing],
     do: :skipped

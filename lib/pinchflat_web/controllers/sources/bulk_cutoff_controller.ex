@@ -6,25 +6,22 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
 
   def preview(conn, params) do
     ids = params["source_ids"]
-    value = params["cutoff_date"]
 
-    case BulkCutoff.preview(ids, value) do
-      {:ok, preview} -> render_confirmation(conn, ids, value, preview, params)
+    with {:ok, value} <- cutoff_value(params),
+         {:ok, preview} <- BulkCutoff.preview(ids, value) do
+      render_confirmation(conn, ids, value, preview, params)
+    else
       {:error, reason} -> reject_preview(conn, reason, params)
     end
   end
 
   def apply(conn, %{"token" => token} = params) when is_binary(token) do
-    with {:ok, {ids, value, fingerprint}} <- Phoenix.Token.verify(conn, "bulk-source-cutoff", token, max_age: 900),
-         {:ok, sources} <- BulkCutoff.apply_preview(ids, value, fingerprint) do
-      noun = if length(sources) == 1, do: "source", else: "sources"
+    case Phoenix.Token.verify(conn, "bulk-source-cutoff", token, max_age: 900) do
+      {:ok, {ids, value, %{fingerprint: _, removable: _, cutoff: _} = expected}} ->
+        apply_cutoff(conn, ids, value, expected, params)
 
-      conn
-      |> put_flash(:info, "Download cutoff updated for #{length(sources)} selected #{noun}.")
-      |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
-    else
-      {:error, reason} -> reject_preview(conn, reason, params)
-      _ -> reject_preview(conn, :stale_preview, params)
+      _ ->
+        reject_preview(conn, :stale_preview, params)
     end
   end
 
@@ -38,26 +35,41 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
   """
   def apply_now(conn, params) do
     ids = params["source_ids"]
-    value = params["cutoff_date"]
 
-    case BulkCutoff.preview(ids, value) do
-      {:ok, %{removable: removable} = preview} when removable > 0 ->
-        render_confirmation(conn, ids, value, preview, params)
-
-      {:ok, preview} ->
-        apply_without_confirmation(conn, ids, value, preview, params)
-
-      {:error, reason} ->
-        reject_preview(conn, reason, params)
+    with {:ok, value} <- cutoff_value(params),
+         {:ok, preview} <- BulkCutoff.preview(ids, value) do
+      if preview.removable > 0,
+        do: render_confirmation(conn, ids, value, preview, params),
+        else: apply_cutoff(conn, ids, value, preview, params)
+    else
+      {:error, reason} -> reject_preview(conn, reason, params)
     end
   end
 
-  defp apply_without_confirmation(conn, ids, value, preview, params) do
-    case BulkCutoff.apply_preview(ids, value, preview.fingerprint) do
+  # The sources list sends a mode with a date or a number of days; older forms send only a date.
+  defp cutoff_value(%{"cutoff_mode" => "days"} = params),
+    do: {:ok, "days:" <> String.trim(params["cutoff_days"] || "")}
+
+  defp cutoff_value(%{"cutoff_mode" => "none"}), do: {:ok, ""}
+
+  defp cutoff_value(%{"cutoff_mode" => "date"} = params) do
+    case String.trim(params["cutoff_date"] || "") do
+      "" -> {:error, :missing_cutoff_date}
+      date -> {:ok, date}
+    end
+  end
+
+  defp cutoff_value(params), do: {:ok, params["cutoff_date"]}
+
+  defp apply_cutoff(conn, ids, value, preview, params) do
+    case BulkCutoff.apply_preview(ids, value, preview) do
       {:ok, sources} ->
         conn
         |> put_flash(:info, applied_message(sources, preview))
         |> redirect(to: SourceHTML.source_list_path(params["return_to"]))
+
+      {:error, {:changed_impact, current}} ->
+        render_confirmation(conn, ids, value, current, Map.put(params, "count_changed", true))
 
       {:error, reason} ->
         reject_preview(conn, reason, params)
@@ -65,19 +77,25 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
   end
 
   defp render_confirmation(conn, ids, value, preview, params) do
-    token = Phoenix.Token.sign(conn, "bulk-source-cutoff", {ids, value, preview.fingerprint})
+    expected = Map.take(preview, [:fingerprint, :removable, :cutoff])
+    token = Phoenix.Token.sign(conn, "bulk-source-cutoff", {ids, value, expected})
 
     conn
     |> put_view(html: SourceHTML)
     |> render(:bulk_cutoff,
       preview: preview,
       token: token,
+      count_changed: params["count_changed"] == true,
       return_to: SourceHTML.source_list_path(params["return_to"])
     )
   end
 
   defp applied_message(sources, %{cutoff: nil}) do
     "Download cutoff removed for #{length(sources)} #{source_noun(sources)}."
+  end
+
+  defp applied_message(sources, %{rolling_days: days}) when is_integer(days) do
+    "Download cutoff set to the last #{days} days for #{length(sources)} #{source_noun(sources)}."
   end
 
   defp applied_message(sources, %{cutoff: cutoff}) do
@@ -91,7 +109,11 @@ defmodule PinchflatWeb.Sources.BulkCutoffController do
     message =
       case reason do
         :invalid_cutoff ->
-          "Enter a valid cutoff date in YYYY-MM-DD format, or leave it blank to remove the cutoff."
+          "Enter a valid cutoff date in YYYY-MM-DD format or a rolling window of 1 day or more, " <>
+            "or choose No cutoff."
+
+        :missing_cutoff_date ->
+          "Pick a cutoff date, or choose No cutoff to remove the cutoff. No sources were changed."
 
         {:index_cutoff_after, conflicts} ->
           index_cutoff_message(conflicts)

@@ -11,18 +11,10 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   embed_templates "source_html/*"
 
-  @job_confirm_labels %{
-    download_pending: "Click again to download pending",
-    redownload_existing: "Click again to redownload",
-    force_index: "Click again to index",
-    refresh_metadata: "Click again to refresh",
-    sync_files: "Click again to sync files"
-  }
-
   @source_switches [
-    {:start, "hero-play-solid", "Start All", "Click again to start"},
-    {:pause, "hero-pause-solid", "Pause All", "Click again to pause"},
-    {:stop, "hero-stop-solid", "Stop All", "Click again to stop"}
+    {:start, "hero-play-solid", "Start All"},
+    {:pause, "hero-pause-solid", "Pause All"},
+    {:stop, "hero-stop-solid", "Stop All"}
   ]
 
   @doc """
@@ -122,12 +114,16 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   """
   attr :collection_type, :atom, required: true
   attr :class, :string, default: nil
+  attr :label_class, :string, default: nil, doc: "classes for the label, such as hiding it visually when narrow"
 
   def collection_type_badge(assigns) do
     ~H"""
-    <span class={["inline-flex items-center gap-1.5 whitespace-nowrap", @class]}>
+    <span
+      class={["inline-flex items-center gap-1.5 whitespace-nowrap", @class]}
+      title={collection_type_label(@collection_type) || "Unknown"}
+    >
       <.icon name={collection_type_icon(@collection_type)} class="h-4 w-4 shrink-0 text-theme-on-surface-muted" />
-      {collection_type_label(@collection_type) || "Unknown"}
+      <span class={@label_class}>{collection_type_label(@collection_type) || "Unknown"}</span>
     </span>
     """
   end
@@ -192,52 +188,59 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   @doc """
-  Describes a source for its status icon.
+  Describes a source's status.
 
   A disabled source always shows as disabled. An enabled source shows as
   downloading while it has download jobs running or queued, otherwise its
   bolt is green with Download Media on and purple with it off.
 
-  Returns a map with `:label`, `:icon`, `:class` (the round icon badge) and
-  `:pill_class` (the bordered pill on a source's page).
+  Returns a map with `:label`, `:icon`, `:pill_class` (the bordered pill on a
+  source's page) and `:switch_class` (the enable switch in the sources list).
   """
   def source_status(%{enabled: false}, _downloading?),
-    do: %{label: "Disabled", icon: "hero-pause", class: "theme-badge-neutral", pill_class: "theme-pill-warning"}
+    do: %{
+      label: "Disabled",
+      icon: "hero-pause",
+      pill_class: "theme-pill-warning",
+      switch_class: "theme-status-switch-neutral"
+    }
 
   def source_status(_source, true),
-    do: %{label: "Downloading", icon: "hero-clock", class: "theme-badge-warning", pill_class: "theme-pill-warning"}
+    do: %{
+      label: "Downloading",
+      icon: "hero-clock",
+      pill_class: "theme-pill-warning",
+      switch_class: "theme-status-switch-warning theme-status-switch-busy"
+    }
 
   def source_status(%{download_media: false}, _downloading?),
     do: %{
-      label: "Enabled, Download Media off",
+      label: "Indexing Enabled, No Automatic Downloads",
       icon: "hero-bolt",
-      class: "theme-badge-info",
-      pill_class: "theme-pill-info"
+      pill_class: "theme-pill-info",
+      switch_class: "theme-status-switch-info"
     }
 
   def source_status(_source, _downloading?),
     do: %{
-      label: "Enabled",
+      label: "Indexing Enabled, Automatically Downloads",
       icon: "hero-bolt",
-      class: "theme-badge-success",
-      pill_class: "theme-pill-success"
+      pill_class: "theme-pill-success",
+      switch_class: "theme-status-switch-success"
     }
 
   @doc """
-  The status icon shown in the source list, or a labelled pill on a source's page.
+  The status as a labelled pill, shown on a source's page.
   """
   attr :source, :map, required: true
   attr :downloading, :boolean, required: true
   attr :id_prefix, :string, required: true
-  attr :show_label, :boolean, default: false, doc: "write the status beside the icon"
-  attr :tooltip_position, :string, default: "top"
 
-  def source_status_icon(assigns) do
+  def source_status_pill(assigns) do
     assigns = assign(assigns, :status, source_status(assigns.source, assigns.downloading))
 
     ~H"""
     <span
-      :if={@show_label}
       id={"source-status-#{@id_prefix}-#{@source.id}"}
       class={["theme-pill", @status.pill_class]}
       data-source-status={@status.label}
@@ -245,38 +248,80 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       <.icon name={@status.icon} class="h-3.5 w-3.5" aria-hidden="true" />
       {@status.label}
     </span>
-    <.tooltip :if={!@show_label} tooltip={@status.label} position={@tooltip_position} tooltip_class="text-nowrap">
-      <.source_status_badge id_prefix={@id_prefix} source={@source} status={@status} />
-    </.tooltip>
-    """
-  end
-
-  attr :id_prefix, :string, required: true
-  attr :source, :map, required: true
-  attr :status, :map, required: true
-
-  defp source_status_badge(assigns) do
-    ~H"""
-    <span
-      id={"source-status-#{@id_prefix}-#{@source.id}"}
-      class={["inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full", @status.class]}
-      data-source-status={@status.label}
-    >
-      <.icon name={@status.icon} class="h-4 w-4" aria-hidden="true" />
-      <span class="sr-only">{@status.label}</span>
-    </span>
     """
   end
 
   @doc """
-  The source actions menu, shared by a source's page and the sources list. Actions that queue
-  work or change downloads run on a second click. Download Pending and Redownload Existing
-  only appear while Download Media is on and there are items for them to act on.
+  The status as a switch for the sources list. The status icon is the knob, which sits right
+  while the source is enabled, and clicking it enables or disables the source. While the source
+  downloads, a light runs around the border.
+  """
+  attr :source, :map, required: true
+  attr :downloading, :boolean, required: true
+  attr :id_prefix, :string, required: true
+  attr :tooltip_position, :string, default: "top"
+
+  def source_status_switch(assigns) do
+    status = source_status(assigns.source, assigns.downloading)
+    action = if assigns.source.enabled, do: "disable", else: "enable"
+    assigns = assign(assigns, status: status, action: action)
+
+    ~H"""
+    <.tooltip tooltip={@status.label} position={@tooltip_position} tooltip_class="text-center">
+      <button
+        type="button"
+        id={"source-status-#{@id_prefix}-#{@source.id}"}
+        role="switch"
+        aria-checked={to_string(@source.enabled)}
+        aria-label={"#{@status.label}. #{String.capitalize(@action)} #{@source.custom_name}"}
+        data-source-status={@status.label}
+        class={["theme-status-switch", @status.switch_class]}
+        phx-click="toggle_source_enabled"
+        phx-value-id={@source.id}
+      >
+        <span class="theme-status-switch-knob">
+          <.icon :if={@status.icon == "hero-bolt"} name="hero-bolt-solid" class="h-4.5 w-4.5" aria-hidden="true" />
+          <.icon :if={@status.icon != "hero-bolt"} name={@status.icon} class="h-4 w-4" aria-hidden="true" />
+        </span>
+      </button>
+    </.tooltip>
+    """
+  end
+
+  @doc """
+  The cutoff being applied on the bulk cutoff confirmation page.
+  """
+  def bulk_cutoff_label(%{rolling_days: days}) when is_integer(days), do: "the last #{days} days"
+  def bulk_cutoff_label(%{cutoff: %Date{} = cutoff}), do: Date.to_iso8601(cutoff)
+  def bulk_cutoff_label(_preview), do: "No cutoff"
+
+  @doc """
+  A source's current download cutoff for the bulk cutoff confirmation page.
+  """
+  def source_cutoff_label(%{download_cutoff_date: %Date{} = date}), do: Date.to_iso8601(date)
+  def source_cutoff_label(%{download_cutoff_days: days}) when is_integer(days) and days > 0, do: "last #{days} days"
+  def source_cutoff_label(_source), do: "No cutoff"
+
+  @doc """
+  The source actions menu, shared by a source's page and the sources list. Actions run on the
+  first click. Download Pending only appears when items are pending. Redownload Existing is always
+  listed, and both are disabled with the reason while automatic downloads are off or Redownload
+  Existing has nothing downloaded to act on. Start
+  All, Pause All and Stop All share one Downloads row of icon buttons, each greyed out when it
+  would do nothing: Start All without pending items, Pause All and Stop All without downloads
+  running or queued.
   """
   attr :source, :map, required: true
   attr :pending_count, :integer, required: true
   attr :downloaded_count, :integer, required: true
   attr :json, :string, default: nil, doc: "the source as JSON, which adds Copy JSON"
+  attr :show_feed, :boolean, default: true, doc: "lists Copy RSS Feed"
+  attr :downloading, :boolean, default: false, doc: "whether the source has downloads running or queued"
+
+  attr :live, :boolean,
+    default: false,
+    doc: "run actions as LiveView events on the sources list, which reports them without reloading the page"
+
   attr :return_to, :string, default: nil, doc: "a source list path to return to; actions otherwise stay on the source"
   attr :text, :string, default: nil
   attr :icon_name, :string, default: nil
@@ -291,7 +336,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     assigns =
       assigns
       |> assign(:jobs, source_jobs(assigns))
-      |> assign(:switches, @source_switches)
+      |> assign(:switches, source_switches(assigns))
       |> assign(:feed_path, ~p"/sources/#{assigns.source.uuid}/feed" <> ".xml")
 
     ~H"""
@@ -322,7 +367,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         <div class={["h-px w-full bg-theme-outline/70", @row_option_class]}></div>
       </:option>
 
-      <:option>
+      <:option :if={@show_feed}>
         <.link
           href={@feed_path}
           x-data="{ copied: false }"
@@ -350,13 +395,24 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         <div class="h-px w-full bg-theme-outline/70"></div>
       </:option>
 
-      <:option :for={{job, label, confirm_label} <- @jobs}>
-        <.confirm_action_form
+      <:option :for={{job, label, unavailable} <- @jobs}>
+        <.action_form
+          :if={!unavailable}
           action={source_action_path(@source, job)}
           return_to={@return_to}
-          label={label}
-          confirm_label={confirm_label}
-        />
+          event={@live && "source_job"}
+          values={%{id: @source.id, action: job}}
+        >
+          {label}
+        </.action_form>
+        <button
+          :if={unavailable}
+          type="button"
+          disabled
+          class="flex-col items-start! gap-0! disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {label} <span class="text-xs font-normal">{unavailable}</span>
+        </button>
       </:option>
 
       <:option><.link href={~p"/reconciliation?source_id=#{@source.id}"}>Reconcile Files</.link></:option>
@@ -364,14 +420,42 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         <div class="h-px w-full bg-theme-outline/70"></div>
       </:option>
 
-      <:option :for={{switch, icon, label, confirm_label} <- @switches}>
-        <.confirm_action_form
-          action={source_action_path(@source, switch)}
+      <:option>
+        <.action_form
+          action={~p"/sources/#{@source.id}/automatic_downloads?#{[enabled: !@source.download_media]}"}
           return_to={@return_to}
-          icon={icon}
-          label={label}
-          confirm_label={confirm_label}
-        />
+          event={@live && "source_automatic_downloads"}
+          values={%{id: @source.id, enabled: to_string(!@source.download_media)}}
+        >
+          <.icon name={if @source.download_media, do: "hero-bolt-slash-solid", else: "hero-bolt-solid"} class="h-4 w-4" />
+          {if @source.download_media, do: "Disable Automatic Downloads", else: "Enable Automatic Downloads"}
+        </.action_form>
+      </:option>
+
+      <:option>
+        <div class="flex min-h-11 items-center justify-between gap-3 px-4 text-sm font-medium text-theme-on-surface-muted">
+          <span>Downloads</span>
+          <div class="flex items-center gap-1">
+            <.tooltip
+              :for={{switch, icon, label, idle} <- @switches}
+              tooltip={if idle, do: "#{label}: #{idle}", else: label}
+              position="top"
+              tooltip_class="text-nowrap"
+            >
+              <.action_form
+                action={source_action_path(@source, switch)}
+                return_to={@return_to}
+                event={@live && "source_switch"}
+                values={%{id: @source.id, action: switch}}
+                disabled={!!idle}
+                aria_label={"#{label}: #{@source.custom_name}"}
+                button_class="theme-field-action h-9 w-9 disabled:pointer-events-none disabled:opacity-40 max-sm:h-11 max-sm:w-11"
+              >
+                <.icon name={icon} class="h-4 w-4" />
+              </.action_form>
+            </.tooltip>
+          </div>
+        </div>
       </:option>
     </.button_dropdown>
     """
@@ -477,24 +561,26 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
-            <.collection_type_badge collection_type={@source.collection_type} />
-            <.source_status_icon source={@source} downloading={@downloading} id_prefix="header" show_label />
+            <.source_status_pill source={@source} downloading={@downloading} id_prefix="header" />
             <span :if={@status == :error} class="theme-pill theme-pill-error">
               <.icon name="hero-exclamation-triangle" class="h-3.5 w-3.5" /> Error
             </span>
           </div>
 
           <div class="mt-2 flex flex-col items-start gap-1.5 text-sm text-theme-on-surface-muted">
-            <a
-              :if={@source.original_url}
-              href={@source.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={@source.original_url}
-              class="text-theme-primary hover:underline"
-            >
-              {@url_label}
-            </a>
+            <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+              <.collection_type_badge collection_type={@source.collection_type} />
+              <a
+                :if={@source.original_url}
+                href={@source.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={@source.original_url}
+                class="min-w-0 break-all text-theme-primary hover:underline"
+              >
+                {@url_label}
+              </a>
+            </div>
             <span :if={@next_check == :now}>Next check: checking now</span>
             <span :if={match?(%DateTime{}, @next_check)}>
               Next check: <.datetime_in_zone datetime={@next_check} format="%Y-%m-%d %H:%M" />
@@ -983,7 +1069,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     [
       {"Only once when first created", -1},
       {"30 minutes", 30},
-      {"1 Hour", 60},
+      {"Hourly", 60},
       {"3 Hours", 3 * 60},
       {"6 Hours", 6 * 60},
       {"12 Hours", 12 * 60},
@@ -1356,19 +1442,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     })
   end
 
-  attr :source, :any, required: true
-
-  def retention_summary(assigns) do
-    ~H"""
-    <p
-      class="mt-1 max-w-xs whitespace-normal text-xs text-theme-on-surface-muted"
-      title="Age is counted from download time. Publication-date cutoff cleanup still applies; protected media is excluded."
-    >
-      Retention: {retention_policy_label(@source)}
-    </p>
-    """
-  end
-
   defp retention_days_label(days, origin) when days in [nil, 0],
     do: "No age-based cleanup (#{origin})"
 
@@ -1688,11 +1761,35 @@ defmodule PinchflatWeb.Sources.SourceHTML do
 
   attr :action, :string, required: true
   attr :return_to, :string, default: nil
-  attr :icon, :string, default: nil
-  attr :label, :string, required: true
-  attr :confirm_label, :string, required: true
+  attr :event, :any, default: nil, doc: "a LiveView event to send instead of posting to the action"
+  attr :values, :map, default: %{}, doc: "the event's values"
+  attr :disabled, :boolean, default: false
+  attr :aria_label, :string, default: nil
+  attr :button_class, :string, default: nil
+  slot :inner_block, required: true
 
-  defp confirm_action_form(assigns) do
+  # A menu action that runs straight away. On a source's page it posts to the action, disabled
+  # while it submits so a double click runs it once. On the sources list it sends a LiveView
+  # event instead, so the list keeps its place and reports the result in a notice.
+  defp action_form(%{event: event} = assigns) when is_binary(event) do
+    assigns = assign(assigns, :phx_values, Enum.map(assigns.values, fn {key, value} -> {"phx-value-#{key}", value} end))
+
+    ~H"""
+    <button
+      type="button"
+      phx-click={@event}
+      x-on:click="dropdownOpen = false"
+      disabled={@disabled}
+      aria-label={@aria_label}
+      class={@button_class}
+      {@phx_values}
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  defp action_form(assigns) do
     ~H"""
     <.form
       for={%{}}
@@ -1705,33 +1802,38 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
       <button
         type="submit"
-        x-bind:disabled="submitting"
-        x-data="{ confirming: false, armedAt: 0 }"
-        x-on:click="if (!confirming) { $event.preventDefault(); confirming = true; armedAt = Date.now() } else if (Date.now() - armedAt < 400) { $event.preventDefault() }"
-        x-on:blur="confirming = false"
-        x-bind:class="confirming && 'theme-status-warning'"
+        x-bind:disabled={if @disabled, do: "true", else: "submitting"}
+        disabled={@disabled}
+        aria-label={@aria_label}
+        class={@button_class}
       >
-        <.icon :if={@icon} name={@icon} class="h-4 w-4" />
-        <span x-show="!confirming">{@label}</span>
-        <span x-show="confirming" x-cloak>{@confirm_label}</span>
+        {render_slot(@inner_block)}
       </button>
     </.form>
     """
   end
 
-  defp source_jobs(assigns) do
-    for {job, label} <- Pinchflat.Sources.SourceActions.jobs(),
-        source_job_available?(job, assigns),
-        do: {job, label, Map.fetch!(@job_confirm_labels, job)}
+  defp source_switches(assigns) do
+    for {switch, icon, label} <- @source_switches,
+        do: {switch, icon, label, switch_idle_reason(switch, assigns.pending_count, assigns.downloading)}
   end
 
-  defp source_job_available?(:download_pending, assigns),
-    do: assigns.source.download_media == true and assigns.pending_count > 0
+  defp switch_idle_reason(:start, 0, _downloading), do: "nothing pending"
+  defp switch_idle_reason(switch, _pending, false) when switch in [:pause, :stop], do: "nothing downloading"
+  defp switch_idle_reason(_switch, _pending, _downloading), do: nil
 
-  defp source_job_available?(:redownload_existing, assigns),
-    do: assigns.source.download_media == true and assigns.downloaded_count > 0
+  defp source_jobs(assigns) do
+    for {job, label} <- Pinchflat.Sources.SourceActions.jobs(),
+        job != :download_pending or assigns.pending_count > 0,
+        do: {job, label, source_job_unavailable(job, assigns)}
+  end
 
-  defp source_job_available?(_job, _assigns), do: true
+  defp source_job_unavailable(job, %{source: %{download_media: false}})
+       when job in [:download_pending, :redownload_existing],
+       do: "Automatic downloads are off"
+
+  defp source_job_unavailable(:redownload_existing, %{downloaded_count: 0}), do: "Nothing downloaded"
+  defp source_job_unavailable(_job, _assigns), do: nil
 
   defp source_action_path(source, :download_pending), do: ~p"/sources/#{source.id}/force_download_pending"
   defp source_action_path(source, :redownload_existing), do: ~p"/sources/#{source.id}/force_redownload"
