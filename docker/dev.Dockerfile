@@ -3,7 +3,7 @@ ARG ELIXIR_VERSION=1.20.5
 # renovate: datasource=github-tags depName=erlang/otp versioning=loose extractVersion=^OTP-(?<version>.+)$
 ARG OTP_VERSION=28.5.0.9
 # renovate: datasource=docker depName=debian versioning=regex:^(?<compatibility>[a-z]+)-(?<major>\d{8})-slim$
-ARG DEBIAN_VERSION=trixie-20261104-slim
+ARG DEBIAN_VERSION=trixie-20261123-slim
 ARG INSTALL_SHELL_TOOLS=0
 
 ARG DEV_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
