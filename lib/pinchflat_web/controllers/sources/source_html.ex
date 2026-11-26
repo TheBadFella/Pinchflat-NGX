@@ -1093,7 +1093,28 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Members-only media",
         yes_no(source.download_members_only_media),
         "Whether subscriber-only, premium-only, and authentication-required media is eligible for download"
-      ),
+      )
+    ] ++
+      collection_indexing_fields(source) ++
+      [
+        field(
+          "Cookies",
+          cookie_behaviour_label(source.cookie_behaviour),
+          "When this source's requests use your cookies.txt file"
+        ),
+        field(
+          "Player client",
+          Pinchflat.Sources.Source.player_client_label(source.player_client),
+          "The YouTube player client passed to yt-dlp, or Default when yt-dlp chooses"
+        )
+      ]
+  end
+
+  # Index scheduling and cutoffs never apply to a single video source.
+  defp collection_indexing_fields(%{collection_type: :video}), do: []
+
+  defp collection_indexing_fields(source) do
+    [
       field(
         "Index frequency",
         index_frequency_label(source.index_frequency_minutes),
@@ -1104,16 +1125,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         "Index cutoff date",
         format_date(source.index_cutoff_date),
         "Indexing stops once it reaches media published before this date"
-      ),
-      field(
-        "Cookies",
-        cookie_behaviour_label(source.cookie_behaviour),
-        "When this source's requests use your cookies.txt file"
-      ),
-      field(
-        "Player client",
-        Pinchflat.Sources.Source.player_client_label(source.player_client),
-        "The YouTube player client passed to yt-dlp, or Default when yt-dlp chooses"
       )
     ]
   end
@@ -1153,11 +1164,6 @@ defmodule PinchflatWeb.Sources.SourceHTML do
           "Media longer than this is skipped"
         ),
         field(
-          "Download cutoff",
-          download_cutoff_label(source),
-          "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
-        ),
-        field(
           "SponsorBlock remove",
           sponsorblock_status_label(source, :remove),
           "Blank inherits the media profile, Off disables removal for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
@@ -1169,7 +1175,19 @@ defmodule PinchflatWeb.Sources.SourceHTML do
           "Blank inherits the media profile, Off disables chapter marking for this source, and custom categories replace the profile's list. Applies to future downloads, quality upgrades and redownloads; existing files are never re-cut",
           set?: source.sponsorblock_mark_categories != nil
         )
-      ]
+      ] ++ download_cutoff_fields(source)
+  end
+
+  defp download_cutoff_fields(%{collection_type: :video}), do: []
+
+  defp download_cutoff_fields(source) do
+    [
+      field(
+        "Download cutoff",
+        download_cutoff_label(source),
+        "Automatic downloads include this date. Cleanup deletes unprotected downloads from before it, even within retention"
+      )
+    ]
   end
 
   defp storage_fields(source) do

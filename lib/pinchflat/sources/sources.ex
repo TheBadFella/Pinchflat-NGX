@@ -2014,6 +2014,11 @@ defmodule Pinchflat.Sources do
         {%{enabled: false}, _} ->
           DownloadingHelpers.dequeue_pending_download_tasks(source)
 
+        # A relaxed or cleared cutoff can make indexed media eligible again.
+        {changes, %{enabled: true, download_media: true}}
+        when is_map_key(changes, :download_cutoff_date) or is_map_key(changes, :download_cutoff_days) ->
+          DownloadingHelpers.enqueue_pending_download_tasks(source)
+
         _ ->
           nil
       end

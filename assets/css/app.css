@@ -392,6 +392,10 @@
     @apply rounded-m3-sm border border-theme-outline bg-theme-surface text-theme-on-surface transition hover:border-theme-outline-strong hover:bg-theme-surface-2;
   }
 
+  .theme-outline-button:disabled {
+    @apply cursor-default border-theme-outline bg-theme-surface text-theme-on-surface-muted;
+  }
+
   .theme-calendar-panel {
     @apply rounded-m3-lg border border-theme-outline bg-theme-surface-2 p-3 text-theme-on-surface shadow-m3-3 max-sm:p-1;
   }

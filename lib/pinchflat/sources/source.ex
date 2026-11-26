@@ -386,6 +386,7 @@ defmodule Pinchflat.Sources.Source do
     |> normalize_download_subdirectory()
     |> validate_download_subdirectory()
     |> validate_min_and_max_durations()
+    |> clear_video_source_cutoffs()
     |> validate_number(:download_cutoff_days, greater_than: 0)
     |> validate_download_cutoff_exclusivity()
     |> validate_index_cutoff_date()
@@ -722,12 +723,28 @@ defmodule Pinchflat.Sources.Source do
   # An indexing cutoff after the download cutoff would stop indexing before
   # reaching media the download cutoff still allows — that media would never be
   # indexed, so it could never be downloaded
+  # Cutoffs compare publication dates across a channel or playlist. On a single
+  # video source they can only block the one video the user asked for, and the
+  # form hides them, so a value left over from another source type is cleared.
+  defp clear_video_source_cutoffs(changeset) do
+    if video_source_changeset?(changeset) do
+      Enum.reduce([:index_cutoff_date, :download_cutoff_date, :download_cutoff_days], changeset, fn field, cs ->
+        if get_field(cs, field), do: put_change(cs, field, nil), else: cs
+      end)
+    else
+      changeset
+    end
+  end
+
+  defp video_source_changeset?(changeset) do
+    case get_field(changeset, :collection_type) do
+      nil -> get_field(changeset, :source_type) == :video
+      collection_type -> collection_type == :video
+    end
+  end
+
   defp validate_index_cutoff_date(changeset) do
-    video_source? =
-      case get_field(changeset, :collection_type) do
-        nil -> get_field(changeset, :source_type) == :video
-        collection_type -> collection_type == :video
-      end
+    video_source? = video_source_changeset?(changeset)
 
     index_cutoff = get_field(changeset, :index_cutoff_date)
     download_cutoff = effective_download_cutoff_date(changeset)

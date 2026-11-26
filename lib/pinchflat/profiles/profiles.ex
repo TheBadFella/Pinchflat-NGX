@@ -40,8 +40,9 @@ defmodule Pinchflat.Profiles do
         nil
 
       profile_id when is_list(profiles) ->
+        # Accepts schema structs or the plain maps the profile list page selects
         case Enum.find(profiles, &(&1.id == profile_id and is_nil(&1.marked_for_deletion_at))) do
-          %MediaProfile{id: id} -> id
+          %{id: id} -> id
           _ -> nil
         end
 

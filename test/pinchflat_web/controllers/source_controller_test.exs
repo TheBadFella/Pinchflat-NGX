@@ -267,6 +267,16 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert response =~ "Media Profile"
     end
 
+    test "preselects the default media profile", %{conn: conn} do
+      _other = media_profile_fixture(%{name: "Another Profile"})
+      default = media_profile_fixture(%{name: "Default Profile"})
+      {:ok, _} = Pinchflat.Profiles.set_default_media_profile(default)
+
+      response = conn |> get(~p"/sources/import") |> html_response(200)
+
+      assert response =~ ~r/<input[^>]*id="import_media_profile_id"[^>]*value="#{default.id}"/
+    end
+
     test "previews each URL once without contacting providers or adding sources", %{
       conn: conn,
       create_attrs: attrs,
@@ -898,7 +908,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert [] = all_enqueued(worker: Pinchflat.FastIndexing.FastIndexingWorker)
     end
 
-    test "updates a video source with indexing controls omitted and bypasses legacy index_cutoff_date conflict", %{
+    test "updates a video source with indexing controls omitted and clears legacy cutoffs", %{
       conn: conn
     } do
       source =
@@ -907,10 +917,14 @@ defmodule PinchflatWeb.SourceControllerTest do
           source_type: :automatic,
           index_frequency_minutes: 0,
           fast_index: false,
-          index_cutoff_date: ~D[2026-10-20],
           title_filter_regex: "clip",
           min_duration_seconds: 30
         )
+
+      # Values saved before the form hid these fields for video sources
+      Repo.update_all(from(s in Pinchflat.Sources.Source, where: s.id == ^source.id),
+        set: [index_cutoff_date: ~D[2026-10-20]]
+      )
 
       conn =
         put(conn, ~p"/sources/#{source}",
@@ -923,12 +937,86 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
       updated = Repo.reload!(source)
-      assert updated.download_cutoff_date == ~D[2026-10-10]
-      assert updated.index_cutoff_date == ~D[2026-10-20]
+      assert is_nil(updated.download_cutoff_date)
+      assert is_nil(updated.index_cutoff_date)
       assert updated.index_frequency_minutes == 0
       assert updated.fast_index == false
       assert is_nil(updated.title_filter_regex)
       assert is_nil(updated.min_duration_seconds)
+    end
+
+    test "creating a video source drops cutoffs set while it was a channel", %{conn: conn} do
+      profile = media_profile_fixture()
+
+      expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _template, _addl ->
+        {:ok,
+         Phoenix.json_library().encode!(%{
+           id: "vid_cutoff_drop",
+           title: "Single Video Title",
+           channel: "Some Channel",
+           channel_id: "UC_cutoff_drop"
+         })}
+      end)
+
+      conn =
+        post(conn, ~p"/sources",
+          source: %{
+            source_type: :video,
+            original_url: "https://www.youtube.com/watch?v=vid_cutoff_drop",
+            media_profile_id: profile.id,
+            download_media: true,
+            index_cutoff_date: "2026-10-01",
+            download_cutoff_days: "7"
+          }
+        )
+
+      assert %{id: id} = redirected_params(conn)
+      source = Repo.get!(Pinchflat.Sources.Source, id)
+      assert source.collection_type == :video
+      assert is_nil(source.index_cutoff_date)
+      assert is_nil(source.download_cutoff_date)
+      assert is_nil(source.download_cutoff_days)
+    end
+
+    test "saving a video source with a legacy cutoff queues its blocked video", %{conn: conn} do
+      source = source_fixture(collection_type: :video, enabled: true, download_media: true)
+      media_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-01-05 12:00:00Z])
+
+      Repo.update_all(from(s in Pinchflat.Sources.Source, where: s.id == ^source.id),
+        set: [download_cutoff_date: ~D[2026-06-01], index_cutoff_date: ~D[2026-06-01]]
+      )
+
+      refute_enqueued(worker: MediaDownloadWorker)
+
+      conn = put(conn, ~p"/sources/#{source}", source: %{custom_name: "Renamed video"})
+
+      assert redirected_to(conn) == ~p"/sources/#{source}?#{[tab: "source"]}"
+      updated = Repo.reload!(source)
+      assert is_nil(updated.download_cutoff_date)
+      assert is_nil(updated.index_cutoff_date)
+      assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
+    end
+
+    test "hides indexing and cutoff rows on the video source overview", %{conn: conn} do
+      video = source_fixture(collection_type: :video)
+      channel = source_fixture(collection_type: :channel, download_cutoff_date: ~D[2026-06-01])
+
+      video_html = conn |> get(~p"/sources/#{video}?#{[tab: "source"]}") |> html_response(200)
+      refute video_html =~ "Index cutoff date"
+      refute video_html =~ "Index frequency"
+      refute video_html =~ ">Download cutoff<"
+
+      channel_html = conn |> get(~p"/sources/#{channel}?#{[tab: "source"]}") |> html_response(200)
+      assert channel_html =~ "Index cutoff date"
+      assert channel_html =~ "Download cutoff"
+    end
+
+    test "hides the download cutoff control on video source forms", %{conn: conn} do
+      video = source_fixture(collection_type: :video)
+      html = conn |> get(~p"/sources/#{video}/edit") |> html_response(200)
+
+      assert html =~ ~r/<fieldset[^>]*id="source-download-cutoff"[^>]*x-show="!isVideoSource"/
+      assert html =~ "Download cutoffs don't apply to a single video source"
     end
 
     test "still rejects conflicting cutoff dates when an existing channel update sends source_type: :video", %{

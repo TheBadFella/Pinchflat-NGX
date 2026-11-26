@@ -9,17 +9,17 @@
 </div>
 
 <div class="theme-surface-raised">
-  <div class="space-y-4 p-4 md:hidden">
+  <div class="space-y-4 p-4 lg:hidden">
     <article :for={media_profile <- @media_profiles} class="theme-surface-accent space-y-4 rounded-m3-lg p-4">
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0 flex-1">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-48 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>
               <span class="block break-words font-medium text-theme-on-surface">{media_profile.name}</span>
             </.subtle_link>
             <span
               :if={@default_profile_id == media_profile.id}
-              class="theme-badge theme-badge-primary"
+              class="theme-pill theme-pill-info"
             >
               Default
             </span>
@@ -35,6 +35,15 @@
           >
             Set as Default
           </.link>
+          <button
+            :if={@default_profile_id == media_profile.id}
+            type="button"
+            disabled
+            title="New sources, Browse and imports preselect this profile"
+            class="theme-outline-button theme-button-compact inline-flex items-center gap-1"
+          >
+            <.icon name="hero-check" class="h-4 w-4" /> Current default
+          </button>
           <.icon_link
             href={~p"/media_profiles/#{media_profile.id}/edit"}
             icon="hero-pencil-square"
@@ -61,17 +70,19 @@
     </article>
   </div>
 
-  <div class="hidden md:block">
+  <div class="hidden lg:block">
     <div class="max-w-full overflow-visible">
       <div class="overflow-x-auto overflow-y-hidden">
         <div class="flex min-w-max flex-col gap-10">
           <.table rows={@media_profiles}>
             <:col :let={media_profile} label="Name" class="truncate max-w-xs">
-              <div class="flex items-center gap-2">
-                <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="min-w-0 truncate" title={media_profile.name}>
+                  <.subtle_link href={~p"/media_profiles/#{media_profile.id}"}>{media_profile.name}</.subtle_link>
+                </span>
                 <span
                   :if={@default_profile_id == media_profile.id}
-                  class="theme-badge theme-badge-primary"
+                  class="theme-pill theme-pill-info"
                 >
                   Default
                 </span>
@@ -95,6 +106,15 @@
               >
                 Set as Default
               </.link>
+              <button
+                :if={@default_profile_id == media_profile.id}
+                type="button"
+                disabled
+                title="New sources, Browse and imports preselect this profile"
+                class="theme-outline-button theme-button-compact inline-flex items-center gap-1"
+              >
+                <.icon name="hero-check" class="h-4 w-4" /> Current default
+              </button>
               <.icon_link
                 href={~p"/media_profiles/#{media_profile.id}/edit"}
                 icon="hero-pencil-square"

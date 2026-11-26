@@ -680,78 +680,91 @@
         >
           <h3 class="text-2xl text-theme-on-surface">Cutoff and Retention</h3>
 
-          <section data-setting class="mt-5">
-            <div class="sm:max-w-md">
-              <.label for="source-cutoff-mode">Download cutoff</.label>
-              <div class="theme-field-shell">
-                <select
-                  id="source-cutoff-mode"
-                  x-model="cutoffMode"
-                  x-on:change="setCutoffMode($event.target.value)"
-                  class="theme-input theme-select w-full rounded-m3-sm py-2.5 pl-4 pr-10 outline-none transition"
+          <fieldset
+            id="source-download-cutoff"
+            x-cloak
+            x-show="!isVideoSource"
+            x-effect="isVideoSource; $nextTick(() => filterSettings && filterSettings())"
+            x-bind:disabled="isVideoSource"
+            x-bind:data-setting-inapplicable="isVideoSource ? 'true' : false"
+            class="min-w-0 border-0 p-0 m-0"
+          >
+            <section data-setting class="mt-5">
+              <div class="sm:max-w-md">
+                <.label for="source-cutoff-mode">Download cutoff</.label>
+                <div class="theme-field-shell">
+                  <select
+                    id="source-cutoff-mode"
+                    x-model="cutoffMode"
+                    x-on:change="setCutoffMode($event.target.value)"
+                    class="theme-input theme-select w-full rounded-m3-sm py-2.5 pl-4 pr-10 outline-none transition"
+                  >
+                    <option value="none">No cutoff</option>
+                    <option value="date">Fixed date</option>
+                    <option value="days">Rolling window (last N days)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div x-show="cutoffMode === 'date'" x-cloak class="mt-4 sm:max-w-md">
+                <.date_picker
+                  id={f[:download_cutoff_date].id}
+                  name={f[:download_cutoff_date].name}
+                  label="Download Cutoff Date"
+                  value={to_string(f[:download_cutoff_date].value || "")}
+                  timezone={Application.fetch_env!(:pinchflat, :timezone)}
+                  required={false}
+                  presets={cutoff_date_presets()}
+                  x-modelable="value"
+                  x-model="cutoffDate"
+                />
+              </div>
+              <.error :for={error <- f[:download_cutoff_date].errors}>{translate_error(error)}</.error>
+
+              <div x-show="cutoffMode === 'days'" x-cloak class="mt-4 sm:max-w-md">
+                <.input
+                  field={f[:download_cutoff_days]}
+                  type="number"
+                  min="1"
+                  step="1"
+                  label="Rolling window (days)"
+                  placeholder="30"
+                  x-model="cutoffDays"
+                  help="Only download media published within this many days of each run."
+                />
+                <p
+                  x-show="effectiveCutoffDate"
+                  class="mt-2 text-sm text-theme-on-surface"
+                  aria-live="polite"
+                  x-text="cutoffPreviewText"
                 >
-                  <option value="none">No cutoff</option>
-                  <option value="date">Fixed date</option>
-                  <option value="days">Rolling window (last N days)</option>
-                </select>
+                </p>
               </div>
-            </div>
+              <.error :for={error <- f[:download_cutoff_days].errors}>{translate_error(error)}</.error>
 
-            <div x-show="cutoffMode === 'date'" x-cloak class="mt-4 sm:max-w-md">
-              <.date_picker
-                id={f[:download_cutoff_date].id}
-                name={f[:download_cutoff_date].name}
-                label="Download Cutoff Date"
-                value={to_string(f[:download_cutoff_date].value || "")}
-                timezone={Application.fetch_env!(:pinchflat, :timezone)}
-                required={false}
-                presets={cutoff_date_presets()}
-                x-modelable="value"
-                x-model="cutoffDate"
-              />
-            </div>
-            <.error :for={error <- f[:download_cutoff_date].errors}>{translate_error(error)}</.error>
-
-            <div x-show="cutoffMode === 'days'" x-cloak class="mt-4 sm:max-w-md">
-              <.input
-                field={f[:download_cutoff_days]}
-                type="number"
-                min="1"
-                step="1"
-                label="Rolling window (days)"
-                placeholder="30"
-                x-model="cutoffDays"
-                help="Only download media published within this many days of each run."
-              />
-              <p
-                x-show="effectiveCutoffDate"
-                class="mt-2 text-sm text-theme-on-surface"
-                aria-live="polite"
-                x-text="cutoffPreviewText"
+              <div
+                x-show="cutoffMode === 'days' && cutoffWarningCount > 0"
+                x-cloak
+                class="theme-status-card theme-status-card-warning mt-4"
+                role="alert"
               >
-              </p>
-            </div>
-            <.error :for={error <- f[:download_cutoff_days].errors}>{translate_error(error)}</.error>
-
-            <div
-              x-show="cutoffMode === 'days' && cutoffWarningCount > 0"
-              x-cloak
-              class="theme-status-card theme-status-card-warning mt-4"
-              role="alert"
-            >
-              <div class="flex items-start gap-3">
-                <.icon name="hero-exclamation-triangle" class="mt-0.5 h-5 w-5 shrink-0" />
-                <p class="text-sm leading-6 text-theme-on-surface" x-text="cutoffWarningText"></p>
+                <div class="flex items-start gap-3">
+                  <.icon name="hero-exclamation-triangle" class="mt-0.5 h-5 w-5 shrink-0" />
+                  <p class="text-sm leading-6 text-theme-on-surface" x-text="cutoffWarningText"></p>
+                </div>
               </div>
-            </div>
 
-            <p class="mt-2 text-sm text-theme-on-surface-muted">
-              Automatically download media published on or after the cutoff. Scheduled cleanup also deletes unprotected
-              downloaded media from before it, including manual downloads, even within their retention period. A rolling
-              window moves with the current date. Choose No cutoff to disable both. Prevent Automatic Deletion on a
-              media item's Edit page overrides cutoff and retention cleanup.
-            </p>
-          </section>
+              <p class="mt-2 text-sm text-theme-on-surface-muted">
+                Automatically download media published on or after the cutoff. Scheduled cleanup also deletes unprotected
+                downloaded media from before it, including manual downloads, even within their retention period. A rolling
+                window moves with the current date. Choose No cutoff to disable both. Prevent Automatic Deletion on a
+                media item's Edit page overrides cutoff and retention cleanup.
+              </p>
+            </section>
+          </fieldset>
+          <p x-show="isVideoSource" x-cloak class="mt-5 text-sm text-theme-on-surface-muted">
+            Download cutoffs don't apply to a single video source. The video is downloaded whatever its publication date.
+          </p>
 
           <.form_disclosure
             title="Retention and watch window"
