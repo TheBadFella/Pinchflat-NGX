@@ -987,4 +987,35 @@ defmodule PinchflatWeb.Browse.BrowseLiveTest do
       assert has_element?(view, "#open-paste-url-button")
     end
   end
+
+  describe "default media profile preselection" do
+    test "selects configured default profile at mount, preserves restore_search, and allows Paste URL override", %{
+      conn: conn
+    } do
+      p1 = media_profile_fixture(%{name: "Alpha"})
+      p2 = media_profile_fixture(%{name: "Beta"})
+
+      # Without default and multiple profiles, selection starts blank
+      {:ok, view_blank, _html} = live_isolated(conn, BrowseLive, session: %{})
+      assert :sys.get_state(view_blank.pid).socket.assigns.selected_profile_id == nil
+
+      # With configured default, mount selects it and Paste URL starts with it
+      assert {:ok, ^p2} = Pinchflat.Profiles.set_default_media_profile(p2.id)
+      {:ok, view, _html} = live_isolated(conn, BrowseLive, session: %{})
+      assert :sys.get_state(view.pid).socket.assigns.selected_profile_id == p2.id
+
+      view |> element("#open-paste-url-button") |> render_click()
+      assert :sys.get_state(view.pid).socket.assigns.paste_selected_profile_id == p2.id
+
+      # Explicit override in Paste URL modal is respected
+      render_change(view, "select_paste_profile", %{"profile_id" => to_string(p1.id)})
+      assert :sys.get_state(view.pid).socket.assigns.paste_selected_profile_id == p1.id
+
+      # Valid restore_search selection is preserved over configured default
+      Mox.expect(YoutubeBrowserProviderMock, :search_videos, fn "restored", _opts -> {:ok, @mock_videos} end)
+      render_hook(view, "restore_search", %{"q" => "restored", "tab" => "videos", "profile" => to_string(p1.id)})
+      render_async(view)
+      assert :sys.get_state(view.pid).socket.assigns.selected_profile_id == p1.id
+    end
+  end
 end

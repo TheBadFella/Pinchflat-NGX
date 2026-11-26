@@ -306,4 +306,37 @@ defmodule Pinchflat.SettingsTest do
       assert {"must be at most 256 bytes; shorten the list", _} = changeset.errors[:video_codec_preference]
     end
   end
+
+  describe "default_media_profile_id caching and transactions" do
+    import Pinchflat.ProfilesFixtures
+
+    test "rolled-back transactional update never leaks into the settings cache" do
+      original_cache = Application.get_env(:pinchflat, :settings_cache)
+      Application.put_env(:pinchflat, :settings_cache, true)
+      Settings.invalidate_cache()
+
+      on_exit(fn ->
+        Settings.invalidate_cache()
+
+        if is_nil(original_cache),
+          do: Application.delete_env(:pinchflat, :settings_cache),
+          else: Application.put_env(:pinchflat, :settings_cache, original_cache)
+      end)
+
+      p1 = media_profile_fixture(%{name: "CachedFirst"})
+      p2 = media_profile_fixture(%{name: "CachedSecond"})
+
+      assert {:ok, _} = Settings.set(default_media_profile_id: p1.id)
+      assert Settings.get!(:default_media_profile_id) == p1.id
+
+      assert {:error, :rolled_back} =
+               Repo.transaction(fn ->
+                 {:ok, _} = Settings.update_setting(Settings.record(), %{default_media_profile_id: p2.id})
+                 Repo.rollback(:rolled_back)
+               end)
+
+      assert Settings.get!(:default_media_profile_id) == p1.id
+      assert Settings.refresh_cache().default_media_profile_id == p1.id
+    end
+  end
 end

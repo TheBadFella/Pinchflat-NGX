@@ -40,7 +40,13 @@
         >
           <h3 class="text-2xl text-theme-on-surface">Use a Preset</h3>
 
-          <section id="profile-preset-picker" data-setting data-setting-label="Preset" x-data="{ selection: null }">
+          <section
+            id="profile-preset-picker"
+            class="mt-4"
+            data-setting
+            data-setting-label="Preset"
+            x-data="{ selection: null }"
+          >
             <.input
               prompt="Select preset"
               name="media_profile_preset"
@@ -447,6 +453,26 @@
           class="theme-surface-raised px-5 py-5 sm:px-7.5 scroll-mt-36 lg:scroll-mt-24"
         >
           <.output_template_help />
+        </section>
+
+        <section
+          :if={assigns[:show_make_default]}
+          class="theme-surface-raised px-5 py-4 sm:px-7.5"
+        >
+          <div class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="make_default"
+              name="make_default"
+              value="true"
+              checked={assigns[:make_default] == true}
+              class="h-4 w-4 rounded border-theme-outline text-theme-primary focus:ring-theme-primary"
+            />
+            <label for="make_default" class="text-sm font-medium text-theme-on-surface cursor-pointer">
+              Make this my default media profile
+            </label>
+          </div>
+          <.error :for={error <- Keyword.get_values(@changeset.errors, :base)}>{translate_error(error)}</.error>
         </section>
 
         <div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">

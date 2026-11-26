@@ -15,6 +15,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.SourceImport
   alias Pinchflat.Sources.SourceActions
+  alias Pinchflat.Profiles
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Downloading.DownloadingHelpers
@@ -111,7 +112,10 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   def new(conn, params) do
     profiles = media_profiles()
-    default_profile_id = if profile = List.first(profiles), do: profile.id, else: nil
+
+    default_profile_id =
+      Profiles.default_media_profile_id(profiles) || if(profile = List.first(profiles), do: profile.id, else: nil)
+
     default_source = %Source{cookie_behaviour: default_cookie_behaviour(), media_profile_id: default_profile_id}
 
     # This lets me preload the settings from another source for more efficient creation
@@ -124,7 +128,7 @@ defmodule PinchflatWeb.Sources.SourceController do
         template_id -> Repo.get(Source, template_id) || default_source
       end
 
-    options = source_options_new(profiles, default_profile_id)
+    options = source_options_new(profiles, cs_struct.media_profile_id)
 
     prefill_attrs =
       params
@@ -1093,6 +1097,7 @@ defmodule PinchflatWeb.Sources.SourceController do
 
   defp media_profiles do
     MediaProfile
+    |> where([mp], is_nil(mp.marked_for_deletion_at))
     |> order_by(asc: :name)
     |> Repo.all()
   end

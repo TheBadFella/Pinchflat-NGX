@@ -53,5 +53,26 @@ defmodule Pinchflat.Profiles.MediaProfileDeletionWorkerTest do
       assert_raise Ecto.NoResultsError, fn -> Repo.reload!(media_item) end
       refute File.exists?(media_item.media_filepath)
     end
+
+    test "clears default_media_profile_id and invalidates warm settings cache on deletion", %{profile: profile} do
+      original_cache = Application.get_env(:pinchflat, :settings_cache)
+      Application.put_env(:pinchflat, :settings_cache, true)
+      Pinchflat.Settings.invalidate_cache()
+
+      on_exit(fn ->
+        Pinchflat.Settings.invalidate_cache()
+
+        if is_nil(original_cache),
+          do: Application.delete_env(:pinchflat, :settings_cache),
+          else: Application.put_env(:pinchflat, :settings_cache, original_cache)
+      end)
+
+      assert {:ok, ^profile} = Pinchflat.Profiles.set_default_media_profile(profile.id)
+      assert Pinchflat.Settings.get!(:default_media_profile_id) == profile.id
+
+      assert :ok = perform_job(MediaProfileDeletionWorker, %{"id" => profile.id}) |> elem(0) |> then(fn _ -> :ok end)
+      assert is_nil(Pinchflat.Settings.record().default_media_profile_id)
+      assert is_nil(Pinchflat.Profiles.default_media_profile_id())
+    end
   end
 end

@@ -2383,6 +2383,56 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "default media profile preselection" do
+    test "preselects configured default profile and falls back to first by name", %{conn: conn} do
+      alpha = media_profile_fixture(%{name: "Alpha"})
+      beta = media_profile_fixture(%{name: "Beta"})
+
+      # Fallback to first alphabetically when no default is configured
+      html = conn |> get(~p"/sources/new") |> html_response(200)
+      assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{alpha.id}"/
+
+      # Configured default overrides alphabetical order
+      assert {:ok, ^beta} = Pinchflat.Profiles.set_default_media_profile(beta.id)
+      html = conn |> recycle() |> get(~p"/sources/new") |> html_response(200)
+      assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{beta.id}"/
+
+      # Template takes precedence over configured default
+      template_source = source_fixture(%{media_profile_id: alpha.id})
+      html = conn |> recycle() |> get(~p"/sources/new?template_id=#{template_source.id}") |> html_response(200)
+      assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{alpha.id}"/
+    end
+
+    test "excludes deletion-pending profiles from both default resolution and alphabetical fallback", %{conn: conn} do
+      alpha = media_profile_fixture(%{name: "Alpha"})
+      beta = media_profile_fixture(%{name: "Beta"})
+
+      assert {:ok, ^alpha} = Pinchflat.Profiles.set_default_media_profile(alpha.id)
+      {:ok, _} = Pinchflat.Profiles.update_media_profile(alpha, %{marked_for_deletion_at: DateTime.utc_now()})
+
+      html = conn |> get(~p"/sources/new") |> html_response(200)
+      assert html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{beta.id}"/
+      refute html =~ ~r/<input[^>]*id="source_media_profile_id"[^>]*value="#{alpha.id}"/
+
+      # Failed create redisplay uses the same filtered profile list
+      error_html =
+        conn
+        |> recycle()
+        |> post(~p"/sources",
+          source: %{
+            source_type: :video,
+            original_url: "https://www.youtube.com/watch?v=vid_err",
+            media_profile_id: beta.id,
+            retention_period_days: -1
+          }
+        )
+        |> html_response(200)
+
+      assert error_html =~ beta.name
+      refute error_html =~ alpha.name
+    end
+  end
+
   defp position(response, text) do
     {index, _length} = :binary.match(response, text)
     index
