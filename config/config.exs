@@ -64,7 +64,7 @@ config :pinchflat,
     max_entries: 25,
     max_output_bytes: 256 * 1024,
     validation_concurrency: 4,
-    validation_timeout: 5_000,
+    validation_timeout: 15_000,
     featured_timeout: 15_000,
     validation_refresh_after_seconds: 86_400
   ],
