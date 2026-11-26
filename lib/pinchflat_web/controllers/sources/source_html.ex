@@ -1149,20 +1149,8 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       end
 
     playlist_fields ++
+      collection_filter_fields(source) ++
       [
-        field("Title filter", source.title_filter_regex, "Only media whose title matches this regex is downloaded",
-          type: :code
-        ),
-        field(
-          "Minimum duration",
-          format_duration(source.min_duration_seconds),
-          "Media shorter than this is skipped"
-        ),
-        field(
-          "Maximum duration",
-          format_duration(source.max_duration_seconds),
-          "Media longer than this is skipped"
-        ),
         field(
           "SponsorBlock remove",
           sponsorblock_status_label(source, :remove),
@@ -1176,6 +1164,27 @@ defmodule PinchflatWeb.Sources.SourceHTML do
           set?: source.sponsorblock_mark_categories != nil
         )
       ] ++ download_cutoff_fields(source)
+  end
+
+  # Title and duration filters choose media from a collection; a video source has nothing to choose.
+  defp collection_filter_fields(%{collection_type: :video}), do: []
+
+  defp collection_filter_fields(source) do
+    [
+      field("Title filter", source.title_filter_regex, "Only media whose title matches this regex is downloaded",
+        type: :code
+      ),
+      field(
+        "Minimum duration",
+        format_duration(source.min_duration_seconds),
+        "Media shorter than this is skipped"
+      ),
+      field(
+        "Maximum duration",
+        format_duration(source.max_duration_seconds),
+        "Media longer than this is skipped"
+      )
+    ]
   end
 
   defp download_cutoff_fields(%{collection_type: :video}), do: []

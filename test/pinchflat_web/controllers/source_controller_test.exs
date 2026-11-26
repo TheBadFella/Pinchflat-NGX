@@ -829,11 +829,10 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert html =~ ~r/<section[^>]*id="source-indexing"[^>]*x-show="!isVideoSource"/
       assert html =~ ~r/<section[^>]*id="source-indexing".*?<fieldset[^>]*disabled/s
 
-      # Retained rules remain visible and editable on video sources
-      assert html =~ ~s(id="source_title_filter_regex")
-      assert html =~ "trailer"
-      assert html =~ ~s(id="source_min_duration_seconds")
-      assert html =~ ~s(id="source_download_cutoff_date")
+      # Title, duration and cutoff filters are hidden and disabled on video sources
+      assert html =~ ~r/<fieldset[^>]*id="source-title-filter"[^>]*x-show="!isVideoSource"/
+      assert html =~ ~r/<fieldset[^>]*id="source-duration-filter"[^>]*x-show="!isVideoSource"/
+      assert html =~ ~r/<fieldset[^>]*id="source-download-cutoff"[^>]*x-show="!isVideoSource"/
     end
 
     test "keeps indexing controls enabled on channel and playlist forms", %{conn: conn} do
@@ -945,7 +944,7 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert is_nil(updated.min_duration_seconds)
     end
 
-    test "creating a video source drops cutoffs set while it was a channel", %{conn: conn} do
+    test "creating a video source drops cutoffs and filters set while it was a channel", %{conn: conn} do
       profile = media_profile_fixture()
 
       expect(YtDlpRunnerMock, :run, fn _url, :get_source_details, _opts, _template, _addl ->
@@ -966,7 +965,10 @@ defmodule PinchflatWeb.SourceControllerTest do
             media_profile_id: profile.id,
             download_media: true,
             index_cutoff_date: "2026-10-01",
-            download_cutoff_days: "7"
+            download_cutoff_days: "7",
+            title_filter_regex: "trailer",
+            min_duration_seconds: "60",
+            max_duration_seconds: "600"
           }
         )
 
@@ -976,14 +978,22 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert is_nil(source.index_cutoff_date)
       assert is_nil(source.download_cutoff_date)
       assert is_nil(source.download_cutoff_days)
+      assert is_nil(source.title_filter_regex)
+      assert is_nil(source.min_duration_seconds)
+      assert is_nil(source.max_duration_seconds)
     end
 
-    test "saving a video source with a legacy cutoff queues its blocked video", %{conn: conn} do
+    test "saving a video source with legacy cutoffs and filters queues its blocked video", %{conn: conn} do
       source = source_fixture(collection_type: :video, enabled: true, download_media: true)
       media_item = media_item_fixture(source_id: source.id, media_filepath: nil, uploaded_at: ~U[2026-01-05 12:00:00Z])
 
       Repo.update_all(from(s in Pinchflat.Sources.Source, where: s.id == ^source.id),
-        set: [download_cutoff_date: ~D[2026-06-01], index_cutoff_date: ~D[2026-06-01]]
+        set: [
+          download_cutoff_date: ~D[2026-06-01],
+          index_cutoff_date: ~D[2026-06-01],
+          title_filter_regex: "matches nothing",
+          min_duration_seconds: 99_999
+        ]
       )
 
       refute_enqueued(worker: MediaDownloadWorker)
@@ -994,10 +1004,12 @@ defmodule PinchflatWeb.SourceControllerTest do
       updated = Repo.reload!(source)
       assert is_nil(updated.download_cutoff_date)
       assert is_nil(updated.index_cutoff_date)
+      assert is_nil(updated.title_filter_regex)
+      assert is_nil(updated.min_duration_seconds)
       assert_enqueued(worker: MediaDownloadWorker, args: %{"id" => media_item.id})
     end
 
-    test "hides indexing and cutoff rows on the video source overview", %{conn: conn} do
+    test "hides indexing, filter and cutoff rows on the video source overview", %{conn: conn} do
       video = source_fixture(collection_type: :video)
       channel = source_fixture(collection_type: :channel, download_cutoff_date: ~D[2026-06-01])
 
@@ -1005,6 +1017,8 @@ defmodule PinchflatWeb.SourceControllerTest do
       refute video_html =~ "Index cutoff date"
       refute video_html =~ "Index frequency"
       refute video_html =~ ">Download cutoff<"
+      refute video_html =~ "Title filter"
+      refute video_html =~ "Minimum duration"
 
       channel_html = conn |> get(~p"/sources/#{channel}?#{[tab: "source"]}") |> html_response(200)
       assert channel_html =~ "Index cutoff date"

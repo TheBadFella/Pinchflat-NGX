@@ -649,15 +649,25 @@
             </div>
           </section>
 
-          <section data-setting data-setting-keywords="minimum maximum duration length seconds">
-            <div class="grid gap-x-4 sm:grid-cols-2">
-              <.input field={f[:min_duration_seconds]} type="number" label="Minimum Duration (seconds)" min="0" />
-              <.input field={f[:max_duration_seconds]} type="number" label="Maximum Duration (seconds)" min="0" />
-            </div>
-            <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">
-              Only download media within this length. Leave either field blank for no limit.
-            </p>
-          </section>
+          <fieldset
+            id="source-duration-filter"
+            x-cloak
+            x-show="!isVideoSource"
+            x-bind:disabled="isVideoSource"
+            x-bind:data-setting-inapplicable="isVideoSource ? 'true' : false"
+            x-effect="isVideoSource; $nextTick(() => filterSettings && filterSettings())"
+            class="min-w-0 border-0 p-0 m-0"
+          >
+            <section data-setting data-setting-keywords="minimum maximum duration length seconds">
+              <div class="grid gap-x-4 sm:grid-cols-2">
+                <.input field={f[:min_duration_seconds]} type="number" label="Minimum Duration (seconds)" min="0" />
+                <.input field={f[:max_duration_seconds]} type="number" label="Maximum Duration (seconds)" min="0" />
+              </div>
+              <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">
+                Only download media within this length. Leave either field blank for no limit.
+              </p>
+            </section>
+          </fieldset>
 
           <section
             x-cloak
@@ -943,11 +953,20 @@
 
           <p class="mt-2 text-sm text-theme-on-surface-muted">Tread carefully</p>
 
-          <.form_disclosure
-            title="Title filter"
-            open={Keyword.has_key?(@changeset.errors, :title_filter_regex)}
-            data-setting-group
-            x-data={
+          <fieldset
+            id="source-title-filter"
+            x-cloak
+            x-show="!isVideoSource"
+            x-bind:disabled="isVideoSource"
+            x-bind:data-setting-inapplicable="isVideoSource ? 'true' : false"
+            x-effect="isVideoSource; $nextTick(() => filterSettings && filterSettings())"
+            class="min-w-0 border-0 p-0 m-0"
+          >
+            <.form_disclosure
+              title="Title filter"
+              open={Keyword.has_key?(@changeset.errors, :title_filter_regex)}
+              data-setting-group
+              x-data={
               """
               Object.assign(window.pinchflatTitleFilterBuilder(#{title_filter_regex_json(f)}), {
                 titles: '',
@@ -981,385 +1000,386 @@
               })
               """
             }
-          >
-            <:status>
-              <span x-text="regex.trim() ? 'Enabled' : 'None'">
-                {if f[:title_filter_regex].value in [nil, ""], do: "None", else: "Enabled"}
-              </span>
-            </:status>
-            <div data-setting x-data="window.pinchflatSavedTitleFilters()">
-              <section
-                class="border-b border-theme-outline/35 pb-5 pt-4"
-                aria-labelledby="title-filter-stored-heading"
-                data-saved-title-filters
-              >
-                <h4 id="title-filter-stored-heading" class="text-sm font-semibold text-theme-on-surface">
-                  Stored Filters
-                </h4>
-                <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">
-                  Commonly used filters can be stored for access across all sources
-                </p>
+            >
+              <:status>
+                <span x-text="regex.trim() ? 'Enabled' : 'None'">
+                  {if f[:title_filter_regex].value in [nil, ""], do: "None", else: "Enabled"}
+                </span>
+              </:status>
+              <div data-setting x-data="window.pinchflatSavedTitleFilters()">
+                <section
+                  class="border-b border-theme-outline/35 pb-5 pt-4"
+                  aria-labelledby="title-filter-stored-heading"
+                  data-saved-title-filters
+                >
+                  <h4 id="title-filter-stored-heading" class="text-sm font-semibold text-theme-on-surface">
+                    Stored Filters
+                  </h4>
+                  <p class="mt-1 text-sm leading-5 text-theme-on-surface-muted">
+                    Commonly used filters can be stored for access across all sources
+                  </p>
 
-                <p x-show="savedFilters.length === 0" class="mt-3 text-sm text-theme-on-surface-muted">
-                  No stored filters yet.
-                </p>
-                <ul x-cloak x-show="savedFilters.length > 0" class="theme-list mt-3" aria-label="Stored filters">
-                  <template x-for="filter in savedFilters" x-bind:key="filter.id">
-                    <li
-                      class="theme-list-item flex flex-wrap items-center gap-x-3 gap-y-2"
-                      x-bind:class="filter.id === loadedId && 'theme-list-item-selected'"
-                      x-bind:aria-current="filter.id === loadedId ? 'true' : null"
-                    >
-                      <div class="min-w-0 flex-1">
-                        <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-theme-on-surface">
-                          <span class="[overflow-wrap:anywhere]" x-text="filter.name"></span>
-                          <span
-                            x-cloak
-                            x-show="filter.id === loadedId && changedSinceLoaded()"
-                            class="theme-badge-warning rounded-full px-2 py-0.5 text-xs font-medium"
+                  <p x-show="savedFilters.length === 0" class="mt-3 text-sm text-theme-on-surface-muted">
+                    No stored filters yet.
+                  </p>
+                  <ul x-cloak x-show="savedFilters.length > 0" class="theme-list mt-3" aria-label="Stored filters">
+                    <template x-for="filter in savedFilters" x-bind:key="filter.id">
+                      <li
+                        class="theme-list-item flex flex-wrap items-center gap-x-3 gap-y-2"
+                        x-bind:class="filter.id === loadedId && 'theme-list-item-selected'"
+                        x-bind:aria-current="filter.id === loadedId ? 'true' : null"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-theme-on-surface">
+                            <span class="[overflow-wrap:anywhere]" x-text="filter.name"></span>
+                            <span
+                              x-cloak
+                              x-show="filter.id === loadedId && changedSinceLoaded()"
+                              class="theme-badge-warning rounded-full px-2 py-0.5 text-xs font-medium"
+                            >
+                              Changed since loaded
+                            </span>
+                          </p>
+                          <p
+                            class="truncate font-mono text-xs text-theme-on-surface-muted"
+                            x-text="filter.regex"
+                            x-bind:title="filter.regex"
                           >
-                            Changed since loaded
-                          </span>
-                        </p>
-                        <p
-                          class="truncate font-mono text-xs text-theme-on-surface-muted"
-                          x-text="filter.regex"
-                          x-bind:title="filter.regex"
+                          </p>
+                        </div>
+                        <div class="flex shrink-0 gap-2">
+                          <.button
+                            type="button"
+                            variant="secondary"
+                            size="compact"
+                            x-on:click="loadFilter(filter)"
+                            x-bind:disabled="savedBusy"
+                            x-bind:aria-label="'Load stored filter ' + filter.name"
+                          >
+                            Load
+                          </.button>
+                          <.button
+                            type="button"
+                            variant="danger"
+                            size="compact"
+                            x-on:click="deleteFilter(filter)"
+                            x-bind:disabled="savedBusy"
+                            x-bind:aria-label="deleteLabel(filter)"
+                          >
+                            <span x-text="confirmDeleteId === filter.id ? 'Confirm delete' : 'Delete'">Delete</span>
+                          </.button>
+                        </div>
+                      </li>
+                    </template>
+                  </ul>
+                  <div aria-live="polite">
+                    <p
+                      x-cloak
+                      x-show="savedMessage && messageWhere === 'list'"
+                      x-text="savedMessage"
+                      class="mt-2 text-sm text-theme-error"
+                    >
+                    </p>
+                  </div>
+                </section>
+                <div data-title-filter-builder>
+                  <p class="mt-3 text-sm leading-5 text-theme-on-surface-muted">
+                    Type a word and press Enter. Use * as a wildcard and "quotes" for phrases that contain commas.
+                  </p>
+                  <p x-cloak x-show="custom" class="mt-2 text-sm text-theme-warning">
+                    This source already has a regex the builder cannot read. Adding anything below replaces it.
+                  </p>
+
+                  <%!-- Each list's switches are centred on its word box and may rise beside its heading --%>
+                  <div
+                    :for={group <- title_filter_groups()}
+                    class="grid grid-cols-1 gap-x-7 gap-y-2 border-b border-theme-outline/35 pb-7 pt-5 sm:grid-cols-[minmax(0,1fr)_15rem]"
+                    data-title-filter-list={group.key}
+                  >
+                    <div class="flex items-center gap-1 text-sm font-medium text-theme-on-surface sm:col-start-1 sm:row-start-1">
+                      {group.label}
+                      <.info_tip id={"title-filter-#{group.key}-tip"} label={"About #{group.label}"} text={group.help} />
+                    </div>
+                    <div
+                      class="theme-chip-field sm:col-start-1 sm:row-start-2"
+                      x-on:click="$el.querySelector('input').focus()"
+                    >
+                      <template x-for={"(term, index) in terms.#{group.key}"} x-bind:key="term">
+                        <span
+                          class="theme-chip"
+                          x-bind:class={"isConflicting('#{group.key}', term) && 'theme-chip-conflict'"}
                         >
-                        </p>
+                          <span class="[overflow-wrap:anywhere]" x-text="term"></span>
+                          <button
+                            type="button"
+                            class="theme-chip-remove cursor-pointer"
+                            x-bind:aria-label="'Remove ' + term"
+                            title="Remove"
+                            x-on:click.stop={"removeTerm('#{group.key}', index)"}
+                          >
+                            &times;
+                          </button>
+                        </span>
+                      </template>
+                      <input
+                        type="text"
+                        autocomplete="off"
+                        class="theme-chip-field-input"
+                        placeholder={group.placeholder}
+                        x-bind:placeholder={"terms.#{group.key}.length ? '' : '#{group.placeholder}'"}
+                        aria-label={group.label}
+                        x-on:keydown={"termKeydown('#{group.key}', $event)"}
+                        x-on:blur={"termBlur('#{group.key}', $event)"}
+                        x-on:paste={"termPaste('#{group.key}', $event)"}
+                      />
+                    </div>
+                    <div class="flex flex-row flex-wrap gap-x-6 gap-y-1 sm:col-start-2 sm:row-start-2 sm:-my-[23px] sm:flex-col sm:flex-nowrap sm:gap-1.5 sm:self-center">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="flex items-center gap-1 text-sm text-theme-on-surface">
+                          <label for={"title-filter-#{group.key}-whole"} class="cursor-pointer">
+                            Whole words only
+                          </label>
+                          <.info_tip
+                            id={"title-filter-#{group.key}-whole-tip"}
+                            label="About whole words only"
+                            text={~s(Only match complete words. Off lets "art" match "party".)}
+                            align="right"
+                          />
+                        </span>
+                        <label for={"title-filter-#{group.key}-whole"} class="theme-switch-target cursor-pointer">
+                          <input
+                            type="checkbox"
+                            id={"title-filter-#{group.key}-whole"}
+                            class="peer sr-only"
+                            x-model={"options.#{group.key}.whole"}
+                            x-on:change="writeRegex()"
+                          />
+                          <span class="theme-switch-track peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface"></span>
+                          <span class="theme-switch-thumb peer-checked:translate-x-6 peer-checked:bg-theme-primary"></span>
+                        </label>
                       </div>
-                      <div class="flex shrink-0 gap-2">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="flex items-center gap-1 text-sm text-theme-on-surface">
+                          <label for={"title-filter-#{group.key}-case"} class="cursor-pointer">
+                            Match capital letters
+                          </label>
+                          <.info_tip
+                            id={"title-filter-#{group.key}-case-tip"}
+                            label="About match capital letters"
+                            text={~s(Off means "Review" and "review" count the same.)}
+                            align="right"
+                          />
+                        </span>
+                        <label for={"title-filter-#{group.key}-case"} class="theme-switch-target cursor-pointer">
+                          <input
+                            type="checkbox"
+                            id={"title-filter-#{group.key}-case"}
+                            class="peer sr-only"
+                            x-model={"options.#{group.key}.matchCase"}
+                            x-on:change="writeRegex()"
+                          />
+                          <span class="theme-switch-track peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface"></span>
+                          <span class="theme-switch-thumb peer-checked:translate-x-6 peer-checked:bg-theme-primary"></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <.input
+                    field={f[:title_filter_regex]}
+                    type="text"
+                    inputclass="font-mono"
+                    label="Title Filter Regex"
+                    placeholder="(?i)^How to Bike$"
+                    help={title_filter_regex_help()}
+                    html_help={true}
+                    x-model.fill="regex"
+                    x-ref="regexInput"
+                  >
+                    <:input_action>
+                      <button
+                        type="button"
+                        class="theme-field-action hover:bg-transparent"
+                        x-cloak
+                        x-show="regex.trim() !== ''"
+                        x-on:click="clearFilter(); $refs.regexInput.focus()"
+                        aria-label="Clear title filter"
+                      >
+                        <.icon name="hero-x-mark" class="h-5 w-5" />
+                      </button>
+                    </:input_action>
+                  </.input>
+
+                  <div aria-live="polite">
+                    <div
+                      x-cloak
+                      x-show="conflicts().length > 0"
+                      x-ref="conflicts"
+                      class="theme-status-card theme-status-card-warning mt-5 text-sm"
+                      data-title-filter-conflicts
+                    >
+                      <p class="font-medium">This filter contradicts itself</p>
+                      <ul class="mt-1 list-disc space-y-1 pl-5">
+                        <template
+                          x-for="conflict in conflicts()"
+                          x-bind:key="conflict.list + conflict.term + conflict.blocked"
+                        >
+                          <li x-text="conflict.message"></li>
+                        </template>
+                      </ul>
+                      <p class="mt-2" x-text="conflictHint()"></p>
+                    </div>
+                  </div>
+                </div>
+                <.form_disclosure title="Test this filter">
+                  <p :if={@changeset.data.id} class="mt-3 text-sm text-theme-on-surface-muted">
+                    The 50 most recently published indexed titles of this source are checked too.
+                  </p>
+                  <.input
+                    type="textarea"
+                    name="title_filter_samples"
+                    id="title-filter-samples"
+                    value=""
+                    label="Sample titles, one per line"
+                    x-model="titles"
+                  />
+                  <div class="mt-3">
+                    <.button
+                      type="button"
+                      variant="secondary"
+                      x-on:click="test()"
+                      x-bind:disabled="busy || regex.trim() === ''"
+                    >
+                      Test filter
+                    </.button>
+                  </div>
+
+                  <div aria-live="polite">
+                    <p
+                      x-cloak
+                      x-show="error"
+                      x-text="error"
+                      class="theme-status-card theme-status-card-warning mt-3 text-sm"
+                    >
+                    </p>
+
+                    <template x-for="group in [{ label: 'Sample titles', results: samples }, { label: 'Recent indexed titles', results: indexed }]">
+                      <div x-show="tested && !error && group.results.length > 0" class="mt-4">
+                        <p class="text-sm font-medium text-theme-on-surface">
+                          <span x-text="group.label"></span>:
+                          <span x-text="matched(group.results) + ' of ' + group.results.length + ' would download'"></span>
+                        </p>
+                        <ul class="mt-2 space-y-1 text-sm">
+                          <template x-for="result in group.results">
+                            <li class="flex items-start gap-2">
+                              <span
+                                class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                                x-bind:class="result.match ? 'theme-badge-success' : 'theme-badge-warning'"
+                                x-text="result.match ? 'Matches' : 'Filtered out'"
+                              ></span>
+                              <span class="min-w-0 [overflow-wrap:anywhere] text-theme-on-surface" x-text="result.title"></span>
+                            </li>
+                          </template>
+                        </ul>
+                      </div>
+                    </template>
+
+                    <p
+                      x-cloak
+                      x-show="tested && !error && samples.length === 0 && indexed.length === 0"
+                      class="mt-3 text-sm text-theme-on-surface-muted"
+                    >
+                      The regex is valid. Add sample titles above to see which ones it matches.
+                    </p>
+                  </div>
+                </.form_disclosure>
+
+                <div
+                  x-cloak
+                  x-show="showSaveBar()"
+                  class="theme-save-bar mt-4"
+                  role="region"
+                  aria-label="Store this title filter"
+                  data-title-filter-save-bar
+                >
+                  <div class="flex flex-wrap items-center gap-3">
+                    <p class="min-w-56 flex-1 text-sm text-theme-on-surface">
+                      <template x-if="loadedFilter()">
+                        <span>Changes to <strong class="font-semibold" x-text="loadedFilter()?.name"></strong></span>
+                      </template>
+                      <template x-if="!loadedFilter()">
+                        <span>New filter</span>
+                      </template>
+                      <span class="block text-theme-on-surface-muted" x-text="saveBarPrompt()"></span>
+                    </p>
+
+                    <template x-if="!adding">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <.button
+                          x-show="loadedFilter()"
+                          type="button"
+                          variant="outline"
+                          x-on:click="discardChanges()"
+                        >
+                          Discard changes
+                        </.button>
+                        <.button type="button" variant="secondary" x-on:click="startStoringNew()">
+                          Store as new…
+                        </.button>
+                        <.button
+                          x-show="loadedFilter()"
+                          type="button"
+                          variant="secondary"
+                          x-on:click="updateLoaded()"
+                          x-bind:disabled="savedBusy"
+                        >
+                          <span x-text="'Update \u201c' + loadedFilter()?.name + '\u201d'">Update</span>
+                        </.button>
+                      </div>
+                    </template>
+
+                    <template x-if="adding">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <div class="w-64">
+                          <.input
+                            type="text"
+                            name="title_filter_save_name"
+                            id="title-filter-save-name"
+                            value=""
+                            placeholder="New filter name"
+                            aria-label="New filter name"
+                            maxlength="80"
+                            x-model="saveName"
+                            x-init="$nextTick(() => $el.focus())"
+                            x-on:keydown.enter.prevent="saveFilter()"
+                            x-on:keydown.escape.prevent="cancelAdding()"
+                          />
+                        </div>
+                        <.button type="button" variant="outline" x-on:click="cancelAdding()">Cancel</.button>
                         <.button
                           type="button"
                           variant="secondary"
-                          size="compact"
-                          x-on:click="loadFilter(filter)"
-                          x-bind:disabled="savedBusy"
-                          x-bind:aria-label="'Load stored filter ' + filter.name"
+                          x-on:click="saveFilter()"
+                          x-bind:disabled="savedBusy || saveName.trim() === ''"
                         >
-                          Load
-                        </.button>
-                        <.button
-                          type="button"
-                          variant="danger"
-                          size="compact"
-                          x-on:click="deleteFilter(filter)"
-                          x-bind:disabled="savedBusy"
-                          x-bind:aria-label="deleteLabel(filter)"
-                        >
-                          <span x-text="confirmDeleteId === filter.id ? 'Confirm delete' : 'Delete'">Delete</span>
+                          Store filter
                         </.button>
                       </div>
-                    </li>
-                  </template>
-                </ul>
-                <div aria-live="polite">
-                  <p
-                    x-cloak
-                    x-show="savedMessage && messageWhere === 'list'"
-                    x-text="savedMessage"
-                    class="mt-2 text-sm text-theme-error"
-                  >
-                  </p>
-                </div>
-              </section>
-              <div data-title-filter-builder>
-                <p class="mt-3 text-sm leading-5 text-theme-on-surface-muted">
-                  Type a word and press Enter. Use * as a wildcard and "quotes" for phrases that contain commas.
-                </p>
-                <p x-cloak x-show="custom" class="mt-2 text-sm text-theme-warning">
-                  This source already has a regex the builder cannot read. Adding anything below replaces it.
-                </p>
-
-                <%!-- Each list's switches are centred on its word box and may rise beside its heading --%>
-                <div
-                  :for={group <- title_filter_groups()}
-                  class="grid grid-cols-1 gap-x-7 gap-y-2 border-b border-theme-outline/35 pb-7 pt-5 sm:grid-cols-[minmax(0,1fr)_15rem]"
-                  data-title-filter-list={group.key}
-                >
-                  <div class="flex items-center gap-1 text-sm font-medium text-theme-on-surface sm:col-start-1 sm:row-start-1">
-                    {group.label}
-                    <.info_tip id={"title-filter-#{group.key}-tip"} label={"About #{group.label}"} text={group.help} />
-                  </div>
-                  <div
-                    class="theme-chip-field sm:col-start-1 sm:row-start-2"
-                    x-on:click="$el.querySelector('input').focus()"
-                  >
-                    <template x-for={"(term, index) in terms.#{group.key}"} x-bind:key="term">
-                      <span
-                        class="theme-chip"
-                        x-bind:class={"isConflicting('#{group.key}', term) && 'theme-chip-conflict'"}
-                      >
-                        <span class="[overflow-wrap:anywhere]" x-text="term"></span>
-                        <button
-                          type="button"
-                          class="theme-chip-remove cursor-pointer"
-                          x-bind:aria-label="'Remove ' + term"
-                          title="Remove"
-                          x-on:click.stop={"removeTerm('#{group.key}', index)"}
-                        >
-                          &times;
-                        </button>
-                      </span>
                     </template>
-                    <input
-                      type="text"
-                      autocomplete="off"
-                      class="theme-chip-field-input"
-                      placeholder={group.placeholder}
-                      x-bind:placeholder={"terms.#{group.key}.length ? '' : '#{group.placeholder}'"}
-                      aria-label={group.label}
-                      x-on:keydown={"termKeydown('#{group.key}', $event)"}
-                      x-on:blur={"termBlur('#{group.key}', $event)"}
-                      x-on:paste={"termPaste('#{group.key}', $event)"}
-                    />
                   </div>
-                  <div class="flex flex-row flex-wrap gap-x-6 gap-y-1 sm:col-start-2 sm:row-start-2 sm:-my-[23px] sm:flex-col sm:flex-nowrap sm:gap-1.5 sm:self-center">
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="flex items-center gap-1 text-sm text-theme-on-surface">
-                        <label for={"title-filter-#{group.key}-whole"} class="cursor-pointer">
-                          Whole words only
-                        </label>
-                        <.info_tip
-                          id={"title-filter-#{group.key}-whole-tip"}
-                          label="About whole words only"
-                          text={~s(Only match complete words. Off lets "art" match "party".)}
-                          align="right"
-                        />
-                      </span>
-                      <label for={"title-filter-#{group.key}-whole"} class="theme-switch-target cursor-pointer">
-                        <input
-                          type="checkbox"
-                          id={"title-filter-#{group.key}-whole"}
-                          class="peer sr-only"
-                          x-model={"options.#{group.key}.whole"}
-                          x-on:change="writeRegex()"
-                        />
-                        <span class="theme-switch-track peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface"></span>
-                        <span class="theme-switch-thumb peer-checked:translate-x-6 peer-checked:bg-theme-primary"></span>
-                      </label>
-                    </div>
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="flex items-center gap-1 text-sm text-theme-on-surface">
-                        <label for={"title-filter-#{group.key}-case"} class="cursor-pointer">
-                          Match capital letters
-                        </label>
-                        <.info_tip
-                          id={"title-filter-#{group.key}-case-tip"}
-                          label="About match capital letters"
-                          text={~s(Off means "Review" and "review" count the same.)}
-                          align="right"
-                        />
-                      </span>
-                      <label for={"title-filter-#{group.key}-case"} class="theme-switch-target cursor-pointer">
-                        <input
-                          type="checkbox"
-                          id={"title-filter-#{group.key}-case"}
-                          class="peer sr-only"
-                          x-model={"options.#{group.key}.matchCase"}
-                          x-on:change="writeRegex()"
-                        />
-                        <span class="theme-switch-track peer-checked:border-theme-primary/70 peer-checked:bg-theme-primary-container peer-focus-visible:ring-2 peer-focus-visible:ring-theme-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-theme-surface"></span>
-                        <span class="theme-switch-thumb peer-checked:translate-x-6 peer-checked:bg-theme-primary"></span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <.input
-                  field={f[:title_filter_regex]}
-                  type="text"
-                  inputclass="font-mono"
-                  label="Title Filter Regex"
-                  placeholder="(?i)^How to Bike$"
-                  help={title_filter_regex_help()}
-                  html_help={true}
-                  x-model.fill="regex"
-                  x-ref="regexInput"
-                >
-                  <:input_action>
-                    <button
-                      type="button"
-                      class="theme-field-action hover:bg-transparent"
+                  <div aria-live="polite">
+                    <p
                       x-cloak
-                      x-show="regex.trim() !== ''"
-                      x-on:click="clearFilter(); $refs.regexInput.focus()"
-                      aria-label="Clear title filter"
+                      x-show="savedMessage && messageWhere === 'bar'"
+                      x-text="savedMessage"
+                      class="mt-2 text-sm text-theme-error"
                     >
-                      <.icon name="hero-x-mark" class="h-5 w-5" />
-                    </button>
-                  </:input_action>
-                </.input>
-
-                <div aria-live="polite">
-                  <div
-                    x-cloak
-                    x-show="conflicts().length > 0"
-                    x-ref="conflicts"
-                    class="theme-status-card theme-status-card-warning mt-5 text-sm"
-                    data-title-filter-conflicts
-                  >
-                    <p class="font-medium">This filter contradicts itself</p>
-                    <ul class="mt-1 list-disc space-y-1 pl-5">
-                      <template
-                        x-for="conflict in conflicts()"
-                        x-bind:key="conflict.list + conflict.term + conflict.blocked"
-                      >
-                        <li x-text="conflict.message"></li>
-                      </template>
-                    </ul>
-                    <p class="mt-2" x-text="conflictHint()"></p>
+                    </p>
                   </div>
                 </div>
               </div>
-              <.form_disclosure title="Test this filter">
-                <p :if={@changeset.data.id} class="mt-3 text-sm text-theme-on-surface-muted">
-                  The 50 most recently published indexed titles of this source are checked too.
-                </p>
-                <.input
-                  type="textarea"
-                  name="title_filter_samples"
-                  id="title-filter-samples"
-                  value=""
-                  label="Sample titles, one per line"
-                  x-model="titles"
-                />
-                <div class="mt-3">
-                  <.button
-                    type="button"
-                    variant="secondary"
-                    x-on:click="test()"
-                    x-bind:disabled="busy || regex.trim() === ''"
-                  >
-                    Test filter
-                  </.button>
-                </div>
-
-                <div aria-live="polite">
-                  <p
-                    x-cloak
-                    x-show="error"
-                    x-text="error"
-                    class="theme-status-card theme-status-card-warning mt-3 text-sm"
-                  >
-                  </p>
-
-                  <template x-for="group in [{ label: 'Sample titles', results: samples }, { label: 'Recent indexed titles', results: indexed }]">
-                    <div x-show="tested && !error && group.results.length > 0" class="mt-4">
-                      <p class="text-sm font-medium text-theme-on-surface">
-                        <span x-text="group.label"></span>:
-                        <span x-text="matched(group.results) + ' of ' + group.results.length + ' would download'"></span>
-                      </p>
-                      <ul class="mt-2 space-y-1 text-sm">
-                        <template x-for="result in group.results">
-                          <li class="flex items-start gap-2">
-                            <span
-                              class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-                              x-bind:class="result.match ? 'theme-badge-success' : 'theme-badge-warning'"
-                              x-text="result.match ? 'Matches' : 'Filtered out'"
-                            ></span>
-                            <span class="min-w-0 [overflow-wrap:anywhere] text-theme-on-surface" x-text="result.title"></span>
-                          </li>
-                        </template>
-                      </ul>
-                    </div>
-                  </template>
-
-                  <p
-                    x-cloak
-                    x-show="tested && !error && samples.length === 0 && indexed.length === 0"
-                    class="mt-3 text-sm text-theme-on-surface-muted"
-                  >
-                    The regex is valid. Add sample titles above to see which ones it matches.
-                  </p>
-                </div>
-              </.form_disclosure>
-
-              <div
-                x-cloak
-                x-show="showSaveBar()"
-                class="theme-save-bar mt-4"
-                role="region"
-                aria-label="Store this title filter"
-                data-title-filter-save-bar
-              >
-                <div class="flex flex-wrap items-center gap-3">
-                  <p class="min-w-56 flex-1 text-sm text-theme-on-surface">
-                    <template x-if="loadedFilter()">
-                      <span>Changes to <strong class="font-semibold" x-text="loadedFilter()?.name"></strong></span>
-                    </template>
-                    <template x-if="!loadedFilter()">
-                      <span>New filter</span>
-                    </template>
-                    <span class="block text-theme-on-surface-muted" x-text="saveBarPrompt()"></span>
-                  </p>
-
-                  <template x-if="!adding">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <.button
-                        x-show="loadedFilter()"
-                        type="button"
-                        variant="outline"
-                        x-on:click="discardChanges()"
-                      >
-                        Discard changes
-                      </.button>
-                      <.button type="button" variant="secondary" x-on:click="startStoringNew()">
-                        Store as new…
-                      </.button>
-                      <.button
-                        x-show="loadedFilter()"
-                        type="button"
-                        variant="secondary"
-                        x-on:click="updateLoaded()"
-                        x-bind:disabled="savedBusy"
-                      >
-                        <span x-text="'Update \u201c' + loadedFilter()?.name + '\u201d'">Update</span>
-                      </.button>
-                    </div>
-                  </template>
-
-                  <template x-if="adding">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <div class="w-64">
-                        <.input
-                          type="text"
-                          name="title_filter_save_name"
-                          id="title-filter-save-name"
-                          value=""
-                          placeholder="New filter name"
-                          aria-label="New filter name"
-                          maxlength="80"
-                          x-model="saveName"
-                          x-init="$nextTick(() => $el.focus())"
-                          x-on:keydown.enter.prevent="saveFilter()"
-                          x-on:keydown.escape.prevent="cancelAdding()"
-                        />
-                      </div>
-                      <.button type="button" variant="outline" x-on:click="cancelAdding()">Cancel</.button>
-                      <.button
-                        type="button"
-                        variant="secondary"
-                        x-on:click="saveFilter()"
-                        x-bind:disabled="savedBusy || saveName.trim() === ''"
-                      >
-                        Store filter
-                      </.button>
-                    </div>
-                  </template>
-                </div>
-                <div aria-live="polite">
-                  <p
-                    x-cloak
-                    x-show="savedMessage && messageWhere === 'bar'"
-                    x-text="savedMessage"
-                    class="mt-2 text-sm text-theme-error"
-                  >
-                  </p>
-                </div>
-              </div>
-            </div>
-          </.form_disclosure>
+            </.form_disclosure>
+          </fieldset>
           <.form_disclosure
             title="Title language"
             open={Keyword.has_key?(@changeset.errors, :title_language)}
