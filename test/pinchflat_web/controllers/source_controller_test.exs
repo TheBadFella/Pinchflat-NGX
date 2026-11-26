@@ -930,6 +930,26 @@ defmodule PinchflatWeb.SourceControllerTest do
       assert is_nil(updated.title_filter_regex)
       assert is_nil(updated.min_duration_seconds)
     end
+
+    test "still rejects conflicting cutoff dates when an existing channel update sends source_type: :video", %{
+      conn: conn
+    } do
+      channel = source_fixture(collection_type: :channel)
+
+      response =
+        conn
+        |> put(~p"/sources/#{channel}",
+          source: %{
+            source_type: :video,
+            download_cutoff_date: "2026-10-10",
+            index_cutoff_date: "2026-10-20"
+          }
+        )
+        |> html_response(200)
+
+      assert response =~ "must be on or before the download cutoff date"
+      assert is_nil(Repo.reload!(channel).index_cutoff_date)
+    end
   end
 
   describe "download cutoff modes" do

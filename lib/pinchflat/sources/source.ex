@@ -640,7 +640,10 @@ defmodule Pinchflat.Sources.Source do
   # indexed, so it could never be downloaded
   defp validate_index_cutoff_date(changeset) do
     video_source? =
-      get_field(changeset, :collection_type) == :video or get_field(changeset, :source_type) == :video
+      case get_field(changeset, :collection_type) do
+        nil -> get_field(changeset, :source_type) == :video
+        collection_type -> collection_type == :video
+      end
 
     index_cutoff = get_field(changeset, :index_cutoff_date)
     download_cutoff = effective_download_cutoff_date(changeset)
