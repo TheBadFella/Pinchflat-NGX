@@ -4,6 +4,8 @@
   action={@action}
   id="settings-form"
   class="flex flex-col gap-6"
+  x-on:input="$nextTick(() => checkSettingsChanges())"
+  x-on:change="$nextTick(() => checkSettingsChanges())"
 >
   <.error :if={@changeset.action}>Oops, something went wrong! Please check the errors below.</.error>
 
@@ -506,6 +508,21 @@
   </div>
 </section>
 
-<div class="theme-surface-raised sticky bottom-0 z-10 px-5 py-3 sm:px-7.5">
-  <.button variant="primary" class="w-full sm:w-auto" form="settings-form">Save Settings</.button>
+<span
+  role="status"
+  class="sr-only"
+  x-text="settingsDirty ? 'Unsaved changes' : ''"
+></span>
+<div
+  id="settings-save-card"
+  x-cloak
+  x-show={if @changeset.action, do: "true", else: "settingsDirty"}
+  class="theme-surface-raised fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 p-2 pl-3 shadow-m3-3 sm:right-6 sm:bottom-6 sm:gap-3 sm:pl-4"
+>
+  <p class="text-sm font-medium">Unsaved changes</p>
+  <.button variant="primary" class="shrink-0" form="settings-form">Save changes</.button>
 </div>
+
+<noscript>
+  <.button variant="primary" form="settings-form">Save changes</.button>
+</noscript>

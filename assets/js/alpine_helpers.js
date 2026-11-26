@@ -161,13 +161,40 @@ window.settingsNav = () => {
 
 window.settingsPage = () => {
   const nav = window.settingsNav()
+  let form
+  let savedValues
+  let observer
+
+  function settingsValues() {
+    return JSON.stringify([...new FormData(form)].filter(([name]) => name.startsWith('setting[')))
+  }
 
   return {
     ...nav,
+    settingsDirty: false,
     init() {
       this.applyHash()
       window.addEventListener('hashchange', () => this.applyHash())
       nav.init.call(this)
+
+      form = this.$el.querySelector('#settings-form')
+      this.$nextTick(() => {
+        savedValues = settingsValues()
+        // Codec priorities update hidden inputs, including when reordered by a button or pointer.
+        observer = new MutationObserver(() => this.checkSettingsChanges())
+        observer.observe(form, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ['value', 'disabled']
+        })
+      })
+    },
+    destroy() {
+      observer?.disconnect()
+    },
+    checkSettingsChanges() {
+      if (savedValues !== undefined) this.settingsDirty = settingsValues() !== savedValues
     },
     applyHash() {
       const hash = (window.location.hash || '').replace('#', '')

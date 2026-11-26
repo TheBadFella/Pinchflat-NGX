@@ -194,7 +194,7 @@ defmodule PinchflatWeb.CoreComponents do
         <button
           type="button"
           aria-label={gettext("close")}
-          class="theme-field-action -m-2 h-9 w-9"
+          class="theme-field-action -m-3"
           x-on:click="open = false"
         >
           <.icon name="hero-x-mark" class="h-4 w-4" />

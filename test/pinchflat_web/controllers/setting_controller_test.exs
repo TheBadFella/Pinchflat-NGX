@@ -151,11 +151,13 @@ defmodule PinchflatWeb.SettingControllerTest do
       conn = put(conn, ~p"/settings", setting: update_attrs)
       assert redirected_to(conn) == ~p"/settings"
 
-      conn = get(conn, ~p"/settings")
-      assert html_response(conn, 200) =~ update_attrs[:apprise_server]
-      assert html_response(conn, 200) =~ update_attrs[:external_base_url]
-      assert html_response(conn, 200) =~ "Download Workers"
-      assert html_response(conn, 200) =~ "Base yt-dlp Config"
+      html = conn |> get(~p"/settings") |> html_response(200)
+      toast = html |> LazyHTML.from_document() |> LazyHTML.query(".theme-toast-stack [role=status]") |> LazyHTML.text()
+      assert String.trim(toast) == "Settings saved"
+      assert html =~ update_attrs[:apprise_server]
+      assert html =~ update_attrs[:external_base_url]
+      assert html =~ "Download Workers"
+      assert html =~ "Base yt-dlp Config"
     end
 
     test "shows compose ownership when a worker env var is set", %{conn: conn} do
