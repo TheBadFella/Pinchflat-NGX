@@ -242,8 +242,10 @@ defmodule PinchflatWeb.Api.MediaControllerTest do
       profile = media_profile_fixture(%{download_thumbnail: false})
       source = source_fixture(%{media_profile_id: profile.id, cookie_behaviour: :when_needed})
       item = media_item_fixture(%{source_id: source.id, media_filepath: nil, availability: :needs_auth})
+      # Parallel CI partitions share the fixture's filepath, so use a file of our own.
       metadata = render_parsed_metadata(:media_metadata)
-      path = metadata["filepath"]
+      path = Path.join(Path.dirname(metadata["filepath"]), "api-download-#{System.unique_integer([:positive])}.webp")
+      metadata = Map.put(metadata, "filepath", path)
       on_exit(fn -> File.rm(path) end)
       stub(UserScriptRunnerMock, :run, fn _event, _data -> {:ok, "", 0} end)
 

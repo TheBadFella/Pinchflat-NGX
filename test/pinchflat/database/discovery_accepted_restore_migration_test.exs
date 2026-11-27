@@ -12,10 +12,14 @@ defmodule Pinchflat.Database.DiscoveryAcceptedRestoreMigrationTest do
     unless Code.ensure_loaded?(migration),
       do: Code.require_file("priv/repo/migrations/20261126120000_restore_unsaved_accepted_discovery_suggestions.exs")
 
-    directory = Path.join(System.tmp_dir!(), "discovery-restore-#{System.unique_integer([:positive])}")
+    # CI runs partitions in parallel VMs, so include the OS pid in the directory name.
+    directory =
+      Path.join(System.tmp_dir!(), "discovery-restore-#{:os.getpid()}-#{System.unique_integer([:positive])}")
+
     File.mkdir_p!(directory)
     start_supervised!({FixtureRepo, database: Path.join(directory, "fixture.db")})
-    on_exit(fn -> File.rm_rf!(directory) end)
+    # SQLite can still be writing -wal/-shm files while the repo shuts down; cleanup must not fail the test.
+    on_exit(fn -> File.rm_rf(directory) end)
 
     FixtureRepo.query!("CREATE TABLE sources (id INTEGER PRIMARY KEY, collection_type TEXT, collection_id TEXT)")
 
@@ -42,5 +46,7 @@ defmodule Pinchflat.Database.DiscoveryAcceptedRestoreMigrationTest do
 
     assert FixtureRepo.query!("SELECT state FROM channel_discovery_suggestions ORDER BY id").rows ==
              [["accepted"], ["validated"], ["validated"], ["dismissed"], ["validated"]]
+
+    stop_supervised!(FixtureRepo)
   end
 end
