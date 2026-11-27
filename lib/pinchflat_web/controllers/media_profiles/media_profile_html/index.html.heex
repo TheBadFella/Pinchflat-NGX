@@ -1,3 +1,7 @@
+<div :if={message = Phoenix.Flash.get(@conn.assigns.flash, :default_profile_saved)} class="theme-toast-stack">
+  <.flash id="default-profile-saved-toast" kind={:info} toast>{message}</.flash>
+</div>
+
 <div class="mb-6 flex gap-3 flex-row items-center justify-between">
   <h2 class="text-title-md2 font-bold text-theme-on-surface">Media Profiles</h2>
 
