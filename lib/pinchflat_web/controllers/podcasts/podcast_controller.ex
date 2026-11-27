@@ -123,14 +123,24 @@ defmodule PinchflatWeb.Podcasts.PodcastController do
   )
 
   def episode_image(conn, %{"uuid" => uuid}) do
-    media_item = Repo.get_by!(MediaItem, uuid: uuid)
+    media_item = MediaItem |> Repo.get_by!(uuid: uuid) |> Repo.preload(:metadata)
 
-    if media_item.thumbnail_filepath && File.exists?(media_item.thumbnail_filepath) do
-      conn
-      |> put_resp_content_type(MIME.from_path(media_item.thumbnail_filepath))
-      |> send_file(200, media_item.thumbnail_filepath)
-    else
-      send_resp(conn, 404, "Image not found")
+    case episode_image_path(media_item) do
+      nil ->
+        send_resp(conn, 404, "Image not found")
+
+      path ->
+        conn
+        |> put_resp_content_type(MIME.from_path(path))
+        |> send_file(200, path)
     end
+  end
+
+  # Prefer the thumbnail saved beside the video. Every completed download also keeps an
+  # internal copy with its metadata, which covers profiles that only embed thumbnails.
+  defp episode_image_path(media_item) do
+    internal = media_item.metadata && media_item.metadata.thumbnail_filepath
+
+    Enum.find([media_item.thumbnail_filepath, internal], &(is_binary(&1) and File.exists?(&1)))
   end
 end

@@ -102,6 +102,25 @@ defmodule PinchflatWeb.PodcastControllerTest do
       assert conn.resp_body == File.read!(media_item.thumbnail_filepath)
     end
 
+    test "falls back to the internal thumbnail when no thumbnail is saved beside the video", %{conn: conn} do
+      internal =
+        Path.join(Application.get_env(:pinchflat, :metadata_directory), "embed-only-#{:rand.uniform(1_000_000)}.jpg")
+
+      Pinchflat.Utils.FilesystemUtils.cp_p!(thumbnail_filepath_fixture(), internal)
+      on_exit(fn -> File.rm(internal) end)
+
+      media_item =
+        media_item_fixture(%{
+          thumbnail_filepath: nil,
+          metadata: %{metadata_filepath: "/metadata/metadata.json.gz", thumbnail_filepath: internal}
+        })
+
+      conn = get(conn, ~p"/media/#{media_item.uuid}/episode_image" <> ".jpg")
+
+      assert conn.status == 200
+      assert conn.resp_body == File.read!(internal)
+    end
+
     test "returns 404 if an image cannot be found", %{conn: conn} do
       media_item = media_item_fixture()
 

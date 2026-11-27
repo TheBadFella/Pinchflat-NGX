@@ -929,6 +929,7 @@ defmodule PinchflatWeb.Sources.MediaItemTableLive do
       :short_form_content,
       :availability,
       :media_size_bytes,
+      :media_downloaded_at,
       :thumbnail_filepath,
       :unavailable_at,
       :unavailable_reason,
