@@ -1,0 +1,62 @@
+name: Apply issue defaults
+
+# The issue forms set `type:`, but GitHub has not been applying the Bug form's type
+# to every new issue. This fills in the type from the form that was used, and assigns
+# the maintainer. An existing type or assignee is never changed.
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Issue number to check'
+        required: true
+        type: number
+
+permissions:
+  issues: write
+
+jobs:
+  apply-defaults:
+    name: Apply issue defaults
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.user.type != 'Bot'
+    steps:
+      - name: Set type and assignee
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          NUMBER: ${{ github.event.issue.number || inputs.issue }}
+        run: |
+          issue=$(gh api "repos/$REPO/issues/$NUMBER")
+          if [ "$(jq -r '.pull_request != null' <<<"$issue")" = "true" ]; then
+            echo "#$NUMBER is a pull request; nothing to do."
+            exit 0
+          fi
+
+          current_type=$(jq -r '.type.name // empty' <<<"$issue")
+          body=$(jq -r '.body // ""' <<<"$issue")
+          if [ -n "$current_type" ]; then
+            echo "#$NUMBER already has type $current_type."
+          else
+            case "$body" in
+              *"### What happened?"*"### Steps to reproduce"*) wanted=Bug ;;
+              *"### What are you trying to do?"*"### How would you like it to work?"*) wanted=Feature ;;
+              *) wanted="" ;;
+            esac
+            if [ -n "$wanted" ]; then
+              gh api -X PATCH "repos/$REPO/issues/$NUMBER" -f type="$wanted" --jq '"#\(.number) type set to \(.type.name)."'
+            else
+              echo "#$NUMBER was not created from an issue form; leaving its type for triage."
+            fi
+          fi
+
+          if [ "$(jq '.assignees | length' <<<"$issue")" -eq 0 ]; then
+            gh api -X POST "repos/$REPO/issues/$NUMBER/assignees" -f "assignees[]=$OWNER" \
+              --jq '"#\(.number) assigned to \([.assignees[].login] | join(", "))."'
+          else
+            echo "#$NUMBER already has an assignee."
+          fi
