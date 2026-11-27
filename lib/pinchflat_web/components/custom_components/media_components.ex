@@ -8,9 +8,10 @@ defmodule PinchflatWeb.CustomComponents.MediaComponents do
   @doc """
   Renders a media item thumbnail with a decorative placeholder fallback.
 
-  The image is only requested when the item has a stored thumbnail filepath.
-  Missing files are handled in the browser so rendering never stats a media
-  share per row.
+  The image is requested when the item has a stored thumbnail filepath or has
+  been downloaded, since every completed download keeps an internal thumbnail
+  with its metadata. Missing files are handled in the browser so rendering never
+  stats a media share per row.
   """
   attr :media_item, :map, required: true
   attr :size, :string, default: "card"
@@ -71,5 +72,6 @@ defmodule PinchflatWeb.CustomComponents.MediaComponents do
   end
 
   defp thumbnail?(%{thumbnail_filepath: path}) when is_binary(path) and path != "", do: true
+  defp thumbnail?(%{media_downloaded_at: %DateTime{}}), do: true
   defp thumbnail?(_media_item), do: false
 end

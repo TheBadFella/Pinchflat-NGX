@@ -710,20 +710,22 @@ defmodule PinchflatWeb.Pages.HistoryTableLiveTest do
       assert render_element(view, "article") =~ ~s(src="/media/#{item.uuid}/episode_image")
     end
 
-    test "renders a placeholder when an item has no thumbnail", %{conn: conn} do
+    test "requests the internal thumbnail for a download without a saved thumbnail file", %{conn: conn} do
       source = source_fixture()
 
       item =
         media_item_fixture(
           source_id: source.id,
           media_filepath: "/downloads/file.mp4",
+          media_downloaded_at: DateTime.utc_now(),
           thumbnail_filepath: nil
         )
 
       {:ok, view, _html} = live_isolated(conn, HistoryTableLive, session: %{"media_state" => "downloaded"})
 
+      # The browser falls back to the film placeholder if no internal copy exists either.
+      assert render_element(view, "tbody") =~ ~s(src="/media/#{item.uuid}/episode_image")
       assert render_element(view, "tbody") =~ ~s(data-icon="hero-film")
-      refute render_element(view, "tbody") =~ ~s(/media/#{item.uuid}/episode_image)
     end
   end
 

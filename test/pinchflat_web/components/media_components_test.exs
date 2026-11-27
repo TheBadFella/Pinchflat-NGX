@@ -26,6 +26,15 @@ defmodule PinchflatWeb.Components.MediaComponentsTest do
     assert html =~ ~s(data-icon="hero-film")
   end
 
+  test "requests the image for a downloaded item without a saved thumbnail file" do
+    html =
+      render_component(&MediaComponents.media_thumbnail/1,
+        media_item: Map.merge(@media_item, %{thumbnail_filepath: nil, media_downloaded_at: DateTime.utc_now()})
+      )
+
+    assert html =~ ~s(src="/media/media-uuid-123/episode_image")
+  end
+
   test "row size adds the fixed thumbnail width" do
     html =
       render_component(&MediaComponents.media_thumbnail/1, media_item: @media_item, size: "row")
