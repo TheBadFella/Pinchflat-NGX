@@ -1,0 +1,114 @@
+<div class="mb-6 flex flex-row items-center gap-3">
+  <.link href={~p"/sources/#{@source}"} aria-label="Back" class="theme-icon-button theme-outline-button">
+    <.icon name="hero-arrow-left" class="h-5 w-5" />
+  </.link>
+  <h2 class="ml-4 break-words text-title-md2 font-bold text-theme-on-surface">Relink Moved Files</h2>
+</div>
+
+<section class="theme-surface-raised px-5 py-6 sm:px-7.5">
+  <div class="max-w-5xl space-y-6">
+    <div>
+      <p class="text-sm font-medium uppercase tracking-wide text-theme-on-surface-muted">{@source.custom_name}</p>
+      <h3 class="mt-2 text-2xl font-bold text-theme-on-surface">
+        Find downloads that were moved or renamed outside Pinchflat-ngx
+      </h3>
+      <p class="mt-3 max-w-3xl text-sm leading-6 text-theme-on-surface-muted">
+        Opening this page searched the media directory for this source's downloads whose recorded file is missing.
+        Relinking only updates the paths Pinchflat-ngx records. No files are moved, renamed or deleted, and nothing is
+        downloaded again.
+      </p>
+    </div>
+
+    <p :if={@error} class="theme-status-card text-sm text-theme-on-surface">{@error}</p>
+
+    <section :if={!@error} class="grid gap-4 sm:grid-cols-3">
+      <div class="theme-status-card">
+        <p class="text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">Found</p>
+        <p class="mt-2 text-2xl font-bold text-theme-on-surface">{length(@matched)}</p>
+      </div>
+      <div class="theme-status-card">
+        <p class="text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">Several candidates</p>
+        <p class="mt-2 text-2xl font-bold text-theme-on-surface">{length(@ambiguous)}</p>
+      </div>
+      <div class="theme-status-card">
+        <p class="text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">Not found</p>
+        <p class="mt-2 text-2xl font-bold text-theme-on-surface">{length(@not_found)}</p>
+      </div>
+    </section>
+
+    <p :if={!@error && @matched == [] && @ambiguous == [] && @not_found == []} class="text-theme-on-surface">
+      Every downloaded file for this source is where Pinchflat-ngx expects it.
+    </p>
+
+    <.form :if={@matched != []} for={%{}} action={~p"/sources/#{@source}/relink"} method="post" class="space-y-4">
+      <h4 class="text-lg font-semibold text-theme-on-surface">Found files</h4>
+      <ul class="space-y-3">
+        <li :for={entry <- @matched} class="theme-surface-accent rounded-m3-lg px-4 py-3">
+          <label class="flex min-h-11 items-start gap-3">
+            <input
+              type="checkbox"
+              name="media_item_ids[]"
+              value={entry.media_item.id}
+              checked
+              class="mt-1 h-5 w-5 rounded border-theme-outline bg-theme-surface-2 text-theme-primary focus:ring-0"
+            />
+            <span class="min-w-0 space-y-1">
+              <span class="block break-words font-medium text-theme-on-surface">{entry.media_item.title}</span>
+              <span class="block break-all text-sm text-theme-on-surface-muted">
+                Recorded: {entry.media_item.media_filepath}
+              </span>
+              <span class="block break-all text-sm text-theme-on-surface">Found: {entry.new_path}</span>
+              <span class="block text-xs text-theme-on-surface-muted">{relink_match_label(entry.match)}</span>
+            </span>
+          </label>
+        </li>
+      </ul>
+
+      <section class="theme-surface-accent rounded-m3-lg border border-theme-outline/70 px-5 py-4">
+        <div class="flex items-start gap-3">
+          <.icon name="hero-information-circle" class="mt-0.5 h-5 w-5 shrink-0 text-theme-primary" />
+          <p class="text-sm leading-6 text-theme-on-surface-muted">
+            Thumbnails, NFO files and subtitles with the same base name are relinked too. If the files now use a
+            different folder layout, update this source's output path template so new downloads follow it, or run
+            Reconciliation afterwards to move these files back to the template's layout.
+          </p>
+        </div>
+      </section>
+
+      <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+        <.link
+          href={~p"/sources/#{@source}"}
+          class="theme-outline-button inline-flex justify-center px-5 py-3 text-sm font-medium"
+        >
+          Cancel
+        </.link>
+        <.button rounding="rounded-m3-sm">Update Selected Paths</.button>
+      </div>
+    </.form>
+
+    <section :if={@ambiguous != []} class="space-y-3">
+      <h4 class="text-lg font-semibold text-theme-on-surface">Several candidates, left unchanged</h4>
+      <ul class="space-y-3">
+        <li :for={entry <- @ambiguous} class="theme-surface-accent rounded-m3-lg px-4 py-3">
+          <span class="block break-words font-medium text-theme-on-surface">{entry.media_item.title}</span>
+          <span class="block text-xs text-theme-on-surface-muted">{relink_match_label(entry.match)}</span>
+          <span :for={path <- entry.candidates} class="block break-all text-sm text-theme-on-surface-muted">
+            {path}
+          </span>
+        </li>
+      </ul>
+    </section>
+
+    <section :if={@not_found != []} class="space-y-3">
+      <h4 class="text-lg font-semibold text-theme-on-surface">Not found, left unchanged</h4>
+      <ul class="space-y-3">
+        <li :for={entry <- @not_found} class="theme-surface-accent rounded-m3-lg px-4 py-3">
+          <span class="block break-words font-medium text-theme-on-surface">{entry.media_item.title}</span>
+          <span class="block break-all text-sm text-theme-on-surface-muted">
+            Recorded: {entry.media_item.media_filepath}
+          </span>
+        </li>
+      </ul>
+    </section>
+  </div>
+</section>
