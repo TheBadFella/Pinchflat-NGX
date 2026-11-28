@@ -16,6 +16,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.PlaylistFiles
   alias Pinchflat.Sources.PlaylistMemberships
+  alias Pinchflat.Sources.SourceRemoval
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.YtDlp.MediaCollection
   alias Pinchflat.Utils.FilesystemUtils
@@ -65,7 +66,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   Given a media source, creates (indexes) the media by creating media_items for each
   media ID in the source. Afterward, kicks off a download task for each pending media
   item belonging to the source. Returns a list of media items or changesets
-  (if the media item couldn't be created).
+  (if the media item couldn't be created), or `:source_removed` when YouTube
+  reports the content removed (see `Pinchflat.Sources.SourceRemoval`).
 
   Indexing is slow and usually returns a list of all media data at once for record creation.
   To help with this, we use a file follower to watch the file that yt-dlp writes to
@@ -110,14 +112,16 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
       base_indexing_options(source) ++
         build_download_archive_options(source, was_forced, :all) ++ build_index_cutoff_options(source, :all)
 
-    {:ok, metadata} =
+    result =
       MediaCollection.get_media_attributes_for_collection(source.original_url, command_opts,
         raw_metadata: true,
         use_cookies: Sources.use_cookies?(source, :indexing),
         expected_exit_codes: [1]
       )
 
-    persist_single_video_index(source, metadata, command_opts)
+    with {:ok, metadata} <- handle_removed_source(source, result) do
+      persist_single_video_index(source, metadata, command_opts)
+    end
   end
 
   def index_and_enqueue_download_for_media_items(%Source{} = source, opts) do
@@ -126,8 +130,27 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     translated_titles = MediaCollection.get_source_translated_titles(source, urls)
     # Before indexing, so downloads started by this run already see the memberships.
     maybe_refresh_playlist_memberships(source)
-    {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles)
-    persist_indexed_media(Repo.reload!(source), media_attributes, translated_titles)
+    result = setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles)
+
+    with {:ok, media_attributes} <- handle_removed_source(source, result) do
+      persist_indexed_media(Repo.reload!(source), media_attributes, translated_titles)
+    end
+  end
+
+  # When YouTube says the content is gone, the source is turned off and
+  # `:source_removed` is returned. Any other failure raises as before, so the
+  # job's normal retries still apply.
+  defp handle_removed_source(_source, {:ok, _value} = result), do: result
+
+  defp handle_removed_source(source, error) do
+    case SourceRemoval.removal_message(error) do
+      nil ->
+        raise MatchError, term: error
+
+      message ->
+        SourceRemoval.mark_removed(source, message)
+        :source_removed
+    end
   end
 
   defp maybe_refresh_playlist_memberships(%Source{collection_type: :channel} = source)

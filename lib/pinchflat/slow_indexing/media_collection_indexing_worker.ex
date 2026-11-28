@@ -113,6 +113,11 @@ defmodule Pinchflat.SlowIndexing.MediaCollectionIndexingWorker do
     SourceNotifications.wrap_new_media_notification(apprise_server, source, fn ->
       SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source, indexing_opts)
     end)
+    |> case do
+      # The source was turned off; finish without rescheduling.
+      :source_removed -> {:ok, :source_removed}
+      result -> result
+    end
   end
 
   defp reschedule_indexing(source) do
