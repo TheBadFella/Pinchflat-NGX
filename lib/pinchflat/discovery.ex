@@ -483,11 +483,21 @@ defmodule Pinchflat.Discovery do
   end
 
   defp list_existing_channel_sources do
-    Repo.all(from source in Source, where: source.collection_type == ^:channel)
+    Repo.all(
+      from source in Source,
+        where:
+          source.collection_type == ^:channel or
+            (source.collection_type == ^:playlist and not is_nil(source.owner_channel_id))
+    )
   end
 
   defp list_dismissed_suggestion_records do
     Repo.all(from suggestion in Suggestion, where: suggestion.state in ^@terminal_states)
+  end
+
+  # A playlist's own ID and URL identify the playlist, not a channel; only its owner matters here.
+  defp identity_records(%Source{collection_type: :playlist} = source) do
+    [%{collection_id: nil, canonical_url: nil, external_channel_id: source.owner_channel_id}]
   end
 
   defp identity_records(%Source{} = source) do
@@ -559,12 +569,25 @@ defmodule Pinchflat.Discovery do
   end
 
   defp existing_source_channel_ids do
-    from(source in Source,
-      where: source.collection_type == ^:channel and not is_nil(source.collection_id),
-      select: source.collection_id
-    )
+    source_channel_ids_query()
     |> Repo.all()
     |> Enum.filter(&is_binary/1)
+  end
+
+  # Channel IDs already covered by a source: channel sources by their own ID and
+  # playlist sources by their owner channel.
+  defp source_channel_ids_query do
+    channel_ids =
+      from(source in Source,
+        where: source.collection_type == ^:channel and not is_nil(source.collection_id),
+        select: source.collection_id
+      )
+
+    from(source in Source,
+      where: source.collection_type == ^:playlist and not is_nil(source.owner_channel_id),
+      select: source.owner_channel_id,
+      union: ^channel_ids
+    )
   end
 
   defp terminal_suggestion_channel_ids do
@@ -815,13 +838,7 @@ defmodule Pinchflat.Discovery do
     if Keyword.get(opts, :include_terminal, false) do
       query
     else
-      source_ids =
-        from(source in Source,
-          where: source.collection_type == ^:channel and not is_nil(source.collection_id),
-          select: source.collection_id
-        )
-
-      where(query, [suggestion], suggestion.external_channel_id not in subquery(source_ids))
+      where(query, [suggestion], suggestion.external_channel_id not in subquery(source_channel_ids_query()))
     end
   end
 

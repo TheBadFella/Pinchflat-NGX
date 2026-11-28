@@ -36,6 +36,28 @@ defmodule Pinchflat.DiscoveryTest do
       assert [@channel_id] == Enum.map(Discovery.sample_suggestions(), & &1.external_channel_id)
       assert saved.id in Enum.map(Discovery.list_suggestions(include_terminal: true), & &1.id)
     end
+
+    test "hides channels that own an existing playlist source" do
+      {:ok, visible} = Discovery.upsert_suggestion(suggestion_attrs(@channel_id))
+      {:ok, _owner} = Discovery.upsert_suggestion(suggestion_attrs(@other_channel_id))
+      playlist_source_fixture(@other_channel_id)
+
+      assert [visible.id] == Enum.map(Discovery.list_suggestions(), & &1.id)
+      assert [@channel_id] == Enum.map(Discovery.sample_suggestions(), & &1.external_channel_id)
+    end
+  end
+
+  describe "exclude_candidates/2" do
+    test "drops candidates owning a playlist source but keeps the playlist's own ID out of it" do
+      playlist_source_fixture(@other_channel_id)
+
+      candidates = [
+        %Candidate{external_channel_id: @channel_id},
+        %Candidate{external_channel_id: @other_channel_id}
+      ]
+
+      assert [%Candidate{external_channel_id: @channel_id}] = Discovery.exclude_candidates(candidates)
+    end
   end
 
   describe "upsert_suggestion/1" do
@@ -103,6 +125,21 @@ defmodule Pinchflat.DiscoveryTest do
       assert {:error, :existing_source} = Discovery.upsert_suggestion(suggestion_attrs(@channel_id))
       assert Repo.aggregate(Suggestion, :count, :id) == 0
     end
+
+    test "includes owners of playlist sources" do
+      playlist_source_fixture(@channel_id)
+
+      assert @channel_id in Discovery.excluded_channel_ids()
+      assert {:error, :existing_source} = Discovery.upsert_suggestion(suggestion_attrs(@channel_id))
+    end
+  end
+
+  defp playlist_source_fixture(owner_channel_id) do
+    source_fixture(%{
+      collection_type: :playlist,
+      collection_id: "PL" <> String.duplicate("p", 32),
+      owner_channel_id: owner_channel_id
+    })
   end
 
   defp suggestion_attrs(external_channel_id) do
