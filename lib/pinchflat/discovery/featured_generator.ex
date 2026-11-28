@@ -100,14 +100,33 @@ defmodule Pinchflat.Discovery.FeaturedGenerator do
     end
   end
 
+  # Channel sources and the owner channels of playlist sources, in random order so
+  # repeated scans of a library larger than `max_sources` reach different channels.
   defp list_sources(max_sources) do
     Repo.all(
       from source in Source,
-        where: source.collection_type == :channel,
-        order_by: [asc: source.id],
-        limit: ^max_sources
+        where:
+          source.collection_type == :channel or
+            (source.collection_type == :playlist and not is_nil(source.owner_channel_id)),
+        order_by: fragment("RANDOM()"),
+        limit: ^max_sources,
+        select: %{
+          id: source.id,
+          collection_type: source.collection_type,
+          collection_id: source.collection_id,
+          owner_channel_id: source.owner_channel_id,
+          original_url: source.original_url
+        }
     )
+    |> Enum.map(&owner_channel_source/1)
+    |> Enum.uniq_by(&featured_url/1)
   end
+
+  defp owner_channel_source(%{collection_type: :playlist, owner_channel_id: owner_id} = source) do
+    %{source | collection_id: owner_id, original_url: Normalizer.channel_url(owner_id)}
+  end
+
+  defp owner_channel_source(source), do: source
 
   defp fetch_featured(source, opts) do
     runner = Keyword.get(opts, :runner, Application.get_env(:pinchflat, :yt_dlp_runner))
