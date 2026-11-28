@@ -115,7 +115,7 @@ defmodule PinchflatWeb.Pages.PageController do
 
   defp render_home_page(conn, params) do
     downloaded_media_items = where(MediaQuery.new(), ^MediaQuery.downloaded())
-    active_tab = tab_param(params, ~w(latest pending failed downloaded excluded), "latest")
+    active_tab = tab_param(params, ~w(latest pending failed downloaded excluded deletions), "latest")
     setting = Settings.record()
 
     conn

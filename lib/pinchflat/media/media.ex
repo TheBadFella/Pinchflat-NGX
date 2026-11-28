@@ -7,6 +7,7 @@ defmodule Pinchflat.Media do
   require Logger
   use Pinchflat.Media.MediaQuery
 
+  alias Pinchflat.DeletionHistory
   alias Pinchflat.Downloading.FirstArtifact
   alias Pinchflat.Repo
   alias Pinchflat.Tasks
@@ -448,9 +449,12 @@ defmodule Pinchflat.Media do
   media_item before it is updated. Useful for setting things like `prevent_download`
   and `culled_at`, if wanted
 
+  The deletion is recorded in the deletion history with `opts[:reason]`
+  (default `:user`).
+
   Returns {:ok, %MediaItem{}} | {:error, %Ecto.Changeset{}}
   """
-  def delete_media_files(%MediaItem{} = media_item, addl_attrs \\ %{}) do
+  def delete_media_files(%MediaItem{} = media_item, addl_attrs \\ %{}, opts \\ []) do
     filepath_attrs = MediaItem.filepath_attribute_defaults()
     addl_attrs = maybe_add_manual_prevention_reason(media_item, addl_attrs)
 
@@ -464,7 +468,11 @@ defmodule Pinchflat.Media do
         end
       end)
 
-    if match?({:ok, _}, result), do: run_user_script(:media_deleted, media_item)
+    if match?({:ok, _}, result) do
+      DeletionHistory.record_media_files_deletion(media_item, Keyword.get(opts, :reason, :user))
+      run_user_script(:media_deleted, media_item)
+    end
+
     result
   end
 

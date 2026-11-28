@@ -9,6 +9,7 @@ defmodule Pinchflat.Sources do
 
   alias Pinchflat.Repo
   alias Pinchflat.Media
+  alias Pinchflat.DeletionHistory
   alias Pinchflat.MediaWatch
   alias Pinchflat.Tasks
   alias Pinchflat.Tasks.Task
@@ -1049,7 +1050,8 @@ defmodule Pinchflat.Sources do
 
   @doc """
   Deletes a source, its media items, and its associated tasks (of any state).
-  Can optionally delete the source's media files.
+  Can optionally delete the source's media files. The deletion is recorded in
+  the deletion history with `opts[:reason]` (default `:user`).
 
   Returns {:ok, %Source{}} | {:error, %Ecto.Changeset{}}
   """
@@ -1073,6 +1075,7 @@ defmodule Pinchflat.Sources do
         case Repo.delete(source) do
           {:ok, _deleted_source} = result ->
             CustomPoster.delete_owned_file(source)
+            DeletionHistory.record_source_deletion(source, length(items), opts)
             result
 
           error ->
