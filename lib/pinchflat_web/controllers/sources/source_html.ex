@@ -1234,7 +1234,21 @@ defmodule PinchflatWeb.Sources.SourceHTML do
         []
       end
 
+    channel_fields =
+      if source.collection_type == :channel and source.playlist_subfolders do
+        [
+          field(
+            "Playlist subfolders",
+            yes_no(source.playlist_subfolders),
+            "Whether new downloads go into a subfolder named after the channel playlist they belong to"
+          )
+        ]
+      else
+        []
+      end
+
     playlist_fields ++
+      channel_fields ++
       collection_filter_fields(source) ++
       [
         field(

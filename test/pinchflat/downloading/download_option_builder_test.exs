@@ -709,6 +709,36 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       assert path == "/tmp/test/media/%(title)S.%(ext)s"
     end
 
+    test "puts a channel video in its playlist subfolder when playlist subfolders are on" do
+      media_profile = media_profile_fixture(%{output_path_template: "{{ source_custom_name }}/{{ title }}.%(ext)s"})
+
+      source =
+        source_fixture(%{
+          media_profile_id: media_profile.id,
+          custom_name: "Channel",
+          collection_type: :channel,
+          playlist_subfolders: true
+        })
+
+      in_playlist = Repo.preload(media_item_fixture(source_id: source.id), source: :media_profile)
+      no_playlist = Repo.preload(media_item_fixture(source_id: source.id), source: :media_profile)
+      add_membership(source, in_playlist.media_id, "Tutorials: Part 1/2")
+
+      assert DownloadOptionBuilder.build_output_path_for(in_playlist) ==
+               "/tmp/test/media/Channel/Tutorials_ Part 1_2/%(title)S.%(ext)s"
+
+      assert {:ok, opts} = DownloadOptionBuilder.build(in_playlist)
+      assert {:output, "/tmp/test/media/Channel/Tutorials_ Part 1_2/%(title)S.%(ext)s"} in opts
+
+      assert DownloadOptionBuilder.build_output_path_for(no_playlist) == "/tmp/test/media/Channel/%(title)S.%(ext)s"
+      assert DownloadOptionBuilder.build_output_path_for(source) == "/tmp/test/media/Channel/%(title)S.%(ext)s"
+
+      {:ok, source} = Sources.update_source(source, %{playlist_subfolders: false})
+      in_playlist = %{in_playlist | source: Repo.preload(source, :media_profile)}
+
+      assert DownloadOptionBuilder.build_output_path_for(in_playlist) == "/tmp/test/media/Channel/%(title)S.%(ext)s"
+    end
+
     test "uses source's output override if present", %{media_item: media_item} do
       source = media_item.source
       {:ok, source} = Sources.update_source(source, %{output_path_template_override: "override.%(ext)s"})
@@ -776,5 +806,14 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
     media_item_with_preloads
     |> Repo.reload()
     |> Repo.preload([source: :media_profile], force: true)
+  end
+
+  defp add_membership(source, media_id, title) do
+    Repo.insert!(%Pinchflat.Sources.PlaylistMembership{
+      source_id: source.id,
+      media_id: media_id,
+      playlist_id: "PL" <> String.duplicate("x", 32),
+      playlist_title: title
+    })
   end
 end

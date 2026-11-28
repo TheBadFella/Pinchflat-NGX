@@ -282,6 +282,11 @@ defmodule PinchflatWeb.Schemas do
           type: :boolean,
           description: "Only download playlist videos uploaded by owner_channel_id"
         },
+        playlist_subfolders: %Schema{
+          type: :boolean,
+          description:
+            "Channel sources only: put new downloads in a subfolder named after the first channel playlist containing the video"
+        },
         watch_window_days: %Schema{
           type: :integer,
           nullable: true,
@@ -628,6 +633,11 @@ defmodule PinchflatWeb.Schemas do
               type: :boolean,
               description: "Only download playlist videos uploaded by owner_channel_id"
             },
+            playlist_subfolders: %Schema{
+              type: :boolean,
+              description:
+                "Channel sources only: put new downloads in a subfolder named after the first channel playlist containing the video"
+            },
             output_path_template_shorts_override: %Schema{
               type: :string,
               nullable: true,
@@ -761,6 +771,11 @@ defmodule PinchflatWeb.Schemas do
             only_owner_uploads: %Schema{
               type: :boolean,
               description: "Only download playlist videos uploaded by owner_channel_id"
+            },
+            playlist_subfolders: %Schema{
+              type: :boolean,
+              description:
+                "Channel sources only: put new downloads in a subfolder named after the first channel playlist containing the video"
             },
             output_path_template_shorts_override: %Schema{
               type: :string,

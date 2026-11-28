@@ -682,6 +682,20 @@
               help="Videos the owner added from other channels are still listed but not downloaded. Videos already downloaded are kept. Has no effect on playlists without an owner channel, such as mixes."
             />
           </section>
+
+          <section
+            x-cloak
+            x-show="collectionType === 'channel' || (isNewSource && ['automatic', 'channel'].includes(sourceType) && !looksLikePlaylist)"
+            data-setting
+            data-setting-keywords="playlist subfolder folder organize sort channel"
+          >
+            <.input
+              field={f[:playlist_subfolders]}
+              type="toggle"
+              label="Sort new downloads into playlist subfolders"
+              help="Channel sources only. Each index reads the channel's playlists, and a new download goes into a subfolder named after the first playlist that contains it. Videos in no playlist use the usual folder. Files already downloaded are not moved."
+            />
+          </section>
         </section>
         <section
           id="source-cleanup"
