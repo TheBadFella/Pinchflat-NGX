@@ -719,6 +719,16 @@ defmodule PinchflatWeb.Sources.SourceController do
     )
   end
 
+  def upgrade_resolution(conn, %{"source_id" => id} = params) do
+    wrap_forced_action(
+      conn,
+      params,
+      id,
+      "Checking downloaded videos for a resolution closer to the media profile's preference.",
+      &SourceActions.kickoff(:upgrade_resolution, &1)
+    )
+  end
+
   def force_index(conn, %{"source_id" => id} = params) do
     wrap_forced_action(
       conn,

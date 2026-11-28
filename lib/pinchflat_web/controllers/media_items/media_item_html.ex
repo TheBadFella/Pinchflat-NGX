@@ -21,6 +21,41 @@ defmodule PinchflatWeb.MediaItems.MediaItemHTML do
 
   def media_item_form(assigns)
 
+  @doc """
+  Describes the downloaded file's resolution and codecs, such as "1080p, avc1 video, opus audio".
+  Returns nil when the download recorded no format details.
+  """
+  def downloaded_format(media_item) do
+    [
+      media_item.video_height && "#{media_item.video_height}p",
+      media_item.video_codec && "#{codec_family(media_item.video_codec)} video",
+      media_item.audio_codec && "#{codec_family(media_item.audio_codec)} audio"
+    ]
+    |> join_present()
+  end
+
+  @doc """
+  Describes the best resolution and video codecs YouTube offered when the item
+  was downloaded or last checked. Returns nil when unknown.
+  """
+  def offered_format(media_item) do
+    [
+      media_item.max_available_height && "up to #{media_item.max_available_height}p",
+      media_item.available_video_codecs &&
+        "video codecs #{String.replace(media_item.available_video_codecs, ",", ", ")}"
+    ]
+    |> join_present()
+  end
+
+  defp codec_family(codec), do: codec |> String.split(".") |> hd()
+
+  defp join_present(parts) do
+    case Enum.filter(parts, &is_binary/1) do
+      [] -> nil
+      present -> Enum.join(present, ", ")
+    end
+  end
+
   def media_file_exists?(media_item) do
     !!media_item.media_filepath and File.exists?(media_item.media_filepath)
   end

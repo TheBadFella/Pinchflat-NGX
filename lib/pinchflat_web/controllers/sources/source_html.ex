@@ -1851,14 +1851,17 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   end
 
   defp source_job_unavailable(job, %{source: %{download_media: false}})
-       when job in [:download_pending, :redownload_existing],
+       when job in [:download_pending, :redownload_existing, :upgrade_resolution],
        do: "Automatic downloads are off"
 
-  defp source_job_unavailable(:redownload_existing, %{downloaded_count: 0}), do: "Nothing downloaded"
+  defp source_job_unavailable(job, %{downloaded_count: 0}) when job in [:redownload_existing, :upgrade_resolution],
+    do: "Nothing downloaded"
+
   defp source_job_unavailable(_job, _assigns), do: nil
 
   defp source_action_path(source, :download_pending), do: ~p"/sources/#{source.id}/force_download_pending"
   defp source_action_path(source, :redownload_existing), do: ~p"/sources/#{source.id}/force_redownload"
+  defp source_action_path(source, :upgrade_resolution), do: ~p"/sources/#{source.id}/upgrade_resolution"
   defp source_action_path(source, :force_index), do: ~p"/sources/#{source.id}/force_index"
   defp source_action_path(source, :refresh_metadata), do: ~p"/sources/#{source.id}/force_metadata_refresh"
   defp source_action_path(source, :sync_files), do: ~p"/sources/#{source.id}/sync_files_on_disk"

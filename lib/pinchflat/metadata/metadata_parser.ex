@@ -8,6 +8,7 @@ defmodule Pinchflat.Metadata.MetadataParser do
   and not have it, ya know?
   """
 
+  alias Pinchflat.Downloading.FormatDetails
   alias Pinchflat.YtDlp.Media, as: YtDlpMedia
 
   @doc """
@@ -23,6 +24,7 @@ defmodule Pinchflat.Metadata.MetadataParser do
     |> Map.merge(parse_subtitle_metadata(metadata))
     |> Map.merge(parse_thumbnail_metadata(metadata))
     |> Map.merge(parse_infojson_metadata(metadata))
+    |> Map.merge(FormatDetails.from_info(metadata))
   end
 
   defp parse_media_metadata(metadata) do

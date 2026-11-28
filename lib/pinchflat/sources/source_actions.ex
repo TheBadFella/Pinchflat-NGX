@@ -1,7 +1,7 @@
 defmodule Pinchflat.Sources.SourceActions do
   @moduledoc """
   Queues a source page's background actions (Download Pending, Redownload Existing,
-  Force Index, Refresh Metadata and Sync Files on Disk) for several sources at once,
+  Upgrade Resolution, Force Index, Refresh Metadata and Sync Files on Disk) for several sources at once,
   and starts, pauses or stops one source's downloads.
   """
 
@@ -14,12 +14,14 @@ defmodule Pinchflat.Sources.SourceActions do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.FileSyncingWorker
   alias Pinchflat.Downloading.DownloadingHelpers
+  alias Pinchflat.Downloading.ResolutionUpgradeWorker
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
 
   @jobs [
     {:download_pending, "Download Pending"},
     {:redownload_existing, "Redownload Existing"},
+    {:upgrade_resolution, "Upgrade Resolution"},
     {:force_index, "Force Index"},
     {:refresh_metadata, "Refresh Metadata"},
     {:sync_files, "Sync Files on Disk"}
@@ -41,7 +43,7 @@ defmodule Pinchflat.Sources.SourceActions do
   @doc """
   Queues `action` for each selected source, using the same jobs as the source page.
   The selection is checked like the other bulk actions (see `Sources.get_selected_sources/2`).
-  Download Pending and Redownload Existing skip sources with Download Media off, which is
+  Download Pending, Redownload Existing and Upgrade Resolution skip sources with Download Media off, which is
   when the source page hides them.
 
   Returns {:ok, %{sources: integer(), queued: integer(), duplicates: integer(), failed: integer(),
@@ -63,6 +65,7 @@ defmodule Pinchflat.Sources.SourceActions do
   """
   def kickoff(:download_pending, source), do: DownloadingHelpers.retry_pending_download_tasks(source)
   def kickoff(:redownload_existing, source), do: DownloadingHelpers.kickoff_redownload_for_existing_media(source)
+  def kickoff(:upgrade_resolution, source), do: ResolutionUpgradeWorker.kickoff_with_task(source)
   def kickoff(:force_index, source), do: SlowIndexingHelpers.kickoff_indexing_task(source, %{force: true})
   def kickoff(:refresh_metadata, source), do: SourceMetadataStorageWorker.kickoff_with_task(source)
   def kickoff(:sync_files, source), do: FileSyncingWorker.kickoff_with_task(source)
@@ -107,8 +110,9 @@ defmodule Pinchflat.Sources.SourceActions do
     |> Kernel.>(0)
   end
 
-  defp bulk_kickoff(action, %Source{download_media: false}) when action in [:download_pending, :redownload_existing],
-    do: :skipped
+  defp bulk_kickoff(action, %Source{download_media: false})
+       when action in [:download_pending, :redownload_existing, :upgrade_resolution],
+       do: :skipped
 
   defp bulk_kickoff(action, source), do: kickoff(action, source)
 
