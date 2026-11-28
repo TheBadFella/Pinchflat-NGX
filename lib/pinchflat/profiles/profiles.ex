@@ -265,7 +265,7 @@ defmodule Pinchflat.Profiles do
         {:error, :watch_tombstone_required}
       else
         Enum.reduce_while(sources, :ok, fn source, :ok ->
-          case Sources.delete_source(source, delete_files: delete_files) do
+          case Sources.delete_source(source, delete_files: delete_files, reason: :media_profile_deleted) do
             {:ok, _} -> {:cont, :ok}
             {:error, reason} -> {:halt, {:error, reason}}
           end

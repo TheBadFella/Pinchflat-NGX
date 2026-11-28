@@ -49,11 +49,15 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       # Setting `prevent_download` does what it says on the tin, but `culled_at` is purely informational.
       # We don't actually do anything with that in terms of queries and it gets set to nil if the media item
       # gets re-downloaded.
-      failed_deletion?(media_item, %{
-        prevent_download: true,
-        download_prevented_reason: nil,
-        culled_at: DateTime.utc_now()
-      })
+      failed_deletion?(
+        media_item,
+        %{
+          prevent_download: true,
+          download_prevented_reason: nil,
+          culled_at: DateTime.utc_now()
+        },
+        :retention
+      )
     end)
   end
 
@@ -75,9 +79,7 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
       # Download is ultimately prevented because `MediaQuery.pending()` only returns media items
       # from after the cutoff date (among other things), so it's not like the media will just immediately
       # be re-downloaded.
-      failed_deletion?(media_item, %{
-        culled_at: DateTime.utc_now()
-      })
+      failed_deletion?(media_item, %{culled_at: DateTime.utc_now()}, :download_cutoff)
     end)
   end
 
@@ -95,14 +97,12 @@ defmodule Pinchflat.Downloading.MediaRetentionWorker do
     Logger.info("Deleting #{length(deletable_media)} media items beyond their source's keep-newest count")
 
     Enum.count(deletable_media, fn media_item ->
-      failed_deletion?(media_item, %{
-        culled_at: DateTime.utc_now()
-      })
+      failed_deletion?(media_item, %{culled_at: DateTime.utc_now()}, :keep_newest)
     end)
   end
 
-  defp failed_deletion?(media_item, attrs) do
-    case Media.delete_media_files(media_item, attrs) do
+  defp failed_deletion?(media_item, attrs, reason) do
+    case Media.delete_media_files(media_item, attrs, reason: reason) do
       {:ok, _} ->
         false
 

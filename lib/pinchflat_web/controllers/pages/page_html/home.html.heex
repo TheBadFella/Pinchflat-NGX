@@ -107,5 +107,8 @@
         session: %{"media_state" => "excluded"}
       )}
     </:tab>
+    <:tab title="Deletions" id="deletions">
+      {live_render(@conn, Pinchflat.Pages.DeletionHistoryLive)}
+    </:tab>
   </.tabbed_layout>
 </div>

@@ -170,6 +170,11 @@ defmodule Pinchflat.Downloading.MediaRetentionWorkerTest do
       refute File.exists?(old_media_item.media_filepath)
       assert Repo.reload!(new_media_item).media_filepath
       refute Repo.reload!(old_media_item).media_filepath
+
+      assert [%{kind: :media_files, reason: :retention, media_item_id: id}] =
+               Repo.all(Pinchflat.DeletionHistory.DeletionEvent)
+
+      assert id == old_media_item.id
     end
 
     test "deletes media files that are on their retention date per the 24-h clock" do
