@@ -391,6 +391,7 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       </:option>
 
       <:option><.link href={~p"/sources/new?template_id=#{@source.id}"}>Use as Template</.link></:option>
+      <:option><.link href={~p"/sources/#{@source.id}/relink"}>Relink Moved Files</.link></:option>
       <:option>
         <div class="h-px w-full bg-theme-outline/70"></div>
       </:option>
@@ -1843,6 +1844,14 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   defp switch_idle_reason(:start, 0, _downloading), do: "nothing pending"
   defp switch_idle_reason(switch, _pending, false) when switch in [:pause, :stop], do: "nothing downloading"
   defp switch_idle_reason(_switch, _pending, _downloading), do: nil
+
+  @doc """
+  Explains how Relink Moved Files matched a file to a media item.
+  """
+  def relink_match_label(:video_id), do: "Matched by the video ID in the file name"
+  def relink_match_label(:info_json), do: "Matched by the video ID in an .info.json file beside it"
+  def relink_match_label(:title), do: "Matched by a file name equal to the title"
+  def relink_match_label(_match), do: ""
 
   defp source_jobs(assigns) do
     for {job, label} <- Pinchflat.Sources.SourceActions.jobs(),

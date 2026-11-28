@@ -8,6 +8,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Repo
   alias Pinchflat.Media
   alias Pinchflat.Media.MediaItem
+  alias Pinchflat.Media.Relink
   alias Pinchflat.Sources
   alias Pinchflat.Sources.CustomPoster
   alias Pinchflat.Reconciliation
@@ -757,6 +758,57 @@ defmodule PinchflatWeb.Sources.SourceController do
       "File sync enqueued.",
       &SourceActions.kickoff(:sync_files, &1)
     )
+  end
+
+  def relink(conn, %{"source_id" => id}) do
+    source = Sources.get_source!(id)
+
+    {entries, error} =
+      case Relink.plan(source) do
+        {:ok, entries} -> {entries, nil}
+        {:error, :too_many_files} -> {[], "The media directory has too many files to search. Nothing was changed."}
+      end
+
+    by_status = Enum.group_by(entries, & &1.status)
+
+    render(conn, :relink,
+      page_title: "Relink Moved Files",
+      source: source,
+      error: error,
+      matched: Map.get(by_status, :matched, []),
+      ambiguous: Map.get(by_status, :ambiguous, []),
+      not_found: Map.get(by_status, :not_found, [])
+    )
+  end
+
+  def apply_relink(conn, %{"source_id" => id} = params) do
+    source = Sources.get_source!(id)
+
+    ids =
+      params
+      |> Map.get("media_item_ids", [])
+      |> List.wrap()
+      |> Enum.flat_map(fn value ->
+        case Integer.parse(to_string(value)) do
+          {id, ""} -> [id]
+          _ -> []
+        end
+      end)
+
+    case Relink.apply(source, ids) do
+      {:ok, count} ->
+        conn
+        |> put_flash(
+          :info,
+          "Updated the recorded paths of #{count} #{if count == 1, do: "item", else: "items"}. No files were moved."
+        )
+        |> redirect(to: ~p"/sources/#{source}/relink")
+
+      {:error, :too_many_files} ->
+        conn
+        |> put_flash(:error, "The media directory has too many files to search. Nothing was changed.")
+        |> redirect(to: ~p"/sources/#{source}")
+    end
   end
 
   operation(:apply_selection,
