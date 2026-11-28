@@ -33,6 +33,11 @@ defmodule Pinchflat.Media.MediaItem do
     :short_form_content,
     :availability,
     :channel_id,
+    :video_height,
+    :video_codec,
+    :audio_codec,
+    :max_available_height,
+    :available_video_codecs,
     :uploaded_at,
     :upload_date_index,
     :duration_seconds,
@@ -86,6 +91,12 @@ defmodule Pinchflat.Media.MediaItem do
     field :short_form_content, :boolean, default: false
     field :availability, Ecto.Enum, values: @availability_values
     field :channel_id, :string
+    # Format of the downloaded file and the best YouTube offered at download time.
+    field :video_height, :integer
+    field :video_codec, :string
+    field :audio_codec, :string
+    field :max_available_height, :integer
+    field :available_video_codecs, :string
     field :media_downloaded_at, :utc_datetime
     field :watch_download_started_at, :utc_datetime
     field :watch_enrollment_pending_at, :utc_datetime

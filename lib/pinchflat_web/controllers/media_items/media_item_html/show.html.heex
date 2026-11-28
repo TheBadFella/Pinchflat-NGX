@@ -386,6 +386,10 @@
                 <h2 class="text-xl mb-2">{@media_item.title}</h2>
 
                 <div>Uploaded: {DateTime.to_date(@media_item.uploaded_at)}</div>
+                <div :if={downloaded_format(@media_item)}>Downloaded as: {downloaded_format(@media_item)}</div>
+                <div :if={offered_format(@media_item)} class="text-theme-on-surface-muted">
+                  YouTube offered: {offered_format(@media_item)}
+                </div>
 
                 <div>
                   <span :if={URI.parse(@media_item.original_url).scheme =~ "http"}>
