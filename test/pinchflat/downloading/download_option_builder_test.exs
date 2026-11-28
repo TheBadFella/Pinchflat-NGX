@@ -814,7 +814,8 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilderTest do
       media_id: media_id,
       playlist_id: "PL" <> String.duplicate("x", 32),
       playlist_title: title,
-      position: 0
+      position: 0,
+      entry_index: 0
     })
   end
 end

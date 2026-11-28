@@ -15,6 +15,8 @@ defmodule Pinchflat.Sources.PlaylistMembership do
     field :playlist_id, :string
     field :playlist_title, :string
     field :position, :integer
+    # The video's place within its playlist, for playlist files.
+    field :entry_index, :integer
 
     belongs_to :source, Source
 

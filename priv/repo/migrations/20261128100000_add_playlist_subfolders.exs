@@ -4,6 +4,7 @@ defmodule Pinchflat.Repo.Migrations.AddPlaylistSubfolders do
   def change do
     alter table(:sources) do
       add :playlist_subfolders, :boolean, default: false, null: false
+      add :playlist_files, :boolean, default: false, null: false
     end
 
     create table(:playlist_memberships) do
@@ -12,6 +13,7 @@ defmodule Pinchflat.Repo.Migrations.AddPlaylistSubfolders do
       add :playlist_id, :string, null: false
       add :playlist_title, :string, null: false
       add :position, :integer, null: false
+      add :entry_index, :integer, null: false
 
       timestamps(type: :utc_datetime)
     end

@@ -1235,14 +1235,22 @@ defmodule PinchflatWeb.Sources.SourceHTML do
       end
 
     channel_fields =
-      if source.collection_type == :channel and source.playlist_subfolders do
+      if source.collection_type == :channel do
         [
-          field(
-            "Playlist subfolders",
-            yes_no(source.playlist_subfolders),
-            "Whether new downloads go into a subfolder named after the channel playlist they belong to"
-          )
+          source.playlist_subfolders &&
+            field(
+              "Playlist subfolders",
+              yes_no(source.playlist_subfolders),
+              "Whether new downloads go into a subfolder named after the channel playlist they belong to"
+            ),
+          source.playlist_files &&
+            field(
+              "Playlist files",
+              yes_no(source.playlist_files),
+              "Whether an .m3u file is written for each channel playlist"
+            )
         ]
+        |> Enum.filter(& &1)
       else
         []
       end

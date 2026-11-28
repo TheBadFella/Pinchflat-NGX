@@ -14,6 +14,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   alias Pinchflat.Tasks
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.PlaylistFiles
   alias Pinchflat.Sources.PlaylistMemberships
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.YtDlp.MediaCollection
@@ -129,7 +130,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     persist_indexed_media(Repo.reload!(source), media_attributes, translated_titles)
   end
 
-  defp maybe_refresh_playlist_memberships(%Source{collection_type: :channel, playlist_subfolders: true} = source) do
+  defp maybe_refresh_playlist_memberships(%Source{collection_type: :channel} = source)
+       when source.playlist_subfolders or source.playlist_files do
     case PlaylistMemberships.refresh(source) do
       {:ok, count} ->
         Logger.info("Recorded #{count} playlist memberships for source #{source.id}")
@@ -138,8 +140,12 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
         # Keeps the previous memberships; indexing and downloads continue regardless.
         Logger.warning("Could not refresh playlist memberships for source #{source.id}: #{inspect(error)}")
     end
+
+    PlaylistFiles.sync(source)
   end
 
+  # Also removes playlist files left from when the option was on.
+  defp maybe_refresh_playlist_memberships(%Source{collection_type: :channel} = source), do: PlaylistFiles.sync(source)
   defp maybe_refresh_playlist_memberships(_source), do: :ok
 
   defp persist_single_video_index(source, metadata, command_opts) do

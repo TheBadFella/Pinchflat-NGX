@@ -16,6 +16,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
   alias Pinchflat.Media
   alias Pinchflat.Settings
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.PlaylistFiles
   alias Pinchflat.Media.FileSyncing
   alias Pinchflat.Media.DownloadState
   alias Pinchflat.Media.MediaItem
@@ -444,6 +445,15 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
     end
   end
 
+  # Adds the new download to its channel's playlist files. A failure is logged
+  # by PlaylistFiles and never fails the download.
+  defp maybe_sync_playlist_files(media_item) do
+    case Repo.preload(media_item, :source).source do
+      %Source{collection_type: :channel, playlist_files: true} = source -> PlaylistFiles.sync(source)
+      _source -> :ok
+    end
+  end
+
   defp finalize_download_postprocessing(downloaded_item, first?, attrs) do
     result =
       if first? do
@@ -476,6 +486,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorker do
 
     case result do
       {:ok, updated} ->
+        maybe_sync_playlist_files(updated)
+
         if first? do
           finish_pending_download(updated)
         else

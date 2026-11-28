@@ -287,6 +287,11 @@ defmodule PinchflatWeb.Schemas do
           description:
             "Channel sources only: put new downloads in a subfolder named after the first channel playlist containing the video"
         },
+        playlist_files: %Schema{
+          type: :boolean,
+          description:
+            "Channel sources only: write an .m3u file for each channel playlist listing its downloaded videos"
+        },
         watch_window_days: %Schema{
           type: :integer,
           nullable: true,
@@ -638,6 +643,11 @@ defmodule PinchflatWeb.Schemas do
               description:
                 "Channel sources only: put new downloads in a subfolder named after the first channel playlist containing the video"
             },
+            playlist_files: %Schema{
+              type: :boolean,
+              description:
+                "Channel sources only: write an .m3u file for each channel playlist listing its downloaded videos"
+            },
             output_path_template_shorts_override: %Schema{
               type: :string,
               nullable: true,
@@ -776,6 +786,11 @@ defmodule PinchflatWeb.Schemas do
               type: :boolean,
               description:
                 "Channel sources only: put new downloads in a subfolder named after the first channel playlist containing the video"
+            },
+            playlist_files: %Schema{
+              type: :boolean,
+              description:
+                "Channel sources only: write an .m3u file for each channel playlist listing its downloaded videos"
             },
             output_path_template_shorts_override: %Schema{
               type: :string,

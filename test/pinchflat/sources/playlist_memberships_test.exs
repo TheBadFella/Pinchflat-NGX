@@ -88,6 +88,6 @@ defmodule Pinchflat.Sources.PlaylistMembershipsTest do
 
   defp playlists_output do
     [%{"id" => "PLfirst", "title" => "First"}, %{"id" => "PLsecond", "title" => "Second"}]
-    |> Enum.map_join("\n", &Phoenix.json_library().encode!/1)
+    |> Enum.map_join("\n", &Jason.encode!/1)
   end
 end

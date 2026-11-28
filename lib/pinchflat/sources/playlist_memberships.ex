@@ -70,7 +70,10 @@ defmodule Pinchflat.Sources.PlaylistMemberships do
             |> Enum.map(& &1["id"])
             |> Enum.filter(&is_binary/1)
             |> Enum.uniq()
-            |> Enum.map(&{&1, playlist["id"], playlist["title"], position})
+            |> Enum.with_index()
+            |> Enum.map(fn {media_id, entry_index} ->
+              {media_id, playlist["id"], playlist["title"], position, entry_index}
+            end)
 
           {:cont, {:ok, acc ++ entries}}
 
@@ -84,13 +87,14 @@ defmodule Pinchflat.Sources.PlaylistMemberships do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     rows =
-      Enum.map(memberships, fn {media_id, playlist_id, title, position} ->
+      Enum.map(memberships, fn {media_id, playlist_id, title, position, entry_index} ->
         %{
           source_id: source.id,
           media_id: media_id,
           playlist_id: playlist_id,
           playlist_title: title,
           position: position,
+          entry_index: entry_index,
           inserted_at: now,
           updated_at: now
         }
