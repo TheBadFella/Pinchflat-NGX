@@ -4,8 +4,8 @@ defmodule Pinchflat.Sources.PlaylistMemberships do
   channel source with `playlist_subfolders` can file new downloads under a
   subfolder named after the playlist.
 
-  A video in several playlists is filed under the first one in the order the
-  channel lists its playlists.
+  Every playlist a video is in is stored, in the order the channel lists its
+  playlists. A video in several playlists is filed under the first one.
   """
 
   import Ecto.Query, warn: false
@@ -23,8 +23,9 @@ defmodule Pinchflat.Sources.PlaylistMemberships do
   @list_opts [:skip_download, :ignore_no_formats_error, :no_warnings, :flat_playlist]
 
   @doc """
-  Fetches the channel's playlists and replaces the source's stored memberships.
-  Stored memberships are kept unchanged if any fetch fails.
+  Fetches the channel's playlists and replaces the source's stored memberships,
+  one per video per playlist. Stored memberships are kept unchanged if any
+  fetch fails.
 
   Returns {:ok, membership_count} | {:error, reason}
   """
@@ -46,26 +47,32 @@ defmodule Pinchflat.Sources.PlaylistMemberships do
     Repo.one(
       from m in PlaylistMembership,
         where: m.source_id == ^source_id and m.media_id == ^media_id,
+        order_by: [asc: m.position],
+        limit: 1,
         select: m.playlist_title
     )
   end
 
   def playlist_title_for(_source_id, _media_id), do: nil
 
+  # One entry per video per playlist. `position` is the playlist's place in the
+  # channel's order, so the lowest position is the first match.
   defp collect_memberships(playlists, addl_opts) do
     playlists
     |> Enum.filter(&(is_binary(&1["id"]) and is_binary(&1["title"])))
-    |> Enum.reduce_while({:ok, %{}}, fn playlist, {:ok, acc} ->
+    |> Enum.uniq_by(& &1["id"])
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {playlist, position}, {:ok, acc} ->
       case list_entries(playlist_url(playlist["id"]), "%(.{id})j", addl_opts) do
         {:ok, videos} ->
-          acc =
+          entries =
             videos
             |> Enum.map(& &1["id"])
             |> Enum.filter(&is_binary/1)
-            # Map.put_new keeps the first playlist that contains the video.
-            |> Enum.reduce(acc, &Map.put_new(&2, &1, {playlist["id"], playlist["title"]}))
+            |> Enum.uniq()
+            |> Enum.map(&{&1, playlist["id"], playlist["title"], position})
 
-          {:cont, {:ok, acc}}
+          {:cont, {:ok, acc ++ entries}}
 
         error ->
           {:halt, error}
@@ -77,12 +84,13 @@ defmodule Pinchflat.Sources.PlaylistMemberships do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     rows =
-      Enum.map(memberships, fn {media_id, {playlist_id, title}} ->
+      Enum.map(memberships, fn {media_id, playlist_id, title, position} ->
         %{
           source_id: source.id,
           media_id: media_id,
           playlist_id: playlist_id,
           playlist_title: title,
+          position: position,
           inserted_at: now,
           updated_at: now
         }

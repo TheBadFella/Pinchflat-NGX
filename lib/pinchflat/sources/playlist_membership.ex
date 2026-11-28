@@ -1,8 +1,9 @@
 defmodule Pinchflat.Sources.PlaylistMembership do
   @moduledoc """
   The playlist a channel source's video is filed under when the source sorts
-  downloads into playlist subfolders. Each video has at most one row: the first
-  of the channel's playlists that contains it.
+  downloads into playlist subfolders. A video has one row for each of the
+  channel's playlists that contains it; `position` orders them as the channel
+  does, and the lowest decides the subfolder.
   """
 
   use Ecto.Schema
@@ -13,6 +14,7 @@ defmodule Pinchflat.Sources.PlaylistMembership do
     field :media_id, :string
     field :playlist_id, :string
     field :playlist_title, :string
+    field :position, :integer
 
     belongs_to :source, Source
 

@@ -11,10 +11,11 @@ defmodule Pinchflat.Repo.Migrations.AddPlaylistSubfolders do
       add :media_id, :string, null: false
       add :playlist_id, :string, null: false
       add :playlist_title, :string, null: false
+      add :position, :integer, null: false
 
       timestamps(type: :utc_datetime)
     end
 
-    create unique_index(:playlist_memberships, [:source_id, :media_id])
+    create unique_index(:playlist_memberships, [:source_id, :media_id, :playlist_id])
   end
 end

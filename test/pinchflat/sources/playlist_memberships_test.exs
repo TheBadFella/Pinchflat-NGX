@@ -22,7 +22,16 @@ defmodule Pinchflat.Sources.PlaylistMembershipsTest do
         "PLsecond" => ["vid2", "vid3"]
       })
 
-      assert {:ok, 3} = PlaylistMemberships.refresh(source)
+      assert {:ok, 4} = PlaylistMemberships.refresh(source)
+
+      # vid2 is stored under both playlists, in the channel's order.
+      assert [{"PLfirst", 0}, {"PLsecond", 1}] =
+               Repo.all(
+                 from m in PlaylistMembership,
+                   where: m.media_id == "vid2",
+                   order_by: m.position,
+                   select: {m.playlist_id, m.position}
+               )
 
       assert PlaylistMemberships.playlist_title_for(source.id, "vid1") == "First"
       assert PlaylistMemberships.playlist_title_for(source.id, "vid2") == "First"
