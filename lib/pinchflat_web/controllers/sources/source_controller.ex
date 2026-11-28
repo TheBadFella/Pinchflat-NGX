@@ -15,6 +15,7 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Sources.SourceImport
   alias Pinchflat.Sources.SourceActions
+  alias Pinchflat.Sources.SourceRemoval
   alias Pinchflat.Profiles
   alias Pinchflat.Profiles.MediaProfile
   alias Pinchflat.Sources.SourceDeletionWorker
@@ -748,6 +749,25 @@ defmodule PinchflatWeb.Sources.SourceController do
       "Metadata refresh enqueued.",
       &SourceActions.kickoff(:refresh_metadata, &1)
     )
+  end
+
+  def check_removed(conn, %{"source_id" => id}) do
+    source = Sources.get_source!(id)
+
+    case SourceRemoval.check_again(source) do
+      {:ok, source} ->
+        conn
+        |> put_flash(
+          :info,
+          "Checking #{source.custom_name} again. If YouTube still reports it removed, it will be turned off again."
+        )
+        |> redirect(to: ~p"/sources/#{source}")
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Could not turn #{source.custom_name} back on. Open Edit Source to see why.")
+        |> redirect(to: ~p"/sources/#{source}")
+    end
   end
 
   def sync_files_on_disk(conn, %{"source_id" => id} = params) do

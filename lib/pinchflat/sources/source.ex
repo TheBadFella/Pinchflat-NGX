@@ -224,6 +224,9 @@ defmodule Pinchflat.Sources.Source do
     field :playlist_subfolders, :boolean, default: false
     # Channel sources only: write an .m3u file per channel playlist. See Pinchflat.Sources.PlaylistFiles.
     field :playlist_files, :boolean, default: false
+    # Set by Pinchflat.Sources.SourceRemoval when YouTube reports the content removed.
+    field :removed_at, :utc_datetime
+    field :removed_reason, :string
     field :source_type, Ecto.Enum, values: [:automatic, :channel, :playlist, :video], virtual: true, default: :automatic
     field :index_frequency_minutes, :integer, default: 60 * 24
     field :fast_index, :boolean, default: false
@@ -381,6 +384,7 @@ defmodule Pinchflat.Sources.Source do
 
     source
     |> cast(attrs, @allowed_fields)
+    |> clear_removed_when_enabled()
     |> clear_video_source_filters()
     |> update_change(:original_url, &normalize_youtube_host/1)
     |> normalize_show_url()
@@ -741,6 +745,15 @@ defmodule Pinchflat.Sources.Source do
     :min_duration_seconds,
     :max_duration_seconds
   ]
+
+  # Turning a removed source back on is how the user says to check it again.
+  defp clear_removed_when_enabled(changeset) do
+    if get_change(changeset, :enabled) == true do
+      changeset |> put_change(:removed_at, nil) |> put_change(:removed_reason, nil)
+    else
+      changeset
+    end
+  end
 
   defp clear_video_source_filters(changeset) do
     if video_source_changeset?(changeset) do

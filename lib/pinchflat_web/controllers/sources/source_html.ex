@@ -197,6 +197,14 @@ defmodule PinchflatWeb.Sources.SourceHTML do
   Returns a map with `:label`, `:icon`, `:pill_class` (the bordered pill on a
   source's page) and `:switch_class` (the enable switch in the sources list).
   """
+  def source_status(%{removed_at: %DateTime{}}, _downloading?),
+    do: %{
+      label: "Removed on YouTube",
+      icon: "hero-exclamation-triangle",
+      pill_class: "theme-pill-error",
+      switch_class: "theme-status-switch-neutral"
+    }
+
   def source_status(%{enabled: false}, _downloading?),
     do: %{
       label: "Disabled",
@@ -461,6 +469,82 @@ defmodule PinchflatWeb.Sources.SourceHTML do
     </.button_dropdown>
     """
   end
+
+  @doc """
+  The warning a source's page shows after YouTube reported its channel,
+  playlist or video removed, with the ways to resolve it.
+  """
+  attr :source, :map, required: true
+
+  def removed_source_notice(assigns) do
+    assigns = assign(assigns, :kind, removed_kind(assigns.source.collection_type))
+
+    ~H"""
+    <section
+      id="removed-source-notice"
+      role="alert"
+      aria-labelledby="removed-source-title"
+      class="theme-status-card theme-status-card-error mb-6 px-5 py-5 sm:px-6"
+    >
+      <div class="flex flex-col gap-5 md:flex-row md:items-start">
+        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-theme-error/15">
+          <.icon name="hero-exclamation-triangle" class="h-6 w-6" aria-hidden="true" />
+        </span>
+
+        <div class="min-w-0 flex-1 space-y-4 text-theme-on-surface">
+          <div class="space-y-2">
+            <h3 id="removed-source-title" class="text-lg font-semibold">
+              YouTube no longer has this {@kind}
+            </h3>
+            <p class="max-w-3xl text-sm leading-6 text-theme-on-surface-muted">
+              On
+              <.datetime_in_zone datetime={@source.removed_at} format="%Y-%m-%d %H:%M" />, YouTube reported this {@kind} as removed, so Pinchflat-ngx turned the source off. It is no longer indexed and nothing new
+              will download. Videos you already downloaded, and their files, are kept.
+            </p>
+          </div>
+
+          <figure
+            :if={@source.removed_reason}
+            class="rounded-m3-sm border border-theme-outline/70 bg-theme-surface-2 px-4 py-3"
+          >
+            <figcaption class="text-xs font-semibold uppercase tracking-wide text-theme-on-surface-muted">
+              YouTube said
+            </figcaption>
+            <blockquote class="mt-1 break-words text-sm text-theme-on-surface">{@source.removed_reason}</blockquote>
+          </figure>
+
+          <p class="max-w-3xl text-sm leading-6 text-theme-on-surface-muted">
+            If the {@kind} moved to a new address, edit the source's URL. If you think this is a mistake, check again:
+            the source is turned back on and indexed now, and turned off again if YouTube still reports it removed.
+          </p>
+
+          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <.form for={%{}} action={~p"/sources/#{@source}/check_removed"} method="post">
+              <.button type="submit" class="w-full sm:w-auto">
+                <.icon name="hero-arrow-path" class="mr-2 h-4 w-4" aria-hidden="true" /> Check Again
+              </.button>
+            </.form>
+            <.button href={~p"/sources/#{@source}/edit"} variant="outline" class="w-full sm:w-auto">
+              <.icon name="hero-pencil-square" class="mr-2 h-4 w-4" aria-hidden="true" /> Edit URL
+            </.button>
+            <.button
+              type="button"
+              variant="danger"
+              class="w-full sm:w-auto"
+              phx-click={show_modal("delete-source-modal")}
+            >
+              <.icon name="hero-trash" class="mr-2 h-4 w-4" aria-hidden="true" /> Delete Source
+            </.button>
+          </div>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  defp removed_kind(:playlist), do: "playlist"
+  defp removed_kind(:video), do: "video"
+  defp removed_kind(_collection_type), do: "channel"
 
   @doc """
   The delete confirmation shared by a source's page and the sources list. It names the sources

@@ -148,6 +148,7 @@ defmodule PinchflatWeb.Router do
       post "/sync_files_on_disk", Sources.SourceController, :sync_files_on_disk
       get "/relink", Sources.SourceController, :relink
       post "/relink", Sources.SourceController, :apply_relink
+      post "/check_removed", Sources.SourceController, :check_removed
       post "/poster/upload", Sources.SourceController, :upload_poster
       post "/poster/url", Sources.SourceController, :set_poster_url
       post "/poster/remove", Sources.SourceController, :remove_poster

@@ -34,6 +34,7 @@
       downloading={@downloading}
       pending_tasks={@pending_tasks}
     />
+    <.removed_source_notice :if={@source.removed_at} source={@source} />
     <section
       :if={@source.collection_type == :playlist && @source.selection_mode == :manual}
       class="theme-surface-accent mb-6 rounded-m3-lg px-6 py-5 text-theme-on-surface"

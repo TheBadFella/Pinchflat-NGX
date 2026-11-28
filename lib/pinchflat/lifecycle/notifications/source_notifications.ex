@@ -67,6 +67,30 @@ defmodule Pinchflat.Lifecycle.Notifications.SourceNotifications do
     :ok
   end
 
+  @doc """
+  Sends a warning that YouTube removed a source's channel, playlist or video,
+  so Pinchflat-ngx stopped checking it.
+
+  Returns :ok
+  """
+  def send_source_removed_notification(servers, source, reason) do
+    opts = [
+      title: "[Pinchflat-ngx] Source removed from YouTube",
+      body:
+        "#{source.custom_name} is no longer available on YouTube, so Pinchflat-ngx stopped indexing it. " <>
+          "Downloaded files were kept. YouTube said: #{reason}#{build_notification_link(source)}",
+      notification_type: "warning"
+    ]
+
+    case backend_runner().run(servers, opts) do
+      {:ok, _} -> Logger.info("Sent source removed notification for source #{source.id}")
+      {:error, :no_servers} -> :ok
+      {:error, err} -> Logger.error("Failed to send source removed notification for source #{source.id}: #{err}")
+    end
+
+    :ok
+  end
+
   defp wrap_without_video_titles(servers, source, func) do
     before_count = relevant_media_item_count(source)
     retval = func.()
