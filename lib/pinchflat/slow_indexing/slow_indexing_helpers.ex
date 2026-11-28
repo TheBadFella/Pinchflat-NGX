@@ -14,6 +14,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   alias Pinchflat.Tasks
   alias Pinchflat.Sources
   alias Pinchflat.Sources.Source
+  alias Pinchflat.Sources.PlaylistFiles
+  alias Pinchflat.Sources.PlaylistMemberships
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.YtDlp.MediaCollection
   alias Pinchflat.Utils.FilesystemUtils
@@ -122,9 +124,29 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     source = Repo.preload(source, :media_profile)
     urls = Enum.map(indexing_urls_for(source), fn {url, _content_type} -> url end)
     translated_titles = MediaCollection.get_source_translated_titles(source, urls)
+    # Before indexing, so downloads started by this run already see the memberships.
+    maybe_refresh_playlist_memberships(source)
     {:ok, media_attributes} = setup_file_watcher_and_kickoff_indexing(source, opts, translated_titles)
     persist_indexed_media(Repo.reload!(source), media_attributes, translated_titles)
   end
+
+  defp maybe_refresh_playlist_memberships(%Source{collection_type: :channel} = source)
+       when source.playlist_subfolders or source.playlist_files do
+    case PlaylistMemberships.refresh(source) do
+      {:ok, count} ->
+        Logger.info("Recorded #{count} playlist memberships for source #{source.id}")
+
+      error ->
+        # Keeps the previous memberships; indexing and downloads continue regardless.
+        Logger.warning("Could not refresh playlist memberships for source #{source.id}: #{inspect(error)}")
+    end
+
+    PlaylistFiles.sync(source)
+  end
+
+  # Also removes playlist files left from when the option was on.
+  defp maybe_refresh_playlist_memberships(%Source{collection_type: :channel} = source), do: PlaylistFiles.sync(source)
+  defp maybe_refresh_playlist_memberships(_source), do: :ok
 
   defp persist_single_video_index(source, metadata, command_opts) do
     case Repo.transaction(fn ->

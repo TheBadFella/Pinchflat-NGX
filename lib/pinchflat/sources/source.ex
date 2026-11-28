@@ -66,6 +66,8 @@ defmodule Pinchflat.Sources.Source do
     download_public_media
     download_members_only_media
     only_owner_uploads
+    playlist_subfolders
+    playlist_files
     last_indexed_at
     original_url
     download_cutoff_date
@@ -217,6 +219,11 @@ defmodule Pinchflat.Sources.Source do
     # owner, so items uploaded by other channels can be told apart.
     field :owner_channel_id, :string
     field :only_owner_uploads, :boolean, default: false
+    # Channel sources only: file new downloads under a subfolder named after the
+    # channel playlist they belong to. See Pinchflat.Sources.PlaylistMemberships.
+    field :playlist_subfolders, :boolean, default: false
+    # Channel sources only: write an .m3u file per channel playlist. See Pinchflat.Sources.PlaylistFiles.
+    field :playlist_files, :boolean, default: false
     field :source_type, Ecto.Enum, values: [:automatic, :channel, :playlist, :video], virtual: true, default: :automatic
     field :index_frequency_minutes, :integer, default: 60 * 24
     field :fast_index, :boolean, default: false

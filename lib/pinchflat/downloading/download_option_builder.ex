@@ -9,6 +9,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Settings
   alias Pinchflat.Sources
+  alias Pinchflat.Sources.PlaylistMemberships
   alias Pinchflat.Sources.Source
   alias Pinchflat.YtDlp.PoTokenProvider
 
@@ -327,6 +328,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
     relative_output_path =
       output_path
+      |> maybe_add_playlist_subfolder(media_item_with_preloads)
       |> OutputPathBuilder.sanitize_literal_text(Settings.get!(:restrict_filenames))
       |> String.trim_leading("/")
       |> String.trim_leading("\\")
@@ -337,6 +339,28 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     |> Enum.reject(&is_nil/1)
     |> Path.join()
   end
+
+  # Puts the file in a subfolder named after its channel playlist, directly above
+  # the filename. Videos in no playlist keep the template's path.
+  defp maybe_add_playlist_subfolder(output_path, %MediaItem{
+         media_id: media_id,
+         source: %Source{collection_type: :channel, playlist_subfolders: true, id: source_id}
+       }) do
+    case PlaylistMemberships.playlist_title_for(source_id, media_id) do
+      title when is_binary(title) ->
+        {:literal, folder} = OutputPathBuilder.literal_component(title)
+
+        case Path.dirname(output_path) do
+          "." -> Path.join(folder, output_path)
+          directory -> Path.join([directory, folder, Path.basename(output_path)])
+        end
+
+      nil ->
+        output_path
+    end
+  end
+
+  defp maybe_add_playlist_subfolder(output_path, _media_item), do: output_path
 
   defp output_options_map(media_item_with_preloads) do
     source = media_item_with_preloads.source

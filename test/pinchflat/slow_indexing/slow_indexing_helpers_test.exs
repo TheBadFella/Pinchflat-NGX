@@ -12,6 +12,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.FastIndexing.FastIndexingWorker
   alias Pinchflat.Downloading.MediaDownloadWorker
+  alias Pinchflat.Downloading.DownloadOptionBuilder
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
@@ -193,6 +194,36 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpersTest do
       assert ["desc1", "desc2", "desc3"] == Enum.map(media_items, & &1.description)
       assert Enum.all?(media_items, fn mi -> mi.original_url end)
       assert Enum.all?(media_items, fn %MediaItem{} -> true end)
+    end
+
+    test "records playlist memberships before indexing when playlist subfolders are on" do
+      channel_id = "UC" <> String.duplicate("a", 22)
+      source = source_fixture(%{collection_type: :channel, collection_id: channel_id, playlist_subfolders: true})
+      test_pid = self()
+
+      stub(YtDlpRunnerMock, :run, fn
+        url, :get_playlist_memberships, _opts, _ot, _addl_opts ->
+          send(test_pid, {:runner, :get_playlist_memberships})
+
+          if String.ends_with?(url, "/playlists"),
+            do: {:ok, Phoenix.json_library().encode!(%{"id" => "PLtalks", "title" => "Talks"})},
+            else: {:ok, Phoenix.json_library().encode!(%{"id" => "video1"})}
+
+        _url, :get_media_attributes_for_collection, _opts, _ot, _addl_opts ->
+          send(test_pid, {:runner, :get_media_attributes_for_collection})
+          {:ok, source_attributes_return_fixture()}
+      end)
+
+      media_items = SlowIndexingHelpers.index_and_enqueue_download_for_media_items(source)
+
+      assert_received {:runner, first_action}
+      assert first_action == :get_playlist_memberships
+
+      video1 = media_items |> Enum.find(&(&1.media_id == "video1")) |> Repo.preload(source: :media_profile)
+      video2 = media_items |> Enum.find(&(&1.media_id == "video2")) |> Repo.preload(source: :media_profile)
+
+      assert DownloadOptionBuilder.build_output_path_for(video1) =~ "/Talks/"
+      refute DownloadOptionBuilder.build_output_path_for(video2) =~ "/Talks/"
     end
 
     test "persists availability returned during slow indexing", %{source: source} do
