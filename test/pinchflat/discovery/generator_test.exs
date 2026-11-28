@@ -77,6 +77,46 @@ defmodule Pinchflat.Discovery.GeneratorTest do
       assert [%{source_id: 1, reason: :runner_failed}] = result.errors
     end
 
+    test "scans channel sources and the owner channels of playlist sources once each" do
+      playlist_owner = "UC" <> String.duplicate("c", 22)
+
+      Pinchflat.SourcesFixtures.source_fixture(%{collection_type: :channel, collection_id: @channel_id})
+
+      for suffix <- ["p", "q"] do
+        Pinchflat.SourcesFixtures.source_fixture(%{
+          collection_type: :playlist,
+          collection_id: "PL" <> String.duplicate(suffix, 32),
+          owner_channel_id: playlist_owner
+        })
+      end
+
+      Pinchflat.SourcesFixtures.source_fixture(%{
+        collection_type: :playlist,
+        collection_id: "PL" <> String.duplicate("r", 32),
+        owner_channel_id: nil
+      })
+
+      test_pid = self()
+
+      fetch_fun = fn source, _opts ->
+        send(test_pid, {:fetched, FeaturedGenerator.featured_url(source)})
+        []
+      end
+
+      FeaturedGenerator.generate_with_errors(fetch_fun: fetch_fun, max_sources: 10)
+
+      fetched =
+        for _ <- 1..2 do
+          assert_receive {:fetched, url}
+          url
+        end
+
+      refute_receive {:fetched, _url}
+
+      expected = Enum.map([@channel_id, playlist_owner], &(Normalizer.channel_url(&1) <> "/featured"))
+      assert Enum.sort(fetched) == Enum.sort(expected)
+    end
+
     test "uses the configured runner without cookies and parses bounded output" do
       source = %{
         id: 1,
